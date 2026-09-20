@@ -24,12 +24,15 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 
 | Feature | What it does |
 | --- | --- |
-| **Flexible multiview** | Choose four games, two games, a single game, or a larger focus view. Expand into theater mode or fullscreen. |
+| **Flexible multiview** | Choose four games, two games, a single game, or a larger focus view. Pictures retain their 16:9 proportions. Connected games stay loaded when switching layouts; hidden games are muted. |
 | **One-click desktop playback** | Resolve a listed game's current provider and start it inside its tile. |
+| **Play your room** | Start all available selected provider games with one desktop action. |
+| **Swap your lineup** | When all four slots are occupied, choose a game to replace directly from the schedule, scoreboard, or game center. |
+| **Browse without reconnecting** | Open the schedule while streams stay loaded and muted, then return to your room. |
 | **Backup servers** | Retry temporary lookup failures and try other listed servers when initial playback fails. Switch servers manually from the tile. |
-| **One game on audio** | Focus a game to hear it. Room volume, mute, and play/pause controls keep the session manageable. |
+| **One game on audio** | Choose a ready game from the audio selector or focus its tile. The toolbar shows volume, mute, and pause state. Failed feeds release audio focus. |
 | **Live game center** | Follow scores, clocks, possession, down and distance, and available latest-play updates. |
-| **Smart focus** | Follow red-zone action among selected games, with at least 20 seconds between automatic switches. |
+| **Smart focus** | Follow red-zone action among connected games in your lineup, with at least 20 seconds between automatic switches. |
 | **Find your matchup** | Search by team or abbreviation, filter live games and red-zone activity, and save favorites. |
 | **Spoiler-free mode** | Hide numeric scores and latest-play updates in the room. Broadcast video and provider overlays remain visible. |
 | **Remember your room** | Save selected games, favorites, layout, volume, spoiler preference, and direct feed URLs on this device. |
@@ -70,7 +73,7 @@ The launcher starts Electron and its own local Next.js server at `http://127.0.0
 2. Press **Play game** on its tile. The desktop viewer looks up and opens the provider.
 3. Add more games, up to four, and choose a layout from the room toolbar.
 4. Use **Focus** to select a game's audio. Adjust volume or pause all feeds from the bottom bar.
-5. Enable **Smart focus** to follow selected games entering the red zone, or use fullscreen for a dedicated viewing screen.
+5. Enable **Smart focus** to follow connected games entering the red zone, or use fullscreen for a dedicated viewing screen.
 
 If a provider cannot start, allow its startup retries to finish or choose **Switch server**. Games without a supported source offer **Connect a feed** instead.
 
@@ -107,9 +110,9 @@ HLS requests must be permitted by the provider's cross-origin policy. Delay sett
 | **Focus** | Choose a game and its audio |
 | **Switch server** | Try the next listed provider server |
 | **Stop this game** | Close that provider player |
-| **Smart focus** | Follow red-zone activity among selected games |
+| **Smart focus** | Follow red-zone activity among connected games in your lineup |
 | **Theater** | Give the room more horizontal space |
-| **Fullscreen** | Fill the display with the viewing room |
+| **Fullscreen** | Fill the display with the viewing room; use the same button or Escape to exit. Embedded browsers without native fullscreen fill their available viewport. |
 
 | Keyboard shortcut | Action |
 | --- | --- |
@@ -227,9 +230,11 @@ npm run typecheck
 npm run build
 ```
 
-The current nine automated tests cover directory extraction, scoreboard parsing, home/away matching, missing scores, red-zone ranking, feed validation, player ordering, source restrictions, and native view bounds.
+The current 82 automated tests cover directory and scoreboard parsing, source matching and restrictions, native geometry, renderer zoom, stalled-stream health, cancellation and stale player events, direct-feed recovery and live seeking, saved-room validation, scoreboard recovery, and refresh-cache behavior.
 
-Manual Windows verification has included two simultaneous live provider broadcasts, global pause/resume, layout switching, and dialogs above native player surfaces. Direct MP4 and HLS playback have also been checked. These checks establish behavior at the time of testing; they do not guarantee future upstream availability.
+Recent polish adds desktop **Play room**, direct game replacement, an audio selector, schedule browsing without reconnecting streams, and an **In your lineup** shelf for games outside the current layout. Native players continue monitoring playback after startup; direct HLS feeds make bounded recovery attempts before offering a manual retry. Saved preferences reject malformed values and preserve an explicitly empty room. Source-only game selections and saved feeds follow official game IDs when scores recover. Spoiler-free mode also hides team records and uses stable ordering. Compact player artwork scales to its tile. The **Find a game** picker (toolbar **+** or **/**) searches team names, cities, and abbreviations without leaving fullscreen. It includes live and favorite filters, supports game replacement, and restores keyboard focus when closed. Browser playback failures offer a same-game retry and a source fallback. Desktop fullscreen lets Escape close a picker or audio menu first, then exit fullscreen on the next press. Fullscreen also keeps keyboard focus within the room; volume and delay sliders have accessible names and larger hit areas. Team-code searches such as CHI and NE use exact abbreviations. Pause reaches provider videos that load late, and live-delay changes wait for a usable buffer. See [the verification record](docs/qa-2026-09-20.md) for checked flows.
+
+Manual Windows verification has included four simultaneous live provider broadcasts, global pause/resume, layout switching without reconnecting, fullscreen entry/exit, and dialogs above native player surfaces. Browser layouts have been checked at 320, 768, 1024, and 1440 pixels wide. Direct MP4 and HLS playback have also been checked. These checks establish behavior at the time of testing; they do not guarantee future upstream availability.
 
 ### Branch workflow
 
