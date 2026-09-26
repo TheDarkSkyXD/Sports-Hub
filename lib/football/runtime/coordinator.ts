@@ -186,7 +186,9 @@ export class FootballCoordinator {
     });
     if (this.stopped) return;
     for (const observation of observations) this.store.observe(observation,matchObservation(observation,this.games,this.now()));
+    const catalogIds = new Set(this.sources.filter(source => source.kind === 'catalog').map(source => source.id));
     const eligible = observations.filter(observation => {
+      if (catalogIds.has(observation.sourceId)) return false;
       if (!observation.teams) return false;
       const match = matchObservation(observation,this.games,this.now());
       return match.kind === 'matched' || match.reason === 'unverified-kickoff' && match.possibleGameIds.length > 0;

@@ -76,6 +76,48 @@ test('known empty schedules differ from unsupported pages and parser changes', (
   assert.equal(parseListings(buff,'<body><h2>NFL Schedule Update</h2></body>',now).outcome,'parser-changed');
 });
 
+test('shared TVApp catalog keeps dated match identities without treating mirror labels as leagues', () => {
+  const source = SOURCES.find(item => item.id === 'tvapp');
+  assert.ok(source);
+  const row = {id:'south-alabama-kentucky-1681',title:'South Alabama Jaguars - Kentucky Wildcats',category:'american-football',date:now,
+    teams:{home:{name:'South Alabama Jaguars'},away:{name:'Kentucky Wildcats'}},sources:[{source:'admin',id:'one'}]};
+  const result = parseListings(source,JSON.stringify([row,row,
+    {id:'ppv-nfl-network',title:'NFL Network',category:'american-football',date:0}]),now);
+  assert.equal(result.outcome,'parsed');
+  assert.equal(result.observations.length,1);
+  assert.deepEqual(result.observations[0].teams,['South Alabama Jaguars','Kentucky Wildcats']);
+  assert.equal(result.observations[0].league,null);
+  assert.equal(result.observations[0].kickoff,now);
+  assert.equal(result.observations[0].url,'https://tvapp1.com/watch/1681');
+  assert.equal(parseListings(source,'[]',now).outcome,'empty');
+  assert.equal(parseListings(source,JSON.stringify([row,{...row,date:now+60000}]),now).outcome,'parser-changed');
+  assert.equal(parseListings(source,'[{"title":"missing date"}]',now).outcome,'parser-changed');
+  const aliases = parseListings(source,JSON.stringify([{...row,id:'utah-state-troy-1739',
+    title:'Utah State Aggies vs Troy Trojans',teams:{home:{name:'Utah State'},away:{name:'Troy'}},date:now-5*3600000}]),now);
+  assert.equal(aliases.outcome,'parsed');
+  assert.deepEqual(aliases.observations[0].teams,['Utah State Aggies','Troy Trojans']);
+  assert.equal(aliases.observations[0].kickoff,now-5*3600000);
+});
+
+test('PPV catalog admits college and NFL games, excludes CFL and channels, and inherits parent kickoff', () => {
+  const source = SOURCES.find(item => item.id === 'ppv');
+  assert.ok(source);
+  const event = {id:29446,name:'Ole Miss Rebels at Florida Gators',tag:'College Football',uri_name:'cfb/2026-09-26/miss-fla',starts_at:now/1000,
+    substreams:[{id:29447,name:'SkyCast',starts_at:0}]};
+  const result = parseListings(source,JSON.stringify({success:true,streams:[{category:'American Football',streams:[
+    event,{...event,id:29128,name:'Los Angeles Chargers at Buffalo Bills',tag:'NFL',uri_name:'nfl/2026-09-26/lac-buf'},
+    {...event,id:29157,tag:'Canadian Football',uri_name:'cfl/2026-09-26/cgy-ott'},
+    {...event,id:18172,tag:'24/7 channel',uri_name:'nfl-network',starts_at:0},
+  ]}]}),now);
+  assert.equal(result.outcome,'parsed');
+  assert.equal(result.observations.length,2);
+  assert.deepEqual(result.observations.map(item => item.league),['ncaaf','nfl']);
+  assert.deepEqual(result.observations[0].teams,['Florida Gators','Ole Miss Rebels']);
+  assert.equal(result.observations[0].kickoff,now);
+  assert.equal(result.observations[0].url,'https://ppv.st/live/cfb/2026-09-26/miss-fla');
+  assert.equal(parseListings(source,JSON.stringify({success:true,streams:[{category:'American Football',streams:[{...event,starts_at:0}]}]}),now).outcome,'empty');
+});
+
 test('matching rejects ambiguous aliases, stale rows, uncertain times, and final games', () => {
   const pit = game('ncaaf-1',team('espn:ncaaf:221','Pittsburgh Panthers','Pitt'),team('espn:ncaaf:2083','Bucknell Bison','Bucknell'));
   assert.deepEqual(matchObservation(observation(['Bucknell','Pitt']),[pit],now),{kind:'matched',gameId:pit.id});

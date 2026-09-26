@@ -70,6 +70,70 @@ test('North Dakota historical listing reaches detail but an empty embed creates 
   }
 });
 
+test('catalog matches are retained without consuming detail slots or minting playback candidates',async () => {
+  const dir = mkdtempSync(join(tmpdir(),'football-catalog-'));
+  const path = join(dir,'state.sqlite');
+  const at = Date.parse('2026-09-26T19:30:00Z');
+  const florida:Game = {...live,id:'ncaaf-1',league:'ncaaf',name:'Ole Miss at Florida',date:new Date(at).toISOString(),
+    home:team('Florida','espn:ncaaf:57'),away:team('Ole Miss','espn:ncaaf:145'),partitions:['fbs']};
+  const georgia:Game = {...live,id:'ncaaf-2',league:'ncaaf',name:'Oklahoma at Georgia',date:new Date(at).toISOString(),
+    home:team('Georgia','espn:ncaaf:61'),away:team('Oklahoma','espn:ncaaf:201'),partitions:['fbs']};
+  const oldKickoff = at-5*3600000;
+  const late:Game = {...live,id:'ncaaf-3',league:'ncaaf',name:'Utah State at Troy',date:new Date(oldKickoff).toISOString(),
+    home:team('Troy Trojans','espn:ncaaf:2653'),away:team('Utah State Aggies','espn:ncaaf:328'),partitions:['fbs']};
+  const tvapp = SOURCES.find(source => source.id==='tvapp');
+  const sportsurge = SOURCES[0];
+  assert.ok(tvapp);
+  const catalog = JSON.stringify([
+    {id:'florida-vs-ole-miss-2498829',title:'Florida vs Ole Miss',category:'american-football',date:at,
+      teams:{home:{name:'Florida'},away:{name:'Ole Miss'}},sources:[{source:'admin',id:'ppv-ole-miss-rebels-at-florida-gators'}]},
+    {id:'georgia-vs-oklahoma-2498830',title:'Georgia vs Oklahoma',category:'american-football',date:at,
+      teams:{home:{name:'Georgia'},away:{name:'Oklahoma'}},sources:[{source:'admin',id:'ppv-oklahoma-sooners-at-georgia-bulldogs'}]},
+    {id:'utah-state-troy-1739',title:'Utah State Aggies vs Troy Trojans',category:'american-football',date:oldKickoff,
+      teams:{home:{name:'Utah State'},away:{name:'Troy'}},sources:[{source:'admin',id:'utah-state-troy'}]},
+  ]);
+  const detailUrl = 'https://isportsurge.ws/watch/cfb/florida-ole-miss/123';
+  const listing = `<a href="${detailUrl}" datetime="${new Date(at).toISOString()}"><span class="team-name-event-row"><img alt="Florida"></span><span class="team-name-event-row"><img alt="Ole Miss"></span></a>`;
+  const visited: string[] = [];
+  const coordinator = createFootballCoordinator(path,{
+    now:() => at,
+    sources:[tvapp,sportsurge],
+    readSchedule:async (partition,time) => ({games:partition.id==='fbs' ? [florida,georgia,late] : [],at:time,league:partition.league}),
+    readHtml:async url => { visited.push(url); return url===tvapp.url ? catalog : url===sportsurge.url ? listing :
+      '<iframe src="https://gooz.aapmains.net/new-stream-embed/123"></iframe>'; },
+  });
+  try {
+    await coordinator.refresh(true);
+    let rows: {payload:string;result:string}[] = [];
+    for (let attempt=0;attempt<100;attempt++) {
+      const db = new DatabaseSync(path);
+      try { rows=db.prepare('SELECT payload,result FROM observations').all().flatMap(row =>
+        typeof row.payload === 'string' && typeof row.result === 'string' ? [{payload:row.payload,result:row.result}] : []); }
+      finally { db.close(); }
+      if (rows.length>=4 && visited.includes(detailUrl)) break;
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    assert.equal(rows.length,4);
+    assert.equal(visited.includes(detailUrl),true);
+    assert.equal(visited.some(url => url.startsWith('https://tvapp1.com/watch/')),false);
+    const catalogRows = rows.filter(row => JSON.parse(row.payload).sourceId==='tvapp');
+    assert.equal(catalogRows.length,3);
+    assert.ok(catalogRows.every(row => JSON.parse(row.result).kind==='matched'));
+    const board = await coordinator.command({kind:'board'});
+    assert.equal(board.kind,'board');
+    if (board.kind==='board') {
+      assert.equal(board.board.games.find(game => game.id==='ncaaf-1')?.sourceUrl,'/play/ncaaf-1');
+      assert.equal(board.board.games.find(game => game.id==='ncaaf-2')?.sourceUrl,undefined);
+      assert.equal(board.board.games.find(game => game.id==='ncaaf-3')?.sourceUrl,undefined);
+    }
+    const opened = await coordinator.command({kind:'open',gameId:'ncaaf-1',manual:false});
+    assert.equal(opened.kind,'playback');
+    if (opened.kind==='playback') assert.deepEqual(opened.playback.candidates.map(candidate => candidate.id),['gooz-123']);
+    assert.deepEqual(await coordinator.command({kind:'open',gameId:'ncaaf-2',manual:false}),
+      {kind:'error',status:404,message:'No compatible stream is available yet.'});
+  } finally { await coordinator.stop(); rmSync(dir,{recursive:true,force:true}); }
+});
+
 test('the first fresh final timestamp survives restart and never extends the grace period',() => {
   const dir = mkdtempSync(join(tmpdir(),'football-store-'));
   const path = join(dir,'state.sqlite');

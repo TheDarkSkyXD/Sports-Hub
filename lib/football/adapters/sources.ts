@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto';
 import { load } from 'cheerio';
+import { z } from 'zod';
 import type { Candidate, League, Observation } from '../shared.ts';
 import type { ListingSource } from '../domain/ports.ts';
 import { parsePlayers } from '../../sunday.ts';
 
+const TVAPP_API = 'https://api-backups.handleapi.win/matches/sport/american-football';
+const PPV_API = 'https://api.ppv.st/api/streams';
 export const SOURCES = [
   {id:'sportsurge',url:'https://isportsurge.ws/index6',family:'sportsurge'},
   {id:'crackstreams-cfb',url:'https://ws.crackstreams.me/cfb-streams-live42',family:'buffstream'},
@@ -22,6 +25,8 @@ export const SOURCES = [
   {id:'buffstream-nfl',url:'https://ms.buffstream.io/nfl-streams-live-31',family:'buffstream'},
   {id:'methstreams',url:'https://methstreams.st/NFL',family:'event'},
   {id:'crackstreams-st',url:'https://crackstreams.st/NFL',family:'event'},
+  {id:'tvapp',url:TVAPP_API,family:'tvapp',kind:'catalog'},
+  {id:'ppv',url:PPV_API,family:'ppv',kind:'catalog'},
 ] as const;
 export class SourceFetchError extends Error {
   readonly retryAfterMs?: number;
@@ -43,13 +48,13 @@ export async function readHtml(url: string, signal: AbortSignal): Promise<string
     }
     return `<main>${pages.join('')}</main>`;
   }
-  return readPage(url,signal);
+  return readPage(url,signal,url === TVAPP_API || url === PPV_API ? 'application/json' : 'text/html');
 }
 
-async function readPage(url: string, signal: AbortSignal): Promise<string> {
+async function readPage(url: string, signal: AbortSignal, accept = 'text/html'): Promise<string> {
   for (let redirects = 0; redirects <= 3; redirects++) {
     if (!allowedDiscoveryUrl(url)) throw new Error('unsupported-discovery-address');
-    const response = await fetch(url,{redirect:'manual',cache:'no-store',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:{'User-Agent':'SundayRoom/1.0',Accept:'text/html'}});
+    const response = await fetch(url,{redirect:'manual',cache:'no-store',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:{'User-Agent':'SundayRoom/1.0',Accept:accept}});
     if (response.status >= 300 && response.status < 400) {
       await response.body?.cancel();
       const location = response.headers.get('location');
@@ -103,7 +108,100 @@ export function parseKickoff(raw: string): number | null {
   return matches.length === 1 ? matches[0] : null;
 }
 
+const CatalogTeams = z.object({home:z.object({name:z.string().min(1)}),away:z.object({name:z.string().min(1)})});
+const TvappMatch = z.object({
+  id:z.string().min(1),title:z.string().min(1),category:z.literal('american-football'),
+  date:z.number().int(),teams:CatalogTeams.nullish(),
+});
+const PpvEvent = z.object({
+  id:z.number().int().positive(),name:z.string().min(1),tag:z.string(),
+  uri_name:z.string(),starts_at:z.number().int(),
+});
+const PpvCatalog = z.object({
+  success:z.literal(true),streams:z.array(z.object({category:z.string(),streams:z.array(z.unknown())})),
+});
+
+function catalogTeams(title: string): [string,string] | null {
+  const parts = title.split(/\s+(?:vs\.?|at|-)\s+/i).map(value => value.trim());
+  return parts.length === 2 && parts.every(Boolean) ? [parts[0],parts[1]] : null;
+}
+
+function preferredCatalogTeams(title: string, structured: [string,string] | null): [string,string] | null {
+  const titled = catalogTeams(title);
+  if (!structured || !titled) return titled || structured;
+  const related = (left: string, right: string) => {
+    const a = left.toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+    const b = right.toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+    return a.includes(b) || b.includes(a);
+  };
+  const aligned = related(titled[0],structured[0]) && related(titled[1],structured[1]) ||
+    related(titled[0],structured[1]) && related(titled[1],structured[0]);
+  return aligned && titled.join('').length > structured.join('').length ? titled : structured;
+}
+
+function parseCatalog(source: ListingSource, body: string, now: number): ReturnType<typeof parseListings> {
+  let input: unknown;
+  try { input=JSON.parse(body); } catch { return {observations:[],outcome:'parser-changed'}; }
+  const byId = new Map<string,Observation>();
+  const add = (observation: Observation): boolean => {
+    const previous = byId.get(observation.id);
+    if (previous && (previous.title !== observation.title || previous.kickoff !== observation.kickoff ||
+      previous.url !== observation.url || previous.teams?.join('|') !== observation.teams?.join('|'))) return false;
+    byId.set(observation.id,observation);
+    return true;
+  };
+  const invalid = (): ReturnType<typeof parseListings> => ({observations:[],outcome:'parser-changed'});
+  if (source.family === 'tvapp') {
+    if (!Array.isArray(input)) return invalid();
+    for (const value of input) {
+      const result = TvappMatch.safeParse(value);
+      if (!result.success) return invalid();
+      const match = result.data;
+      if (match.id === 'ppv-nfl-network' && match.title === 'NFL Network' && match.date === 0) continue;
+      if (match.date < Date.UTC(2000,0,1) || match.date >= Date.UTC(2100,0,1)) return invalid();
+      if (match.date > now+7*86400000) continue;
+      const slug = match.id.startsWith('ppv-') || /^\d+$/.test(match.id) ? match.id : /-(\d+)$/.exec(match.id)?.[1];
+      if (!slug || !/^[a-zA-Z0-9-]{1,120}$/.test(slug)) return invalid();
+      const url = `https://tvapp1.com/watch/${slug}`;
+      const title = match.title.replace(/\s+/g,' ').trim();
+      const structured: [string,string] | null = match.teams
+        ? [match.teams.home.name.trim(),match.teams.away.name.trim()]
+        : null;
+      const teams = preferredCatalogTeams(title,structured);
+      const rawTime = new Date(match.date).toISOString();
+      if (!add({id:`${source.id}:${digest(match.id)}`,sourceId:source.id,url,title,teams,
+        league:null,kickoff:match.date,rawTime,observedAt:now,parserVersion:1})) return invalid();
+    }
+  } else if (source.family === 'ppv') {
+    const result = PpvCatalog.safeParse(input);
+    if (!result.success) return invalid();
+    const groups = result.data.streams.filter(group => group.category === 'American Football');
+    if (groups.length !== 1) return invalid();
+    for (const value of groups[0].streams) {
+      const result = PpvEvent.safeParse(value);
+      if (!result.success) return invalid();
+      const event = result.data;
+      const league = event.tag === 'College Football' ? 'ncaaf' : event.tag === 'NFL' ? 'nfl' : null;
+      if (!league || !event.uri_name.startsWith(`${league === 'ncaaf' ? 'cfb' : 'nfl'}/`)) continue;
+      if (!/^(?:cfb|nfl)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(event.uri_name)) return invalid();
+      if (event.starts_at <= 0) continue;
+      const kickoff = event.starts_at*1000;
+      if (kickoff < Date.UTC(2000,0,1) || kickoff >= Date.UTC(2100,0,1)) return invalid();
+      if (kickoff > now+7*86400000) continue;
+      const title = event.name.replace(/\s+/g,' ').trim();
+      const pair = catalogTeams(title);
+      const teams: [string,string] | null = pair && /\s+at\s+/i.test(title) ? [pair[1],pair[0]] : pair;
+      const url = `https://ppv.st/live/${event.uri_name}`;
+      if (!add({id:`${source.id}:${event.id}`,sourceId:source.id,url,title,teams,
+        league,kickoff,rawTime:new Date(kickoff).toISOString(),observedAt:now,parserVersion:1})) return invalid();
+    }
+  } else return {observations:[],outcome:'unsupported'};
+  const observations = [...byId.values()];
+  return {observations,outcome:observations.length ? 'parsed' : 'empty'};
+}
+
 export function parseListings(source: ListingSource, html: string, now: number): { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' } {
+  if (source.kind === 'catalog') return parseCatalog(source,html,now);
   const $ = load(html);
   const observations = new Map<string,Observation>();
   const conflictingTeamsIds = new Set<string>();
