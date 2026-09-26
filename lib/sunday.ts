@@ -6,9 +6,13 @@ export type Board = { games: Game[]; updatedAt: string; leagues: Record<League, 
 export type Feed = { url: string; label: string };
 export type SourcePlayer = { id: string; label: string; url: string };
 export const LEAGUES = {
-  nfl: { label: 'NFL', scoreboardUrl: 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', directoryUrl: 'https://isportsurge.ws/nfl/livestreams3', sourcePath: /^\/watch\/nfl\/[a-z0-9-]+\/\d+$/ },
-  ncaaf: { label: 'NCAA', scoreboardUrl: 'https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80&limit=200', directoryUrl: 'https://isportsurge.ws/cfb/livestreams2', sourcePath: /^\/watch\/cfb\/[a-z0-9-]+\/\d+$/ },
-} satisfies Record<League, { label: string; scoreboardUrl: string; directoryUrl: string; sourcePath: RegExp }>;
+  nfl: { label: 'NFL', scoreboardFeeds: [{ url: 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', format: 'site', role: 'primary' }], directoryUrl: 'https://isportsurge.ws/nfl/livestreams3', sourcePath: /^\/watch\/nfl\/[a-z0-9-]+\/\d+$/ },
+  ncaaf: { label: 'NCAA', scoreboardFeeds: [
+    { url: 'https://cdn.espn.com/core/college-football/scoreboard?xhr=1&limit=500&group=80', format: 'cdn', role: 'primary' },
+    { url: 'https://cdn.espn.com/core/college-football/scoreboard?xhr=1&limit=500&group=81', format: 'cdn', role: 'supplemental' },
+    { url: 'https://cdn.espn.com/core/college-football/scoreboard?xhr=1&limit=500&group=35', format: 'cdn', role: 'supplemental' },
+  ], directoryUrl: 'https://isportsurge.ws/cfb/livestreams2', sourcePath: /^\/watch\/cfb\/[a-z0-9-]+\/\d+$/ },
+} satisfies Record<League, { label: string; scoreboardFeeds: { url: string; format: 'site' | 'cdn'; role: 'primary' | 'supplemental' }[]; directoryUrl: string; sourcePath: RegExp }>;
 export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|ncaaf-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
 export function validSourcePage(value: string): boolean {
   try { const u = new URL(value); return u.origin === 'https://isportsurge.ws' && !u.username && !u.password && !u.search && !u.hash && (LEAGUES.nfl.sourcePath.test(u.pathname) || LEAGUES.ncaaf.sourcePath.test(u.pathname) || u.pathname === '/event/nfl/nfl-redzone-live-streaming-links'); } catch { return false; }
@@ -41,6 +45,33 @@ function text(value: unknown): string | undefined { return typeof value === 'str
 export function scoreboardWeek(data: unknown): number | undefined {
   const week = object(object(data)?.week)?.number;
   return typeof week === 'number' && Number.isInteger(week) ? week : undefined;
+}
+export function scoreboardFeedData(data: unknown, format: 'site' | 'cdn'): unknown {
+  if (format === 'site') return data;
+  const payload = object(object(data)?.content)?.sbData;
+  if (!object(payload)) throw new Error('Scoreboard format changed');
+  return payload;
+}
+
+const easternTime = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+export function parseSourceDate(html: string): string | null {
+  const aside = [...html.matchAll(/<aside\b[^>]*class="[^"]*\bmatch-info\b[^"]*"[^>]*>([\s\S]*?)<\/aside>/gi)];
+  const dates = [...new Set(aside.flatMap(match => [...match[1].matchAll(/<dt\b[^>]*>\s*Date:\s*<\/dt>\s*<dd\b[^>]*>\s*([^<]+?)\s*<\/dd>/gi)].map(date => date[1])))];
+  if (dates.length !== 1) return null;
+  const parts = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})ET$/.exec(dates[0]);
+  if (!parts) return null;
+  const [, year, month, day, hour, minute] = parts;
+  const local = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+  if (!Number.isFinite(local) || new Date(local).toISOString().slice(0, 16) !== `${year}-${month}-${day}T${hour}:${minute}`) return null;
+  const matches = [4, 5].map(offset => local + offset * 3600000).filter(candidate => {
+    const fields = Object.fromEntries(easternTime.formatToParts(candidate).map(part => [part.type, part.value]));
+    return fields.year === year && fields.month === month && fields.day === day && fields.hour === hour && fields.minute === minute;
+  });
+  return matches.length === 1 ? new Date(matches[0]).toISOString() : null;
 }
 export function parseScoreboard(data: unknown, league: League = 'nfl'): Game[] {
   const events = object(data)?.events;

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDirectory, parseScoreboard, mergeGames, validFeedUrl, priority } from '../lib/sunday.ts';
+import { parseDirectory, parseScoreboard, mergeGames, validFeedUrl, priority, parseSourceDate, scoreboardFeedData, scoreboardWeek } from '../lib/sunday.ts';
 import type { Game } from '../lib/sunday.ts';
 
 const team = (name: string) => ({ name, short:name, abbreviation:name.slice(0,3), color:'112233', score:'0' });
@@ -16,6 +16,29 @@ test('scoreboard handles home/away order, missing scores and red-zone state', ()
  const [g]=parseScoreboard(data);assert.equal(g.home.score,'7');assert.equal(g.away.score,null);assert.equal(g.redzone,true);assert.equal(g.possession,'HME');
  data.events[0].status.type.state='post';assert.equal(parseScoreboard(data)[0].redzone,false);
  assert.throws(()=>parseScoreboard({error:'blocked'}));
+});
+
+test('ESPN CDN scoreboard exposes division games and week', () => {
+ const event={id:'401856704',date:'2026-09-26T16:00Z',name:'Away at Home',status:{type:{state:'pre',shortDetail:'Sat'}},competitions:[{competitors:[{homeAway:'away',team:{displayName:'Away'}},{homeAway:'home',team:{displayName:'Home'}}]}]};
+ const data=scoreboardFeedData({content:{sbData:{week:{number:4},events:[event]}}},'cdn');
+ const [college]=parseScoreboard(data,'ncaaf');
+ assert.equal(college.id,'ncaaf-401856704');
+ assert.equal(college.date,'2026-09-26T16:00Z');
+ assert.equal(scoreboardWeek(data),4);
+ assert.throws(()=>parseScoreboard(scoreboardFeedData({content:{}},'cdn')));
+});
+
+test('watch page date uses New York daylight rules and rejects missing or ambiguous metadata', () => {
+ const html=(value:string)=>`<aside class="match-info mt-3"><dl><dt>Date:</dt><dd>${value}</dd></dl></aside>`;
+ assert.equal(parseSourceDate(html('2026-09-26 12:00ET')), '2026-09-26T16:00:00.000Z');
+ assert.equal(parseSourceDate(html('2026-12-26 12:00ET')), '2026-12-26T17:00:00.000Z');
+ assert.equal(parseSourceDate(html('2026-03-08 02:30ET')), null);
+ assert.equal(parseSourceDate(html('2026-11-01 01:30ET')), null);
+ assert.equal(parseSourceDate(html('2026-02-29 12:00ET')), null);
+ assert.equal(parseSourceDate(html('2026-09-26 25:00ET')), null);
+ assert.equal(parseSourceDate('<script>const date="2026-09-26 12:00ET"</script>'), null);
+ assert.equal(parseSourceDate(html('2026-09-26 12:00ET')+html('2026-09-26 12:00ET')), '2026-09-26T16:00:00.000Z');
+ assert.equal(parseSourceDate(html('2026-09-26 12:00ET')+html('2026-09-26 13:00ET')), null);
 });
 test('source matching never replaces official scores or assumes team order', () => {
  const listing={...game,home:game.away,away:game.home,id:'source-1',sourceUrl:'https://isportsurge.ws/watch/nfl/a/1'};

@@ -1,7 +1,10 @@
-import { getFootballBoard } from '@/lib/sunday-server';
+import { after } from 'next/server';
+import { getFootballBoard, warmSourceDates } from '@/lib/sunday-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return Response.json(await getFootballBoard(), { headers: { 'Cache-Control': 'no-store' } });
+  const board = await getFootballBoard();
+  after(() => warmSourceDates(board));
+  return Response.json(board, { headers: { 'Cache-Control': 'no-store' } });
 }
