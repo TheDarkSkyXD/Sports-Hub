@@ -9,7 +9,7 @@ const makeGame = (id, away, home, status, detail, date) => ({
   id, league: 'nfl', name: `${away.name} at ${home.name}`, away, home, status, detail, date, redzone: false,
 });
 const games = [
-  makeGame('1', team('Pre Away', 'PRA'), team('Pre Home', 'PRH'), 'pre', 'Sat TBD', '2026-09-27T00:00Z'),
+  makeGame('1', team('Pre Away', 'PRA'), team('Pre Home', 'PRH'), 'pre', 'Scheduled', '2026-09-27T00:00Z'),
   makeGame('2', team('Unknown Away', 'UNA'), team('Unknown Home', 'UNH'), 'unknown', 'Schedule unavailable'),
   makeGame('3', team('Bad Away', 'BDA'), team('Bad Home', 'BDH'), 'pre', 'Delayed', 'tomorrow'),
   makeGame('4', team('Live Away', 'LVA'), team('Live Home', 'LVH'), 'in', 'Q2', '2026-09-26T20:00Z'),
@@ -50,7 +50,7 @@ try {
     const timing = await timingFor(page, surface, 'PRA');
     await timing.getByText('Kickoff in 00:00:03').waitFor();
     assert.equal(await timing.locator('span').innerText(), 'Sat, Sep 26, 7:00 PM');
-    assert.match(await page.locator(surface).filter({ hasText: 'PRA' }).first().innerText(), /Sat TBD/);
+    assert.match(await page.locator(surface).filter({ hasText: 'PRA' }).first().innerText(), /Scheduled/);
     await within(page, surface, 'PRA');
   }
   assert.equal(await (await timingFor(page, '.mini-game', 'BDA')).innerText(), 'Start time unavailable');
@@ -71,7 +71,7 @@ try {
     assert.doesNotMatch(await card.locator('.game-timing').innerText(), /Kickoff in|Awaiting kickoff/);
   }
 
-  games[0] = { ...games[0], status: 'pre', detail: 'Sun TBD', date: '2026-09-28T00:00Z' };
+  games[0] = { ...games[0], status: 'pre', detail: 'Scheduled', date: '2026-09-28T00:00Z' };
   await page.getByRole('button', { name: 'Refresh game data' }).click();
   await page.getByRole('button', { name: 'Game schedule' }).click();
   const scheduleTiming = await timingFor(page, '.schedule-card', 'PRA');

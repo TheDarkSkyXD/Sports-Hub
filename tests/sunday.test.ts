@@ -13,8 +13,16 @@ test('directory parser extracts only NFL game links without executing source scr
 });
 test('scoreboard handles home/away order, missing scores and red-zone state', () => {
  const data={events:[{id:'9',name:'Away at Home',status:{type:{state:'in',shortDetail:'Q2'}},competitions:[{competitors:[{id:'a',homeAway:'away',team:{displayName:'Away',name:'Away',abbreviation:'AWY',color:'ffffff'}},{id:'h',homeAway:'home',score:'7',team:{displayName:'Home',name:'Home',abbreviation:'HME',color:'000000'}}],situation:{isRedZone:true,possession:'h'}}]}]};
- const [g]=parseScoreboard(data);assert.equal(g.home.score,'7');assert.equal(g.away.score,null);assert.equal(g.redzone,true);assert.equal(g.possession,'HME');
+ const [g]=parseScoreboard(data);assert.equal(g.home.score,'7');assert.equal(g.away.score,null);assert.equal(g.redzone,true);assert.equal(g.possession,'HME');assert.equal(g.detail,'Q2');
  data.events[0].status.type.state='post';assert.equal(parseScoreboard(data)[0].redzone,false);
+ const detail=(name:string,state:string,shortDetail:string)=>parseScoreboard({events:[{...data.events[0],status:{type:{name,state,shortDetail}}}]})[0].detail;
+ assert.equal(detail('STATUS_SCHEDULED','pre','9/27 - 1:00 PM EDT'),'Scheduled');
+ assert.equal(detail('STATUS_SCHEDULED','pre','TBD'),'TBD');
+ assert.equal(detail('STATUS_TIME_TBD','pre','TBD'),'TBD');
+ assert.equal(detail('STATUS_DELAYED','pre','Delayed'),'Delayed');
+ assert.equal(detail('STATUS_POSTPONED','pre','Postponed'),'Postponed');
+ assert.equal(detail('STATUS_IN_PROGRESS','in','Q3'),'Q3');
+ assert.equal(detail('STATUS_FINAL','post','Final'),'Final');
  assert.throws(()=>parseScoreboard({error:'blocked'}));
 });
 
