@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "desktop/main.cjs",
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
@@ -10,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "desktop": "electron desktop/main.cjs",
+    "desktop:package": "node scripts/prepare-desktop.mjs && electron-builder --win nsis --x64 --publish never",
+    "desktop:smoke": "node tests/packaged-desktop.mjs",
     "test:player": "node tests/player.browser.mjs",
     "test:player:desktop": "node tests/player.browser.mjs --desktop"
   },
@@ -45,6 +48,7 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.4",
     "ffmpeg-static": "^5.3.0",
