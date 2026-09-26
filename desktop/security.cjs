@@ -2,7 +2,7 @@ const PLAYER_ORIGIN = 'https://gooz.aapmains.net';
 function allowedPlayer(value) {
   try { const u=new URL(value); return u.origin===PLAYER_ORIGIN && /^\/new-stream-embed\/\d+$/.test(u.pathname) && !u.search && !u.hash && !u.username && !u.password; } catch { return false; }
 }
-function validGameId(value) { return typeof value==='string' && /^(?:\d{1,20}|source-\d{1,20}|redzone)$/.test(value); }
+function validGameId(value) { return typeof value==='string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|ncaaf-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
 function safeBounds(rect, size) {
   if(!rect || !['x','y','width','height'].every(k=>Number.isFinite(rect[k]))) return null;
   const x=Math.max(0,Math.round(rect.x)), y=Math.max(0,Math.round(rect.y));

@@ -2,8 +2,8 @@ const { app, BrowserWindow, WebContentsView, ipcMain, session, shell } = require
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
-const net = require('node:net');
 const { allowedPlayer, validGameId, safeBounds } = require('./security.cjs');
+const { localServerPort } = require('./port.cjs');
 const root=path.resolve(__dirname,'..');
 let win, serverProcess, origin, poll;
 const players=new Map();
@@ -72,8 +72,7 @@ function installIPC() {
  });
 }
 async function startServer() {
- const port=51931;
- await new Promise((resolve,reject)=>{const s=net.createServer();s.once('error',reject);s.listen(port,'127.0.0.1',()=>s.close(resolve));});
+ const port=await localServerPort();
  origin=`http://127.0.0.1:${port}`;
  const production=fs.existsSync(path.join(root,'.next','BUILD_ID'));
  const logDir=path.join(root,'.desktop-runtime');fs.mkdirSync(logDir,{recursive:true});

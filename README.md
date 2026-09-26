@@ -4,9 +4,9 @@
 
 # Sunday Room
 
-**A personal NFL viewing room. Four games, one screen, your choice of audio.**
+**A personal NFL and college football viewing room. Four games, one screen, your choice of audio.**
 
-Sunday Room brings live scores, a searchable game schedule, and flexible multiview playback into a dark, broadcast-inspired interface. In the desktop viewer, choose a listed game and press **Play game** to watch it inside your room—no stream URL to copy.
+Sunday Room brings live scores, a searchable game schedule, and flexible multiview playback into a dark, broadcast-inspired interface. Add a listed game to start its provider inside your room without pasting a stream URL.
 
 This repository is **Sports-Hub**; **Sunday Room** is the application. It runs locally, with no application account, API key, or hosted deployment required.
 
@@ -18,19 +18,20 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
   <a href="#troubleshooting">Troubleshooting</a>
 </p>
 
-> **Use the desktop viewer for integrated provider playback.** The browser app opens provider players in separate tabs because those providers restrict iframe embedding. Compatible direct video feeds can still play inside the browser room.
+> **Browser and desktop playback use different players.** The browser plays supported provider HLS streams inside the room. The desktop viewer opens the provider player inside a sandboxed native view.
 
 ## The viewing experience
 
 | Feature | What it does |
 | --- | --- |
 | **Flexible multiview** | Choose four games, two games, a single game, or a larger focus view. Expand into theater mode or fullscreen. |
-| **One-click desktop playback** | Resolve a listed game's current provider and start it inside its tile. |
+| **Automatic desktop playback** | Adding a game with a listed source starts its provider inside the tile. |
 | **Backup servers** | Retry temporary lookup failures and try other listed servers when initial playback fails. Switch servers manually from the tile. |
 | **One game on audio** | Focus a game to hear it. Room volume, mute, and play/pause controls keep the session manageable. |
 | **Live game center** | Follow scores, clocks, possession, down and distance, and available latest-play updates. |
 | **Smart focus** | Follow red-zone action among selected games, with at least 20 seconds between automatic switches. |
 | **Find your matchup** | Search by team or abbreviation, filter live games and red-zone activity, and save favorites. |
+| **NFL and NCAA games** | Filter the score strip, game center, and schedule by league. Your room can hold games from both leagues. |
 | **Spoiler-free mode** | Hide numeric scores and latest-play updates in the room. Broadcast video and provider overlays remain visible. |
 | **Remember your room** | Save selected games, favorites, layout, volume, spoiler preference, and direct feed URLs on this device. |
 | **Direct-feed support** | Connect compatible HLS or video URLs, with delay adjustment inside the available video buffer. |
@@ -62,17 +63,17 @@ npm run desktop
 
 After the first installation and build, Windows users can double-click **[Start Sunday Room.cmd](Start%20Sunday%20Room.cmd)** in the project folder.
 
-The launcher starts Electron and its own local Next.js server at `http://127.0.0.1:51931`. Keep the project folder and dependencies in place; this is a source-based launcher, not a packaged installer.
+The launcher starts Electron and its own local Next.js server on `127.0.0.1`. It uses port `51931` when available and selects another local port when that port is occupied or reserved. Keep the project folder and dependencies in place; this is a source-based launcher, not a packaged installer.
 
 ### Your first game day
 
-1. Find a matchup in the **Game center** or scoreboard strip and add it to your room.
-2. Press **Play game** on its tile. The desktop viewer looks up and opens the provider.
+1. Choose **All**, **NFL**, or **NCAA**. Find a matchup in the **Game center** or scoreboard strip and add it to your room. A listed provider starts inside the tile.
+2. To restart a listed provider after stopping it, press **Play game** on its tile.
 3. Add more games, up to four, and choose a layout from the room toolbar.
 4. Use **Focus** to select a game's audio. Adjust volume or pause all feeds from the bottom bar.
 5. Enable **Smart focus** to follow selected games entering the red zone, or use fullscreen for a dedicated viewing screen.
 
-If a provider cannot start, allow its startup retries to finish or choose **Switch server**. Games without a supported source offer **Connect a feed** instead.
+If a provider cannot start, allow its startup retries to finish or choose **Switch server**. A game without a listed stream stays in the room with a clear availability message. You can still add a direct feed through the tile's feed settings.
 
 ## Desktop and browser playback
 
@@ -81,17 +82,17 @@ Both modes use the same room interface, but their playback capabilities differ.
 | Capability | Desktop viewer | Browser app |
 | --- | --- | --- |
 | Scores, schedule, favorites, layouts | Yes | Yes |
-| Listed provider game | **Play game** opens inside its tile | **Open player** opens a separate tab |
-| Multiple listed provider players inside the room | Up to four | Restricted by provider iframe policy |
+| Listed provider game | Provider player opens inside its tile | Supported HLS stream plays inside its tile |
+| Multiple listed provider players inside the room | Up to four | Up to four |
 | Compatible direct HLS/video feeds inside the room | Yes | Yes |
-| Room audio and pause controls | Integrated players | Direct feeds; separate tabs have their own controls |
-| Provider startup failover | Automatic backups and manual switching | Opens the primary player; provider controls are separate |
+| Room audio and pause controls | Integrated players | Integrated video controls |
+| Provider startup failover | Automatic backups and manual switching | Automatic backup attempt and manual switching |
 
 ### Why the desktop viewer exists
 
-The inspected provider pages send a `Content-Security-Policy: frame-ancestors` allowlist that excludes arbitrary websites and localhost. A normal web page cannot embed those players in an iframe.
+The inspected provider pages send a `Content-Security-Policy: frame-ancestors` allowlist that excludes arbitrary websites and localhost. The browser room plays a supported HLS stream through local routes that validate the player, playlist, and media addresses. It does not embed or alter the provider page.
 
-The desktop shell opens each player as an independent, sandboxed Chromium `WebContentsView`, positioned inside its game tile. This uses ordinary top-level page navigation. It does not remove CSP headers, spoof an approved origin, disable browser security, or relay restricted video through the app server.
+The desktop shell opens each player as an independent, sandboxed Chromium `WebContentsView`, positioned inside its game tile. This uses ordinary top-level page navigation. It does not remove CSP headers, spoof an approved origin, or disable browser security.
 
 ### Direct feeds
 
@@ -103,7 +104,7 @@ HLS requests must be permitted by the provider's cross-origin policy. Delay sett
 
 | Control | Action |
 | --- | --- |
-| **Play game** | Start the provider inside the desktop room |
+| **Play game** | Restart a listed provider inside the room |
 | **Focus** | Choose a game and its audio |
 | **Switch server** | Try the next listed provider server |
 | **Stop this game** | Close that provider player |
@@ -127,22 +128,23 @@ Shortcuts apply while the room interface has keyboard focus. They are suspended 
 ```mermaid
 flowchart TD
     UI["Sunday Room · React interface"] --> Games["GET /api/games"]
-    Games --> Scores["ESPN public scoreboard"]
-    Games --> Directory["Sportsurge NFL directory"]
+    Games --> Scores["ESPN NFL and college football scoreboards"]
+    Games --> Directory["Sportsurge NFL and CFB directories"]
     UI --> Resolve["GET /api/playback?game=ID"]
     Resolve --> Page["Known game source page"]
     Page --> Links["Validated player addresses"]
     Links --> Desktop["Desktop: sandboxed browser views"]
-    Links --> Browser["Browser: separate player tab"]
+    Links --> Browser["Browser: validated HLS relay and in-tile video"]
     UI --> Direct["Direct feeds: video / hls.js"]
 ```
 
 ### Data and source resolution
 
-- **Scores and game state:** ESPN's public NFL scoreboard.
-- **Game links:** the [Sportsurge NFL directory](https://isportsurge.ws/nfl/livestreams3). Team pairs are matched without assuming the directory's home/away order.
+- **Scores and game state:** ESPN's public NFL scoreboard and FBS college football scoreboard.
+- **Game links:** the [Sportsurge NFL directory](https://isportsurge.ws/nfl/livestreams3) and [CFB directory](https://isportsurge.ws/cfb/livestreams2). Team pairs are matched within each league without assuming the directory's home/away order. Listings absent from ESPN's scoreboard still appear in the game center.
 - **Refresh:** the visible room polls every 30 seconds. The server caches game data for 25 seconds and retains previous data with stale-data messages when an upstream fails.
 - **Player lookup:** known game IDs resolve through validated source pages. Supported player addresses are cached for 90 seconds, with up to six distinct listed servers.
+- **Browser stream:** the local server rewrites supported HLS playlists to opaque, short-lived media paths and streams media from exact allowed hosts. Stream availability depends on the provider publishing a compatible player and HLS source.
 - **Separation:** provider links never supply or overwrite scoreboard scores. No fabricated scores or prerecorded demo broadcasts are presented as live games.
 
 ### Desktop isolation
@@ -153,7 +155,7 @@ The local interface receives a narrow preload bridge for player lifecycle, tile 
 
 ### Storage and network behavior
 
-Preferences and manually entered feed URLs use local browser storage under `sunday-room:v1`. Browser and desktop sessions have separate storage. Playback starts when you press Play; active provider sessions are not automatically restored after a restart.
+Preferences and manually entered feed URLs use local browser storage under `sunday-room:v1`. Browser and desktop sessions have separate storage. Adding a listed game starts playback; active provider sessions are not automatically restored after a restart.
 
 There is no account service, database, or cloud preference sync. Local servers bind to `127.0.0.1`. Scoreboard, image, and player requests still contact their respective providers, whose own network behavior and tracking are outside this application's control. Saved feed URLs are not encrypted.
 
@@ -175,7 +177,7 @@ npm run build
 npm run desktop
 ```
 
-The desktop shell uses the production build when `.next/BUILD_ID` exists and falls back to a development server otherwise. For a fresh production build, close the viewer, rebuild, and launch it again. A browser dev server on port 3001 can run independently of the desktop server on port 51931.
+The desktop shell uses the production build when `.next/BUILD_ID` exists and falls back to a development server otherwise. For a fresh production build, close the viewer, rebuild, and launch it again. A browser dev server on port 3001 can run independently of the desktop server, which prefers port 51931.
 
 ### Commands
 
@@ -197,11 +199,13 @@ Sports-Hub/
 ├── app/
 │   ├── api/games/route.ts       # Scoreboard and directory aggregation
 │   ├── api/playback/route.ts    # Player lookup for known games
+│   ├── api/stream/              # Validated browser HLS playlists and media
 │   ├── play/[gameId]/route.ts   # Browser redirect to a player
 │   ├── page.tsx                # Room, schedule, and preferences
 │   └── globals.css             # Theme and responsive layouts
 ├── components/
 │   ├── game-player.tsx         # Direct video and HLS
+│   ├── browser-provider-player.tsx # Browser provider controls
 │   ├── provider-player.tsx     # Desktop player state and positioning
 │   └── ui/                     # Shared UI primitives
 ├── desktop/
@@ -227,7 +231,7 @@ npm run typecheck
 npm run build
 ```
 
-The current nine automated tests cover directory extraction, scoreboard parsing, home/away matching, missing scores, red-zone ranking, feed validation, player ordering, source restrictions, and native view bounds.
+The automated tests cover NFL and NCAA directory extraction, scoreboard parsing, home/away matching, unmatched source listings, missing scores, red-zone ranking, feed validation, player ordering, source restrictions, and native view bounds.
 
 Manual Windows verification has included two simultaneous live provider broadcasts, global pause/resume, layout switching, and dialogs above native player surfaces. Direct MP4 and HLS playback have also been checked. These checks establish behavior at the time of testing; they do not guarantee future upstream availability.
 
@@ -239,14 +243,14 @@ Use `developer` for ongoing work and `main` for the published baseline. Keep cha
 
 | Symptom | What to check |
 | --- | --- |
-| **The browser opens another tab** | This is the browser provider playback path. Launch the desktop viewer for integrated multiview. |
+| **A browser game shows unavailable** | The provider may not have published a supported HLS stream. Try another listed server or use the desktop viewer. |
 | **A game keeps connecting** | The provider may be slow or unavailable. Allow startup retries, then try **Switch server**. |
 | **No source is listed** | A supported provider may not be published yet, or directory markup may have changed. Refresh the game center. |
 | **The picture is live but silent** | Focus the game, unmute the room, and raise volume. Hidden native player views are muted. |
 | **A direct feed fails** | Check that the URL points to video, is still valid, and permits browser requests. |
 | **Scores differ from the video clock** | Data and broadcasts have different delays. Use spoiler-free mode; direct feeds can be delayed within their buffer. |
 | **Electron cannot be found** | Run `npm ci`. If the binary download was skipped, run `node node_modules/electron/install.js`. |
-| **The desktop window will not start** | Ensure port 51931 is available. Check `.desktop-runtime/server.log` and, if present, `.desktop-runtime/startup.log`. |
+| **The desktop window will not start** | Check `.desktop-runtime/server.log` and, if present, `.desktop-runtime/startup.log`. The viewer tries another local port when 51931 is occupied or reserved. |
 | **The viewer shows an older build** | Close the viewer, run `npm run build`, and relaunch. |
 | **Room preferences are unexpected** | Open **Room settings** → **Reset room and remove saved feeds** to clear saved choices and feed links. |
 

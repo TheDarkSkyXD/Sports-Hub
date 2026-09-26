@@ -1,0 +1,126 @@
+import { randomBytes } from 'node:crypto';
+
+export type ResourceKind = 'playlist' | 'media';
+type Resource = { gameId: string; playerId: string; kind: ResourceKind; url: string; usedAt: number };
+type Registry = { byToken: Map<string, Resource>; byResource: Map<string, string> };
+declare global { var sundayRoomStreamRegistry: Registry | undefined; }
+const registry = globalThis.sundayRoomStreamRegistry ??= { byToken: new Map(), byResource: new Map() };
+const IDLE_MS = 5 * 60 * 1000;
+const MAX_RESOURCES = 4096;
+const VARIANT_HOSTS = new Set(['red.redirector1.space', 'pl.kamfir5.space', 'pl.goozekhar2.space', 'pl.playlist3.space', 'pl.playlist4.space', 'pl.playlist5.space', 'pl.playlist6.space']);
+const BACKENDS = new Set(['proton1', 'mountainstormbreeze25']);
+const MEDIA_HOSTS = new Set(['proton1.2f4049362e3069c1dbb69a47b280e76a.r2.cloudflarestorage.com', 'mountainstormbreeze25.be7468eda0ec8673601e4234464e169b.r2.cloudflarestorage.com']);
+export const providerHeaders = { 'User-Agent': 'Mozilla/5.0', Referer: 'https://gooz.aapmains.net/', Origin: 'https://gooz.aapmains.net' };
+export function validByteRange(value: string): boolean {
+  const start = /^bytes=(\d+)-(\d*)$/.exec(value);
+  if (start) return !start[2] || BigInt(start[1]) <= BigInt(start[2]);
+  const suffix = /^bytes=-(\d+)$/.exec(value);
+  return !!suffix && BigInt(suffix[1]) > BigInt(0);
+}
+
+export function validResourceUrl(value: string, playerId: string, kind: ResourceKind): boolean {
+  try {
+    const authority = /^https:\/\/([^/?#]+)/.exec(value)?.[1];
+    if (!authority || authority.includes(':') || authority.includes('@')) return false;
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.hash || url.username || url.password || url.port || url.hostname !== authority) return false;
+    if (kind === 'playlist') {
+      if (url.search) return false;
+      if (url.hostname === 'chatgpt.hereisman.net') return url.pathname === `/playlist/${playerId}/load-playlist`;
+      if (!VARIANT_HOSTS.has(url.hostname)) return false;
+      const match = /^\/playlist\/\d{1,20}\/([a-z0-9]+)\/caxi$/.exec(url.pathname);
+      return !!match && BACKENDS.has(match[1]) && url.pathname === `/playlist/${playerId}/${match[1]}/caxi`;
+    }
+    if (!MEDIA_HOSTS.has(url.hostname)) return false;
+    const match = /^\/scripts\/([^/]+)\/([^/]+)$/.exec(url.pathname);
+    if (!match || !url.searchParams.has('X-Amz-Signature')) return false;
+    return Buffer.from(decodeURIComponent(match[1]), 'base64').toString('utf8') === playerId;
+  } catch { return false; }
+}
+
+export function sourceFromEmbed(html: string, playerId: string): string | null {
+  const direct = /\b(?:const|let|var)\s+source\s*=\s*['"]([^'"]+)['"]/.exec(html)?.[1];
+  const encoded = /\batobClappr\s*\(\s*['"]([A-Za-z0-9+/=]+)['"]\s*\)/.exec(html)?.[1];
+  const url = direct || (encoded ? Buffer.from(encoded, 'base64').toString('utf8') : null);
+  return url && validResourceUrl(url, playerId, 'playlist') ? url : null;
+}
+
+function key(resource: Pick<Resource, 'gameId' | 'playerId' | 'kind' | 'url'>): string {
+  const address = resource.kind === 'media' ? (() => { const url = new URL(resource.url); return `${url.origin}${url.pathname}`; })() : resource.url;
+  return `${resource.gameId}\n${resource.playerId}\n${resource.kind}\n${address}`;
+}
+function remove(token: string, resource: Resource): void {
+  registry.byToken.delete(token);
+  const resourceKey = key(resource);
+  if (registry.byResource.get(resourceKey) === token) registry.byResource.delete(resourceKey);
+}
+function prune(): void {
+  const now = Date.now();
+  for (const [token, resource] of registry.byToken) if (now - resource.usedAt > IDLE_MS) remove(token, resource);
+  while (registry.byToken.size >= MAX_RESOURCES) {
+    const oldest = [...registry.byToken].reduce((a, b) => a[1].usedAt <= b[1].usedAt ? a : b);
+    remove(oldest[0], oldest[1]);
+  }
+}
+export function registerResource(gameId: string, playerId: string, url: string, kind: ResourceKind): string {
+  if (!validResourceUrl(url, playerId, kind)) {
+    try { const parsed = new URL(url); console.warn('Unsupported stream resource:', kind, `${parsed.origin}${parsed.pathname}`); }
+    catch { console.warn('Unsupported stream resource:', kind, 'invalid URL'); }
+    throw new Error('Unsupported stream resource');
+  }
+  prune();
+  const resource = { gameId, playerId, kind, url };
+  const existing = registry.byResource.get(key(resource));
+  if (existing) { const saved = registry.byToken.get(existing); if (saved) { saved.url = url; saved.usedAt = Date.now(); return existing; } }
+  const token = randomBytes(24).toString('hex');
+  registry.byToken.set(token, { ...resource, usedAt: Date.now() });
+  registry.byResource.set(key(resource), token);
+  return token;
+}
+export function registeredResource(token: string): Resource | null {
+  if (!/^[a-f0-9]{48}$/.test(token)) return null;
+  const resource = registry.byToken.get(token);
+  if (!resource) return null;
+  if (Date.now() - resource.usedAt > IDLE_MS) { remove(token, resource); return null; }
+  resource.usedAt = Date.now();
+  return resource;
+}
+
+export function rewritePlaylist(body: string, base: string, gameId: string, playerId: string): string {
+  if (!body.startsWith('#EXTM3U')) throw new Error('Invalid HLS playlist');
+  let nextIsPlaylist = false;
+  return body.split(/\r?\n/).map(line => {
+    if (line.startsWith('#')) {
+      if (line.startsWith('#EXT-X-STREAM-INF:')) nextIsPlaylist = true;
+      return line.replace(/URI="([^"]+)"/g, (_attribute, value: string) => {
+        const kind: ResourceKind = /^(#EXT-X-MEDIA|#EXT-X-I-FRAME-STREAM-INF|#EXT-X-RENDITION-REPORT)/.test(line) ? 'playlist' : 'media';
+        const token = registerResource(gameId, playerId, new URL(value, base).href, kind);
+        return `URI="/api/stream/media/${token}"`;
+      });
+    }
+    if (!line.trim()) return line;
+    const kind: ResourceKind = nextIsPlaylist ? 'playlist' : 'media';
+    nextIsPlaylist = false;
+    const token = registerResource(gameId, playerId, new URL(line.trim(), base).href, kind);
+    return `/api/stream/media/${token}`;
+  }).join('\n');
+}
+
+export async function limitedText(response: Response, limit = 1024 * 1024): Promise<string> {
+  const length = Number(response.headers.get('content-length'));
+  if (length > limit) throw new Error('Manifest is too large');
+  if (!response.body) throw new Error('Manifest is empty');
+  const reader = response.body.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) throw new Error('Manifest is too large');
+      parts.push(value);
+    }
+  } catch (error) { await reader.cancel(); throw error; }
+  return Buffer.concat(parts).toString('utf8');
+}
