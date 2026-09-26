@@ -1,0 +1,22 @@
+{
+  "observedAt": "2026-09-26T05:47:28.347Z",
+  "method": "Direct HTTP requests with the exact URLs and response statuses retained.",
+  "results": [
+    {
+      "url": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?dates=20260925-20261003&limit=200&groups=80",
+      "status": 400,
+      "eventCount": null,
+      "error": "{\"code\":400,\"message\":\"Failed to get events endpoint.\"}"
+    },
+    {
+      "url": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?dates=20260926&limit=1000&groups=80",
+      "status": 200,
+      "eventCount": 25
+    },
+    {
+      "url": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?dates=20260926&limit=200&groups=80",
+      "status": 200,
+      "eventCount": 65
+    }
+  ]
+}

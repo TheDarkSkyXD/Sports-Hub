@@ -1,0 +1,115 @@
+{
+  "capturedAt": "2026-09-26T06:19:12.949Z",
+  "codeCommit": "32ad94e962ca5f8ef2e97af9ccd1d32e57fa060a",
+  "platform": "Windows",
+  "unitTests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "checks": [
+    {
+      "exitCode": 0,
+      "command": "npm test",
+      "log": "work/football-wayfinder/final-tests.log"
+    },
+    {
+      "exitCode": 0,
+      "command": "npm run typecheck",
+      "log": "work/football-wayfinder/final-typecheck.log"
+    },
+    {
+      "exitCode": 0,
+      "command": "npm run lint",
+      "log": "work/football-wayfinder/final-lint.log"
+    },
+    {
+      "exitCode": 0,
+      "finishedAt": "2026-09-26T06:16:03.1883463Z",
+      "command": "npm run build",
+      "startedAt": "2026-09-26T06:15:52.8336257Z"
+    },
+    {
+      "exitCode": 0,
+      "finishedAt": "2026-09-26T06:08:04.6487064Z",
+      "command": "npm run test:player",
+      "startedAt": "2026-09-26T06:05:38.2949950Z"
+    },
+    {
+      "exitCode": 0,
+      "finishedAt": "2026-09-26T06:18:40.7870385Z",
+      "command": "npm run test:player:desktop",
+      "startedAt": "2026-09-26T06:16:08.6388707Z"
+    },
+    {
+      "exitCode": 0,
+      "finishedAt": "2026-09-26T06:14:43.6936046Z",
+      "command": "node tests/desktop-crash.mjs",
+      "startedAt": "2026-09-26T06:14:38.2089868Z"
+    },
+    {
+      "exitCode": 0,
+      "finishedAt": "2026-09-26T06:15:22.0438214Z",
+      "command": "node tests/desktop-crash.mjs --dev",
+      "startedAt": "2026-09-26T06:15:16.4757551Z"
+    }
+  ],
+  "browserCases": [
+    "Four real HLS streams decode and play.",
+    "Focused controls appear on mouse movement, hide after three idle seconds, and hide when the pointer leaves.",
+    "Custom player pause and play affect only the focused stream.",
+    "Focus moves the controls without reloading media and keeps one audible stream; volume changes the media volume.",
+    "Manual 180p and 360p selections change decoded video resolution; Auto remains selectable.",
+    "Stream fullscreen contains both the video and its custom controls.",
+    "Changing focus exits the old stream fullscreen and reveals the new controls.",
+    "Picture-in-picture opens; media play/pause events keep the custom controls synchronized.",
+    "Custom playback controls work in single-game layout and restore the four-stream layout.",
+    "Focused controls fit a 390px viewport without horizontal page overflow.",
+    "A manual feed stops at the final-game deadline, closes its session, and stays saved in preferences.",
+    "A live HLS manifest exposes DVR seeking and Go Live returns to the safe live position.",
+    "Restored live provider games start automatically without a Play game click.",
+    "Listed provider playback uses the shared controls; server changes preserve pause and reset quality to Auto.",
+    "A live provider EOS retries; a backup discovered after open reaches the player on PATCH and plays after primary failure.",
+    "A media failure during an in-flight heartbeat is queued and recovers after the heartbeat finishes.",
+    "An offline fatal playlist and startup timeout wait for connectivity, then reload without penalizing the source.",
+    "Paused, hidden, and wake-from-sleep media faults reload locally without marking the provider failed.",
+    "A paused or offline stream does not fail over; a live video that stops advancing refreshes once.",
+    "Expired provider playlists refresh once and recover on a backup server.",
+    "Unavailable providers refresh, try the backup, and expose a retry control after exhaustion.",
+    "Live status and newly listed sources auto-connect; focused pause survives refresh, and re-added live games auto-start.",
+    "Started streams keep playing when scores mark a game final or its directory link disappears.",
+    "Four quality options are fully visible; the Quality heading stays fixed while the options scroll."
+  ],
+  "desktopCases": [
+    "Four real HLS streams decode and play.",
+    "Minimized Electron wakes its board refresh and keeps custom video advancing.",
+    "Focused controls appear on mouse movement, hide after three idle seconds, and hide when the pointer leaves.",
+    "Custom player pause and play affect only the focused stream.",
+    "Focus moves the controls without reloading media and keeps one audible stream; volume changes the media volume.",
+    "Manual 180p and 360p selections change decoded video resolution; Auto remains selectable.",
+    "Stream fullscreen contains both the video and its custom controls.",
+    "Changing focus exits the old stream fullscreen and reveals the new controls.",
+    "Picture-in-picture opens; media play/pause events keep the custom controls synchronized.",
+    "Custom playback controls work in single-game layout and restore the four-stream layout.",
+    "Focused controls fit a 390px viewport without horizontal page overflow.",
+    "A manual feed stops at the final-game deadline, closes its session, and stays saved in preferences.",
+    "A live HLS manifest exposes DVR seeking and Go Live returns to the safe live position.",
+    "Restored live provider games start automatically without a Play game click.",
+    "Listed provider playback uses the shared controls; server changes preserve pause and reset quality to Auto.",
+    "A live provider EOS retries; a backup discovered after open reaches the player on PATCH and plays after primary failure.",
+    "A media failure during an in-flight heartbeat is queued and recovers after the heartbeat finishes.",
+    "An offline fatal playlist and startup timeout wait for connectivity, then reload without penalizing the source.",
+    "Paused, hidden, and wake-from-sleep media faults reload locally without marking the provider failed.",
+    "A paused or offline stream does not fail over; a live video that stops advancing refreshes once.",
+    "Expired provider playlists refresh once and recover on a backup server.",
+    "Unavailable providers refresh, try the backup, and expose a retry control after exhaustion.",
+    "Live status and newly listed sources auto-connect; focused pause survives refresh, and re-added live games auto-start.",
+    "Started streams keep playing when scores mark a game final or its directory link disappears.",
+    "Four quality options are fully visible; the Quality heading stays fixed while the options scroll."
+  ],
+  "limitations": [
+    "Media fixtures use controlled schedules and generated HLS video. They do not certify every live provider.",
+    "Live NFL/FCS and all-source playback acceptance remain open in issue 15.",
+    "The first crash check targeted the launcher. Corrected checks kill Electron main and verify port closure.",
+    "GitHub Actions execution is separate from these local checks."
+  ]
+}

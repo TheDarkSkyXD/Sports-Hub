@@ -217,6 +217,7 @@ Sports-Hub/
 │   └── ui/                     # Shared UI primitives
 ├── desktop/
 │   ├── main.cjs                # Desktop window and owned local server
+│   ├── server-supervisor.cjs   # Stop the Next process tree with Electron
 │   └── preload.cjs             # Desktop identification
 ├── docs/
 │   ├── assets/                 # Generated README artwork
