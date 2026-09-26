@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, LoaderCircle, RefreshCw, X } from 'lucide-react';
+import { AlertCircle, LoaderCircle, RefreshCw } from 'lucide-react';
 
 type PlayerStatus = { id:string; state:'ready'|'playing'|'error'; message?:string; label?:string; server?:number };
 declare global {
@@ -14,15 +14,15 @@ declare global {
   };
  }
 }
-export function ProviderPlayer({gameId,obscured,onClose}:{gameId:string;obscured:boolean;onClose:()=>void}) {
+export function ProviderPlayer({gameId,obscured}:{gameId:string;obscured:boolean}) {
  const ref=useRef<HTMLDivElement>(null);
  const currentServer=useRef(0);
- const [state,setState]=useState('loading'),[message,setMessage]=useState('Finding your game…'),[server,setServer]=useState(0),[count,setCount]=useState(1),[label,setLabel]=useState('Primary');
+ const [state,setState]=useState('loading'),[message,setMessage]=useState('Finding your game…'),[server,setServer]=useState(0),[count,setCount]=useState(1);
  useEffect(()=>{
   const desktop=window.sundayDesktop;if(!desktop)return;
   let active=true;setState('loading');setMessage('Finding your game…');
-  const unsubscribe=desktop.subscribe(m=>{if(m.id!==gameId||!active)return;setState(m.state);if(m.message)setMessage(m.message);if(m.label)setLabel(m.label);if(m.server!==undefined)currentServer.current=m.server;});
-  void desktop.openGame(gameId,currentServer.current%6).then(result=>{if(active){setCount(result.serverCount);setLabel(result.label);currentServer.current=result.server;}}).catch(error=>{if(active){setState('error');setMessage((error.message||'Couldn’t open this game.').replace(/^Error invoking remote method '[^']+': Error: /,''));}});
+  const unsubscribe=desktop.subscribe(m=>{if(m.id!==gameId||!active)return;setState(m.state);if(m.message)setMessage(m.message);if(m.server!==undefined)currentServer.current=m.server;});
+  void desktop.openGame(gameId,currentServer.current%6).then(result=>{if(active){setCount(result.serverCount);currentServer.current=result.server;}}).catch(error=>{if(active){setState('error');setMessage((error.message||'Couldn’t open this game.').replace(/^Error invoking remote method '[^']+': Error: /,''));}});
   return()=>{active=false;unsubscribe();void desktop.closeGame(gameId).catch(()=>{});};
  },[gameId,server]);
  useEffect(()=>{
@@ -37,5 +37,5 @@ export function ProviderPlayer({gameId,obscured,onClose}:{gameId:string;obscured
  const nextServer=()=>{currentServer.current+=1;setServer(s=>s+1);};
  return <div className="provider-player"><div className="provider-surface" ref={ref} data-provider-surface={gameId} data-hidden={obscured||state==='error'}>
   <div className="player-message">{state==='error'?<AlertCircle/>:<LoaderCircle className="spin"/>}<strong>{state==='error'?'This server couldn’t start':'Opening the live player'}</strong><p>{message}</p>{state==='error'&&<button className="button" onClick={nextServer}><RefreshCw size={14}/>Try another server</button>}</div>
- </div><div className="provider-controls"><span>{state==='playing'?'Playing':state==='error'?'Unavailable':state==='ready'?'Player ready':'Connecting'} · {label}</span><button onClick={nextServer} title={`Switch provider server (${count} available)`}><RefreshCw size={12}/>Switch server</button><button aria-label="Stop this game" onClick={onClose}><X size={13}/></button></div></div>;
+ </div><div className="provider-controls"><button onClick={nextServer} title={`Switch provider server (${count} available)`}><RefreshCw size={12}/>Switch server</button></div></div>;
 }

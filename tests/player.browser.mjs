@@ -284,8 +284,12 @@ try {
   await providerRoom.page.waitForFunction(() => document.querySelector('video').videoHeight === 180);
   await revealControls(providerRoom.page);
   await providerControls.getByRole('button', { name: 'Pause stream', exact: true }).click();
+  const backupLoaded = providerRoom.page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === `/api/stream/${games[0].id}/index.m3u8` && url.searchParams.get('server') === '1' && response.ok();
+  });
   await firstTile.getByRole('button', { name: 'Switch server', exact: true }).click();
-  await providerRoom.page.getByText('Backup · 2 of 2', { exact: true }).waitFor();
+  await backupLoaded;
   await providerRoom.page.waitForFunction(() => document.querySelector('video').readyState >= 2);
   assert.equal(await firstTile.locator('video').evaluate(v => v.paused), true);
   await revealControls(providerRoom.page);
@@ -302,14 +306,13 @@ try {
     return video?.readyState >= 2 && !video.paused && video.currentTime > 0;
   });
   assert.equal(recoveryRoom.manifestRequests.size, 3);
-  await recoveryRoom.page.locator('.game-tile').first().getByText('Primary · 1 of 2', { exact: true }).waitFor();
+  assert.deepEqual([...recoveryRoom.manifestRequests].map(url => new URL(url).searchParams.get('server')), ['0', '0', '0']);
   assert.deepEqual(recoveryRoom.pageErrors, []);
   results.push('Expired provider playlists refresh the master twice and recover on the same server.');
   if (!desktopApp) await recoveryRoom.context.close();
 
   const unavailableRoom = await openRoom({ provider: true, providerFailure: 'unavailable' });
   await unavailableRoom.finalFailure;
-  await unavailableRoom.page.getByText('Backup · 2 of 2', { exact: true }).waitFor();
   await unavailableRoom.page.getByText("Feed couldn't play", { exact: true }).waitFor();
   assert.equal(unavailableRoom.manifestRequests.size, 6);
   assert.deepEqual(unavailableRoom.pageErrors, []);
@@ -330,16 +333,12 @@ try {
   await revealControls(scheduledRoom.page);
   await scheduledRoom.page.getByRole('button', { name: 'Play stream', exact: true }).click();
   await scheduledRoom.page.waitForFunction(() => [...document.querySelectorAll('video')].every(video => !video.paused));
-  const stoppedTile = scheduledRoom.page.locator('.game-tile').first();
-  await stoppedTile.getByRole('button', { name: 'Stop this game', exact: true }).click();
-  await scheduledRoom.page.getByRole('button', { name: 'Refresh game data', exact: true }).click();
-  await stoppedTile.getByRole('button', { name: 'Play game', exact: true }).waitFor();
-  assert.equal(await stoppedTile.locator('video').count(), 0);
-  await stoppedTile.getByRole('button', { name: 'Remove Away 1 at Home 1', exact: true }).click();
+  await scheduledRoom.page.getByRole('button', { name: 'Remove Away 1 at Home 1', exact: true }).click();
+  assert.equal(await scheduledRoom.page.locator('video').count(), 3);
   await scheduledRoom.page.getByTitle('Add Away 1 at Home 1', { exact: true }).click();
   await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2 && !video.paused));
   assert.deepEqual(scheduledRoom.pageErrors, []);
-  results.push('Live status and newly listed sources auto-connect; focused pause and Stop survive refresh, and re-added live games auto-start.');
+  results.push('Live status and newly listed sources auto-connect; focused pause survives refresh, and re-added live games auto-start.');
   const continuedVideos = await scheduledRoom.page.locator('video').elementHandles();
   scheduledRoom.finishGame();
   await scheduledRoom.page.getByRole('button', { name: 'Refresh game data', exact: true }).click();

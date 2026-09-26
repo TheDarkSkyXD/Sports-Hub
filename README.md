@@ -106,10 +106,9 @@ HLS requests must be permitted by the provider's cross-origin policy. Delay sett
 
 | Control | Action |
 | --- | --- |
-| **Play game** | Restart a listed provider inside the room |
+| **Play game** | Start a listed provider inside the room |
 | **Focus** | Choose a game and its audio |
 | **Switch server** | Try the next listed provider server |
-| **Stop this game** | Close that provider player |
 | **Smart focus** | Follow red-zone activity among selected games |
 | **Theater** | Give the room more horizontal space |
 | **Fullscreen** | Fill the display with the viewing room |
