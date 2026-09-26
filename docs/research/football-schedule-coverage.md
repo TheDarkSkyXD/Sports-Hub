@@ -1,12 +1,25 @@
 # Football schedule coverage and lifecycle evidence
 
-Research ticket: [12](https://github.com/TheDarkSkyXD/Sports-Hub/issues/12). Parent map: [6](https://github.com/TheDarkSkyXD/Sports-Hub/issues/6). Observation window: 2026-09-26 04:34-04:37 UTC, September 25 in America/Chicago. This report records source facts and recommendations separately. No application code changed.
+Research ticket: [Verify schedule identities and NFL, FBS, and FCS coverage](https://github.com/TheDarkSkyXD/Sports-Hub/issues/12). Parent map: [Reliable football stream pipeline](https://github.com/TheDarkSkyXD/Sports-Hub/issues/6). Observation window: 2026-09-26 04:34-04:41 UTC, September 25 in America/Chicago. This report records source facts and recommendations separately. No application code changed.
 
 ## Result
 
-ESPN exposes event and team identities suitable for namespaced matching, and the two college group queries overlap. Their current browser-retrieved JSON contains the same Bucknell-Pittsburgh event ID. They are query partitions, not separate leagues or unique game namespaces. Fresh HTTP requests from this workstation returned 403, including one using the app's configured headers. Therefore live runtime accessibility and full-slate coverage remain release gates.
+ESPN exposes event and team identities suitable for namespaced matching, and the two college group queries overlap. Their current browser-retrieved JSON contains the same Bucknell-Pittsburgh event ID. They are query partitions, not separate leagues or unique game namespaces. Fresh PowerShell requests returned 403, including one using the app's configured headers. Follow-up requests using Node and the actual Electron executable in server mode returned HTTP 200 for all three current partitions. The fresh result is detailed below; full-slate coverage and sustained availability remain unproven.
 
 The completed sample below checks specific official games. It does not establish complete NFL, FBS or FCS coverage, or a contractual guarantee that ESPN IDs never change.
+
+## Follow-up in the application runtimes
+
+The parent session ran the application's exact `fetch` options: `cache: no-store`, `redirect: error`, a ten-second abort timeout, `User-Agent: SundayRoom/1.0`, and `Accept: application/json,text/html`. Each runtime requested the current undated NFL, group 80, and group 81 endpoints once. No browser impersonation, cookie, alternate IP, or access-control workaround was used.
+
+| Runtime and observation UTC | NFL | College group 80 | College group 81 |
+|---|---|---|---|
+| Node 24.14.0, 04:40:08.218-04:40:08.266 | HTTP 200; 16 events | HTTP 200; 71 events | HTTP 200; 65 events |
+| Electron 44.4.3 / Node 24.21.0 with `ELECTRON_RUN_AS_NODE=1`, 04:40:32.826-04:40:32.994 | HTTP 200; 16 events | HTTP 200; 71 events | HTTP 200; 65 events |
+
+Both fresh sets had 13 shared college event IDs: `401858236`, `401866427`, `401858237`, `401858244`, `401866426`, `401866428`, `401868188`, `401862781`, `401860892`, `401867909`, `401870745`, `401862783`, and `401858468`. Their union contains 123 distinct college events. These are response counts, not an independent denominator or a guarantee of 123 in-scope, fully classified games. The fetched current union still needs team/subdivision validation and comparison against a complete expected slate.
+
+This follow-up establishes fresh access using the same Electron/Node mode that launches the local Next server, and independently confirms cross-group overlap. It does not exercise a running Next route or the whole desktop UI. Dated historical query access, raw cancelled/postponed mappings, continued availability, and whole-slate completeness remain open. The PowerShell failures below are client-specific observations and do not describe the Node fetch outcome.
 
 ## Retrieval log
 
@@ -22,7 +35,7 @@ The base is `https://site.api.espn.com/apis/site/v2/sports/football/`.
 | During observation window | Three dated URLs above | Web research tool reported inaccessible URLs. |
 | During observation window | `college-football/summary?event=401640992` | Web research tool returned an internal retrieval error; cancellation JSON unavailable. |
 
-Each fresh request ran once. After the configured-header comparison, no further fresh ESPN retries were made. No alternate IP, cookie, browser impersonation or access-control workaround was attempted. The failures describe this client/environment, not a universal ESPN outage. The header comparison uses PowerShell's HTTP stack, not the app's Node fetch stack; fresh Node/Electron-runtime success still needs verification.
+Each fresh PowerShell request ran once. No alternate IP, cookie, browser impersonation or access-control workaround was attempted. Those failures describe that client/environment, not a universal ESPN outage. The separate Node/Electron follow-up above verifies the application's fetch stack successfully.
 
 Primary endpoint references: [college group 80](https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80&limit=200), [college group 81](https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=81&limit=200), [NFL](https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard). These URLs are mutable snapshots. The minimal derived evidence below preserves what was observed without copying a full response.
 
@@ -89,7 +102,7 @@ Recommendation: preserve the full provider status and map only verified combinat
 
 ## Recommended schedule authority and failure behavior
 
-1. Treat ESPN as the existing candidate schedule authority, conditional on a successful fresh probe using the actual desktop-owned runtime. Query NFL and both college partitions for a bounded explicit date/week window; do not rely on an undated default remaining on the needed slate. Deduplicate by namespaced event ID and preserve all partition observations.
+1. Treat ESPN as the existing candidate schedule authority. The fresh Node/Electron-mode access check passed; a running application integration and full-slate check are still required. Query NFL and both college partitions for a bounded explicit date/week window; do not rely on an undated default remaining on the needed slate. Deduplicate by namespaced event ID and preserve all partition observations.
 2. Validate responses structurally and retain fetched-at time, provider time if present, requested window, adapter version and coverage outcome. A 403, timeout, malformed payload or partial parse is a failed refresh, not an empty schedule. Do not reset source freshness when assembling a new board from old data.
 3. On temporary failure, show bounded last-good schedules with age and degraded coverage. Per the latest user decision in [issue 10](https://github.com/TheDarkSkyXD/Sports-Hub/issues/10), retain unmatched stream listings internally for later reconciliation and pipeline debugging, and hide them from normal UI. A failed refresh never authorizes final-game cleanup.
 4. Apply bounded backoff and an explicit retry control. Keep collection inside the app-owned runtime while open, including the chosen minimized-window behavior; reconcile immediately on resume and stop owned work on close. A cold start with no authoritative schedule should show schedule unavailable; unmatched observations remain internal rather than becoming guessed canonical matchups.
@@ -98,11 +111,11 @@ Recommendation: preserve the full provider status and map only verified combinat
 
 ## Gates still open
 
-- Fresh requests in the actual app runtime for NFL and both college partitions, with measured response headers, status and validated event counts. PowerShell failures do not settle the Node outcome.
+- Exercise the requests through the running Next/desktop application and record relevant response headers, validated events, and repeated refresh behavior. The fresh runtime-mode probe above already returned successful statuses and counts for all three partitions; sustained operation remains unproven.
 - A known-slate union compared with an independently enumerated official sample large enough to cover FBS-only, FCS-only and crossover games. Record absent IDs, overlapping IDs, date-window boundaries, postponed rows and pagination/truncation behavior. `limit=200` is a request parameter, not proof of completeness.
 - Verified raw football fixtures for final after overtime, cancellation, postponement, suspension, delayed kickoff and correction/reopen. Neither `state=post` alone nor `completed=true` alone has been proven sufficient for every terminal case here.
 - A season-versioned team membership source and alias table that account for transitions and same-name schools. This report verifies only selected identities, not the complete team census.
 - Longitudinal identity checks across schedule changes and source corrections. Stable provider ID usage is supported by the observed sample, not guaranteed by a located public API contract.
 - An explicit fallback adapter, if the product requires authoritative schedule coverage during ESPN access failure. No fallback was implemented or operationally certified by this research.
 
-No application tests ran for this documentation-only follow-up. Verification consisted of primary-source comparisons, the logged normal HTTP requests, and inspection of the existing parser contract. The fresh access failure is recorded as a release limitation, not hidden by browser-cached evidence.
+No application tests ran for this documentation-only follow-up. Verification consisted of primary-source comparisons, the logged normal HTTP requests in PowerShell and Node/Electron server mode, and inspection of the existing parser contract. Access success in Node is recorded separately from PowerShell failures and browser-cached evidence.
