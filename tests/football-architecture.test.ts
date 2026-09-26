@@ -51,6 +51,7 @@ test('desktop and diagnostic scripts have explicit import boundaries', async () 
   for (const [path,source] of [
     ['desktop/probe.cjs','require("./port.cjs");'],
     ['scripts/probe.mjs','import "../lib/football/adapters/sources.ts";'],
+    ['scripts/verify-sportsurge-catalog.cjs','require("../desktop/main.cjs");'],
     ['tests/probe.ts','import "../lib/football/runtime/coordinator.ts";'],
   ]) assert.deepEqual(await boundaryMessages(path,source),[],`${path}: ${source}`);
 });
