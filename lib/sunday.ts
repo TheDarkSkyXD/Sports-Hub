@@ -1,4 +1,4 @@
-﻿import { ScheduleGameSchema } from './football/shared.ts';
+import { ScheduleGameSchema } from './football/shared.ts';
 import type { Team, League, Game, ScheduleGame } from './football/shared.ts';
 export type { Team, League, Game, LeagueFeedStatus, Board } from './football/shared.ts';
 export type Feed = { url: string; label: string };
@@ -49,10 +49,12 @@ export function parseScoreboard(data: unknown, league: League = 'nfl'): Schedule
     const final = statusType?.name === 'STATUS_FINAL' && statusType.completed === true && state === 'post';
     const lifecycle: Game['lifecycle'] = final ? 'final' : state === 'in' && statusType?.completed !== true ? 'live' : statusType?.name === 'STATUS_SCHEDULED' && state === 'pre' ? 'scheduled' : 'unknown';
     const gameStatus: Game['status'] = final ? 'post' : state === 'pre' || state === 'in' ? state : 'unknown';
+    const shortDetail = text(statusType?.shortDetail) || 'Status unavailable';
+    const detail = statusType?.name === 'STATUS_SCHEDULED' && shortDetail !== 'TBD' && shortDetail !== 'TBA' ? 'Scheduled' : shortDetail;
     const situation = object(competition?.situation);
     const names = items(object(items(competition?.broadcasts)[0])?.names).filter((name): name is string => typeof name === 'string');
     const season = object(event?.season)?.year;
-    return [ScheduleGameSchema.parse({ id: league === 'ncaaf' ? `ncaaf-${id}` : id, league, lifecycle, season: typeof season === 'number' ? season : undefined, name: text(event?.name) || `${awayTeam.displayName} at ${homeTeam.displayName}`, date: text(event?.date), home: team(home, homeTeam), away: team(away, awayTeam), status: gameStatus, detail: text(statusType?.shortDetail) || 'Status unavailable', redzone: situation?.isRedZone === true && gameStatus === 'in', down: text(situation?.downDistanceText), possession: situation?.possession === home.id ? text(homeTeam.abbreviation) : situation?.possession === away.id ? text(awayTeam.abbreviation) : undefined, lastPlay: text(object(situation?.lastPlay)?.text), venue: text(object(competition?.venue)?.fullName), broadcast: names.length ? names.join(' / ') : undefined })];
+    return [ScheduleGameSchema.parse({ id: league === 'ncaaf' ? `ncaaf-${id}` : id, league, lifecycle, season: typeof season === 'number' ? season : undefined, name: text(event?.name) || `${awayTeam.displayName} at ${homeTeam.displayName}`, date: text(event?.date), home: team(home, homeTeam), away: team(away, awayTeam), status: gameStatus, detail, redzone: situation?.isRedZone === true && gameStatus === 'in', down: text(situation?.downDistanceText), possession: situation?.possession === home.id ? text(homeTeam.abbreviation) : situation?.possession === away.id ? text(awayTeam.abbreviation) : undefined, lastPlay: text(object(situation?.lastPlay)?.text), venue: text(object(competition?.venue)?.fullName), broadcast: names.length ? names.join(' / ') : undefined })];
   });
 }
 export function validFeedUrl(input: string): string | null {

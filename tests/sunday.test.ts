@@ -18,6 +18,15 @@ test('scoreboard keeps ESPN scores and home/away identity',() => {
   assert.equal(parsed.away.score,null);
   assert.equal(parsed.redzone,true);
   assert.equal(parsed.possession,'HME');
+  assert.equal(parsed.detail,'Q2');
+  const detail = (name:string,state:string,shortDetail:string) => parseScoreboard({events:[{...data.events[0],status:{type:{name,state,shortDetail,completed:state === 'post'}}}]})[0].detail;
+  assert.equal(detail('STATUS_SCHEDULED','pre','9/27 - 1:00 PM EDT'),'Scheduled');
+  assert.equal(detail('STATUS_SCHEDULED','pre','TBD'),'TBD');
+  assert.equal(detail('STATUS_TIME_TBD','pre','TBA'),'TBA');
+  assert.equal(detail('STATUS_DELAYED','pre','Delayed'),'Delayed');
+  assert.equal(detail('STATUS_POSTPONED','pre','Postponed'),'Postponed');
+  assert.equal(detail('STATUS_IN_PROGRESS','in','Q3'),'Q3');
+  assert.equal(detail('STATUS_FINAL','post','Final'),'Final');
   assert.throws(() => parseScoreboard({error:'blocked'}));
 });
 
