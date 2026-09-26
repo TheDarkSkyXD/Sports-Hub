@@ -23,3 +23,30 @@ main{padding:32px 36px 0;max-width:1920px;margin:auto}.page-heading{display:flex
 .mini-game{min-width:180px;white-space:nowrap}.mini-game>.league-tag,.mini-game>.game-status{vertical-align:middle}.mini-game>.game-status{max-width:calc(100% - 45px);overflow:hidden;text-overflow:ellipsis}
 .connect-button:disabled,.connect-button:disabled:hover{cursor:default;color:#9da3af;background:#ffffff08;border-color:#ffffff1a}
 .feed-audio-prompt{position:absolute;left:8px;bottom:8px;z-index:1;padding:7px 11px;border:1px solid #ff967f;border-radius:5px;background:#141519e8;color:#fff;font-size:12px;font-weight:600}
+.native-player:fullscreen{position:relative;width:100vw;height:100vh;background:#050608}
+.native-player:fullscreen video{width:100%;height:100%}
+.player-buffering{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;background:#08090bcc;color:#f3f4f6;font-size:12px;pointer-events:none}
+.player-notice{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:5;max-width:calc(100% - 20px);padding:7px 10px;border:1px solid #77564c;border-radius:5px;background:#241c1be8;color:#ffd3c9;text-align:center;font-size:11px}
+.player-controls{position:absolute;z-index:3;right:0;bottom:0;left:0;display:flex;flex-direction:column;gap:4px;padding:22px 8px 6px;background:linear-gradient(transparent,#07080aed 45%,#07080af5);color:#f1f2f4}
+.player-timeline,.player-control-row{display:flex;align-items:center;gap:7px;min-width:0}
+.player-timeline{font-size:10px;font-variant-numeric:tabular-nums;color:#c7cbd1}
+.player-timeline input{flex:1;min-width:0;accent-color:#ff806a;height:15px;cursor:pointer}
+.player-timeline>span{min-width:28px;text-align:right}
+.player-timeline button{font-size:10px;white-space:nowrap;padding:3px 4px;border-radius:3px;color:#ffad9c}
+.player-timeline button.go-live:hover{background:#ff806a22}
+.player-timeline button.at-live{color:#a2aba6;cursor:default}
+.player-control-row button{display:grid;place-items:center;flex-shrink:0;width:25px;height:27px;border-radius:4px;color:#e7e9ec}
+.player-control-row button:hover,.player-control-row button:focus-visible{background:#ffffff2a;color:white}
+.player-control-row input.player-volume{width:54px;flex-shrink:0;accent-color:#ff806a;height:15px;cursor:pointer}
+.player-source{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c4c9d0;font-size:10px;padding-left:2px}
+.player-settings-wrap{position:relative;flex-shrink:0}
+.player-settings{position:absolute;right:0;bottom:32px;z-index:4;display:flex;flex-direction:column;min-width:164px;max-height:85px;overflow-y:auto;padding:7px;border:1px solid #535762;border-radius:7px;background:#1b1d24;box-shadow:0 10px 35px #000b;font-size:11px}
+.player-settings strong{padding:6px;color:#e9eaf0;font-weight:600}
+.player-settings button{display:block;width:100%;height:auto;text-align:left;padding:7px;border-radius:4px;color:#b9c0cb;white-space:nowrap}
+.player-settings button.selected{color:#ff9e8d}
+.player-settings span{padding:7px;color:#adb4bf;line-height:1.4}
+.player-focused .feed-audio-prompt{bottom:70px}
+.native-player:fullscreen .player-controls{padding:34px 16px 12px}
+.native-player:fullscreen .player-settings{max-height:190px}
+.native-player:fullscreen .player-control-row button{width:38px;height:38px}
+@media(max-width:600px){.player-controls{padding:16px 5px 4px}.player-control-row{gap:3px}.player-control-row button{width:24px;height:25px}.player-control-row input.player-volume{width:42px}.player-source{font-size:9px}.player-timeline{gap:3px}.player-timeline button{font-size:9px}}

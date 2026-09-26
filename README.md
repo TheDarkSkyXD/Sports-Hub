@@ -18,7 +18,7 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
   <a href="#troubleshooting">Troubleshooting</a>
 </p>
 
-> **Browser and desktop playback use different players.** The browser plays supported provider HLS streams inside the room. The desktop viewer opens the provider player inside a sandboxed native view.
+> **Browser and desktop use the same HLS player.** Focus a game to reveal its custom playback controls. The room bar controls all streams.
 
 ## The viewing experience
 
@@ -28,6 +28,7 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 | **Automatic desktop playback** | Adding a game with a listed source starts its provider inside the tile. |
 | **Backup servers** | Retry temporary lookup failures and try other listed servers when initial playback fails. Switch servers manually from the tile. |
 | **One game on audio** | Focus a game to hear it. Room volume, mute, and play/pause controls keep the session manageable. |
+| **Focused stream controls** | The focused stream has play/pause, volume, mute, fullscreen, quality selection, a seekable timeline, and picture-in-picture where supported. Other streams keep playing without control overlays. |
 | **Live game center** | Follow scores, clocks, possession, down and distance, and available latest-play updates. |
 | **Smart focus** | Follow red-zone action among selected games, with at least 20 seconds between automatic switches. |
 | **Find your matchup** | Search by team or abbreviation, filter live games and red-zone activity, and save favorites. |
@@ -77,22 +78,23 @@ If a provider cannot start, allow its startup retries to finish or choose **Swit
 
 ## Desktop and browser playback
 
-Both modes use the same room interface, but their playback capabilities differ.
+Both modes use the same room interface and HLS player.
 
 | Capability | Desktop viewer | Browser app |
 | --- | --- | --- |
 | Scores, schedule, favorites, layouts | Yes | Yes |
-| Listed provider game | Provider player opens inside its tile | Supported HLS stream plays inside its tile |
+| Listed provider game | Supported HLS stream plays inside its tile | Supported HLS stream plays inside its tile |
 | Multiple listed provider players inside the room | Up to four | Up to four |
 | Compatible direct HLS/video feeds inside the room | Yes | Yes |
-| Room audio and pause controls | Integrated players | Integrated video controls |
+| Room audio and pause controls | Integrated video controls | Integrated video controls |
+| Focused playback, volume, quality, and fullscreen | Yes | Yes |
 | Provider startup failover | Automatic backups and manual switching | Automatic backup attempt and manual switching |
 
-### Why the desktop viewer exists
+### Provider playback
 
-The inspected provider pages send a `Content-Security-Policy: frame-ancestors` allowlist that excludes arbitrary websites and localhost. The browser room plays a supported HLS stream through local routes that validate the player, playlist, and media addresses. It does not embed or alter the provider page.
+Both apps play supported HLS streams through local routes that validate player, playlist, and media addresses. They do not embed the provider page.
 
-The desktop shell opens each player as an independent, sandboxed Chromium `WebContentsView`, positioned inside its game tile. This uses ordinary top-level page navigation. It does not remove CSP headers, spoof an approved origin, or disable browser security.
+The desktop shell runs the room in a sandboxed Electron window with its own local Next.js server. Focus changes reveal controls on the selected video without replacing the media element.
 
 ### Direct feeds
 
@@ -111,17 +113,21 @@ HLS requests must be permitted by the provider's cross-origin policy. Delay sett
 | **Smart focus** | Follow red-zone activity among selected games |
 | **Theater** | Give the room more horizontal space |
 | **Fullscreen** | Fill the display with the viewing room |
+| **Fullscreen stream** | Fill the display with the focused game and its controls |
+| **Video quality** | Choose Auto or an available HLS resolution |
+| **LIVE** | Return to the stream's safe live position |
 
 | Keyboard shortcut | Action |
 | --- | --- |
 | `1`–`4` | Focus a selected game and its audio |
 | `M` | Toggle mute |
-| `Space` | Play/pause integrated feeds |
+| `Space` | Play/pause the focused stream |
+| `Left` / `Right` | Seek the focused stream backward / forward by ten seconds when seekable |
 | `F` | Toggle fullscreen |
 | `T` | Toggle theater mode |
 | `?` | Open help |
 
-Shortcuts apply while the room interface has keyboard focus. They are suspended in dialogs and editable controls. A focused third-party player can handle its own keys; click back into the room to use room shortcuts.
+Shortcuts apply while the room interface has keyboard focus. They are suspended in dialogs and editable controls.
 
 ## How it works
 
@@ -133,8 +139,7 @@ flowchart TD
     UI --> Resolve["GET /api/playback?game=ID"]
     Resolve --> Page["Known game source page"]
     Page --> Links["Validated player addresses"]
-    Links --> Desktop["Desktop: sandboxed browser views"]
-    Links --> Browser["Browser: validated HLS relay and in-tile video"]
+    Links --> Player["Browser and desktop: validated HLS relay and in-tile video"]
     UI --> Direct["Direct feeds: video / hls.js"]
 ```
 
@@ -149,9 +154,7 @@ flowchart TD
 
 ### Desktop isolation
 
-Remote player views use sandboxing, context isolation, and browser security. They have no Node.js access or privileged preload script. Player popups, downloads, and permission requests are blocked, and top-level player navigation is restricted to the resolved address.
-
-The local interface receives a narrow preload bridge for player lifecycle, tile bounds, and playback controls. The main process validates the IPC sender and game identifiers, limits the room to four provider views, and clips view bounds to the window.
+The room renderer uses sandboxing, context isolation, and browser security with no Node.js access. Its preload bridge exposes a limited set of operations. The main process validates IPC senders and game identifiers. HLS playback uses the same validated local stream routes as the browser app.
 
 ### Storage and network behavior
 
@@ -233,6 +236,29 @@ npm run build
 
 The automated tests cover NFL and NCAA directory extraction, scoreboard parsing, home/away matching, unmatched source listings, missing scores, red-zone ranking, feed validation, player ordering, source restrictions, and native view bounds.
 
+To verify the custom browser player, start the app in one terminal and run the browser checks in another:
+
+```sh
+npm run dev -- --port 3100
+```
+
+```sh
+npm run test:player
+```
+
+The browser check generates a local HLS fixture with two resolutions and plays four real video elements. It checks focused and room playback, audio focus, volume, quality changes, fullscreen, and mobile layout. Screenshots and results are saved in `work/player-verification/`. Windows uses installed Microsoft Edge. On other systems, run `npx playwright install chromium` first. Set `PLAYER_BASE_URL` to test another local port or `PLAYER_BROWSER_CHANNEL` to select another installed browser.
+
+To run the same checks in the Electron app, build it first:
+
+```sh
+npm run build
+npm run test:player:desktop
+```
+
+This opens a test window with a separate profile and closes it afterward. Electron screenshots and results are saved in `work/player-verification-electron/`. The tests also check live seeking, PiP state changes, and provider switches with generated media; they do not depend on live broadcasts.
+
+Focused Play resumes only that game after Pause all. The room bar still controls every stream. Quality options come from the source's HLS renditions; native HLS quality stays browser-managed.
+
 Manual Windows verification has included two simultaneous live provider broadcasts, global pause/resume, layout switching, and dialogs above native player surfaces. Direct MP4 and HLS playback have also been checked. These checks establish behavior at the time of testing; they do not guarantee future upstream availability.
 
 ### Branch workflow
@@ -243,7 +269,7 @@ Use `developer` for ongoing work and `main` for the published baseline. Keep cha
 
 | Symptom | What to check |
 | --- | --- |
-| **A browser game shows unavailable** | The provider may not have published a supported HLS stream. Try another listed server or use the desktop viewer. |
+| **A game shows unavailable** | The provider may not have published a supported HLS stream. Try another listed server or connect a compatible direct feed. |
 | **A game keeps connecting** | The provider may be slow or unavailable. Allow startup retries, then try **Switch server**. |
 | **No source is listed** | A supported provider may not be published yet, or directory markup may have changed. Refresh the game center. |
 | **The picture is live but silent** | Focus the game, unmute the room, and raise volume. Hidden native player views are muted. |
