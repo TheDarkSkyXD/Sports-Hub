@@ -19,15 +19,15 @@ app.on('second-instance',() => { if (win) { if (win.isMinimized()) win.restore()
 async function startServer() {
   const port = await localServerPort();
   origin = `http://127.0.0.1:${port}`;
-  const production = fs.existsSync(path.join(root,'.next','BUILD_ID'));
+  const production = process.env.SUNDAY_ROOM_FORCE_DEV !== '1' && fs.existsSync(path.join(root,'.next','BUILD_ID'));
   const logDir = path.join(root,'.desktop-runtime');
   fs.mkdirSync(logDir,{recursive:true});
   const log = fs.openSync(path.join(logDir,'server.log'),'a');
-  serverProcess = spawn(process.execPath,[path.join(root,'node_modules','next','dist','bin','next'),production?'start':'dev','--hostname','127.0.0.1','--port',String(port)],{
+  serverProcess = spawn(process.execPath,[path.join(__dirname,'server-supervisor.cjs'),path.join(root,'node_modules','next','dist','bin','next'),production?'start':'dev',String(port)],{
     cwd:root,
     windowsHide:true,
-    env:{...process.env,ELECTRON_RUN_AS_NODE:'1',SUNDAY_ROOM_DESKTOP:'1',SUNDAY_ROOM_DESKTOP_PARENT_PID:String(process.pid),SUNDAY_ROOM_DATA_DIR:app.getPath('userData'),SUNDAY_ROOM_CONTROL_TOKEN:controlToken},
-    stdio:['ignore',log,log],
+    env:{...process.env,ELECTRON_RUN_AS_NODE:'1',SUNDAY_ROOM_DESKTOP:'1',SUNDAY_ROOM_DATA_DIR:app.getPath('userData'),SUNDAY_ROOM_CONTROL_TOKEN:controlToken},
+    stdio:['ignore',log,log,'ipc'],
   });
   fs.closeSync(log);
   for (let attempt=0;attempt<120;attempt++) {

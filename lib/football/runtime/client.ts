@@ -63,20 +63,9 @@ class WorkerClient {
 declare global {
   var footballWorkerClient: WorkerClient | undefined;
   var footballReclaimToken: string | undefined;
-  var footballDesktopWatchdog: ReturnType<typeof setInterval> | undefined;
 }
 
 export function command(input: Command): Promise<Reply> {
-  if (process.env.SUNDAY_ROOM_DESKTOP==='1' && !globalThis.footballDesktopWatchdog) {
-    const parentPid=Number(process.env.SUNDAY_ROOM_DESKTOP_PARENT_PID);
-    if (Number.isSafeInteger(parentPid) && parentPid>0 && parentPid!==process.pid) {
-      globalThis.footballDesktopWatchdog=setInterval(() => {
-        try { process.kill(parentPid,0); }
-        catch { process.exit(0); }
-      },5000);
-      globalThis.footballDesktopWatchdog.unref();
-    }
-  }
   if (!globalThis.footballWorkerClient) {
     try { globalThis.footballWorkerClient = new WorkerClient(globalThis.footballReclaimToken); globalThis.footballReclaimToken=undefined; }
     catch { return Promise.resolve({kind:'error',status:503,message:'Football pipeline could not start.'}); }
