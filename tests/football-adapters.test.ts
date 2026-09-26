@@ -53,7 +53,8 @@ test('Sportsurge category navigation is not an event and detail time can resolve
   assert.deepEqual(result.observations[0].teams,['Brown Bears','Harvard Crimson']);
   const enriched = enrichObservation(result.observations[0],'<body><time>2026-09-25 22:30ET</time><iframe src="https://gooz.aapmains.net/new-stream-embed/57069"></iframe></body>');
   assert.equal(enriched.kickoff,Date.parse('2026-09-26T02:30:00Z'));
-  assert.deepEqual(compatiblePlayers('ncaaf-1',enriched,'<iframe src="https://gooz.aapmains.net/new-stream-embed/57069"></iframe>',now).map(player => player.playerId),['57069']);
+  assert.deepEqual(compatiblePlayers('ncaaf-1',enriched,'<iframe src="https://gooz.aapmains.net/new-stream-embed/57069"></iframe>',now)
+    .map(player => player.locator.provider === 'gooz' ? player.locator.playerId : null),['57069']);
 });
 
 test('event pages use machine timestamps and duplicate controls produce one observation', () => {
@@ -97,6 +98,10 @@ test('shared TVApp catalog keeps dated match identities without treating mirror 
   assert.equal(aliases.outcome,'parsed');
   assert.deepEqual(aliases.observations[0].teams,['Utah State Aggies','Troy Trojans']);
   assert.equal(aliases.observations[0].kickoff,now-5*3600000);
+  const contradictory = parseListings(source,JSON.stringify([{...row,id:'conflicting-1740',
+    title:'Ole Miss Rebels vs Florida Gators',teams:{home:{name:'Houston Cougars'},away:{name:'Georgia Southern Eagles'}}}]),now);
+  assert.equal(contradictory.outcome,'parsed');
+  assert.equal(contradictory.observations[0].teams,null);
 });
 
 test('PPV catalog admits college and NFL games, excludes CFL and channels, and inherits parent kickoff', () => {
@@ -116,6 +121,29 @@ test('PPV catalog admits college and NFL games, excludes CFL and channels, and i
   assert.equal(result.observations[0].kickoff,now);
   assert.equal(result.observations[0].url,'https://ppv.st/live/cfb/2026-09-26/miss-fla');
   assert.equal(parseListings(source,JSON.stringify({success:true,streams:[{category:'American Football',streams:[{...event,starts_at:0}]}]}),now).outcome,'empty');
+});
+
+test('Streamcenter published game cards create exact ESPN-bound source locators',()=>{
+  const source=SOURCES.find(item=>item.id==='streamcenter');
+  assert.ok(source);
+  const link='/api/stream-link/iframe/event-espn-league-football-college-football-401856699/aef974e2-5ef2-412c-b65e-e6905af1edfa';
+  const html=`<article class="game-card-row"><p class="game-card-league">NCAA Football</p>
+    <time dateTime="2026-09-26T19:30:00.000Z"></time>
+    <span class="game-card-team" title="Ole Miss Rebels"></span><span class="game-card-team" title="Florida Gators"></span>
+    <a class="game-card-open-link" href="${link}">English</a></article>
+    <article class="game-card-row"><a class="game-card-open-link" href="/api/stream-link/iframe/custom-channel/abc">Channel</a></article>`;
+  const result=parseListings(source,html,now);
+  assert.equal(result.outcome,'parsed');
+  assert.equal(result.observations.length,1);
+  assert.deepEqual(result.observations[0].teams,['Ole Miss Rebels','Florida Gators']);
+  assert.equal(result.observations[0].kickoff,Date.parse('2026-09-26T19:30:00.000Z'));
+  assert.equal(result.observations[0].url,`https://streamcenter.st${link}`);
+  const detail='<iframe src="//streame.center/embed/hls.php?stream=lmdsjkfgv52"></iframe>';
+  const candidates=compatiblePlayers('ncaaf-401856699',result.observations[0],detail,now);
+  assert.equal(candidates.length,1);
+  assert.deepEqual(candidates[0].locator,{provider:'streamcenter',eventId:'401856699',linkId:'aef974e2-5ef2-412c-b65e-e6905af1edfa'});
+  assert.deepEqual(compatiblePlayers('ncaaf-401856700',result.observations[0],detail,now),[]);
+  assert.deepEqual(compatiblePlayers('ncaaf-401856699',result.observations[0],'<iframe src="https://attacker.test/embed/hls.php?stream=lmdsjkfgv52"></iframe>',now),[]);
 });
 
 test('matching rejects ambiguous aliases, stale rows, uncertain times, and final games', () => {

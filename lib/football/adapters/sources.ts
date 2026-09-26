@@ -7,6 +7,7 @@ import { parsePlayers } from '../../sunday.ts';
 
 const TVAPP_API = 'https://api-backups.handleapi.win/matches/sport/american-football';
 const PPV_API = 'https://api.ppv.st/api/streams';
+const STREAMCENTER_CATALOG = 'https://streamcenter.st/game-cards/embed?sport=football';
 export const SOURCES = [
   {id:'sportsurge',url:'https://isportsurge.ws/index6',family:'sportsurge'},
   {id:'crackstreams-cfb',url:'https://ws.crackstreams.me/cfb-streams-live42',family:'buffstream'},
@@ -27,6 +28,7 @@ export const SOURCES = [
   {id:'crackstreams-st',url:'https://crackstreams.st/NFL',family:'event'},
   {id:'tvapp',url:TVAPP_API,family:'tvapp',kind:'catalog'},
   {id:'ppv',url:PPV_API,family:'ppv',kind:'catalog'},
+  {id:'streamcenter',url:STREAMCENTER_CATALOG,family:'streamcenter'},
 ] as const;
 export class SourceFetchError extends Error {
   readonly retryAfterMs?: number;
@@ -34,6 +36,7 @@ export class SourceFetchError extends Error {
 }
 const hosts = new Set<string>(SOURCES.map(source => new URL(source.url).hostname));
 hosts.add('gooz.aapmains.net');
+hosts.add('streame.center');
 export function allowedDiscoveryUrl(value: string): boolean {
   try { const url = new URL(value); return url.protocol === 'https:' && hosts.has(url.hostname) && !url.username && !url.password && !url.port; } catch { return false; }
 }
@@ -136,7 +139,8 @@ function preferredCatalogTeams(title: string, structured: [string,string] | null
   };
   const aligned = related(titled[0],structured[0]) && related(titled[1],structured[1]) ||
     related(titled[0],structured[1]) && related(titled[1],structured[0]);
-  return aligned && titled.join('').length > structured.join('').length ? titled : structured;
+  if (!aligned) return null;
+  return titled.join('').length > structured.join('').length ? titled : structured;
 }
 
 function parseCatalog(source: ListingSource, body: string, now: number): ReturnType<typeof parseListings> {
@@ -202,6 +206,7 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
 
 export function parseListings(source: ListingSource, html: string, now: number): { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' } {
   if (source.kind === 'catalog') return parseCatalog(source,html,now);
+  if (source.family === 'streamcenter') return parseStreamcenterListings(source,html,now);
   const $ = load(html);
   const observations = new Map<string,Observation>();
   const conflictingTeamsIds = new Set<string>();
@@ -253,7 +258,35 @@ export function parseListings(source: ListingSource, html: string, now: number):
   return {observations:values,outcome:values.length ? 'parsed' : knownEmpty ? 'empty' : source.family === 'unknown' ? 'unsupported' : 'parser-changed'};
 }
 
+const streamcenterLink = /^\/api\/stream-link\/iframe\/event-espn-league-football-college-football-(\d{5,12})\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/;
+
+function parseStreamcenterListings(source: ListingSource, html: string, now: number): ReturnType<typeof parseListings> {
+  const $ = load(html);
+  const observations: Observation[] = [];
+  let invalid = false;
+  $('article.game-card-row').each((_index,element) => {
+    const card = $(element);
+    if (card.find('.game-card-league').text().trim() !== 'NCAA Football') return;
+    const teams = card.find('.game-card-team[title]').map((_i,node) => $(node).attr('title')?.trim()).get();
+    const rawTime = card.find('time[datetime]').first().attr('datetime') || '';
+    const kickoff = parseKickoff(rawTime);
+    if (teams.length !== 2 || !kickoff) { invalid=true; return; }
+    card.find('a.game-card-open-link[href]').each((_i,node) => {
+      const href = $(node).attr('href') || '';
+      const match = streamcenterLink.exec(href);
+      if (!match) { invalid=true; return; }
+      const url = new URL(href,'https://streamcenter.st').href;
+      observations.push({id:`${source.id}:${digest(href)}`,sourceId:source.id,url,
+        title:`${teams[0]} vs ${teams[1]}`,teams:[teams[0],teams[1]],league:'ncaaf',kickoff,rawTime,
+        observedAt:now,parserVersion:1});
+    });
+  });
+  if (invalid) return {observations:[],outcome:'parser-changed'};
+  return {observations,outcome:observations.length ? 'parsed' : $('article.game-card-row').length ? 'empty' : 'parser-changed'};
+}
+
 export function enrichObservation(observation: Observation, html: string): Observation {
+  if (observation.sourceId === 'streamcenter') return observation;
   const $ = load(html);
   $('script,style').remove();
   const text = $('body').text().replace(/\s+/g,' ');
@@ -262,5 +295,15 @@ export function enrichObservation(observation: Observation, html: string): Obser
 }
 
 export function compatiblePlayers(gameId: string, observation: Observation, html: string, now: number): Candidate[] {
-  return parsePlayers(html).map(player => ({id:`gooz-${player.id}`,gameId,playerId:player.id,url:player.url,label:player.label,sourceIds:[observation.sourceId],observedAt:now}));
+  if (observation.sourceId === 'streamcenter') {
+    const path = new URL(observation.url).pathname;
+    const link = streamcenterLink.exec(path);
+    if (!link || gameId !== `ncaaf-${link[1]}`) return [];
+    const frame = /<iframe\b[^>]*src=["'](?:https?:)?\/\/streame\.center\/embed\/hls\.php\?stream=([a-z0-9]{1,40})["']/i.exec(html);
+    if (!frame) return [];
+    return [{id:`streamcenter-${link[1]}-${link[2]}`,gameId,
+      locator:{provider:'streamcenter',eventId:link[1],linkId:link[2]},label:'Streamcenter',sourceIds:[observation.sourceId],observedAt:now}];
+  }
+  return parsePlayers(html).map(player => ({id:`gooz-${player.id}`,gameId,locator:{provider:'gooz' as const,playerId:player.id},
+    label:player.label,sourceIds:[observation.sourceId],observedAt:now}));
 }
