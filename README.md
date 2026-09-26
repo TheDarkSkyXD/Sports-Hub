@@ -259,7 +259,7 @@ This opens a test window with a separate profile and closes it afterward. Electr
 
 Play and pause affect only the focused game. Quality options come from the source's HLS renditions; native HLS quality stays browser-managed.
 
-The video fills its tile and crops edges when its aspect ratio differs. Focused controls appear on mouse movement and hide after three idle seconds; keyboard focus and touch keep them accessible. The quality menu shows four options before scrolling and keeps its heading fixed.
+Player tiles follow the video aspect ratio without cropping or stretching. Focused controls and the mouse cursor hide after three idle seconds and return on mouse movement; keyboard focus and touch keep controls accessible. Smart focus is in the multiview toolbar. The quality menu shows four options before scrolling and keeps its heading fixed.
 
 Live provider verification decoded the Northwestern-Indiana game at 1280x720 in both browser and Electron, with advancing playback and quality options read from the actual manifest. Direct MP4 and HLS playback have also been checked. These checks establish behavior at the time of testing; they do not guarantee future upstream availability.
 
