@@ -88,7 +88,7 @@ export const SourcesSnapshotSchema = z.object({
   sources:z.array(z.object({
     id:z.string(),name:z.string(),catalogUrl:z.string().url(),publicUrls:z.array(z.string().url()),pending:z.boolean(),
     lastAttempt:SourceAttemptSchema.nullable(),listingCount:z.number().int().nonnegative(),
-    matchedGameCount:z.number().int().nonnegative(),compatibleFeedCount:z.number().int().nonnegative(),
+    matchedGameCount:z.number().int().nonnegative(),
     unmatchedListingCount:z.number().int().nonnegative(),
     unmatchedReasons:z.array(z.object({reason:SourceMatchReasonSchema,count:z.number().int().positive()})),
     links:z.array(z.object({title:z.string(),url:z.string().url(),gameId:z.string().nullable()})),

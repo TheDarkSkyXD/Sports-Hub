@@ -61,7 +61,6 @@ test('source snapshot counts distinct current listings, canonical games, and com
   assert.equal(snapshot.sources[0].matchedGameCount,2);
   assert.equal(snapshot.sources[1].listingCount,1);
   assert.equal(snapshot.sources[2].listingCount,0);
-  assert.equal(snapshot.sources[2].compatibleFeedCount,0);
   assert.equal(snapshot.sources[3].pending,true);
   assert.equal(snapshot.sources[3].lastAttempt,null);
   assert.equal(snapshot.games.find(game=>game.gameId===florida.id)?.sourceCount,2);

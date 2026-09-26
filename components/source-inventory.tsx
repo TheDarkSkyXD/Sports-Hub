@@ -47,7 +47,7 @@ export function SourceInventory() {
       <p className="source-inventory-time">Last scan {snapshot.lastDiscoveryAt ? time(snapshot.lastDiscoveryAt) : 'not yet available'} · Snapshot {time(snapshot.at)}</p>
       <div className="source-inventory-list">
         {snapshot.sources.map(source=><details key={source.id} className="source-inventory-item">
-          <summary><strong>{source.name}</strong><span>{source.listingCount} links · {source.matchedGameCount} games · {source.compatibleFeedCount} compatible feeds (untested)</span></summary>
+          <summary><strong>{source.name}</strong><span>{source.pending?'Integration pending':`${source.listingCount} links · ${source.matchedGameCount} games`}</span></summary>
           <p>{source.pending?'Listed for future integration':source.lastAttempt ? `${attemptLabel[source.lastAttempt.outcome]} ${time(source.lastAttempt.at)}`:'No fetch recorded yet'}
           </p>
           <div className="source-inventory-public-links"><a href={source.catalogUrl} target="_blank" rel="noopener noreferrer">Listing endpoint ↗</a>

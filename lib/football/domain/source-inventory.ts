@@ -59,21 +59,6 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       linksByGame.set(gameId,gameLinks);
     }
   }
-  const feedsBySource=new Map<string,Set<string>>();
-  for (const [gameId,feeds] of candidates) {
-    const game=gameById.get(gameId);
-    if (!game || game.lifecycle==='final') continue;
-    const currentSources=new Set((linksByGame.get(gameId) || []).map(link=>link.sourceId));
-    for (const candidate of feeds) {
-      if (candidate.observedAt<windowStartAt || candidate.observedAt>at+60_000) continue;
-      for (const sourceId of candidate.sourceIds) {
-        if (!currentSources.has(sourceId)) continue;
-        const ids=feedsBySource.get(sourceId) || new Set<string>();
-        ids.add(`${gameId}:${candidate.id}`);
-        feedsBySource.set(sourceId,ids);
-      }
-    }
-  }
   const sourceRows=sources.map(source=>{
     const links=[...(linksBySource.get(source.id)?.values() || [])];
     const matched=new Set(links.flatMap(link=>link.gameId ? [link.gameId] : []));
@@ -81,7 +66,6 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       id:source.id,name:source.name || source.id.replace(/-/g,' '),catalogUrl:source.url,
       publicUrls:[...new Set(source.publicUrls || [source.url])],pending:source.kind==='pending',
       lastAttempt:input.attempts[source.id] || null,listingCount:links.length,matchedGameCount:matched.size,
-      compatibleFeedCount:feedsBySource.get(source.id)?.size || 0,
       unmatchedListingCount:links.length-links.filter(link=>link.gameId).length,
       unmatchedReasons:[...(reasonsBySource.get(source.id) || new Map()).entries()].map(([reason,count])=>({reason,count})),links,
     };

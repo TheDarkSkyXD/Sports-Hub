@@ -3,6 +3,7 @@
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
 .source-inventory{border-top:1px solid #353a44;padding-top:18px;display:flex;flex-direction:column;gap:10px}
+.settings-dialog{width:min(900px,calc(100vw - 32px))!important;max-width:min(900px,calc(100vw - 32px))!important}
 .source-inventory-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .source-inventory-heading h3,.source-inventory h4{font-size:14px;font-weight:600;color:#e8eaf0;margin:0}
 .source-inventory-heading p,.source-inventory-time,.source-inventory-state{font-size:12px;line-height:1.5;color:#a2aab8;margin:5px 0 0}
@@ -10,7 +11,7 @@
 .source-inventory-error{font-size:12px;color:#ff9b89;margin:0}
 .source-inventory-list{max-height:280px;overflow:auto;border:1px solid #353a44;border-radius:6px}
 .source-inventory-item+.source-inventory-item{border-top:1px solid #353a44}
-.source-inventory-item summary{display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer;padding:10px 12px;list-style:none}
+.source-inventory-item summary{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center;cursor:pointer;padding:10px 12px;list-style:none}
 .source-inventory-item summary::-webkit-details-marker{display:none}
 .source-inventory-item summary strong{font-size:12px;font-weight:500;color:#e8eaf0}
 .source-inventory-item summary span{font-size:11px;color:#abb4c0;text-align:right}
