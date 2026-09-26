@@ -29,7 +29,7 @@ export function validResourceUrl(value: string, playerId: string, kind: Resource
       const match = /^\/playlist\/\d{1,20}\/([a-z0-9]{1,32})\/caxi$/.exec(url.pathname);
       return !!match && url.pathname === `/playlist/${playerId}/${match[1]}/caxi`;
     }
-    if (!/^[a-z0-9]{1,32}\.[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/.test(url.hostname)) return false;
+    if (!/^[a-z0-9]{1,32}\.[a-f0-9]{32}(?:\.(?:us|eu|fedramp))?\.r2\.cloudflarestorage\.com$/.test(url.hostname)) return false;
     const match = /^\/scripts\/([^/]+)\/([A-Za-z0-9._-]+)$/.exec(url.pathname);
     if (!match || match[1] !== encodeURIComponent(Buffer.from(playerId, 'utf8').toString('base64'))) return false;
     const signatures = url.searchParams.getAll('X-Amz-Signature');

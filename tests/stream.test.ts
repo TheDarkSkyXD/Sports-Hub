@@ -92,6 +92,24 @@ test('rotating provider buckets stay scoped to signed player media on public R2'
   ]) assert.equal(validResourceUrl(bad, playerId, 'media'), false, bad.split('?')[0]);
 });
 
+test('regional R2 jurisdictions relay signed media without accepting extra host labels', () => {
+  const playerId = '57083';
+  const variant = 'https://pl.playlist3.space/playlist/57083/kirekharrrr/caxi';
+  const global = `https://goozesag1.8bd5ffaead8467475d12ef2f409e0b16.r2.cloudflarestorage.com/scripts/NTcwODM%3D/p1790380623060659213_1812.txt?X-Amz-Signature=${'a'.repeat(64)}`;
+  for (const jurisdiction of ['us', 'eu', 'fedramp']) {
+    const media = global.replace('.r2.cloudflarestorage.com', `.${jurisdiction}.r2.cloudflarestorage.com`);
+    const rewritten = rewritePlaylist(`#EXTM3U\n#EXTINF:5,\n${media}\n`, variant, 'ncaaf-401858461', playerId);
+    const token = /\/api\/stream\/media\/([a-f0-9]{48})/.exec(rewritten)?.[1];
+    assert.ok(token);
+    assert.equal(registeredResource(token)?.url, media);
+    assert.equal(validResourceUrl(media, '57084', 'media'), false);
+  }
+  for (const label of ['apac', 'us.us', 'us.extra']) {
+    const media = global.replace('.r2.cloudflarestorage.com', `.${label}.r2.cloudflarestorage.com`);
+    assert.equal(validResourceUrl(media, playerId, 'media'), false);
+  }
+});
+
 test('rotating signed media URLs keep one HLS segment identity and use the latest signature', () => {
   const first=registerResource('ncaaf-401858468','57069',segment,'media');
   const renewed=segment.replace('a'.repeat(64),'b'.repeat(64));
