@@ -3,7 +3,7 @@ import { boundedText, sanitizedRead, type PlaybackProvider, type ProviderPlaybac
 
 type StreamcenterLocator = Extract<CandidateLocator,{provider:'streamcenter'}>;
 type MediaSession = { stream: string; host: string; referer: string; fetcher: typeof fetch };
-const mediaHosts=new Set(['edgestream3.pro','edgestream4.pro','edgestream5.pro','edgestream6.pro']);
+const mediaHosts=new Set(['edgestream1.pro','edgestream3.pro','edgestream4.pro','edgestream5.pro','edgestream6.pro']);
 const headers={Origin:'https://streame.center'};
 const sourcePath=/^\/api\/stream-link\/iframe\/event-espn-league-football-college-football-(\d{5,12})\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/;
 const playerPath=/^\/embed\/ch\d{1,4}\.php$/;

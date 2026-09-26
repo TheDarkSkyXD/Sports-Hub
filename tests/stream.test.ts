@@ -73,6 +73,12 @@ test('Streamcenter resource grammar binds signed manifest and segments to one st
   const segment='https://edgestream4.pro/hls/lmdsjkfgv52-907340670.ts';
   assert.equal(validStreamcenterResourceUrl(manifest,session,'playlist'),true);
   assert.equal(validStreamcenterResourceUrl(segment,session,'media'),true);
+  const firstHost={...session,host:'edgestream1.pro'};
+  const firstManifest=manifest.replace('edgestream4.pro','edgestream1.pro');
+  const firstSegment=segment.replace('edgestream4.pro','edgestream1.pro');
+  assert.equal(validStreamcenterResourceUrl(firstManifest,firstHost,'playlist'),true);
+  assert.equal(validStreamcenterResourceUrl(firstSegment,firstHost,'media'),true);
+  assert.equal(validStreamcenterResourceUrl(firstManifest,session,'playlist'),false);
   const rootResource=streamcenterResource(manifest,session,'playlist');
   assert.ok(rootResource);
   assert.ok(rootResource.resolve('/hls/lmdsjkfgv52-907340670.ts','media'));
@@ -89,8 +95,8 @@ test('Streamcenter opens published public link once, then reads signed HLS with 
   const publicUrl=`https://streamcenter.st/api/stream-link/iframe/event-espn-league-football-college-football-401856699/${linkId}`;
   const player='https://streame.center/embed/ch52.php';
   const hls='https://streame.center/embed/hls.php?stream=lmdsjkfgv52';
-  const manifest=`https://edgestream4.pro/hls/lmdsjkfgv52.m3u8?st=${'a'.repeat(32)}&e=${Math.floor(Date.now()/1000)+3600}`;
-  const segment='https://edgestream4.pro/hls/lmdsjkfgv52-907340670.ts';
+  const manifest=`https://edgestream1.pro/hls/lmdsjkfgv52.m3u8?st=${'a'.repeat(32)}&e=${Math.floor(Date.now()/1000)+3600}`;
+  const segment='https://edgestream1.pro/hls/lmdsjkfgv52-907340670.ts';
   const requests:{url:string;referer:string|null;origin:string|null;range:string|null}[]=[];
   const fetcher:typeof fetch=async (input,init)=>{
     const url=String(input);
