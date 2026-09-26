@@ -1,0 +1,116 @@
+{
+    "observedAt":  "2026-09-26T05:20:49.695Z",
+    "method":  "One bounded production adapter read per registered source. Sportsurge follows its two football categories. Listing counts do not establish match accuracy or playback.",
+    "results":  [
+                    {
+                        "id":  "sportsurge",
+                        "outcome":  "parsed",
+                        "listings":  279,
+                        "parsedTeamPairs":  279,
+                        "parsedKickoffs":  0
+                    },
+                    {
+                        "id":  "crackstreams-cfb",
+                        "outcome":  "parsed",
+                        "listings":  63,
+                        "parsedTeamPairs":  63,
+                        "parsedKickoffs":  63
+                    },
+                    {
+                        "id":  "buffstream-cfb",
+                        "error":  "http-404"
+                    },
+                    {
+                        "id":  "livetv",
+                        "error":  "fetch failed"
+                    },
+                    {
+                        "id":  "vipbox-cfb",
+                        "outcome":  "parsed",
+                        "listings":  103,
+                        "parsedTeamPairs":  102,
+                        "parsedKickoffs":  0
+                    },
+                    {
+                        "id":  "vipbox-nfl",
+                        "outcome":  "parsed",
+                        "listings":  5,
+                        "parsedTeamPairs":  0,
+                        "parsedKickoffs":  0
+                    },
+                    {
+                        "id":  "crackstreams-nfl",
+                        "outcome":  "parsed",
+                        "listings":  26,
+                        "parsedTeamPairs":  26,
+                        "parsedKickoffs":  26
+                    },
+                    {
+                        "id":  "vipboxtv-cfb",
+                        "outcome":  "parsed",
+                        "listings":  111,
+                        "parsedTeamPairs":  110,
+                        "parsedKickoffs":  0
+                    },
+                    {
+                        "id":  "strikeout-nfl",
+                        "outcome":  "parsed",
+                        "listings":  24,
+                        "parsedTeamPairs":  14,
+                        "parsedKickoffs":  0
+                    },
+                    {
+                        "id":  "strikeout-football",
+                        "outcome":  "parsed",
+                        "listings":  135,
+                        "parsedTeamPairs":  124,
+                        "parsedKickoffs":  0
+                    },
+                    {
+                        "id":  "strikeout-cfb",
+                        "outcome":  "parsed",
+                        "listings":  111,
+                        "parsedTeamPairs":  110,
+                        "parsedKickoffs":  0
+                    },
+                    {
+                        "id":  "nflhunter",
+                        "outcome":  "empty",
+                        "listings":  0,
+                        "parsedTeamPairs":  0,
+                        "parsedKickoffs":  0
+                    },
+                    {
+                        "id":  "nflstreams",
+                        "outcome":  "empty",
+                        "listings":  0,
+                        "parsedTeamPairs":  0,
+                        "parsedKickoffs":  0
+                    },
+                    {
+                        "id":  "streameast",
+                        "error":  "unsupported-discovery-address"
+                    },
+                    {
+                        "id":  "buffstream-nfl",
+                        "outcome":  "parser-changed",
+                        "listings":  0,
+                        "parsedTeamPairs":  0,
+                        "parsedKickoffs":  0
+                    },
+                    {
+                        "id":  "methstreams",
+                        "outcome":  "parsed",
+                        "listings":  287,
+                        "parsedTeamPairs":  215,
+                        "parsedKickoffs":  285
+                    },
+                    {
+                        "id":  "crackstreams-st",
+                        "outcome":  "parsed",
+                        "listings":  287,
+                        "parsedTeamPairs":  215,
+                        "parsedKickoffs":  285
+                    }
+                ]
+}
