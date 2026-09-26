@@ -8,6 +8,9 @@ export const metadata: Metadata = {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
+  other: {
+    "darkreader-lock": "true",
+  },
 };
 
 export default function RootLayout({
