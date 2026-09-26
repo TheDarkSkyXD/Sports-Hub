@@ -99,6 +99,8 @@ test('game and session states reject contradictory final and grace fields', () =
   assert.equal(GameSchema.safeParse(rawFinal).success,false);
   assert.equal(GameSchema.safeParse({...scheduled,finalObservedAt:now,graceEndsAt:now+300000}).success,false);
   assert.equal(GameSchema.safeParse({...rawFinal,finalObservedAt:now,graceEndsAt:now+300000}).success,true);
+  assert.equal(GameSchema.safeParse({...rawFinal,sourceUrl:'/play/ncaaf-1',finalObservedAt:now,graceEndsAt:now+300000}).success,false);
+  assert.equal(GameSchema.safeParse({...rawFinal,sourceUrls:['/play/ncaaf-1'],finalObservedAt:now,graceEndsAt:now+300000}).success,false);
   const session = {id:'1',gameId:'ncaaf-1',candidateId:'gooz-1',generation:0};
   assert.equal(SessionSchema.safeParse({...session,state:'active',graceEndsAt:now}).success,false);
   assert.equal(SessionSchema.safeParse({...session,state:'draining',graceEndsAt:null}).success,false);

@@ -61,7 +61,7 @@ async function screenshot(page, name, fullPage = false) {
   } else await page.screenshot({ path: target, fullPage });
 }
 
-async function openRoom({ live = false, provider = false, manyQualities = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false } = {}) {
+async function openRoom({ live = false, provider = false, manyQualities = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false, holdHeartbeat = false } = {}) {
   const context = desktopApp ? desktopApp.context() : await browser.newContext({ viewport: { width: 1440, height: 1100 } });
   await context.unrouteAll({ behavior: 'wait' });
   let roomGames = games.map((g, index) => provider ? { ...g, status: waitingForLive && index === 0 ? 'pre' : g.status, sourceUrl: waitingForLive && index === 1 ? undefined : `https://isportsurge.ws/watch/nfl/test-game/${g.id}` } : g);
@@ -69,6 +69,11 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   const indexRequests = new Set();
   const sessions = new Map();
   const sessionCounts = { opened: 0, closed: 0, failures: 0 };
+  let markHeartbeat;
+  let releaseHeartbeat;
+  const heartbeatObserved = new Promise(resolve => { markHeartbeat = resolve; });
+  const heartbeatGate = new Promise(resolve => { releaseHeartbeat = resolve; });
+  let heartbeatHeld = false;
   let backupAvailable = !delayedBackup;
   let fixtureOffline = offlineStart;
   const candidatesFor = (gameId, manual) => manual ? [] : [0, ...(backupAvailable ? [1] : [])].map(index => ({
@@ -100,7 +105,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
     }
     return route.fulfill({ status: 405 });
   });
-  await context.route('**/api/playback', route => {
+  await context.route('**/api/playback', async route => {
     const body = route.request().postDataJSON();
     if (route.request().method() === 'POST') {
       const { gameId, manual } = body;
@@ -117,6 +122,11 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
     }
     const session = sessions.get(body.sessionId);
     if (!session || body.generation !== session.generation) return route.fulfill({ status: 410, json: { error: 'Playback session ended.' } });
+    if (holdHeartbeat && session.gameId === games[0].id && !heartbeatHeld && !body.failure && !body.retry && !body.candidateId) {
+      heartbeatHeld = true;
+      markHeartbeat();
+      await heartbeatGate;
+    }
     if (body.retry) { session.generation += 1; session.failures = 0; }
     else if (body.failure) {
       sessionCounts.failures += 1;
@@ -176,7 +186,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}${offlineStart ? '&offlineFixture=1' : ''}`);
   await page.locator('.game-tile').first().waitFor();
   if (!provider) await page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(v => v.readyState >= 2));
-  return { context, page, pageErrors, manifestRequests, indexRequests, finalFailure, sessionCounts,
+  return { context, page, pageErrors, manifestRequests, indexRequests, finalFailure, sessionCounts, heartbeatObserved, releaseHeartbeat,
     publishBackup: () => { backupAvailable = true; },
     restoreOnline: async () => { fixtureOffline = false; await page.evaluate(() => Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })); },
     publishLiveGames: () => { roomGames = games.map(g => ({ ...g, sourceUrl: `https://isportsurge.ws/watch/nfl/test-game/${g.id}` })); },
@@ -421,6 +431,24 @@ try {
   assert.deepEqual(discoveredRoom.pageErrors, []);
   results.push('A live provider EOS retries; a backup discovered after open reaches the player on PATCH and plays after primary failure.');
   if (!desktopApp) await discoveredRoom.context.close();
+
+  const heartbeatRoom = await openRoom({ provider: true, holdHeartbeat: true });
+  await heartbeatRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && !document.querySelector('video').paused);
+  await Promise.race([
+    heartbeatRoom.heartbeatObserved,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Provider heartbeat did not start')), 36000)),
+  ]);
+  const recoveredAfterHeartbeat = heartbeatRoom.page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === `/api/stream/${games[0].id}/index.m3u8` && url.searchParams.get('generation') === '1';
+  });
+  await heartbeatRoom.page.locator('.game-tile video').first().dispatchEvent('error');
+  heartbeatRoom.releaseHeartbeat();
+  await recoveredAfterHeartbeat;
+  assert.equal(heartbeatRoom.sessionCounts.failures, 1);
+  assert.deepEqual(heartbeatRoom.pageErrors, []);
+  results.push('A media failure during an in-flight heartbeat is queued and recovers after the heartbeat finishes.');
+  if (!desktopApp) await heartbeatRoom.context.close();
 
   const offlineRoom = await openRoom({ provider: true, offlineStart: true });
   await offlineRoom.page.waitForFunction(() => document.querySelector('.game-tile video') !== null);

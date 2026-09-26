@@ -55,6 +55,8 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const inFlight = useRef(false);
+  const pendingChange = useRef<{ failure?: boolean; candidateId?: string; retry?: boolean } | null>(null);
+  const changeRef = useRef<(changes: { failure?: boolean; candidateId?: string; retry?: boolean }) => Promise<void>>(async () => {});
   const currentGame = useRef(gameId);
   const currentMode = useRef(!!manualFeed);
   const requestSerial = useRef(0);
@@ -69,6 +71,7 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
     if (intent.current?.key !== key) intent.current = { key, requestId: crypto.randomUUID() };
     const requestId = intent.current.requestId;
     inFlight.current = false;
+    pendingChange.current = null;
     const body = JSON.stringify({ kind: 'open', gameId, manual: !!manualFeed, requestId });
     const open = window.setTimeout(() => {
       setEndedReason(null);
@@ -111,7 +114,12 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
       }).catch(error => {
         if (sessionRef.current?.id === session.id && error instanceof PlaybackRequestError && error.status === 410) setEndedReason('session');
         else if (sessionRef.current?.id === session.id && error instanceof PlaybackRequestError && error.status === 503 && error.retryAfter !== undefined) setRetryAfter(error.retryAfter);
-      }).finally(() => { inFlight.current = false; });
+      }).finally(() => {
+        inFlight.current = false;
+        const pending = pendingChange.current;
+        pendingChange.current = null;
+        if (pending && sessionRef.current?.id === session.id) void changeRef.current(pending);
+      });
     }, 30000);
     return () => window.clearInterval(timer);
   }, [playback, ended]);
@@ -132,7 +140,11 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
 
   const change = useCallback(async (changes: { failure?: boolean; candidateId?: string; retry?: boolean }) => {
     const session = sessionRef.current;
-    if (!session || inFlight.current) return;
+    if (!session) return;
+    if (inFlight.current) {
+      if (changes.failure || !pendingChange.current?.failure) pendingChange.current = changes;
+      return;
+    }
     inFlight.current = true;
     try {
       const next = await updateSession(session, changes);
@@ -145,8 +157,14 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
         setMessage(error instanceof Error ? error.message : 'Player unavailable.');
         if (error instanceof PlaybackRequestError && error.status === 503 && error.retryAfter !== undefined) setRetryAfter(error.retryAfter);
       }
-    } finally { inFlight.current = false; }
+    } finally {
+      inFlight.current = false;
+      const pending = pendingChange.current;
+      pendingChange.current = null;
+      if (pending && sessionRef.current?.id === session.id) void changeRef.current(pending);
+    }
   }, []);
+  useEffect(() => { changeRef.current = change; }, [change]);
 
   useEffect(() => {
     if (retryAfter === null || ended || !playback) return;

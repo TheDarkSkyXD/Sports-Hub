@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { FootballStore } from '../lib/football/adapters/store.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
@@ -302,7 +302,10 @@ test('the worker bridge validates a command and shuts down its SQLite writer',as
     assert.equal(globalThis.footballWorkerClient,undefined);
   } finally {
     delete process.env.SUNDAY_ROOM_DATA_DIR;
-    rmSync(dir,{recursive:true,force:true});
+    const target=resolve(dir);
+    assert.equal(dirname(target),resolve(tmpdir()));
+    assert.match(basename(target),/^football-worker-/);
+    rmSync(target,{recursive:true,force:true,maxRetries:20,retryDelay:100});
   }
 });
 
@@ -320,8 +323,8 @@ test('a replacement worker reclaims only the confirmed exited worker token',asyn
       if (existsSync(path)) {
         try {
           const reader = new DatabaseSync(path,{readOnly:true});
-          ownerSeen = reader.prepare('SELECT token FROM owner WHERE slot=1').get() !== undefined;
-          reader.close();
+          try { ownerSeen = reader.prepare('SELECT token FROM owner WHERE slot=1').get() !== undefined; }
+          finally { reader.close(); }
           if (ownerSeen) break;
         } catch {}
       }
@@ -337,6 +340,9 @@ test('a replacement worker reclaims only the confirmed exited worker token',asyn
     assert.equal(globalThis.footballWorkerClient,undefined);
   } finally {
     delete process.env.SUNDAY_ROOM_DATA_DIR;
-    rmSync(dir,{recursive:true,force:true});
+    const target=resolve(dir);
+    assert.equal(dirname(target),resolve(tmpdir()));
+    assert.match(basename(target),/^football-worker-crash-/);
+    rmSync(target,{recursive:true,force:true,maxRetries:20,retryDelay:100});
   }
 });

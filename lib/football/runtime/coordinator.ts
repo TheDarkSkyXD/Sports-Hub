@@ -246,8 +246,9 @@ export class FootballCoordinator {
     return {schemaVersion:2,revision:this.revision,updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs'])},games:this.games.filter(game => {
       return (game.partitions || []).some(key => now-(this.store.partition(key)?.at || 0)<24*3600000) || game.finalObservedAt !== undefined || [...this.sessions.values()].some(owned => owned.value.gameId===game.id);
     }).map(game => {
+      if (game.lifecycle === 'final') return {...game,sourceUrl:undefined,sourceUrls:undefined};
       const candidates = (this.candidates.get(game.id) || []).filter(candidate => now-candidate.observedAt<30*60000);
-      return {...game,sourceUrl:game.lifecycle !== 'final' && this.scheduleFresh(game) && candidates.length ? `/play/${encodeURIComponent(game.id)}` : undefined,sourceUrls:undefined};
+      return {...game,sourceUrl:this.scheduleFresh(game) && candidates.length ? `/play/${encodeURIComponent(game.id)}` : undefined,sourceUrls:undefined};
     })};
   }
   private sweep(): void {
