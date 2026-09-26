@@ -60,11 +60,15 @@ async function screenshot(page, name, fullPage = false) {
   } else await page.screenshot({ path: target, fullPage });
 }
 
-async function openRoom({ live = false, provider = false, manyQualities = false } = {}) {
+async function openRoom({ live = false, provider = false, manyQualities = false, providerFailure, waitingForLive = false } = {}) {
   const context = desktopApp ? desktopApp.context() : await browser.newContext({ viewport: { width: 1440, height: 1100 } });
   await context.unrouteAll({ behavior: 'wait' });
+  let roomGames = games.map((g, index) => provider ? { ...g, status: waitingForLive && index === 0 ? 'pre' : g.status, sourceUrl: waitingForLive && index === 1 ? undefined : `https://isportsurge.ws/watch/nfl/test-game/${g.id}` } : g);
+  const manifestRequests = new Set();
+  let finishFailures;
+  const finalFailure = new Promise(resolve => { finishFailures = resolve; });
   await context.route('**/api/games', route => route.fulfill({ json: {
-    games: games.map(g => provider ? { ...g, sourceUrl: `https://isportsurge.ws/watch/nfl/test-game/${g.id}` } : g),
+    games: roomGames,
     updatedAt: new Date().toISOString(), leagues: {
       nfl: { week: 3, scoresAt: new Date().toISOString(), sourceAt: null, errors: [] },
       ncaaf: { scoresAt: null, sourceAt: null, errors: [] },
@@ -83,7 +87,16 @@ async function openRoom({ live = false, provider = false, manyQualities = false 
   }
   await context.route('**/__player_fixture__/**', route => serveMedia(route, path.basename(new URL(route.request().url()).pathname)));
   await context.route('**/api/stream/**', route => {
-    const file = path.basename(new URL(route.request().url()).pathname);
+    const url = new URL(route.request().url());
+    const file = path.basename(url.pathname);
+    if (providerFailure && url.pathname === `/api/stream/${games[0].id}/index.m3u8`) {
+      manifestRequests.add(url.href);
+      if (providerFailure === 'unavailable' || Number(url.searchParams.get('source')) < 2) {
+        const response = route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: 'Expired provider playlist' });
+        if (url.searchParams.get('server') === '1' && url.searchParams.get('source') === '4') response.then(finishFailures);
+        return response;
+      }
+    }
     return serveMedia(route, file === 'index.m3u8' ? 'master.m3u8' : file);
   });
   if (!seededContexts.has(context)) {
@@ -106,7 +119,10 @@ async function openRoom({ live = false, provider = false, manyQualities = false 
   await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}`);
   await page.locator('.game-tile').first().waitFor();
   if (!provider) await page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(v => v.readyState >= 2));
-  return { context, page, pageErrors };
+  return { context, page, pageErrors, manifestRequests, finalFailure,
+    publishLiveGames: () => { roomGames = games.map(g => ({ ...g, sourceUrl: `https://isportsurge.ws/watch/nfl/test-game/${g.id}` })); },
+    finishGame: () => { roomGames = roomGames.map((g, index) => index === 0 ? { ...g, status: 'post', detail: 'Final' } : index === 1 ? { ...g, sourceUrl: undefined } : g); },
+  };
 }
 
 async function revealControls(page) {
@@ -258,8 +274,9 @@ try {
 
   const providerRoom = await openRoom({ provider: true });
   const firstTile = providerRoom.page.locator('.game-tile').first();
-  await firstTile.getByRole('button', { name: 'Play game', exact: true }).click();
-  await providerRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
+  await providerRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2 && !video.paused));
+  assert.equal(await providerRoom.page.getByRole('button', { name: 'Play game', exact: true }).count(), 0);
+  results.push('Restored live provider games start automatically without a Play game click.');
   const providerControls = providerRoom.page.getByRole('group', { name: 'Focused stream controls', exact: true });
   await revealControls(providerRoom.page);
   await providerControls.getByRole('button', { name: 'Video quality', exact: true }).click();
@@ -270,7 +287,7 @@ try {
   await firstTile.getByRole('button', { name: 'Switch server', exact: true }).click();
   await providerRoom.page.getByText('Backup · 2 of 2', { exact: true }).waitFor();
   await providerRoom.page.waitForFunction(() => document.querySelector('video').readyState >= 2);
-  assert.equal(await providerRoom.page.locator('video').evaluate(v => v.paused), true);
+  assert.equal(await firstTile.locator('video').evaluate(v => v.paused), true);
   await revealControls(providerRoom.page);
   await providerControls.getByRole('button', { name: 'Video quality', exact: true }).click();
   assert.match(await providerRoom.page.getByRole('button', { name: /^Auto/ }).getAttribute('class'), /selected/);
@@ -279,43 +296,53 @@ try {
   results.push('Listed provider playback uses the shared controls; server changes preserve pause and reset quality to Auto.');
   if (!desktopApp) await providerRoom.context.close();
 
-  const recoveryRoom = await openRoom({ provider: true });
-  const manifestRequests = new Set();
-  await recoveryRoom.context.route('**/api/stream/*/index.m3u8?*', async route => {
-    const url = new URL(route.request().url());
-    manifestRequests.add(url.href);
-    if (Number(url.searchParams.get('source')) < 2) await route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: 'Expired provider playlist' });
-    else await route.fallback();
-  });
-  await recoveryRoom.page.locator('.game-tile').first().getByRole('button', { name: 'Play game', exact: true }).click();
+  const recoveryRoom = await openRoom({ provider: true, providerFailure: 'recover' });
   await recoveryRoom.page.waitForFunction(() => {
     const video = document.querySelector('video');
     return video?.readyState >= 2 && !video.paused && video.currentTime > 0;
   });
-  assert.equal(manifestRequests.size, 3);
-  await recoveryRoom.page.getByText('Primary · 1 of 2', { exact: true }).waitFor();
+  assert.equal(recoveryRoom.manifestRequests.size, 3);
+  await recoveryRoom.page.locator('.game-tile').first().getByText('Primary · 1 of 2', { exact: true }).waitFor();
   assert.deepEqual(recoveryRoom.pageErrors, []);
   results.push('Expired provider playlists refresh the master twice and recover on the same server.');
   if (!desktopApp) await recoveryRoom.context.close();
 
-  const unavailableRoom = await openRoom({ provider: true });
-  const failedManifests = new Set();
-  await unavailableRoom.context.route('**/api/stream/*/index.m3u8?*', route => {
-    failedManifests.add(route.request().url());
-    return route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: 'Unavailable provider playlist' });
-  });
-  const finalFailure = unavailableRoom.page.waitForResponse(response => {
-    const url = new URL(response.url());
-    return url.pathname.endsWith('/index.m3u8') && url.searchParams.get('server') === '1' && url.searchParams.get('source') === '4';
-  });
-  await unavailableRoom.page.locator('.game-tile').first().getByRole('button', { name: 'Play game', exact: true }).click();
-  await finalFailure;
+  const unavailableRoom = await openRoom({ provider: true, providerFailure: 'unavailable' });
+  await unavailableRoom.finalFailure;
   await unavailableRoom.page.getByText('Backup · 2 of 2', { exact: true }).waitFor();
   await unavailableRoom.page.getByText("Feed couldn't play", { exact: true }).waitFor();
-  assert.equal(failedManifests.size, 6);
+  assert.equal(unavailableRoom.manifestRequests.size, 6);
   assert.deepEqual(unavailableRoom.pageErrors, []);
   results.push('Unavailable providers exhaust two refreshes per server, try the backup, and expose a retry control.');
   if (!desktopApp) await unavailableRoom.context.close();
+
+  const scheduledRoom = await openRoom({ provider: true, waitingForLive: true });
+  await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 2 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2));
+  assert.equal(await scheduledRoom.page.locator('.game-tile').nth(0).getByRole('button', { name: 'Play game', exact: true }).count(), 1);
+  assert.equal(await scheduledRoom.page.locator('.game-tile').nth(1).getByRole('button', { name: 'Stream not listed yet', exact: true }).count(), 1);
+  await scheduledRoom.page.getByRole('button', { name: 'Pause all feeds', exact: true }).click();
+  scheduledRoom.publishLiveGames();
+  await scheduledRoom.page.getByRole('button', { name: 'Refresh game data', exact: true }).click();
+  await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2 && video.paused));
+  await scheduledRoom.page.getByRole('button', { name: 'Play all feeds', exact: true }).click();
+  await scheduledRoom.page.waitForFunction(() => [...document.querySelectorAll('video')].every(video => !video.paused));
+  const stoppedTile = scheduledRoom.page.locator('.game-tile').first();
+  await stoppedTile.getByRole('button', { name: 'Stop this game', exact: true }).click();
+  await scheduledRoom.page.getByRole('button', { name: 'Refresh game data', exact: true }).click();
+  await stoppedTile.getByRole('button', { name: 'Play game', exact: true }).waitFor();
+  assert.equal(await stoppedTile.locator('video').count(), 0);
+  await stoppedTile.getByRole('button', { name: 'Remove Away 1 at Home 1', exact: true }).click();
+  await scheduledRoom.page.getByTitle('Add Away 1 at Home 1', { exact: true }).click();
+  await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2 && !video.paused));
+  assert.deepEqual(scheduledRoom.pageErrors, []);
+  results.push('Live status and newly listed sources auto-connect; Pause all and Stop survive refresh, and re-added live games auto-start.');
+  const continuedVideos = await scheduledRoom.page.locator('video').elementHandles();
+  scheduledRoom.finishGame();
+  await scheduledRoom.page.getByRole('button', { name: 'Refresh game data', exact: true }).click();
+  await scheduledRoom.page.getByText('Final', { exact: true }).first().waitFor();
+  for (const video of continuedVideos) assert.equal(await video.evaluate(element => element.isConnected && !element.paused), true);
+  results.push('Started streams keep playing when scores mark a game final or its directory link disappears.');
+  if (!desktopApp) await scheduledRoom.context.close();
 
   const qualityRoom = await openRoom({ manyQualities: true });
   await qualityRoom.page.locator('video').first().hover();

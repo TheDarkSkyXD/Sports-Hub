@@ -6,7 +6,7 @@
 
 **A personal NFL and college football viewing room. Four games, one screen, your choice of audio.**
 
-Sunday Room brings live scores, a searchable game schedule, and flexible multiview playback into a dark, broadcast-inspired interface. Add a listed game to start its provider inside your room without pasting a stream URL.
+Sunday Room brings live scores, a searchable game schedule, and flexible multiview playback into a dark, broadcast-inspired interface. Add a listed live game to start its provider inside your room without pasting a stream URL.
 
 This repository is **Sports-Hub**; **Sunday Room** is the application. It runs locally, with no application account, API key, or hosted deployment required.
 
@@ -25,7 +25,7 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 | Feature | What it does |
 | --- | --- |
 | **Flexible multiview** | Choose four games, two games, a single game, or a larger focus view. Expand into theater mode or fullscreen. |
-| **Automatic desktop playback** | Adding a game with a listed source starts its provider inside the tile. |
+| **Automatic live playback** | Live games with listed sources start when added or restored in browser and desktop rooms. |
 | **Backup servers** | Retry temporary lookup failures and try other listed servers when initial playback fails. Switch servers manually from the tile. |
 | **One game on audio** | Focus a game to hear it. Room volume, mute, and play/pause controls keep the session manageable. |
 | **Focused stream controls** | The focused stream has play/pause, volume, mute, fullscreen, quality selection, a seekable timeline, and picture-in-picture where supported. Other streams keep playing without control overlays. |
@@ -68,7 +68,7 @@ The launcher starts Electron and its own local Next.js server on `127.0.0.1`. It
 
 ### Your first game day
 
-1. Choose **All**, **NFL**, or **NCAA**. Find a matchup in the **Game center** or scoreboard strip and add it to your room. A listed provider starts inside the tile.
+1. Choose **All**, **NFL**, or **NCAA**. Find a matchup in the **Game center** or scoreboard strip and add it to your room. Live games with listed sources start automatically, including saved selections when you reopen the room.
 2. To restart a listed provider after stopping it, press **Play game** on its tile.
 3. Add more games, up to four, and choose a layout from the room toolbar.
 4. Use **Focus** to select a game's audio. Adjust volume or pause all feeds from the bottom bar.
@@ -158,7 +158,7 @@ The room renderer uses sandboxing, context isolation, and browser security with 
 
 ### Storage and network behavior
 
-Preferences and manually entered feed URLs use local browser storage under `sunday-room:v1`. Browser and desktop sessions have separate storage. Adding a listed game starts playback; active provider sessions are not automatically restored after a restart.
+Preferences and manually entered feed URLs use local browser storage under `sunday-room:v1`. Browser and desktop sessions have separate storage. Selected live games automatically reconnect when the room opens or their source becomes available. Pause and Stop choices survive score refreshes during the session; reopening the room restores default live playback. A stream already playing stays open when the scoreboard marks the game final.
 
 There is no account service, database, or cloud preference sync. Local servers bind to `127.0.0.1`. Scoreboard, image, and player requests still contact their respective providers, whose own network behavior and tracking are outside this application's control. Saved feed URLs are not encrypted.
 
