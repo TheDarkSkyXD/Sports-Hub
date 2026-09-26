@@ -4,7 +4,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { allowedPlayer, validGameId, safeBounds } = require('./security.cjs');
 const { localServerPort } = require('./port.cjs');
-const root=path.resolve(__dirname,'..');
+const root=app.isPackaged?path.join(process.resourcesPath,'server'):path.resolve(__dirname,'..');
+const logDir=app.isPackaged?path.join(app.getPath('userData'),'logs'):path.join(root,'.desktop-runtime');
 let win, serverProcess, origin, poll;
 const players=new Map();
 const requests=new Map();
@@ -54,7 +55,7 @@ async function openPlayer(gameId,serverIndex=0,attempt=0) {
     try {if(control.playing)await view.webContents.executeJavaScript(startPlayback,true);await applyControl(gameId,p);}catch{}
   });
   void view.webContents.loadURL(source.url).catch(()=>{});
-  if(process.env.SUNDAY_ROOM_DIAGNOSTICS==='1')setTimeout(async()=>{if(view.webContents.isDestroyed())return;try{const report=await view.webContents.executeJavaScript(`(() => {const v=document.querySelector('video');return {title:document.title,text:document.body.innerText.slice(0,500),video:v?{ready:v.readyState,paused:v.paused,time:v.currentTime,width:v.videoWidth,height:v.videoHeight,rect:v.getBoundingClientRect().toJSON(),style:{display:getComputedStyle(v).display,visibility:getComputedStyle(v).visibility}}:null}})()`);fs.writeFileSync(path.join(root,'.desktop-runtime',`player-${gameId}.json`),JSON.stringify({report,bounds:view.getBounds(),visible:p.visible},null,2));const shot=await view.webContents.capturePage();fs.writeFileSync(path.join(root,'.desktop-runtime',`player-${gameId}.png`),shot.toPNG());}catch{}},18000);
+  if(process.env.SUNDAY_ROOM_DIAGNOSTICS==='1')setTimeout(async()=>{if(view.webContents.isDestroyed())return;try{const report=await view.webContents.executeJavaScript(`(() => {const v=document.querySelector('video');return {title:document.title,text:document.body.innerText.slice(0,500),video:v?{ready:v.readyState,paused:v.paused,time:v.currentTime,width:v.videoWidth,height:v.videoHeight,rect:v.getBoundingClientRect().toJSON(),style:{display:getComputedStyle(v).display,visibility:getComputedStyle(v).visibility}}:null}})()`);fs.mkdirSync(logDir,{recursive:true});fs.writeFileSync(path.join(logDir,`player-${gameId}.json`),JSON.stringify({report,bounds:view.getBounds(),visible:p.visible},null,2));const shot=await view.webContents.capturePage();fs.writeFileSync(path.join(logDir,`player-${gameId}.png`),shot.toPNG());}catch{}},18000);
   return {serverCount:data.players.length,label:source.label,server:serverIndex % data.players.length};
 }
 function installIPC() {
@@ -74,10 +75,11 @@ function installIPC() {
 async function startServer() {
  const port=await localServerPort();
  origin=`http://127.0.0.1:${port}`;
- const production=fs.existsSync(path.join(root,'.next','BUILD_ID'));
- const logDir=path.join(root,'.desktop-runtime');fs.mkdirSync(logDir,{recursive:true});
+ const production=app.isPackaged||fs.existsSync(path.join(root,'.next','BUILD_ID'));
+ fs.mkdirSync(logDir,{recursive:true});
  const log=fs.openSync(path.join(logDir,'server.log'),'a');
- serverProcess=spawn(process.execPath,[path.join(root,'node_modules','next','dist','bin','next'),production?'start':'dev','--hostname','127.0.0.1','--port',String(port)],{cwd:root,windowsHide:true,env:{...process.env,ELECTRON_RUN_AS_NODE:'1'},stdio:['ignore',log,log]});
+ const args=app.isPackaged?[path.join(root,'server.js')]:[path.join(root,'node_modules','next','dist','bin','next'),production?'start':'dev','--hostname','127.0.0.1','--port',String(port)];
+ serverProcess=spawn(process.execPath,args,{cwd:root,windowsHide:true,env:{...process.env,ELECTRON_RUN_AS_NODE:'1',...(app.isPackaged?{PORT:String(port),HOSTNAME:'127.0.0.1'}:{})},stdio:['ignore',log,log]});
  fs.closeSync(log);
  for(let n=0;n<120;n++){if(serverProcess.exitCode!==null)throw new Error('Local server stopped');try{const r=await fetch(origin,{signal:AbortSignal.timeout(1000)});if(r.ok)return;}catch{}await new Promise(r=>setTimeout(r,500));}
  throw new Error('Local server did not start');
@@ -93,6 +95,6 @@ app.whenReady().then(async()=>{
  installIPC();await win.loadURL(origin);
  poll=setInterval(async()=>{for(const [id,p]of players){if(p.reported||p.view.webContents.isDestroyed())continue;if(!control.playing){p.started=Date.now();continue;}try{const media=await p.view.webContents.executeJavaScript(`(() => {const v=document.querySelector('video');return v?{ready:v.readyState,error:!!v.error,time:v.currentTime,paused:v.paused}:null})()`);if(media?.ready>=3&&media.time>0&&!media.paused){p.reported=true;status(id,'playing');}else if(Date.now()-p.started>25000){p.reported=true;if(p.attempt<p.serverCount-1){status(id,'ready','Trying the next available server…');void openPlayer(id,(p.server+1)%p.serverCount,p.attempt+1).catch(()=>status(id,'error','The game provider is unavailable. Please try again.'));}else status(id,'error','The available servers have not started. Try again shortly.');}else if(control.playing){await p.view.webContents.executeJavaScript(startPlayback,true);}}catch{}}},2000);
  win.on('closed',()=>{clearInterval(poll);requests.clear();for(const p of players.values())if(!p.view.webContents.isDestroyed())p.view.webContents.close();players.clear();win=null;});
-}).catch(error=>{const logDir=path.join(root,'.desktop-runtime');fs.mkdirSync(logDir,{recursive:true});fs.appendFileSync(path.join(logDir,'startup.log'),String(error)+'\n');app.quit();});
+}).catch(error=>{fs.mkdirSync(logDir,{recursive:true});fs.appendFileSync(path.join(logDir,'startup.log'),String(error)+'\n');app.quit();});
 app.on('window-all-closed',()=>app.quit());
 app.on('will-quit',()=>{clearInterval(poll);if(serverProcess&&!serverProcess.killed)serverProcess.kill();});
