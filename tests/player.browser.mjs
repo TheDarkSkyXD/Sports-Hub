@@ -126,9 +126,12 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
 }
 
 async function revealControls(page) {
-  const video = page.locator('.player-focused video');
-  await video.hover({ position: { x: 12, y: 12 } });
-  await video.hover({ position: { x: 24, y: 24 } });
+  const controls = page.getByRole('group', { name: 'Focused stream controls', exact: true });
+  await controls.scrollIntoViewIfNeeded();
+  const bounds = await controls.boundingBox();
+  assert.ok(bounds);
+  await page.mouse.move(bounds.x + 12, bounds.y + bounds.height - 16);
+  await page.mouse.move(bounds.x + 24, bounds.y + bounds.height - 16);
 }
 
 try {
