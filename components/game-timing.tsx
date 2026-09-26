@@ -5,7 +5,7 @@ import type { Game } from '@/lib/sunday';
 import { countdown, gameTiming } from '@/lib/game-timing';
 
 const startFormatter = new Intl.DateTimeFormat(undefined, {
-  weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+  weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
 });
 const noSubscribe = () => () => {};
 const isClient = () => true;

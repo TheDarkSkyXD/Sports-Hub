@@ -49,7 +49,7 @@ try {
   for (const surface of surfaces) {
     const timing = await timingFor(page, surface, 'PRA');
     await timing.getByText('Kickoff in 00:00:03').waitFor();
-    assert.match(await timing.innerText(), /Sat, Sep 26.*7:00 PM.*CDT/);
+    assert.equal(await timing.locator('span').innerText(), 'Sat, Sep 26, 7:00 PM');
     assert.match(await page.locator(surface).filter({ hasText: 'PRA' }).first().innerText(), /Sat TBD/);
     await within(page, surface, 'PRA');
   }
@@ -74,7 +74,9 @@ try {
   games[0] = { ...games[0], status: 'pre', detail: 'Sun TBD', date: '2026-09-28T00:00Z' };
   await page.getByRole('button', { name: 'Refresh game data' }).click();
   await page.getByRole('button', { name: 'Game schedule' }).click();
-  assert.match(await (await timingFor(page, '.schedule-card', 'PRA')).innerText(), /Sun, Sep 27.*7:00 PM.*CDT.*Kickoff in 1d 00:00:00/s);
+  const scheduleTiming = await timingFor(page, '.schedule-card', 'PRA');
+  assert.equal(await scheduleTiming.locator('span').innerText(), 'Sun, Sep 27, 7:00 PM');
+  assert.match(await scheduleTiming.innerText(), /Kickoff in 1d 00:00:00/);
   await within(page, '.schedule-card', 'PRA');
   await page.screenshot({ path: 'work/game-start-countdown/desktop-schedule.png', fullPage: true });
 
