@@ -1,10 +1,17 @@
 export type Team = { name: string; short: string; abbreviation: string; color: string; logo?: string; score: string | null; record?: string };
-export type Game = { id: string; name: string; date?: string; home: Team; away: Team; status: 'pre' | 'in' | 'post' | 'unknown'; detail: string; redzone: boolean; possession?: string; down?: string; lastPlay?: string; venue?: string; broadcast?: string; sourceUrl?: string };
-export type Board = { games: Game[]; updatedAt: string; scoresAt: string | null; sourceAt: string | null; week?: number; errors: string[] };
+export type League = 'nfl' | 'ncaaf';
+export type Game = { id: string; league: League; name: string; date?: string; home: Team; away: Team; status: 'pre' | 'in' | 'post' | 'unknown'; detail: string; redzone: boolean; possession?: string; down?: string; lastPlay?: string; venue?: string; broadcast?: string; sourceUrl?: string };
+export type LeagueFeedStatus = { week?: number; scoresAt: string | null; sourceAt: string | null; errors: string[] };
+export type Board = { games: Game[]; updatedAt: string; leagues: Record<League, LeagueFeedStatus> };
 export type Feed = { url: string; label: string };
 export type SourcePlayer = { id: string; label: string; url: string };
+export const LEAGUES = {
+  nfl: { label: 'NFL', scoreboardUrl: 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', directoryUrl: 'https://isportsurge.ws/nfl/livestreams3', sourcePath: /^\/watch\/nfl\/[a-z0-9-]+\/\d+$/ },
+  ncaaf: { label: 'NCAA', scoreboardUrl: 'https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80&limit=200', directoryUrl: 'https://isportsurge.ws/cfb/livestreams2', sourcePath: /^\/watch\/cfb\/[a-z0-9-]+\/\d+$/ },
+} satisfies Record<League, { label: string; scoreboardUrl: string; directoryUrl: string; sourcePath: RegExp }>;
+export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|ncaaf-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
 export function validSourcePage(value: string): boolean {
-  try { const u = new URL(value); return u.origin === 'https://isportsurge.ws' && !u.username && !u.password && !u.search && !u.hash && /^\/(?:watch\/nfl\/[a-z0-9-]+\/\d+|event\/nfl\/nfl-redzone-live-streaming-links)$/.test(u.pathname); } catch { return false; }
+  try { const u = new URL(value); return u.origin === 'https://isportsurge.ws' && !u.username && !u.password && !u.search && !u.hash && (LEAGUES.nfl.sourcePath.test(u.pathname) || LEAGUES.ncaaf.sourcePath.test(u.pathname) || u.pathname === '/event/nfl/nfl-redzone-live-streaming-links'); } catch { return false; }
 }
 export function parsePlayers(html: string): SourcePlayer[] {
   const initial = html.match(/<iframe\b[^>]*src="(https:\/\/gooz\.aapmains\.net\/new-stream-embed\/(\d+))"/i);
@@ -12,45 +19,75 @@ export function parsePlayers(html: string): SourcePlayer[] {
   const ids = [...new Set([initial[2], ...[...html.matchAll(/changeStream\((\d+)\)/g)].map(m => m[1])])].slice(0, 6);
   return ids.map((id, index) => ({ id, label: index ? `Backup ${index}` : 'Primary', url: `https://gooz.aapmains.net/new-stream-embed/${id}` }));
 }
-export const SOURCE = 'https://isportsurge.ws/nfl/livestreams3';
 const clean = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&#039;/g, "'").replace(/\s+/g, ' ').trim();
-export function parseDirectory(html: string): Game[] {
+export function parseDirectory(html: string, league: League = 'nfl'): Game[] {
   const games: Game[] = [];
   for (const match of html.matchAll(/<a\b[^>]*class="[^"]*MaclariListele[^\"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)) {
     const url = match[1], body = match[2];
-    if (!url.startsWith('https://isportsurge.ws/watch/nfl/')) continue;
+    if (!validSourcePage(url) || !LEAGUES[league].sourcePath.test(new URL(url).pathname)) continue;
     const names = [...body.matchAll(/class="team-name-event-row"[\s\S]*?<img\b[^>]*alt="([^"]+)"[^>]*src="([^"]+)"/g)];
     if (names.length !== 2) continue;
-    const team = (m: RegExpMatchArray): Team => ({ name: clean(m[1]), short: clean(m[1]).split(' ').slice(-1)[0], abbreviation: clean(m[1]).split(' ').map(v => v[0]).join('').slice(0,3), color: '566775', logo: m[2].startsWith('https://') ? m[2] : undefined, score: null });
+    const team = (m: RegExpMatchArray): Team => ({ name: clean(m[1]), short: league === 'ncaaf' ? clean(m[1]) : clean(m[1]).split(' ').slice(-1)[0], abbreviation: clean(m[1]).split(' ').map(v => v[0]).join('').slice(0,3), color: '566775', logo: m[2].startsWith('https://') ? m[2] : undefined, score: null });
     const detail = clean(body.match(/class="time-badge[^\"]*"[^>]*>([\s\S]*?)<\/span>/)?.[1] || 'Schedule unavailable');
-    games.push({ id: `source-${url.split('/').pop()}`, name: `${names[0][1]} vs ${names[1][1]}`, away: team(names[0]), home: team(names[1]), status: 'unknown', detail: detail === 'In Progress' ? 'Listed live · score unavailable' : detail, redzone: false, sourceUrl: url });
+    games.push({ id: `${league === 'ncaaf' ? 'ncaaf-' : ''}source-${url.split('/').pop()}`, league, name: `${clean(names[0][1])} vs ${clean(names[1][1])}`, away: team(names[0]), home: team(names[1]), status: 'unknown', detail: detail === 'In Progress' ? 'Listed live · score unavailable' : detail, redzone: false, sourceUrl: url });
   }
   return games;
 }
-// ESPN's public scoreboard is an external, unversioned feed. Validate the fields we use.
-export function parseScoreboard(data: unknown): Game[] {
-  const events = (data as { events?: unknown[] })?.events;
+function object(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+function items(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
+function text(value: unknown): string | undefined { return typeof value === 'string' ? value : undefined; }
+export function scoreboardWeek(data: unknown): number | undefined {
+  const week = object(object(data)?.week)?.number;
+  return typeof week === 'number' && Number.isInteger(week) ? week : undefined;
+}
+export function parseScoreboard(data: unknown, league: League = 'nfl'): Game[] {
+  const events = object(data)?.events;
   if (!Array.isArray(events)) throw new Error('Scoreboard format changed');
-  return events.flatMap((raw) => {
-    const e = raw as Record<string, any>;
-    const c = e.competitions?.[0];
-    if (!c || !Array.isArray(c.competitors)) return [];
-    const home = c.competitors.find((t: any) => t.homeAway === 'home');
-    const away = c.competitors.find((t: any) => t.homeAway === 'away');
-    if (!home?.team?.displayName || !away?.team?.displayName || !e.id) return [];
-    const team = (t: any): Team => ({ name: t.team.displayName, short: t.team.shortDisplayName || t.team.name, abbreviation: t.team.abbreviation, color: /^[a-f0-9]{6}$/i.test(t.team.color) ? t.team.color : '566775', logo: typeof t.team.logo === 'string' && t.team.logo.startsWith('https://') ? t.team.logo : undefined, score: t.score == null ? null : String(t.score), record: t.records?.find((r: any) => r.type === 'total')?.summary });
-    const status = e.status || c.status;
-    return [{ id: String(e.id), name: e.name, date: e.date, home: team(home), away: team(away), status: ['pre','in','post'].includes(status?.type?.state) ? status.type.state : 'unknown', detail: status?.type?.shortDetail || 'Status unavailable', redzone: c.situation?.isRedZone === true && status?.type?.state === 'in', down: c.situation?.downDistanceText, possession: c.situation?.possession === home.id ? home.team.abbreviation : c.situation?.possession === away.id ? away.team.abbreviation : undefined, lastPlay: c.situation?.lastPlay?.text, venue: c.venue?.fullName, broadcast: c.broadcasts?.[0]?.names?.join(' / ') } as Game];
+  return events.flatMap((raw): Game[] => {
+    const event = object(raw);
+    const competition = object(items(event?.competitions)[0]);
+    const competitors = items(competition?.competitors).map(object).filter((item): item is Record<string, unknown> => item !== null);
+    const home = competitors.find(item => item.homeAway === 'home');
+    const away = competitors.find(item => item.homeAway === 'away');
+    const homeTeam = object(home?.team), awayTeam = object(away?.team);
+    const id = text(event?.id);
+    if (!id || !/^\d{1,20}$/.test(id) || !text(homeTeam?.displayName) || !text(awayTeam?.displayName) || !home || !away || !homeTeam || !awayTeam) return [];
+    const team = (item: Record<string, unknown>, info: Record<string, unknown>): Team => {
+      const name = text(info.displayName) || '';
+      const color = text(info.color), logo = text(info.logo);
+      const record = items(item.records).map(object).find(entry => entry?.type === 'total');
+      return { name, short: text(info.shortDisplayName) || (league === 'ncaaf' ? name : text(info.name)) || name, abbreviation: text(info.abbreviation) || name.slice(0, 3), color: color && /^[a-f0-9]{6}$/i.test(color) ? color : '566775', logo: logo?.startsWith('https://') ? logo : undefined, score: typeof item.score === 'string' || typeof item.score === 'number' ? String(item.score) : null, record: text(record?.summary) };
+    };
+    const status = object(event?.status) || object(competition?.status);
+    const statusType = object(status?.type);
+    const state = statusType?.state;
+    const gameStatus: Game['status'] = state === 'pre' || state === 'in' || state === 'post' ? state : 'unknown';
+    const situation = object(competition?.situation);
+    const names = items(object(items(competition?.broadcasts)[0])?.names).filter((name): name is string => typeof name === 'string');
+    return [{ id: league === 'ncaaf' ? `ncaaf-${id}` : id, league, name: text(event?.name) || `${awayTeam.displayName} at ${homeTeam.displayName}`, date: text(event?.date), home: team(home, homeTeam), away: team(away, awayTeam), status: gameStatus, detail: text(statusType?.shortDetail) || 'Status unavailable', redzone: situation?.isRedZone === true && gameStatus === 'in', down: text(situation?.downDistanceText), possession: situation?.possession === home.id ? text(homeTeam.abbreviation) : situation?.possession === away.id ? text(awayTeam.abbreviation) : undefined, lastPlay: text(object(situation?.lastPlay)?.text), venue: text(object(competition?.venue)?.fullName), broadcast: names.length ? names.join(' / ') : undefined }];
   });
 }
 export function mergeGames(scores: Game[], directory: Game[]): Game[] {
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
-  if (!scores.length) return directory;
-  return scores.map(game => {
-    const names = [normalize(game.home.name), normalize(game.away.name)].sort().join('|');
-    const link = directory.find(d => [normalize(d.home.name), normalize(d.away.name)].sort().join('|') === names);
-    return { ...game, sourceUrl: link?.sourceUrl };
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const pair = (game: Game) => `${game.league}:${[normalize(game.home.name), normalize(game.away.name)].sort().join('|')}`;
+  const scorePairs = new Map<string, Game[]>(), directoryPairs = new Map<string, Game[]>(), sourceCounts = new Map<string, number>();
+  for (const game of scores) scorePairs.set(pair(game), [...(scorePairs.get(pair(game)) || []), game]);
+  for (const game of directory) {
+    directoryPairs.set(pair(game), [...(directoryPairs.get(pair(game)) || []), game]);
+    if (game.sourceUrl) sourceCounts.set(game.sourceUrl, (sourceCounts.get(game.sourceUrl) || 0) + 1);
+  }
+  const matched = new Set<string>();
+  const merged = scores.map(game => {
+    const matches = directoryPairs.get(pair(game)) || [];
+    if (scorePairs.get(pair(game))?.length !== 1 || matches.length !== 1 || !matches[0].sourceUrl || sourceCounts.get(matches[0].sourceUrl) !== 1) return game;
+    matched.add(matches[0].id);
+    return { ...game, sourceUrl: matches[0].sourceUrl };
   });
+  const seen = new Set(merged.map(game => game.id));
+  for (const game of directory) if (!matched.has(game.id) && !seen.has(game.id)) { merged.push(game); seen.add(game.id); }
+  return merged;
 }
 export function validFeedUrl(input: string): string | null {
   try { const url = new URL(input.trim()); return (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost','127.0.0.1','[::1]'].includes(url.hostname))) && !url.username && !url.password ? url.href : null; } catch { return null; }
