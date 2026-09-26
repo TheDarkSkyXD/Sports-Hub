@@ -5,6 +5,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { Worker } from 'node:worker_threads';
 import { FootballStore } from '../lib/football/adapters/store.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 import { reconcileSession } from '../lib/football/domain/lifecycle.ts';
@@ -419,11 +421,17 @@ test('the worker bridge validates a command and shuts down its SQLite writer',as
   const dir = mkdtempSync(join(tmpdir(),'football-worker-'));
   process.env.SUNDAY_ROOM_DATA_DIR = dir;
   try {
-    const reply = await workerCommand({kind:'stop'});
+    assert.equal((await workerCommand({kind:'sources'})).kind,'sources');
+    const client = globalThis.footballWorkerClient;
+    assert.ok(client);
+    const worker = Reflect.get(client,'worker') as Worker;
+    const exited = once(worker,'exit',{signal:AbortSignal.timeout(5000)});
+    const [reply] = await Promise.all([workerCommand({kind:'stop'}),exited]);
     assert.deepEqual(reply,{kind:'ok'});
-    for (let attempt=0;globalThis.footballWorkerClient && attempt<50;attempt++) await new Promise(resolve => setTimeout(resolve,10));
     assert.equal(globalThis.footballWorkerClient,undefined);
   } finally {
+    const client = globalThis.footballWorkerClient;
+    if (client) await (Reflect.get(client,'worker') as Worker).terminate();
     delete process.env.SUNDAY_ROOM_DATA_DIR;
     const target=resolve(dir);
     assert.equal(dirname(target),resolve(tmpdir()));
@@ -456,12 +464,18 @@ test('a replacement worker reclaims only the confirmed exited worker token',asyn
     assert.equal(ownerSeen,true);
     await worker.terminate();
     assert.equal((await board).kind,'error');
-    for (let attempt=0;globalThis.footballWorkerClient && attempt<20;attempt++) await new Promise(resolve => setTimeout(resolve,10));
     assert.equal(globalThis.footballWorkerClient,undefined);
-    assert.deepEqual(await workerCommand({kind:'stop'}),{kind:'ok'});
-    for (let attempt=0;globalThis.footballWorkerClient && attempt<50;attempt++) await new Promise(resolve => setTimeout(resolve,10));
+    assert.equal((await workerCommand({kind:'sources'})).kind,'sources');
+    const replacement = globalThis.footballWorkerClient;
+    assert.ok(replacement);
+    const replacementWorker = Reflect.get(replacement,'worker') as Worker;
+    const exited = once(replacementWorker,'exit',{signal:AbortSignal.timeout(5000)});
+    const [reply] = await Promise.all([workerCommand({kind:'stop'}),exited]);
+    assert.deepEqual(reply,{kind:'ok'});
     assert.equal(globalThis.footballWorkerClient,undefined);
   } finally {
+    const client = globalThis.footballWorkerClient;
+    if (client) await (Reflect.get(client,'worker') as Worker).terminate();
     delete process.env.SUNDAY_ROOM_DATA_DIR;
     const target=resolve(dir);
     assert.equal(dirname(target),resolve(tmpdir()));
