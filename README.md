@@ -149,7 +149,7 @@ flowchart TD
 - **Game links:** the [Sportsurge NFL directory](https://isportsurge.ws/nfl/livestreams3) and [CFB directory](https://isportsurge.ws/cfb/livestreams2). Team pairs are matched within each league without assuming the directory's home/away order. Listings absent from ESPN's scoreboard still appear in the game center.
 - **Refresh:** the visible room polls every 30 seconds. The server caches game data for 25 seconds and retains previous data with stale-data messages when an upstream fails.
 - **Player lookup:** known game IDs resolve through validated source pages. Supported player addresses are cached for 90 seconds, with up to six distinct listed servers.
-- **Browser stream:** the local server rewrites supported HLS playlists to opaque, short-lived media paths and streams media from exact allowed hosts. Stream availability depends on the provider publishing a compatible player and HLS source.
+- **Browser stream:** the local server rewrites supported HLS playlists to opaque, short-lived media paths and streams player-specific media from validated Cloudflare R2 addresses published by trusted playlists. It refreshes an expired source up to twice per minute per server before trying the next listed server. Stream availability depends on the provider publishing a compatible player and HLS source.
 - **Separation:** provider links never supply or overwrite scoreboard scores. No fabricated scores or prerecorded demo broadcasts are presented as live games.
 
 ### Desktop isolation
@@ -259,7 +259,9 @@ This opens a test window with a separate profile and closes it afterward. Electr
 
 Focused Play resumes only that game after Pause all. The room bar still controls every stream. Quality options come from the source's HLS renditions; native HLS quality stays browser-managed.
 
-Manual Windows verification has included two simultaneous live provider broadcasts, global pause/resume, layout switching, and dialogs above native player surfaces. Direct MP4 and HLS playback have also been checked. These checks establish behavior at the time of testing; they do not guarantee future upstream availability.
+The video fills its tile and crops edges when its aspect ratio differs. Focused controls appear on mouse movement and hide after three idle seconds; keyboard focus and touch keep them accessible. The quality menu shows four options before scrolling and keeps its heading fixed.
+
+Live provider verification decoded the Northwestern-Indiana game at 1280x720 in both browser and Electron, with advancing playback and quality options read from the actual manifest. Direct MP4 and HLS playback have also been checked. These checks establish behavior at the time of testing; they do not guarantee future upstream availability.
 
 ### Branch workflow
 
@@ -272,7 +274,7 @@ Use `developer` for ongoing work and `main` for the published baseline. Keep cha
 | **A game shows unavailable** | The provider may not have published a supported HLS stream. Try another listed server or connect a compatible direct feed. |
 | **A game keeps connecting** | The provider may be slow or unavailable. Allow startup retries, then try **Switch server**. |
 | **No source is listed** | A supported provider may not be published yet, or directory markup may have changed. Refresh the game center. |
-| **The picture is live but silent** | Focus the game, unmute the room, and raise volume. Hidden native player views are muted. |
+| **The picture is live but silent** | Focus the game, unmute the room, and raise volume. Only the focused stream is audible. |
 | **A direct feed fails** | Check that the URL points to video, is still valid, and permits browser requests. |
 | **Scores differ from the video clock** | Data and broadcasts have different delays. Use spoiler-free mode; direct feeds can be delayed within their buffer. |
 | **Electron cannot be found** | Run `npm ci`. If the binary download was skipped, run `node node_modules/electron/install.js`. |

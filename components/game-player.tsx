@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import Hls from 'hls.js';
+import { Popover } from 'radix-ui';
 import { AlertCircle, LoaderCircle, Maximize, Minimize, Pause, PictureInPicture2, Play, Radio, RotateCcw, Settings2, Volume2, VolumeX } from 'lucide-react';
 import type { Feed } from '@/lib/sunday';
 
@@ -34,6 +35,8 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
   const hlsRef = useRef<Hls | null>(null);
   const sourceGeneration = useRef(0);
   const needsGesture = useRef(false);
+  const pointerTimer = useRef<number | null>(null);
+  const pointerActiveRef = useRef(false);
   const liveRef = useRef(false);
   const previousDelay = useRef(delay);
   const playingRef = useRef(playing);
@@ -47,8 +50,10 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [pip, setPip] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
   const [canPip, setCanPip] = useState(false);
   const [notice, setNotice] = useState('');
+  const [pointerActive, setPointerActive] = useState(false);
   const callbacks = useRef({ onFatal, onPlayingChange, onAudibleChange, onVolumeChange });
   callbacks.current = { onFatal, onPlayingChange, onAudibleChange, onVolumeChange };
 
@@ -186,12 +191,34 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 4000); return () => window.clearTimeout(timer); }, [notice]);
 
   useEffect(() => {
-    const update = () => setFullscreen(document.fullscreenElement === shell.current);
+    const update = () => {
+      const element = document.fullscreenElement;
+      setFullscreen(element === shell.current);
+      setPortalContainer(element instanceof HTMLElement ? element : null);
+    };
     document.addEventListener('fullscreenchange', update);
+    update();
     return () => document.removeEventListener('fullscreenchange', update);
   }, []);
 
   useEffect(() => { setCanPip(document.pictureInPictureEnabled && typeof ref.current?.requestPictureInPicture === 'function'); }, []);
+
+  useEffect(() => () => { if (pointerTimer.current !== null) window.clearTimeout(pointerTimer.current); }, []);
+
+  const hideControls = () => {
+    if (pointerTimer.current !== null) window.clearTimeout(pointerTimer.current);
+    pointerTimer.current = null;
+    if (pointerActiveRef.current) { pointerActiveRef.current = false; setPointerActive(false); }
+  };
+  const showControls = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return;
+    if (!pointerActiveRef.current) { pointerActiveRef.current = true; setPointerActive(true); }
+    if (pointerTimer.current !== null) window.clearTimeout(pointerTimer.current);
+    pointerTimer.current = window.setTimeout(() => {
+      pointerTimer.current = null;
+      if (pointerActiveRef.current) { pointerActiveRef.current = false; setPointerActive(false); }
+    }, 3000);
+  };
 
   useEffect(() => {
     if (!focused) setSettings(false);
@@ -246,7 +273,7 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
   const safeLivePosition = timeline && syncPosition != null && Number.isFinite(syncPosition) ? syncPosition : timeline ? timeline.end - 3 : 0;
   const behindLive = timeline?.live && timeline.current < Math.max(timeline.start, safeLivePosition - 2);
 
-  return <div ref={shell} className={`native-player ${focused ? 'player-focused' : ''}`}>
+  return <div ref={shell} className={`native-player ${focused ? 'player-focused' : ''} ${settings ? 'player-settings-open' : ''} ${pointerActive ? 'player-pointer-active' : ''}`} onPointerEnter={showControls} onPointerMove={showControls} onPointerLeave={hideControls}>
     <video ref={ref} playsInline autoPlay={playing} muted={!audible} aria-label={feed.label}/>
     {notice && <div className="player-notice" role="status">{notice}</div>}
     {status === 'loading' && <div className="player-message"><LoaderCircle className="spin"/><span>Connecting to your feed…</span></div>}
@@ -258,7 +285,25 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
     {status === 'ready' && !focused && <span className="feed-label"><Radio size={12}/>{feed.label}</span>}
     {focused && status !== 'error' && <div className="player-controls" role="group" aria-label="Focused stream controls">
       {timeline && <div className="player-timeline"><input type="range" min="0" max="1000" step="1" value={Math.round((timeline.current - timeline.start) / (timeline.end - timeline.start) * 1000)} aria-label={`Seek ${feed.label}`} onChange={event => seek(Number(event.target.value))}/><span>{timeline.live ? behindLive ? `-${time(timeline.end - timeline.current)}` : 'LIVE' : time(timeline.current - timeline.start)}</span>{timeline.live ? <button className={behindLive ? 'go-live' : 'at-live'} onClick={live} disabled={!behindLive}>● LIVE</button> : <span>{time(timeline.end - timeline.start)}</span>}</div>}
-      <div className="player-control-row"><button aria-label={playing ? 'Pause stream' : 'Play stream'} title={playing ? 'Pause focused game (Space)' : 'Play focused game (Space)'} onClick={() => callbacks.current.onPlayingChange(!playing)}>{playing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><button aria-label={audible ? 'Mute stream' : 'Unmute stream'} title="Toggle focused audio (M)" onClick={() => callbacks.current.onAudibleChange(!audible)}>{audible ? <Volume2 size={17}/> : <VolumeX size={17}/>}</button><input className="player-volume" type="range" min="0" max="100" step="1" value={volume} aria-label="Stream volume" onChange={event => callbacks.current.onVolumeChange(Number(event.target.value))}/><span className="player-source">{feed.label}</span>{canPip && <button aria-label={pip ? 'Exit picture in picture' : 'Picture in picture'} title="Picture in picture" onClick={() => void togglePip()}><PictureInPicture2 size={17}/></button>}<div className="player-settings-wrap"><button aria-label="Video quality" title="Quality settings" aria-expanded={settings} onClick={() => setSettings(open => !open)}><Settings2 size={17}/></button>{settings && <div className="player-settings" role="group" aria-label="Playback quality"><strong>Quality</strong>{hlsRef.current ? <><button className={quality === -1 ? 'selected' : ''} onClick={() => chooseQuality(-1)}>Auto {quality === -1 ? '✓' : ''}</button>{qualities.map(level => <button key={level.index} className={quality === level.index ? 'selected' : ''} onClick={() => chooseQuality(level.index)}>{level.label} {quality === level.index ? '✓' : ''}</button>)}</> : <span>{nativeHls ? 'Managed by your browser' : 'This feed has one quality'}</span>}</div>}</div><button aria-label={fullscreen ? 'Exit fullscreen stream' : 'Fullscreen stream'} title="Fullscreen focused game" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize size={17}/> : <Maximize size={17}/>}</button></div>
+      <div className="player-control-row">
+        <button aria-label={playing ? 'Pause stream' : 'Play stream'} title={playing ? 'Pause focused game (Space)' : 'Play focused game (Space)'} onClick={() => callbacks.current.onPlayingChange(!playing)}>{playing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button>
+        <button aria-label={audible ? 'Mute stream' : 'Unmute stream'} title="Toggle focused audio (M)" onClick={() => callbacks.current.onAudibleChange(!audible)}>{audible ? <Volume2 size={17}/> : <VolumeX size={17}/>}</button>
+        <input className="player-volume" type="range" min="0" max="100" step="1" value={volume} aria-label="Stream volume" onChange={event => callbacks.current.onVolumeChange(Number(event.target.value))}/>
+        <span className="player-source">{feed.label}</span>
+        {canPip && <button aria-label={pip ? 'Exit picture in picture' : 'Picture in picture'} title="Picture in picture" onClick={() => void togglePip()}><PictureInPicture2 size={17}/></button>}
+        <Popover.Root open={settings} onOpenChange={setSettings}>
+          <Popover.Trigger asChild><button aria-label="Video quality" title="Quality settings"><Settings2 size={17}/></button></Popover.Trigger>
+          <Popover.Portal container={portalContainer ?? undefined}>
+            <Popover.Content className="player-settings" side="top" align="end" sideOffset={6} collisionPadding={8} aria-label="Playback quality">
+              <strong>Quality</strong>
+              <div className="player-settings-options" role="group" aria-label="Playback quality options">
+                {hlsRef.current ? <><button className={quality === -1 ? 'selected' : ''} onClick={() => chooseQuality(-1)}>Auto {quality === -1 ? '✓' : ''}</button>{qualities.map(level => <button key={level.index} className={quality === level.index ? 'selected' : ''} onClick={() => chooseQuality(level.index)}>{level.label} {quality === level.index ? '✓' : ''}</button>)}</> : <span>{nativeHls ? 'Managed by your browser' : 'This feed has one quality'}</span>}
+              </div>
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
+        <button aria-label={fullscreen ? 'Exit fullscreen stream' : 'Fullscreen stream'} title="Fullscreen focused game" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize size={17}/> : <Maximize size={17}/>}</button>
+      </div>
     </div>}
   </div>;
 }

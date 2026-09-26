@@ -60,7 +60,7 @@ async function screenshot(page, name, fullPage = false) {
   } else await page.screenshot({ path: target, fullPage });
 }
 
-async function openRoom({ live = false, provider = false } = {}) {
+async function openRoom({ live = false, provider = false, manyQualities = false } = {}) {
   const context = desktopApp ? desktopApp.context() : await browser.newContext({ viewport: { width: 1440, height: 1100 } });
   await context.unrouteAll({ behavior: 'wait' });
   await context.route('**/api/games', route => route.fulfill({ json: {
@@ -73,6 +73,9 @@ async function openRoom({ live = false, provider = false } = {}) {
   await context.route('**/api/playback?*', route => route.fulfill({ json: { players: [{ label: 'Primary' }, { label: 'Backup' }] } }));
   async function serveMedia(route, file) {
     let body = await readFile(path.join(media, file));
+    if (manyQualities && file === 'master.m3u8') {
+      body = Buffer.from(body.toString() + [500000, 650000, 800000].map(bandwidth => `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=640x360\nlevel_0.m3u8\n`).join(''));
+    }
     if (live && file.endsWith('.m3u8')) {
       body = Buffer.from(body.toString().replace('#EXT-X-PLAYLIST-TYPE:VOD\n', '').replace('#EXT-X-ENDLIST', ''));
     }
@@ -106,6 +109,12 @@ async function openRoom({ live = false, provider = false } = {}) {
   return { context, page, pageErrors };
 }
 
+async function revealControls(page) {
+  const video = page.locator('.player-focused video');
+  await video.hover({ position: { x: 12, y: 12 } });
+  await video.hover({ position: { x: 24, y: 24 } });
+}
+
 try {
   const { context, page, pageErrors } = await openRoom();
   assert.equal(await page.locator('video').count(), 4);
@@ -115,11 +124,24 @@ try {
   const controls = page.getByRole('group', { name: 'Focused stream controls', exact: true });
   assert.equal(await controls.count(), 1);
   assert.equal(await page.locator('.game-tile').first().getByRole('group', { name: 'Focused stream controls', exact: true }).count(), 1);
+  await page.mouse.move(0, 0);
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[aria-label="Focused stream controls"]')).opacity === '0');
+  await page.locator('video').first().hover();
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[aria-label="Focused stream controls"]')).opacity === '1');
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[aria-label="Focused stream controls"]')).opacity === '0', {}, { timeout: 5000 });
+  await revealControls(page);
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[aria-label="Focused stream controls"]')).opacity === '1');
+  await page.mouse.move(0, 0);
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[aria-label="Focused stream controls"]')).opacity === '0');
+  await page.locator('video').first().hover();
+  results.push('Focused controls appear on mouse movement, hide after three idle seconds, and hide when the pointer leaves.');
+  await revealControls(page);
   await controls.getByRole('button', { name: 'Pause stream', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('video').paused);
   assert.deepEqual(await page.locator('video').evaluateAll(videos => videos.map(v => v.paused)), [true, false, false, false]);
   await page.getByRole('button', { name: 'Pause all feeds', exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll('video')].every(v => v.paused));
+  await revealControls(page);
   await controls.getByRole('button', { name: 'Play stream', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('video').paused);
   assert.deepEqual(await page.locator('video').evaluateAll(videos => videos.map(v => v.paused)), [false, true, true, true]);
@@ -142,25 +164,32 @@ try {
   await page.waitForFunction(() => Math.abs(document.querySelectorAll('video')[1].volume - 0.01) < 0.001);
   results.push('Focus moves the controls without reloading media and keeps one audible stream; volume changes the media volume.');
 
+  await revealControls(page);
+
   await controls.getByRole('button', { name: 'Video quality', exact: true }).click();
   await page.getByRole('button', { name: /^180p/ }).click();
   await page.waitForFunction(() => document.querySelectorAll('video')[1].videoHeight === 180);
+  await revealControls(page);
   await controls.getByRole('button', { name: 'Video quality', exact: true }).click();
   await page.getByRole('button', { name: /^360p/ }).click();
   await page.waitForFunction(() => document.querySelectorAll('video')[1].videoHeight === 360);
+  await revealControls(page);
   await controls.getByRole('button', { name: 'Video quality', exact: true }).click();
   await page.getByRole('button', { name: /^Auto/ }).click();
   results.push('Manual 180p and 360p selections change decoded video resolution; Auto remains selectable.');
+
+  await revealControls(page);
 
   await controls.getByRole('button', { name: 'Fullscreen stream', exact: true }).click();
   await page.waitForFunction(() => document.fullscreenElement?.classList.contains('native-player'));
   await controls.getByRole('button', { name: /Exit fullscreen/ }).hover();
   await screenshot(page, 'fullscreen.png');
+  await revealControls(page);
   await controls.getByRole('button', { name: /Exit fullscreen/ }).click();
   await page.waitForFunction(() => !document.fullscreenElement);
   results.push('Stream fullscreen contains both the video and its custom controls.');
 
-  await controls.getByRole('button', { name: 'Fullscreen stream', exact: true }).click();
+  await controls.getByRole('button', { name: 'Fullscreen stream', exact: true }).press('Enter');
   await page.locator('video').nth(1).click();
   await page.keyboard.press('3');
   await page.waitForFunction(() => !document.fullscreenElement);
@@ -169,22 +198,26 @@ try {
 
   const pip = controls.getByRole('button', { name: 'Picture in picture', exact: true });
   if (await pip.count()) {
+    await revealControls(page);
     await pip.click();
     await page.waitForFunction(() => !!document.pictureInPictureElement);
     await page.evaluate(() => document.pictureInPictureElement.pause());
     await controls.getByRole('button', { name: 'Play stream', exact: true }).waitFor();
+    await revealControls(page);
     await controls.getByRole('button', { name: 'Play stream', exact: true }).click();
     await page.waitForFunction(() => !document.pictureInPictureElement.paused);
     await page.getByRole('button', { name: 'Pause all feeds', exact: true }).click();
     await page.evaluate(() => document.pictureInPictureElement.play());
     await controls.getByRole('button', { name: 'Pause stream', exact: true }).waitFor();
     assert.deepEqual(await page.locator('video').evaluateAll(videos => videos.map(v => v.paused)), [true, true, false, true]);
+    await revealControls(page);
     await controls.getByRole('button', { name: 'Exit picture in picture', exact: true }).click();
     await page.waitForFunction(() => !document.pictureInPictureElement);
     results.push('Picture-in-picture opens; media play/pause events keep focused and room controls synchronized.');
   }
 
   await page.getByRole('button', { name: 'Single game', exact: true }).click();
+  await revealControls(page);
   await controls.getByRole('button', { name: 'Pause stream', exact: true }).click();
   await page.getByRole('button', { name: 'Play all feeds', exact: true }).waitFor();
   assert.equal(await page.locator('video').count(), 1);
@@ -211,6 +244,7 @@ try {
   await goLive.waitFor();
   await liveControls.getByRole('slider', { name: /^Seek / }).press('Home');
   await liveRoom.page.waitForFunction(() => document.querySelector('video').currentTime < 10);
+  await revealControls(liveRoom.page);
   await goLive.click();
   await liveRoom.page.waitForFunction(() => {
     const v = document.querySelector('video');
@@ -227,20 +261,90 @@ try {
   await firstTile.getByRole('button', { name: 'Play game', exact: true }).click();
   await providerRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
   const providerControls = providerRoom.page.getByRole('group', { name: 'Focused stream controls', exact: true });
+  await revealControls(providerRoom.page);
   await providerControls.getByRole('button', { name: 'Video quality', exact: true }).click();
   await providerRoom.page.getByRole('button', { name: /^180p/ }).click();
   await providerRoom.page.waitForFunction(() => document.querySelector('video').videoHeight === 180);
+  await revealControls(providerRoom.page);
   await providerControls.getByRole('button', { name: 'Pause stream', exact: true }).click();
   await firstTile.getByRole('button', { name: 'Switch server', exact: true }).click();
   await providerRoom.page.getByText('Backup · 2 of 2', { exact: true }).waitFor();
   await providerRoom.page.waitForFunction(() => document.querySelector('video').readyState >= 2);
   assert.equal(await providerRoom.page.locator('video').evaluate(v => v.paused), true);
+  await revealControls(providerRoom.page);
   await providerControls.getByRole('button', { name: 'Video quality', exact: true }).click();
   assert.match(await providerRoom.page.getByRole('button', { name: /^Auto/ }).getAttribute('class'), /selected/);
   assert.equal(await firstTile.getByText('Connecting to your feed…', { exact: true }).count(), 0);
   assert.deepEqual(providerRoom.pageErrors, []);
   results.push('Listed provider playback uses the shared controls; server changes preserve pause and reset quality to Auto.');
   if (!desktopApp) await providerRoom.context.close();
+
+  const recoveryRoom = await openRoom({ provider: true });
+  const manifestRequests = new Set();
+  await recoveryRoom.context.route('**/api/stream/*/index.m3u8?*', async route => {
+    const url = new URL(route.request().url());
+    manifestRequests.add(url.href);
+    if (Number(url.searchParams.get('source')) < 2) await route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: 'Expired provider playlist' });
+    else await route.fallback();
+  });
+  await recoveryRoom.page.locator('.game-tile').first().getByRole('button', { name: 'Play game', exact: true }).click();
+  await recoveryRoom.page.waitForFunction(() => {
+    const video = document.querySelector('video');
+    return video?.readyState >= 2 && !video.paused && video.currentTime > 0;
+  });
+  assert.equal(manifestRequests.size, 3);
+  await recoveryRoom.page.getByText('Primary · 1 of 2', { exact: true }).waitFor();
+  assert.deepEqual(recoveryRoom.pageErrors, []);
+  results.push('Expired provider playlists refresh the master twice and recover on the same server.');
+  if (!desktopApp) await recoveryRoom.context.close();
+
+  const unavailableRoom = await openRoom({ provider: true });
+  const failedManifests = new Set();
+  await unavailableRoom.context.route('**/api/stream/*/index.m3u8?*', route => {
+    failedManifests.add(route.request().url());
+    return route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: 'Unavailable provider playlist' });
+  });
+  const finalFailure = unavailableRoom.page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname.endsWith('/index.m3u8') && url.searchParams.get('server') === '1' && url.searchParams.get('source') === '4';
+  });
+  await unavailableRoom.page.locator('.game-tile').first().getByRole('button', { name: 'Play game', exact: true }).click();
+  await finalFailure;
+  await unavailableRoom.page.getByText('Backup · 2 of 2', { exact: true }).waitFor();
+  await unavailableRoom.page.getByText("Feed couldn't play", { exact: true }).waitFor();
+  assert.equal(failedManifests.size, 6);
+  assert.deepEqual(unavailableRoom.pageErrors, []);
+  results.push('Unavailable providers exhaust two refreshes per server, try the backup, and expose a retry control.');
+  if (!desktopApp) await unavailableRoom.context.close();
+
+  const qualityRoom = await openRoom({ manyQualities: true });
+  await qualityRoom.page.locator('video').first().hover();
+  await qualityRoom.page.getByRole('button', { name: 'Video quality', exact: true }).click();
+  const qualityMenu = qualityRoom.page.getByRole('dialog', { name: 'Playback quality', exact: true });
+  const qualityOptions = qualityMenu.getByRole('button');
+  assert.equal(await qualityOptions.count(), 6);
+  const heading = qualityMenu.getByText('Quality', { exact: true });
+  const headingBefore = await heading.boundingBox();
+  for (let index = 0; index < 4; index += 1) {
+    assert.equal(await qualityOptions.nth(index).evaluate(button => {
+      const rect = button.getBoundingClientRect();
+      return rect.top >= 0 && rect.bottom <= innerHeight && [rect.top + 2, rect.bottom - 2].every(y => button.contains(document.elementFromPoint(rect.x + rect.width / 2, y)));
+    }), true, `Quality option ${index + 1} is fully visible before scrolling`);
+  }
+  await qualityOptions.nth(3).hover();
+  await qualityRoom.page.mouse.wheel(0, 300);
+  await qualityRoom.page.waitForFunction(() => {
+    const menu = document.querySelector('[aria-label="Playback quality"]');
+    const last = menu?.querySelector('button:last-child');
+    if (!last) return false;
+    const rect = last.getBoundingClientRect();
+    return last.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.bottom - 2));
+  });
+  assert.deepEqual(await heading.boundingBox(), headingBefore);
+  await screenshot(qualityRoom.page, 'quality-menu.png');
+  assert.deepEqual(qualityRoom.pageErrors, []);
+  results.push('Four quality options are fully visible; the Quality heading stays fixed while the options scroll.');
+  if (!desktopApp) await qualityRoom.context.close();
   await writeFile(path.join(artifacts, 'results.json'), JSON.stringify(results, null, 2));
   await rm(path.join(artifacts, 'failure.json'), { force: true });
   console.log(results.join('\n'));

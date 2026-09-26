@@ -8,8 +8,6 @@ const registry = globalThis.sundayRoomStreamRegistry ??= { byToken: new Map(), b
 const IDLE_MS = 5 * 60 * 1000;
 const MAX_RESOURCES = 4096;
 const VARIANT_HOSTS = new Set(['red.redirector1.space', 'pl.kamfir5.space', 'pl.goozekhar2.space', 'pl.playlist3.space', 'pl.playlist4.space', 'pl.playlist5.space', 'pl.playlist6.space']);
-const BACKENDS = new Set(['proton1', 'mountainstormbreeze25']);
-const MEDIA_HOSTS = new Set(['proton1.2f4049362e3069c1dbb69a47b280e76a.r2.cloudflarestorage.com', 'mountainstormbreeze25.be7468eda0ec8673601e4234464e169b.r2.cloudflarestorage.com']);
 export const providerHeaders = { 'User-Agent': 'Mozilla/5.0', Referer: 'https://gooz.aapmains.net/', Origin: 'https://gooz.aapmains.net' };
 export function validByteRange(value: string): boolean {
   const start = /^bytes=(\d+)-(\d*)$/.exec(value);
@@ -28,13 +26,14 @@ export function validResourceUrl(value: string, playerId: string, kind: Resource
       if (url.search) return false;
       if (url.hostname === 'chatgpt.hereisman.net') return url.pathname === `/playlist/${playerId}/load-playlist`;
       if (!VARIANT_HOSTS.has(url.hostname)) return false;
-      const match = /^\/playlist\/\d{1,20}\/([a-z0-9]+)\/caxi$/.exec(url.pathname);
-      return !!match && BACKENDS.has(match[1]) && url.pathname === `/playlist/${playerId}/${match[1]}/caxi`;
+      const match = /^\/playlist\/\d{1,20}\/([a-z0-9]{1,32})\/caxi$/.exec(url.pathname);
+      return !!match && url.pathname === `/playlist/${playerId}/${match[1]}/caxi`;
     }
-    if (!MEDIA_HOSTS.has(url.hostname)) return false;
-    const match = /^\/scripts\/([^/]+)\/([^/]+)$/.exec(url.pathname);
-    if (!match || !url.searchParams.has('X-Amz-Signature')) return false;
-    return Buffer.from(decodeURIComponent(match[1]), 'base64').toString('utf8') === playerId;
+    if (!/^[a-z0-9]{1,32}\.[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/.test(url.hostname)) return false;
+    const match = /^\/scripts\/([^/]+)\/([A-Za-z0-9._-]+)$/.exec(url.pathname);
+    if (!match || match[1] !== encodeURIComponent(Buffer.from(playerId, 'utf8').toString('base64'))) return false;
+    const signatures = url.searchParams.getAll('X-Amz-Signature');
+    return signatures.length === 1 && /^[a-f0-9]{64}$/i.test(signatures[0]);
   } catch { return false; }
 }
 
