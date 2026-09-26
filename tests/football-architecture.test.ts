@@ -15,7 +15,9 @@ test('browser and domain imports stay outside the football worker and adapters',
     ['app/page.tsx','import "@/lib/football/adapters/sources";'],
     ['components/probe.tsx','import "@/lib/playback-server";'],
     ['components/probe.tsx','import "@/lib/football/domain/matching";'],
+    ['components/probe.tsx','import "@/lib/football/domain/sportsurge-catalog";'],
     ['lib/football/domain/probe.ts','import "../adapters/store.ts";'],
+    ['lib/football/domain/probe.ts','import "../../../desktop/sportsurge-catalog.cjs";'],
   ]) assert.equal((await boundaryMessages(path,source)).length,1,`${path}: ${source}`);
 });
 
@@ -24,6 +26,7 @@ test('routes use the client or HTTP facade and the worker uses composition', asy
     'import "@/lib/football/runtime/coordinator";',
     'import "@/lib/football/runtime/worker";',
     'import "@/lib/football/adapters/store";',
+    'import "@/lib/football/domain/sportsurge-catalog";',
   ]) assert.equal((await boundaryMessages('app/api/probe/route.ts',source)).length,1,source);
 
   for (const [path,source] of [
@@ -41,6 +44,7 @@ test('routes use the client or HTTP facade and the worker uses composition', asy
 test('desktop and diagnostic scripts have explicit import boundaries', async () => {
   for (const [path,source] of [
     ['desktop/probe.cjs','require("../lib/football/runtime/coordinator.ts");'],
+    ['desktop/probe.cjs','require("../lib/football/domain/sportsurge-catalog.ts");'],
     ['scripts/probe.mjs','import "../lib/football/runtime/worker.ts";'],
   ]) assert.equal((await boundaryMessages(path,source)).length,1,`${path}: ${source}`);
 

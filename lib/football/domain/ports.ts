@@ -1,7 +1,7 @@
-import type { Candidate, Game, League, Match, Observation, SeasonMembership, SourceAttempt } from '../shared.ts';
+import type { Candidate, Game, League, Match, Observation, SeasonMembership, SourceAttempt, StoredSportsurgeCatalog } from '../shared.ts';
 
 export type ScheduleSource = { id: string; league: League; path: string; group: string | null };
-export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending'; name?: string; publicUrls?: readonly string[] };
+export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[] };
 export type SchedulePartition = { games: Game[]; at: number; week?: number };
 export type ScheduleResult = SchedulePartition & { league: League };
 export type ListingResult = { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' };
@@ -14,6 +14,8 @@ export interface FootballRepository {
   observations(): Observation[];
   sourceAttempts(): Record<string,SourceAttempt>;
   source(id: string, value: { at: number; outcome: string; count: number; error?: string }): void;
+  sportsurgeCatalog(): {current:StoredSportsurgeCatalog|null;lastComplete:StoredSportsurgeCatalog|null;previous:StoredSportsurgeCatalog|null};
+  saveSportsurgeCatalog(value:StoredSportsurgeCatalog,observations:{observation:Observation;result:Match}[]): void;
   membership(season: number): SeasonMembership | undefined;
   saveMembership(value: SeasonMembership): void;
   alias(oldId: string, gameId: string): void;
