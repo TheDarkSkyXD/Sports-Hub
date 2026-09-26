@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -65,16 +66,58 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   await context.unrouteAll({ behavior: 'wait' });
   let roomGames = games.map((g, index) => provider ? { ...g, status: waitingForLive && index === 0 ? 'pre' : g.status, sourceUrl: waitingForLive && index === 1 ? undefined : `https://isportsurge.ws/watch/nfl/test-game/${g.id}` } : g);
   const manifestRequests = new Set();
+  const indexRequests = new Set();
+  const sessions = new Map();
+  const sessionCounts = { opened: 0, closed: 0 };
   let finishFailures;
   const finalFailure = new Promise(resolve => { finishFailures = resolve; });
   await context.route('**/api/games', route => route.fulfill({ json: {
+    schemaVersion: 2, revision: 1, aliases: {},
     games: roomGames,
     updatedAt: new Date().toISOString(), leagues: {
       nfl: { week: 3, scoresAt: new Date().toISOString(), sourceAt: null, errors: [] },
       ncaaf: { scoresAt: null, sourceAt: null, errors: [] },
     },
   } }));
-  await context.route('**/api/playback?*', route => route.fulfill({ json: { players: [{ label: 'Primary' }, { label: 'Backup' }] } }));
+  await context.route('**/api/playback?*', route => {
+    const url = new URL(route.request().url());
+    if (route.request().method() === 'DELETE') {
+      const session = sessions.get(url.searchParams.get('session'));
+      if (session) {
+        sessions.delete(session.id);
+        sessions.delete(session.requestId);
+        sessionCounts.closed += 1;
+      }
+      return route.fulfill({ status: 204 });
+    }
+    return route.fulfill({ status: 405 });
+  });
+  await context.route('**/api/playback', route => {
+    const body = route.request().postDataJSON();
+    if (route.request().method() === 'POST') {
+      const { gameId, manual } = body;
+      const key = body.requestId;
+      if (!key) return route.fulfill({ status: 400, json: { error: 'Missing request id.' } });
+      let session = sessions.get(key);
+      if (!session) {
+        session = { id: randomUUID(), requestId: key, gameId, candidateId: manual ? 'manual' : `gooz-${gameId}-0`, generation: 0, state: 'active', graceEndsAt: null };
+        sessions.set(key, session);
+        sessions.set(session.id, session);
+        sessionCounts.opened += 1;
+      }
+      return route.fulfill({ json: { session, candidates: manual ? [] : [0, 1].map(index => ({ id: `gooz-${gameId}-${index}`, gameId, playerId: String(57000 + index), url: `https://gooz.aapmains.net/new-stream-embed/${57000 + index}`, label: index ? 'Backup' : 'Primary', sourceIds: ['fixture'], observedAt: Date.now() })) } });
+    }
+    const session = sessions.get(body.sessionId);
+    if (!session || body.generation !== session.generation) return route.fulfill({ status: 410, json: { error: 'Playback session ended.' } });
+    if (body.retry) { session.generation += 1; session.failures = 0; }
+    else if (body.failure) {
+      session.failures = (session.failures || 0) + 1;
+      if (session.failures > 1 && session.candidateId.endsWith('-1')) return route.fulfill({ status: 503, json: { error: 'Available streams are cooling down.' } });
+      if (session.failures > 1) { session.candidateId = `gooz-${session.gameId}-1`; session.failures = 0; }
+      session.generation += 1;
+    } else if (body.candidateId && body.candidateId !== session.candidateId) { session.candidateId = body.candidateId; session.generation += 1; session.failures = 0; }
+    return route.fulfill({ json: session });
+  });
   async function serveMedia(route, file) {
     let body = await readFile(path.join(media, file));
     if (manyQualities && file === 'master.m3u8') {
@@ -89,11 +132,12 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   await context.route('**/api/stream/**', route => {
     const url = new URL(route.request().url());
     const file = path.basename(url.pathname);
+    if (url.pathname === `/api/stream/${games[0].id}/index.m3u8`) indexRequests.add(url.href);
     if (providerFailure && url.pathname === `/api/stream/${games[0].id}/index.m3u8`) {
       manifestRequests.add(url.href);
-      if (providerFailure === 'unavailable' || Number(url.searchParams.get('source')) < 2) {
+      if (providerFailure === 'unavailable' || Number(url.searchParams.get('generation')) < 2) {
         const response = route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: 'Expired provider playlist' });
-        if (url.searchParams.get('server') === '1' && url.searchParams.get('source') === '4') response.then(finishFailures);
+        if (url.searchParams.get('candidate')?.endsWith('-1') && url.searchParams.get('generation') === '3') response.then(finishFailures);
         return response;
       }
     }
@@ -119,9 +163,10 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}`);
   await page.locator('.game-tile').first().waitFor();
   if (!provider) await page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(v => v.readyState >= 2));
-  return { context, page, pageErrors, manifestRequests, finalFailure,
+  return { context, page, pageErrors, manifestRequests, indexRequests, finalFailure, sessionCounts,
     publishLiveGames: () => { roomGames = games.map(g => ({ ...g, sourceUrl: `https://isportsurge.ws/watch/nfl/test-game/${g.id}` })); },
     finishGame: () => { roomGames = roomGames.map((g, index) => index === 0 ? { ...g, status: 'post', detail: 'Final' } : index === 1 ? { ...g, sourceUrl: undefined } : g); },
+    expireGame: () => { roomGames = roomGames.map((g, index) => index === 0 ? { ...g, status: 'post', lifecycle: 'final', detail: 'Final', sourceUrl: undefined, graceEndsAt: Date.now() + 1500 } : g); },
   };
 }
 
@@ -135,10 +180,31 @@ async function revealControls(page) {
 }
 
 try {
-  const { context, page, pageErrors } = await openRoom();
+  const { context, page, pageErrors, sessionCounts, expireGame } = await openRoom();
+  assert.equal(sessionCounts.opened, 4);
+  assert.equal(sessionCounts.closed, 0);
   assert.equal(await page.locator('video').count(), 4);
   assert.deepEqual(await page.locator('video').evaluateAll(videos => videos.map(v => v.paused)), [false, false, false, false]);
   results.push('Four real HLS streams decode and play.');
+  if (desktopApp) {
+    const before = await page.locator('video').first().evaluate(video => video.currentTime);
+    const wakes = await desktopApp.evaluate(async ({ BrowserWindow, powerMonitor }) => {
+      const original = globalThis.fetch;
+      let requests = 0;
+      globalThis.fetch = (...args) => { if (String(args[0]).endsWith('/api/games')) requests += 1; return original(...args); };
+      const window = BrowserWindow.getAllWindows()[0];
+      try {
+        window.minimize();
+        powerMonitor.emit('resume');
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        window.restore();
+        return requests;
+      } finally { globalThis.fetch = original; }
+    });
+    assert.ok(wakes >= 1);
+    await page.waitForFunction(previous => document.querySelector('video')?.currentTime > previous, before);
+    results.push('Minimized Electron wakes its board refresh and keeps custom video advancing.');
+  }
 
   const controls = page.getByRole('group', { name: 'Focused stream controls', exact: true });
   assert.equal(await controls.count(), 1);
@@ -252,6 +318,22 @@ try {
   assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 391);
   results.push('Focused controls fit a 390px viewport without horizontal page overflow.');
   assert.deepEqual(pageErrors, []);
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  const closedBeforeExpiration = sessionCounts.closed;
+  expireGame();
+  await page.getByRole('button', { name: 'Refresh game data', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('video').length === 3);
+  await page.waitForFunction(() => document.querySelectorAll('.game-tile')[0]?.textContent?.includes('Game stream ended'));
+  await new Promise((resolve, reject) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (sessionCounts.closed > closedBeforeExpiration) { clearInterval(timer); resolve(); }
+      else if (Date.now() - started > 3000) { clearInterval(timer); reject(new Error('Manual session did not close at deadline')); }
+    }, 20);
+  });
+  assert.equal(sessionCounts.closed, closedBeforeExpiration + 1);
+  assert.ok((await page.evaluate(() => JSON.parse(localStorage.getItem('sunday-room:v1')).feeds))[games[0].id]);
+  results.push('A manual feed stops at the final-game deadline, closes its session, and stays saved in preferences.');
   if (!desktopApp) await context.close();
 
   const liveRoom = await openRoom({ live: true });
@@ -286,7 +368,7 @@ try {
   await providerControls.getByRole('button', { name: 'Pause stream', exact: true }).click();
   const backupLoaded = providerRoom.page.waitForResponse(response => {
     const url = new URL(response.url());
-    return url.pathname === `/api/stream/${games[0].id}/index.m3u8` && url.searchParams.get('server') === '1' && response.ok();
+    return url.pathname === `/api/stream/${games[0].id}/index.m3u8` && url.searchParams.get('candidate')?.endsWith('-1') && response.ok();
   });
   await firstTile.getByRole('button', { name: 'Switch server', exact: true }).click();
   await backupLoaded;
@@ -300,23 +382,51 @@ try {
   results.push('Listed provider playback uses the shared controls; server changes preserve pause and reset quality to Auto.');
   if (!desktopApp) await providerRoom.context.close();
 
+  const stallRoom = await openRoom({ provider: true });
+  await stallRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && !document.querySelector('video').paused);
+  const stallControls = stallRoom.page.getByRole('group', { name: 'Focused stream controls', exact: true });
+  await revealControls(stallRoom.page);
+  await stallControls.getByRole('button', { name: 'Pause stream', exact: true }).click();
+  await stallRoom.page.waitForTimeout(17000);
+  assert.equal(stallRoom.indexRequests.size, 1);
+  await revealControls(stallRoom.page);
+  await stallControls.getByRole('button', { name: 'Play stream', exact: true }).click();
+  await stallRoom.page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+    const video = document.querySelector('video');
+    const actual = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
+    const frozen = video.currentTime;
+    Object.defineProperty(video, 'currentTime', { configurable: true, get: () => frozen, set: value => actual.set.call(video, value) });
+  });
+  await stallRoom.page.waitForTimeout(17000);
+  assert.equal(stallRoom.indexRequests.size, 1);
+  const recoveredFromStall = stallRoom.page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === `/api/stream/${games[0].id}/index.m3u8` && url.searchParams.get('generation') === '1';
+  }, { timeout: 25000 });
+  await stallRoom.page.evaluate(() => Object.defineProperty(navigator, 'onLine', { configurable: true, value: true }));
+  await recoveredFromStall;
+  assert.deepEqual(stallRoom.pageErrors, []);
+  results.push('A paused or offline stream does not fail over; a live video that stops advancing refreshes once.');
+  if (!desktopApp) await stallRoom.context.close();
+
   const recoveryRoom = await openRoom({ provider: true, providerFailure: 'recover' });
   await recoveryRoom.page.waitForFunction(() => {
     const video = document.querySelector('video');
     return video?.readyState >= 2 && !video.paused && video.currentTime > 0;
   });
   assert.equal(recoveryRoom.manifestRequests.size, 3);
-  assert.deepEqual([...recoveryRoom.manifestRequests].map(url => new URL(url).searchParams.get('server')), ['0', '0', '0']);
+  assert.deepEqual([...recoveryRoom.manifestRequests].map(url => new URL(url).searchParams.get('generation')), ['0', '1', '2']);
   assert.deepEqual(recoveryRoom.pageErrors, []);
-  results.push('Expired provider playlists refresh the master twice and recover on the same server.');
+  results.push('Expired provider playlists refresh once and recover on a backup server.');
   if (!desktopApp) await recoveryRoom.context.close();
 
   const unavailableRoom = await openRoom({ provider: true, providerFailure: 'unavailable' });
   await unavailableRoom.finalFailure;
   await unavailableRoom.page.getByText("Feed couldn't play", { exact: true }).waitFor();
-  assert.equal(unavailableRoom.manifestRequests.size, 6);
+  assert.equal(unavailableRoom.manifestRequests.size, 4);
   assert.deepEqual(unavailableRoom.pageErrors, []);
-  results.push('Unavailable providers exhaust two refreshes per server, try the backup, and expose a retry control.');
+  results.push('Unavailable providers refresh, try the backup, and expose a retry control after exhaustion.');
   if (!desktopApp) await unavailableRoom.context.close();
 
   const scheduledRoom = await openRoom({ provider: true, waitingForLive: true });
@@ -393,4 +503,13 @@ try {
 } finally {
   await browser?.close();
   await desktopApp?.close();
+  if (desktopApp) {
+    let stopped = false;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try { await fetch(origin, { signal: AbortSignal.timeout(1000) }); }
+      catch { stopped = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    assert.equal(stopped, true, 'Electron shutdown must stop its local Next server');
+  }
 }
