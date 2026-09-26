@@ -77,7 +77,7 @@ test('known empty schedules differ from unsupported pages and parser changes', (
 });
 
 test('matching rejects ambiguous aliases, stale rows, uncertain times, and final games', () => {
-  const pit = game('ncaaf-1',team('pitt','Pittsburgh Panthers','Pitt'),team('buck','Bucknell Bison','Bucknell'));
+  const pit = game('ncaaf-1',team('espn:ncaaf:221','Pittsburgh Panthers','Pitt'),team('espn:ncaaf:2083','Bucknell Bison','Bucknell'));
   assert.deepEqual(matchObservation(observation(['Bucknell','Pitt']),[pit],now),{kind:'matched',gameId:pit.id});
   assert.equal(matchObservation(observation(['Bucknell','Pitt'],null),[pit],now).kind,'unmatched');
   assert.equal(matchObservation({...observation(['Bucknell','Pitt']),observedAt:now-31*60_000},[pit],now).kind,'unmatched');

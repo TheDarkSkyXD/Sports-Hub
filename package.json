@@ -14,7 +14,10 @@
     "desktop": "electron desktop/main.cjs",
     "test:player": "node tests/player.browser.mjs",
     "test:player:desktop": "node tests/player.browser.mjs --desktop",
-    "diagnostics:football": "node --experimental-strip-types scripts/football-diagnostics.mjs"
+    "diagnostics:football": "node --experimental-strip-types scripts/football-diagnostics.mjs",
+    "catalog:college": "node scripts/generate-college-team-catalog.mjs",
+    "catalog:college:check": "node scripts/generate-college-team-catalog.mjs --check",
+    "catalog:college:replay": "node --experimental-strip-types scripts/replay-college-team-catalog.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
