@@ -119,6 +119,17 @@ test('catalog matches are retained without consuming detail slots or minting pla
     const catalogRows = rows.filter(row => JSON.parse(row.payload).sourceId==='tvapp');
     assert.equal(catalogRows.length,3);
     assert.ok(catalogRows.every(row => JSON.parse(row.result).kind==='matched'));
+    const fetched=visited.length;
+    const inventory=await coordinator.command({kind:'sources'});
+    assert.equal(inventory.kind,'sources');
+    if (inventory.kind==='sources') {
+      assert.equal(inventory.snapshot.sources.find(source=>source.id==='tvapp')?.listingCount,3);
+      assert.equal(inventory.snapshot.games.find(game=>game.gameId==='ncaaf-1')?.sourceCount,2);
+      assert.equal(inventory.snapshot.games.find(game=>game.gameId==='ncaaf-1')?.uniqueFeedCount,1);
+      assert.equal(inventory.snapshot.games.find(game=>game.gameId==='ncaaf-2')?.uniqueFeedCount,0);
+      assert.equal(JSON.stringify(inventory.snapshot).includes('ppv-ole-miss-rebels-at-florida-gators'),false);
+    }
+    assert.equal(visited.length,fetched);
     const board = await coordinator.command({kind:'board'});
     assert.equal(board.kind,'board');
     if (board.kind==='board') {
