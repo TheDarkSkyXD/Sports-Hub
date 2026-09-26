@@ -23,6 +23,13 @@ main{padding:32px 36px 0;max-width:1920px;margin:auto}.page-heading{display:flex
 .mini-game{min-width:180px;white-space:nowrap}.mini-game>.league-tag,.mini-game>.game-status{vertical-align:middle}.mini-game>.game-status{max-width:calc(100% - 45px);overflow:hidden;text-overflow:ellipsis}
 .connect-button:disabled,.connect-button:disabled:hover{cursor:default;color:#9da3af;background:#ffffff08;border-color:#ffffff1a}
 .feed-audio-prompt{position:absolute;left:8px;bottom:8px;z-index:1;padding:7px 11px;border:1px solid #ff967f;border-radius:5px;background:#141519e8;color:#fff;font-size:12px;font-weight:600}
+
+.center-game{position:relative;isolation:isolate;overflow:hidden}
+.center-game>:not(.center-game-watermarks){position:relative;z-index:1}
+.center-game-watermarks{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+.center-game-watermarks span{position:absolute;top:44px;max-width:50%;overflow:hidden;font-size:64px;line-height:1;font-weight:900;font-style:italic;letter-spacing:-6px;white-space:nowrap;opacity:.045}
+.center-game-watermarks span:first-child{left:-22px}
+.center-game-watermarks span:last-child{right:-18px}
 .native-player:fullscreen{position:relative;width:100vw;height:100vh;background:#050608}
 .native-player:fullscreen video{width:100%;height:100%}
 .player-buffering{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;background:#08090bcc;color:#f3f4f6;font-size:12px;pointer-events:none}
