@@ -18,7 +18,7 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
   <a href="#troubleshooting">Troubleshooting</a>
 </p>
 
-> **Browser and desktop use the same HLS player.** Focus a game to reveal its custom playback controls. The room bar controls all streams.
+> **Browser and desktop use the same HLS player.** Focus a game to reveal its custom playback controls.
 
 ## The viewing experience
 
@@ -27,7 +27,7 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 | **Flexible multiview** | Choose four games, two games, a single game, or a larger focus view. Expand into theater mode or fullscreen. |
 | **Automatic live playback** | Live games with listed sources start when added or restored in browser and desktop rooms. |
 | **Backup servers** | Retry temporary lookup failures and try other listed servers when initial playback fails. Switch servers manually from the tile. |
-| **One game on audio** | Focus a game to hear it. Room volume, mute, and play/pause controls keep the session manageable. |
+| **One game on audio** | Focus a game to hear it, then use its custom volume, mute, and play/pause controls. |
 | **Focused stream controls** | The focused stream has play/pause, volume, mute, fullscreen, quality selection, a seekable timeline, and picture-in-picture where supported. Other streams keep playing without control overlays. |
 | **Live game center** | Follow scores, clocks, possession, down and distance, and available latest-play updates. |
 | **Smart focus** | Follow red-zone action among selected games, with at least 20 seconds between automatic switches. |
@@ -71,7 +71,7 @@ The launcher starts Electron and its own local Next.js server on `127.0.0.1`. It
 1. Choose **All**, **NFL**, or **NCAA**. Find a matchup in the **Game center** or scoreboard strip and add it to your room. Live games with listed sources start automatically, including saved selections when you reopen the room.
 2. To restart a listed provider after stopping it, press **Play game** on its tile.
 3. Add more games, up to four, and choose a layout from the room toolbar.
-4. Use **Focus** to select a game's audio. Adjust volume or pause all feeds from the bottom bar.
+4. Use **Focus** to select a game, then adjust volume or pause it with the controls over its video.
 5. Enable **Smart focus** to follow selected games entering the red zone, or use fullscreen for a dedicated viewing screen.
 
 If a provider cannot start, allow its startup retries to finish or choose **Switch server**. A game without a listed stream stays in the room with a clear availability message. You can still add a direct feed through the tile's feed settings.
@@ -257,7 +257,7 @@ npm run test:player:desktop
 
 This opens a test window with a separate profile and closes it afterward. Electron screenshots and results are saved in `work/player-verification-electron/`. The tests also check live seeking, PiP state changes, and provider switches with generated media; they do not depend on live broadcasts.
 
-Focused Play resumes only that game after Pause all. The room bar still controls every stream. Quality options come from the source's HLS renditions; native HLS quality stays browser-managed.
+Play and pause affect only the focused game. Quality options come from the source's HLS renditions; native HLS quality stays browser-managed.
 
 The video fills its tile and crops edges when its aspect ratio differs. Focused controls appear on mouse movement and hide after three idle seconds; keyboard focus and touch keep them accessible. The quality menu shows four options before scrolling and keeps its heading fixed.
 

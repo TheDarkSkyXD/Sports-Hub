@@ -155,16 +155,11 @@ try {
   await controls.getByRole('button', { name: 'Pause stream', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('video').paused);
   assert.deepEqual(await page.locator('video').evaluateAll(videos => videos.map(v => v.paused)), [true, false, false, false]);
-  await page.getByRole('button', { name: 'Pause all feeds', exact: true }).click();
-  await page.waitForFunction(() => [...document.querySelectorAll('video')].every(v => v.paused));
   await revealControls(page);
   await controls.getByRole('button', { name: 'Play stream', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('video').paused);
-  assert.deepEqual(await page.locator('video').evaluateAll(videos => videos.map(v => v.paused)), [false, true, true, true]);
-  await page.getByRole('button', { name: 'Pause all feeds', exact: true }).click();
-  await page.getByRole('button', { name: 'Play all feeds', exact: true }).click();
-  await page.waitForFunction(() => [...document.querySelectorAll('video')].every(v => !v.paused));
-  results.push('Focused pause affects one stream; focused Play after Pause all resumes one; Play all resumes all four.');
+  assert.deepEqual(await page.locator('video').evaluateAll(videos => videos.map(v => v.paused)), [false, false, false, false]);
+  results.push('Custom player pause and play affect only the focused stream.');
 
   const firstVideo = await page.locator('video').first().elementHandle();
   const beforeFocus = await firstVideo.evaluate(v => v.currentTime);
@@ -222,25 +217,27 @@ try {
     await revealControls(page);
     await controls.getByRole('button', { name: 'Play stream', exact: true }).click();
     await page.waitForFunction(() => !document.pictureInPictureElement.paused);
-    await page.getByRole('button', { name: 'Pause all feeds', exact: true }).click();
+    await revealControls(page);
+    await controls.getByRole('button', { name: 'Pause stream', exact: true }).click();
     await page.evaluate(() => document.pictureInPictureElement.play());
     await controls.getByRole('button', { name: 'Pause stream', exact: true }).waitFor();
-    assert.deepEqual(await page.locator('video').evaluateAll(videos => videos.map(v => v.paused)), [true, true, false, true]);
+    assert.deepEqual(await page.locator('video').evaluateAll(videos => videos.map(v => v.paused)), [false, false, false, false]);
     await revealControls(page);
     await controls.getByRole('button', { name: 'Exit picture in picture', exact: true }).click();
     await page.waitForFunction(() => !document.pictureInPictureElement);
-    results.push('Picture-in-picture opens; media play/pause events keep focused and room controls synchronized.');
+    results.push('Picture-in-picture opens; media play/pause events keep the custom controls synchronized.');
   }
 
   await page.getByRole('button', { name: 'Single game', exact: true }).click();
   await revealControls(page);
   await controls.getByRole('button', { name: 'Pause stream', exact: true }).click();
-  await page.getByRole('button', { name: 'Play all feeds', exact: true }).waitFor();
+  await controls.getByRole('button', { name: 'Play stream', exact: true }).waitFor();
   assert.equal(await page.locator('video').count(), 1);
-  await page.getByRole('button', { name: 'Play all feeds', exact: true }).click();
+  await revealControls(page);
+  await controls.getByRole('button', { name: 'Play stream', exact: true }).click();
   await page.getByRole('button', { name: 'Four games', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(v => v.readyState >= 2 && !v.paused));
-  results.push('Single-game layout derives room playback from visible streams and restores the four-stream layout.');
+  results.push('Custom playback controls work in single-game layout and restore the four-stream layout.');
 
   await page.locator('.audio-focus').first().click();
   await page.evaluate(() => scrollTo(0, 0));
@@ -320,11 +317,15 @@ try {
   await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 2 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2));
   assert.equal(await scheduledRoom.page.locator('.game-tile').nth(0).getByRole('button', { name: 'Play game', exact: true }).count(), 1);
   assert.equal(await scheduledRoom.page.locator('.game-tile').nth(1).getByRole('button', { name: 'Stream not listed yet', exact: true }).count(), 1);
-  await scheduledRoom.page.getByRole('button', { name: 'Pause all feeds', exact: true }).click();
+  await scheduledRoom.page.locator('.audio-focus').nth(2).click();
+  await revealControls(scheduledRoom.page);
+  await scheduledRoom.page.getByRole('button', { name: 'Pause stream', exact: true }).click();
   scheduledRoom.publishLiveGames();
   await scheduledRoom.page.getByRole('button', { name: 'Refresh game data', exact: true }).click();
-  await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2 && video.paused));
-  await scheduledRoom.page.getByRole('button', { name: 'Play all feeds', exact: true }).click();
+  await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2));
+  assert.deepEqual(await scheduledRoom.page.locator('video').evaluateAll(videos => videos.map(video => video.paused)), [false, false, true, false]);
+  await revealControls(scheduledRoom.page);
+  await scheduledRoom.page.getByRole('button', { name: 'Play stream', exact: true }).click();
   await scheduledRoom.page.waitForFunction(() => [...document.querySelectorAll('video')].every(video => !video.paused));
   const stoppedTile = scheduledRoom.page.locator('.game-tile').first();
   await stoppedTile.getByRole('button', { name: 'Stop this game', exact: true }).click();
@@ -335,7 +336,7 @@ try {
   await scheduledRoom.page.getByTitle('Add Away 1 at Home 1', { exact: true }).click();
   await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2 && !video.paused));
   assert.deepEqual(scheduledRoom.pageErrors, []);
-  results.push('Live status and newly listed sources auto-connect; Pause all and Stop survive refresh, and re-added live games auto-start.');
+  results.push('Live status and newly listed sources auto-connect; focused pause and Stop survive refresh, and re-added live games auto-start.');
   const continuedVideos = await scheduledRoom.page.locator('video').elementHandles();
   scheduledRoom.finishGame();
   await scheduledRoom.page.getByRole('button', { name: 'Refresh game data', exact: true }).click();

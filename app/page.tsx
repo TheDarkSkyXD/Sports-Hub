@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Check, ChevronRight, CircleHelp, Columns2, Flame, Grid2X2, Headphones, LayoutPanelLeft, Maximize, Minimize, Monitor, Pause, Play, Plus, Radio, RefreshCw, Search, Settings2, ShieldCheck, SlidersHorizontal, Star, Tv, Volume2, VolumeX, X, Zap } from 'lucide-react';
+import { ArrowUpRight, Check, ChevronRight, CircleHelp, Columns2, Flame, Grid2X2, Headphones, LayoutPanelLeft, Maximize, Minimize, Monitor, Play, Plus, Radio, RefreshCw, Search, Settings2, ShieldCheck, SlidersHorizontal, Star, Tv, Volume2, X, Zap } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
@@ -41,8 +41,6 @@ export default function Home() {
  const live=discovery.filter(g=>g.status==='in'),hot=live.filter(g=>g.redzone);
  const filtered=discovery.filter(g=>(filter==='all'||filter==='live'&&g.status==='in'||filter==='redzone'&&g.redzone||filter==='favorites'&&favorites.includes(g.id))&&`${g.name} ${g.home.abbreviation} ${g.away.abbreviation}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>priority(b)-priority(a));
  const stale=!!fetchError||!!errors.length;
- const playing=visible.some(g=>(feeds[g.id]||providerGames.includes(g.id))&&effectivePlaying(playback,g.id));
- const activeAudio=visible.find(g=>g.id===audio && (feeds[g.id]||providerGames.includes(g.id)));
  useEffect(()=>{setDesktop(!!window.sundayDesktop);},[]);
  const toast=useCallback((message:string)=>setNotice(message),[]);
  useEffect(()=>{ if(notice){const timer=setTimeout(()=>setNotice(''),4500);return ()=>clearTimeout(timer);} },[notice]);
@@ -89,7 +87,7 @@ export default function Home() {
      {!visible.length&&<div className="room-empty"><Grid2X2 size={40}/><h2>{loading?'Setting up game day…':'Your room starts here'}</h2><p>{games.length?'Add a matchup from the game center to start your multiview.':'We’ll show the football schedule as soon as the feeds are available.'}</p><button className="button" onClick={()=>games.length?setSelected([...games].sort((a,b)=>priority(b)-priority(a)).slice(0,4).map(g=>g.id)):void refresh()}>{games.length?'Add top games':'Try again'}</button></div>}
      {visible.length>0&&visible.length<(layout==='single'?1:layout==='duo'?2:4)&&<button className="add-tile" onClick={()=>{setTheater(false);document.getElementById('game-search')?.focus();}}><span><Plus size={24}/></span><strong>More football, same screen.</strong><small>Choose another game from the game center</small></button>}
     </div>
-    <div className="playback-bar"><div className="playback-left"><button className="icon-button" aria-label={playing?'Pause all feeds':'Play all feeds'} onClick={()=>setPlayback({defaultPlaying:!playing,overrides:{}})}>{playing?<Pause size={17}/>:<Play size={17}/>}</button><button className="icon-button" aria-label={muted?'Unmute audio':'Mute audio'} onClick={()=>setMuted(m=>!m)}>{muted?<VolumeX size={17}/>:<Volume2 size={17}/>}</button><Slider className="volume-slider" aria-label="Room volume" value={[muted?0:volume]} onValueChange={v=>{setVolume(v[0]);setMuted(false);}} max={100} step={1}/><span className="audio-label">{activeAudio&&!muted?`${activeAudio.away.abbreviation} / ${activeAudio.home.abbreviation}`:'No active audio'}</span></div><div className="smart-focus"><Zap size={14} className={auto?'coral':''}/><label htmlFor="smart-focus">Smart focus</label><Switch id="smart-focus" checked={auto} disabled={spoilers} onCheckedChange={v=>{setAuto(v);if(v)setLayout('focus');}}/></div></div>
+    <div className="playback-bar"><div className="smart-focus"><Zap size={14} className={auto?'coral':''}/><label htmlFor="smart-focus">Smart focus</label><Switch id="smart-focus" checked={auto} disabled={spoilers} onCheckedChange={v=>{setAuto(v);if(v)setLayout('focus');}}/></div></div>
    </div>
    <div className="room-footnote"><span><ShieldCheck size={13}/>Your layout and feeds stay on this device</span><button onClick={()=>setModal('help')}>Keyboard shortcuts<kbd>?</kbd></button></div>
    <section className="around-league"><div className="section-heading"><h2><Radio size={17}/>Around football</h2><span>{spoilers?'Scores hidden':hot.length?`${hot.length} in the red zone`:'Live game pulse'}</span></div><div className="pulse-list">{!spoilers&&live.some(g=>g.lastPlay)?live.filter(g=>g.lastPlay).slice(0,3).map(g=><button key={g.id} onClick={()=>addGame(g.id)}><span className={`pulse-icon ${g.redzone?'hot':''}`}>{g.redzone?<Flame size={17}/>:<Radio size={17}/>}</span><div><strong>{g.away.abbreviation} <span>at</span> {g.home.abbreviation}</strong><p>{g.lastPlay}</p></div><ChevronRight size={15}/></button>):<div className="pulse-empty"><span className="pulse-icon"><Radio size={20}/></span><div><strong>{spoilers?'Enjoy the games at your own pace.':'Stay close to the next big play.'}</strong><p>{spoilers?'Play updates are hidden while spoiler-free mode is on.':'Latest plays appear here when the live score feed reports them.'}</p></div></div>}</div></section>
