@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { SOURCES, SourceFetchError, compatiblePlayers, enrichObservation, parseKickoff, parseListings, readHtml } from '../lib/football/adapters/sources.ts';
 import { SCHEDULES, readSchedule, readSeasonMembership } from '../lib/football/adapters/schedule.ts';
 import { matchObservation, mergeSchedulePartitions } from '../lib/football/domain/matching.ts';
+import { parseScoreboard } from '../lib/sunday.ts';
 import { GameSchema, ScheduleGameSchema, SessionSchema } from '../lib/football/shared.ts';
 import type { Game, Observation } from '../lib/football/shared.ts';
 
@@ -84,6 +85,36 @@ test('matching rejects ambiguous aliases, stale rows, uncertain times, and final
   const ohio = game('ncaaf-2',team('miami-oh','Miami RedHawks','Miami'),team('uconn','UConn Huskies','UConn'));
   const florida = game('ncaaf-3',team('miami-fl','Miami Hurricanes','Miami'),team('central','Central Michigan Chippewas','Central Michigan'));
   assert.deepEqual(matchObservation(observation(['UConn','Miami']),[ohio,florida],now),{kind:'unmatched',reason:'unknown-teams',possibleGameIds:[]});
+});
+
+test('North Dakota historical name resolves only its ESPN team and verified kickoff', () => {
+  const event = (id: string, teamId: string, name: string, short: string) => ({
+    id,date:'2026-09-26T17:00:00Z',status:{type:{state:'pre',name:'STATUS_SCHEDULED'}},competitions:[{competitors:[
+      {homeAway:'home',team:{id:teamId,displayName:name,shortDisplayName:short,abbreviation:teamId === '155' ? 'UND' : 'NDSU'}},
+      {homeAway:'away',team:{id:'282',displayName:'Indiana State Sycamores',shortDisplayName:'Indiana State',abbreviation:'INST'}},
+    ]}],
+  });
+  const [northDakota, northDakotaState] = parseScoreboard({events:[
+    event('401867858','155','North Dakota Fighting Hawks','North Dakota'),
+    event('401867859','2449','North Dakota State Bison','North Dakota State'),
+  ]},'ncaaf');
+  assert.equal(northDakota.home.id,'espn:ncaaf:155');
+  assert.equal(northDakota.home.name,'North Dakota Fighting Hawks');
+  assert.equal(northDakota.home.short,'North Dakota');
+  assert.equal(northDakota.home.abbreviation,'UND');
+  assert.deepEqual(matchObservation(observation(['Indiana State Sycamores','North Dakota Fighting Sioux'],null),[northDakota,northDakotaState],now),
+    {kind:'unmatched',reason:'unverified-kickoff',possibleGameIds:['ncaaf-401867858']});
+  assert.deepEqual(matchObservation(observation(['North Dakota Fighting Sioux','Indiana State Sycamores'],Date.parse('2026-09-26T17:00:00Z')),[northDakota,northDakotaState],now),
+    {kind:'matched',gameId:'ncaaf-401867858'});
+  assert.deepEqual(matchObservation(observation(['Indiana State Sycamores','North Dakota Fighting Sioux'],Date.parse('2026-09-27T17:00:00Z')),[northDakota,northDakotaState],now),
+    {kind:'unmatched',reason:'conflicting-date',possibleGameIds:['ncaaf-401867858']});
+  assert.deepEqual(matchObservation(observation(['Indiana State Sycamores','North Dakota Fighting Sioux'],Date.parse('2026-09-26T17:00:00Z')),[northDakotaState],now),
+    {kind:'unmatched',reason:'unknown-teams',possibleGameIds:[]});
+  const [otherId] = parseScoreboard({events:[event('401867860','9999','North Dakota Fighting Hawks','North Dakota')]},'ncaaf');
+  assert.deepEqual(matchObservation(observation(['Indiana State Sycamores','North Dakota Fighting Sioux'],Date.parse('2026-09-26T17:00:00Z')),[otherId],now),
+    {kind:'unmatched',reason:'unknown-teams',possibleGameIds:[]});
+  const [nfl] = parseScoreboard({events:[event('401867861','155','North Dakota Fighting Hawks','North Dakota')]},'nfl');
+  assert.equal(nfl.home.aliases?.includes('North Dakota Fighting Sioux'),false);
 });
 
 test('FBS and FCS crossover is one game with both partitions, conflicting IDs are quarantined', () => {

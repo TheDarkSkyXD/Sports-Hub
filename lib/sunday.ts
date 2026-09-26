@@ -7,6 +7,9 @@ export const LEAGUES = {
   nfl: { label: 'NFL' },
   ncaaf: { label: 'NCAA' },
 } satisfies Record<League, { label: string }>;
+const ESPN_HISTORICAL_ALIASES = new Map<string, readonly string[]>([
+  ['espn:ncaaf:155', ['North Dakota Fighting Sioux']],
+]);
 export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|ncaaf-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
 export function parsePlayers(html: string): SourcePlayer[] {
   const initial = html.match(/<iframe\b[^>]*src="(https:\/\/gooz\.aapmains\.net\/new-stream-embed\/(\d+))"/i);
@@ -37,9 +40,11 @@ export function parseScoreboard(data: unknown, league: League = 'nfl'): Schedule
     if (!id || !/^\d{1,20}$/.test(id) || !text(homeTeam?.displayName) || !text(awayTeam?.displayName) || !home || !away || !homeTeam || !awayTeam) return [];
     const team = (item: Record<string, unknown>, info: Record<string, unknown>): Team => {
       const name = text(info.displayName) || '';
+      const rawId = text(info.id);
+      const id = rawId ? `espn:${league}:${rawId}` : undefined;
       const color = text(info.color), logo = text(info.logo);
       const record = items(item.records).map(object).find(entry => entry?.type === 'total');
-      return { id: text(info.id) ? `espn:${league}:${text(info.id)}` : undefined, aliases: [name, text(info.location), text(info.shortDisplayName), text(info.abbreviation)].filter((value): value is string => !!value), name, short: text(info.shortDisplayName) || (league === 'ncaaf' ? name : text(info.name)) || name, abbreviation: text(info.abbreviation) || name.slice(0, 3), color: color && /^[a-f0-9]{6}$/i.test(color) ? color : '566775', logo: logo?.startsWith('https://') ? logo : undefined, score: typeof item.score === 'string' || typeof item.score === 'number' ? String(item.score) : null, record: text(record?.summary) };
+      return { id, aliases: [name, text(info.location), text(info.shortDisplayName), text(info.abbreviation), ...(id ? ESPN_HISTORICAL_ALIASES.get(id) || [] : [])].filter((value): value is string => !!value), name, short: text(info.shortDisplayName) || (league === 'ncaaf' ? name : text(info.name)) || name, abbreviation: text(info.abbreviation) || name.slice(0, 3), color: color && /^[a-f0-9]{6}$/i.test(color) ? color : '566775', logo: logo?.startsWith('https://') ? logo : undefined, score: typeof item.score === 'string' || typeof item.score === 'number' ? String(item.score) : null, record: text(record?.summary) };
     };
     const status = object(event?.status) || object(competition?.status);
     const statusType = object(status?.type);
