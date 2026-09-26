@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, LoaderCircle, RefreshCw } from 'lucide-react';
-import { PlaybackSchema, SessionSchema, type Playback, type Session } from '@/lib/football/shared';
+import { PlaybackSchema, type Playback, type Session } from '@/lib/football/shared';
 import type { Feed } from '@/lib/sunday';
 import { GamePlayer } from './game-player';
 
@@ -35,14 +35,14 @@ class PlaybackRequestError extends Error {
   constructor(message: string, readonly status: number, readonly retryAfter?: number) { super(message); }
 }
 
-async function updateSession(session: Session, changes: { failure?: boolean; candidateId?: string; retry?: boolean } = {}): Promise<Session> {
+async function updateSession(session: Session, changes: { failure?: boolean; candidateId?: string; retry?: boolean } = {}): Promise<Playback> {
   const response = await fetch('/api/playback', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ kind: 'session', sessionId: session.id, generation: session.generation, ...changes }),
   });
   if (!response.ok) { const failure = await readError(response); throw new PlaybackRequestError(failure.message, response.status, failure.retryAfter); }
-  const parsed = SessionSchema.safeParse(await response.json());
-  if (!parsed.success) throw new Error('The player returned an invalid session.');
+  const parsed = PlaybackSchema.safeParse(await response.json());
+  if (!parsed.success) throw new Error('The player returned an invalid playback.');
   return parsed.data;
 }
 
@@ -102,15 +102,16 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
     const timer = window.setInterval(() => {
       const session = sessionRef.current;
       if (!session || inFlight.current) return;
+      inFlight.current = true;
       void updateSession(session).then(next => {
-        if (sessionRef.current?.id !== next.id || next.generation < sessionRef.current.generation) return;
-        sessionRef.current = next;
-        if (next.state === 'closed') setEndedReason(next.graceEndsAt !== null && next.graceEndsAt <= Date.now() ? 'final' : 'session');
-        else { setRetryAfter(null); setPlayback(current => current ? { ...current, session: next } : current); }
+        if (sessionRef.current?.id !== next.session.id || next.session.generation < sessionRef.current.generation) return;
+        sessionRef.current = next.session;
+        if (next.session.state === 'closed') setEndedReason(next.session.graceEndsAt !== null && next.session.graceEndsAt <= Date.now() ? 'final' : 'session');
+        else { setRetryAfter(null); setPlayback(next); }
       }).catch(error => {
         if (sessionRef.current?.id === session.id && error instanceof PlaybackRequestError && error.status === 410) setEndedReason('session');
         else if (sessionRef.current?.id === session.id && error instanceof PlaybackRequestError && error.status === 503 && error.retryAfter !== undefined) setRetryAfter(error.retryAfter);
-      });
+      }).finally(() => { inFlight.current = false; });
     }, 30000);
     return () => window.clearInterval(timer);
   }, [playback, ended]);
@@ -135,10 +136,10 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
     inFlight.current = true;
     try {
       const next = await updateSession(session, changes);
-      if (sessionRef.current?.id !== session.id || next.generation < sessionRef.current.generation) return;
-      sessionRef.current = next;
-      if (next.state === 'closed') setEndedReason(next.graceEndsAt !== null && next.graceEndsAt <= Date.now() ? 'final' : 'session');
-      else { setMessage(''); setRetryAfter(null); setPlayback(current => current ? { ...current, session: next } : current); }
+      if (sessionRef.current?.id !== session.id || next.session.generation < sessionRef.current.generation) return;
+      sessionRef.current = next.session;
+      if (next.session.state === 'closed') setEndedReason(next.session.graceEndsAt !== null && next.session.graceEndsAt <= Date.now() ? 'final' : 'session');
+      else { setMessage(''); setRetryAfter(null); setPlayback(next); }
     } catch (error) {
       if (sessionRef.current?.id === session.id) {
         setMessage(error instanceof Error ? error.message : 'Player unavailable.');
@@ -163,7 +164,7 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
   return <div className="provider-player">
     <div className="provider-surface">
       {ended ? <div className="player-message"><AlertCircle/><strong>{endedReason === 'final' ? 'Game stream ended' : endedReason === 'media' ? 'Video ended' : 'Playback session ended'}</strong><p>{endedReason === 'final' ? 'Playback ended after the game became final.' : endedReason === 'media' ? 'This video reached its end.' : 'Reconnect this game to start a new playback session.'}</p>{endedReason === 'session' && <button className="button" onClick={() => { intent.current = { key: `${gameId}:${!!manualFeed}`, requestId: crypto.randomUUID() }; setRetry(value => value + 1); }}><RefreshCw size={14}/>Reconnect</button>}</div>
-        : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} playing={playing} delay={delay} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : () => void change({ failure: true })} onEnded={() => setEndedReason('media')} onRetry={manualFeed ? undefined : () => void change({ retry: true })} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
+        : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} playing={playing} delay={delay} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : () => void change({ failure: true })} onEnded={() => { if (!manualFeed && session?.state === 'active') void change({ failure: true }); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : () => void change({ retry: true })} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
         : <div className="player-message">{message === 'Finding your game…' ? <LoaderCircle className="spin"/> : <AlertCircle/>}<strong>{message === 'Finding your game…' ? 'Opening the live player' : 'Player unavailable'}</strong><p>{message}</p>{message !== 'Finding your game…' && <button className="button" onClick={() => setRetry(value => value + 1)}><RefreshCw size={14}/>Try again</button>}</div>}
     </div>
     {!manualFeed && <div className="provider-controls"><button onClick={() => {

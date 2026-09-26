@@ -1,6 +1,8 @@
 import { parseScoreboard, scoreboardWeek } from '../../sunday.ts';
 import { GameSchema } from '../shared.ts';
 import type { Game, League, SeasonMembership } from '../shared.ts';
+import type { ScheduleSource } from '../domain/ports.ts';
+import { recordFinal } from '../domain/lifecycle.ts';
 
 export const SCHEDULES = [
   {id:'nfl',league:'nfl',path:'nfl',group:null},
@@ -39,7 +41,7 @@ export async function readSeasonMembership(season: number, signal: AbortSignal):
   return {season,at:Date.now(),teams};
 }
 
-export async function readSchedule(partition: typeof SCHEDULES[number], now: number, signal: AbortSignal): Promise<{games:Game[];week?:number;league:League;at:number}> {
+export async function readSchedule(partition: ScheduleSource, now: number, signal: AbortSignal): Promise<{games:Game[];week?:number;league:League;at:number}> {
   const date = (time: number) => new Date(time).toISOString().slice(0,10).replaceAll('-','');
   const games = new Map<string,Game>();
   let week: number | undefined;
@@ -53,7 +55,11 @@ export async function readSchedule(partition: typeof SCHEDULES[number], now: num
     const input: unknown = await response.json();
     if (!input || typeof input !== 'object' || !('events' in input) || !Array.isArray(input.events)) throw new Error('scoreboard-format-changed');
     if (input.events.length >= 200) throw new Error('schedule-may-be-truncated');
-    const daily = parseScoreboard(input,partition.league).map(game => GameSchema.parse({...game,partitions:[partition.id]}));
+    const daily = parseScoreboard(input,partition.league).map(game => {
+      return GameSchema.parse(game.lifecycle === 'final'
+        ? recordFinal({...game,partitions:[partition.id]},now)
+        : {...game,partitions:[partition.id]});
+    });
     if (daily.length !== input.events.length || new Set(daily.map(game => game.id)).size !== daily.length) throw new Error('schedule-incomplete-or-duplicate');
     for (const game of daily) {
       const previous = games.get(game.id);
@@ -62,5 +68,5 @@ export async function readSchedule(partition: typeof SCHEDULES[number], now: num
     }
     if (day === 0) week = scoreboardWeek(input);
   }
-  return {games:[...games.values()],week,league:partition.league,at:now};
+  return {games:[...games.values()],week,league:partition.league,at:Date.now()};
 }

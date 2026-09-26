@@ -1,12 +1,14 @@
 import { randomBytes } from 'node:crypto';
+import { SESSION_LEASE_MS } from './football/domain/lifecycle.ts';
 
 export type ResourceKind = 'playlist' | 'media';
 export type StreamGrant = { sessionId: string; candidateId: string; generation: number; gameId: string; playerId: string };
 type Resource = StreamGrant & { kind: ResourceKind; url: string; usedAt: number };
-type Registry = { byToken: Map<string, Resource>; byResource: Map<string, string>; controllers: Map<string, AbortController>; revoked: Map<string, number> };
+type Registry = { byToken: Map<string, Resource>; byResource: Map<string, string>; controllers: Map<string, AbortController>; controllerUsedAt: Map<string, number>; revoked: Map<string, number>; timer?: ReturnType<typeof setInterval> };
 declare global { var sundayRoomStreamRegistry: Registry | undefined; }
-const registry = globalThis.sundayRoomStreamRegistry ??= { byToken: new Map(), byResource: new Map(), controllers: new Map(), revoked: new Map() };
+const registry: Registry = globalThis.sundayRoomStreamRegistry ??= { byToken: new Map(), byResource: new Map(), controllers: new Map(), controllerUsedAt: new Map(), revoked: new Map() };
 registry.controllers ??= new Map();
+registry.controllerUsedAt ??= new Map();
 registry.revoked ??= new Map();
 const IDLE_MS = 5 * 60 * 1000;
 const MAX_RESOURCES = 4096;
@@ -67,7 +69,12 @@ export function streamSignal(grant: StreamGrant): AbortSignal {
   if (registry.revoked.has(key) || registry.revoked.has(grant.sessionId)) return AbortSignal.abort();
   let controller = registry.controllers.get(key);
   if (!controller) { controller = new AbortController(); registry.controllers.set(key, controller); }
+  registry.controllerUsedAt.set(key, now);
   return controller.signal;
+}
+export function touchStreamSession(sessionId: string, generation: number, now = Date.now()): void {
+  const key=`${sessionId}:${generation}`;
+  if (registry.controllers.has(key)) registry.controllerUsedAt.set(key,now);
 }
 export function revokeGeneration(sessionId: string, keepGeneration: number): void {
   for (const key of registry.controllers.keys()) {
@@ -80,20 +87,31 @@ export function revokeStreamGeneration(sessionId: string, generation: number): v
   const controller = registry.controllers.get(key);
   controller?.abort();
   registry.controllers.delete(key);
+  registry.controllerUsedAt.delete(key);
   registry.revoked.set(key, Date.now());
   for (const [token, resource] of registry.byToken) if (resource.sessionId === sessionId && resource.generation === generation) remove(token, resource);
 }
 export function revokeSession(sessionId: string): void {
   registry.revoked.set(sessionId, Date.now());
   for (const [key, controller] of registry.controllers) {
-    if (key.startsWith(`${sessionId}:`)) { controller.abort(); registry.controllers.delete(key); }
+    if (key.startsWith(`${sessionId}:`)) { controller.abort(); registry.controllers.delete(key); registry.controllerUsedAt.delete(key); }
   }
   for (const [token, resource] of registry.byToken) if (resource.sessionId === sessionId) remove(token, resource);
 }
 export function resourceCount(): number { return registry.byToken.size; }
-function prune(): void {
-  const now = Date.now();
+export function expireIdleStreams(now = Date.now()): void {
+  for (const [key, usedAt] of registry.controllerUsedAt) {
+    if (now - usedAt <= SESSION_LEASE_MS + 30_000) continue;
+    const split = key.lastIndexOf(':');
+    revokeStreamGeneration(key.slice(0, split), Number(key.slice(split + 1)));
+  }
   for (const [token, resource] of registry.byToken) if (now - resource.usedAt > IDLE_MS) remove(token, resource);
+  for (const [key, at] of registry.revoked) if (now - at > 10 * 60_000) registry.revoked.delete(key);
+}
+registry.timer ??= setInterval(() => expireIdleStreams(),15_000);
+registry.timer.unref();
+function prune(): void {
+  expireIdleStreams();
   while (registry.byToken.size >= MAX_RESOURCES) {
     const oldest = [...registry.byToken].reduce((a, b) => a[1].usedAt <= b[1].usedAt ? a : b);
     remove(oldest[0], oldest[1]);

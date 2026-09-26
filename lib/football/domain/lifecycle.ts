@@ -1,15 +1,15 @@
-import type { Candidate, Game, Session } from '../shared.ts';
+import type { Candidate, FinalGame, Game, RawFinalGame, Session } from '../shared.ts';
 
 export const GRACE_MS = 5 * 60_000;
 export const SESSION_LEASE_MS = 90_000;
-export function recordFinal(game: Game & {lifecycle:'final'}, now: number): Game {
+export function recordFinal(game: RawFinalGame | FinalGame, now: number): FinalGame {
   return {...game,sourceUrl:undefined,sourceUrls:[],finalObservedAt:now,graceEndsAt:now + GRACE_MS};
 }
 export function reconcileSession(session: Session, game: Game | undefined, now: number): Session {
   if (session.state === 'closed') return session;
-  const deadline = session.graceEndsAt ?? game?.graceEndsAt;
+  const deadline = session.state === 'draining' ? session.graceEndsAt : game?.graceEndsAt;
   if (deadline !== undefined) {
-    return {...session,state:now >= deadline ? 'closed' : 'draining',graceEndsAt:deadline};
+    return now >= deadline ? {...session,state:'closed',graceEndsAt:deadline} : {...session,state:'draining',graceEndsAt:deadline};
   }
   return session;
 }

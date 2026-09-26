@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "desktop": "electron desktop/main.cjs",
     "test:player": "node tests/player.browser.mjs",

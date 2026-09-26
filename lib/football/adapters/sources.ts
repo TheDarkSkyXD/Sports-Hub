@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { load } from 'cheerio';
 import type { Candidate, League, Observation } from '../shared.ts';
+import type { ListingSource } from '../domain/ports.ts';
 import { parsePlayers } from '../../sunday.ts';
 
 export const SOURCES = [
@@ -22,7 +23,6 @@ export const SOURCES = [
   {id:'methstreams',url:'https://methstreams.st/NFL',family:'event'},
   {id:'crackstreams-st',url:'https://crackstreams.st/NFL',family:'event'},
 ] as const;
-export type Source = typeof SOURCES[number];
 export class SourceFetchError extends Error {
   readonly retryAfterMs?: number;
   constructor(message:string,retryAfterMs?:number) { super(message); this.retryAfterMs=retryAfterMs; }
@@ -103,7 +103,7 @@ export function parseKickoff(raw: string): number | null {
   return matches.length === 1 ? matches[0] : null;
 }
 
-export function parseListings(source: Source, html: string, now: number): { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' } {
+export function parseListings(source: ListingSource, html: string, now: number): { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' } {
   const $ = load(html);
   const observations = new Map<string,Observation>();
   const conflictingTeamsIds = new Set<string>();

@@ -78,13 +78,27 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
     sourceGeneration.current += 1;
     let failed = false;
     let hasLoaded = false;
+    let deferredFailure = false;
+    let startupElapsed = 0;
+    let lastTick = performance.now();
     needsGesture.current = false;
     liveRef.current = false;
     const native = /\.m3u8(?:\?|$)/i.test(feed.url) && !Hls.isSupported();
     const reset = window.setTimeout(() => { setStatus('loading'); setSettings(false); setQualities([]); setQuality(-1); setTimeline(null); setNativeHls(native); setUsesHls(false); setSyncPosition(null); setNotice(''); }, 0);
     const ready = () => { if (active) { hasLoaded = true; setStatus(needsGesture.current ? 'audio-gesture' : 'ready'); updateTimeline(); } };
     const loaded = () => { if (!active) return; hasLoaded = true; if (!playingRef.current) setStatus('ready'); updateTimeline(); };
-    const error = () => { if (!active || failed) return; failed = true; setStatus('error'); callbacks.current.onFatal?.(); };
+    const canRecover = () => playingRef.current && navigator.onLine && !document.hidden;
+    const error = () => {
+      if (!active || failed) return;
+      if (!canRecover() || (hasLoaded && video.paused) || performance.now() - lastTick > 6000) {
+        deferredFailure = true;
+        if (playingRef.current) setStatus('buffering');
+        return;
+      }
+      failed = true;
+      setStatus('error');
+      callbacks.current.onFatal?.();
+    };
     const ended = () => { if (active) { setStatus('ended'); callbacks.current.onEnded?.(); } };
     const waiting = () => { if (active) setStatus(current => current === 'ready' ? 'buffering' : current); };
     const paused = () => { if (active && !playingRef.current) setStatus(current => current === 'buffering' ? 'ready' : current); };
@@ -107,13 +121,18 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
     video.addEventListener('progress', updateTimeline);
     let lastPosition = video.currentTime;
     let lastProgress = performance.now();
-    let lastTick = lastProgress;
     const stallCheck = window.setInterval(() => {
       const now = performance.now();
-      const slept = now - lastTick > 6000;
+      const elapsed = now - lastTick;
+      const slept = elapsed > 6000;
       lastTick = now;
       const position = video.currentTime;
-      if (slept || !hasLoaded || !playingRef.current || video.paused || video.ended || document.hidden || !navigator.onLine) {
+      if (deferredFailure && !slept && canRecover()) { deferredFailure = false; setRetry(value => value + 1); return; }
+      if (!hasLoaded && !slept && canRecover()) {
+        startupElapsed += elapsed;
+        if (startupElapsed >= 20000 && video.readyState < 2) error();
+      }
+      if (slept || !hasLoaded || !canRecover() || video.paused || video.ended) {
         lastPosition = position;
         lastProgress = now;
         return;
@@ -139,11 +158,9 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
     } else {
       video.src = feed.url;
     }
-    const timer = window.setTimeout(() => { if (!failed && !hasLoaded && video.readyState < 2) error(); }, 20000);
     return () => {
       active = false;
       sourceGeneration.current += 1;
-      window.clearTimeout(timer);
       window.clearInterval(stallCheck);
       window.clearTimeout(reset);
       hls?.destroy();

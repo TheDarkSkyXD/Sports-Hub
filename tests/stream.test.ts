@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { registeredResource, registerResource, resourceCount, revokeGeneration, revokeSession, rewritePlaylist, sourceFromEmbed, streamSignal, validByteRange, validResourceUrl } from '../lib/stream-relay.ts';
+import { expireIdleStreams, registeredResource, registerResource, resourceCount, revokeGeneration, revokeSession, rewritePlaylist, sourceFromEmbed, streamSignal, touchStreamSession, validByteRange, validResourceUrl } from '../lib/stream-relay.ts';
 
 const grant = (gameId: string, playerId: string, generation = 0) => ({ sessionId: '11111111-1111-4111-8111-111111111111', candidateId: `gooz-${playerId}`, generation, gameId, playerId });
 
@@ -150,4 +150,27 @@ test('generation switch and close abort reads and release only that session reso
   assert.equal(registeredResource(otherToken)?.sessionId, otherSessionId);
   revokeSession(otherSessionId);
   assert.equal(resourceCount(), baseline);
+});
+
+test('an abandoned stream aborts its read and drops resources after its session lease', () => {
+  const abandoned = { ...grant('ncaaf-401858468', '57069'), sessionId: '44444444-4444-4444-8444-444444444444' };
+  const token = registerResource(abandoned, segment, 'media');
+  const signal = streamSignal(abandoned);
+  expireIdleStreams(Date.now() + 120_001);
+  assert.equal(signal.aborted, true);
+  assert.equal(registeredResource(token), null);
+  assert.throws(() => registerResource(abandoned, segment, 'media'), /generation ended/);
+});
+
+test('a paused session heartbeat retains its relay grant beyond the idle window', () => {
+  const paused = { ...grant('ncaaf-401858468', '57069'), sessionId: '55555555-5555-4555-8555-555555555555' };
+  const token = registerResource(paused, segment, 'media');
+  const signal = streamSignal(paused);
+  const started=Date.now();
+  touchStreamSession(paused.sessionId,paused.generation,started+60_000);
+  touchStreamSession(paused.sessionId,paused.generation,started+120_000);
+  expireIdleStreams(started+121_000);
+  assert.equal(signal.aborted,false);
+  assert.equal(registeredResource(token)?.sessionId,paused.sessionId);
+  revokeSession(paused.sessionId);
 });

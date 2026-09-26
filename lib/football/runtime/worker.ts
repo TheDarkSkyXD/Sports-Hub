@@ -2,13 +2,13 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { CommandSchema, ReplySchema } from '../shared.ts';
-import { FootballCoordinator } from './coordinator.ts';
+import { createFootballCoordinator } from './composition.ts';
 
 if (!parentPort) throw new Error('Football worker requires a parent port.');
 const port = parentPort;
 const dataDir = typeof workerData?.dataDir === 'string' ? workerData.dataDir : join(process.cwd(),'.desktop-runtime');
 mkdirSync(dataDir,{recursive:true});
-const coordinator = new FootballCoordinator(join(dataDir,'football.sqlite'),{
+const coordinator = createFootballCoordinator(join(dataDir,'football.sqlite'),{
   ownerToken:workerData?.ownerToken,
   reclaimToken:workerData?.reclaimToken,
 });

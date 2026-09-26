@@ -61,14 +61,22 @@ async function screenshot(page, name, fullPage = false) {
   } else await page.screenshot({ path: target, fullPage });
 }
 
-async function openRoom({ live = false, provider = false, manyQualities = false, providerFailure, waitingForLive = false } = {}) {
+async function openRoom({ live = false, provider = false, manyQualities = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false } = {}) {
   const context = desktopApp ? desktopApp.context() : await browser.newContext({ viewport: { width: 1440, height: 1100 } });
   await context.unrouteAll({ behavior: 'wait' });
   let roomGames = games.map((g, index) => provider ? { ...g, status: waitingForLive && index === 0 ? 'pre' : g.status, sourceUrl: waitingForLive && index === 1 ? undefined : `https://isportsurge.ws/watch/nfl/test-game/${g.id}` } : g);
   const manifestRequests = new Set();
   const indexRequests = new Set();
   const sessions = new Map();
-  const sessionCounts = { opened: 0, closed: 0 };
+  const sessionCounts = { opened: 0, closed: 0, failures: 0 };
+  let backupAvailable = !delayedBackup;
+  let fixtureOffline = offlineStart;
+  const candidatesFor = (gameId, manual) => manual ? [] : [0, ...(backupAvailable ? [1] : [])].map(index => ({
+    id: `gooz-${gameId}-${index}`, gameId, playerId: String(57000 + index),
+    url: `https://gooz.aapmains.net/new-stream-embed/${57000 + index}`,
+    label: index ? 'Backup' : 'Primary', sourceIds: ['fixture'], observedAt: Date.now(),
+  }));
+  const publicSession = session => ({ id: session.id, gameId: session.gameId, candidateId: session.candidateId, generation: session.generation, state: session.state, graceEndsAt: session.graceEndsAt });
   let finishFailures;
   const finalFailure = new Promise(resolve => { finishFailures = resolve; });
   await context.route('**/api/games', route => route.fulfill({ json: {
@@ -105,18 +113,19 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
         sessions.set(session.id, session);
         sessionCounts.opened += 1;
       }
-      return route.fulfill({ json: { session, candidates: manual ? [] : [0, 1].map(index => ({ id: `gooz-${gameId}-${index}`, gameId, playerId: String(57000 + index), url: `https://gooz.aapmains.net/new-stream-embed/${57000 + index}`, label: index ? 'Backup' : 'Primary', sourceIds: ['fixture'], observedAt: Date.now() })) } });
+      return route.fulfill({ json: { session: publicSession(session), candidates: candidatesFor(gameId, manual) } });
     }
     const session = sessions.get(body.sessionId);
     if (!session || body.generation !== session.generation) return route.fulfill({ status: 410, json: { error: 'Playback session ended.' } });
     if (body.retry) { session.generation += 1; session.failures = 0; }
     else if (body.failure) {
+      sessionCounts.failures += 1;
       session.failures = (session.failures || 0) + 1;
       if (session.failures > 1 && session.candidateId.endsWith('-1')) return route.fulfill({ status: 503, json: { error: 'Available streams are cooling down.' } });
-      if (session.failures > 1) { session.candidateId = `gooz-${session.gameId}-1`; session.failures = 0; }
+      if (session.failures > 1 && backupAvailable) { session.candidateId = `gooz-${session.gameId}-1`; session.failures = 0; }
       session.generation += 1;
     } else if (body.candidateId && body.candidateId !== session.candidateId) { session.candidateId = body.candidateId; session.generation += 1; session.failures = 0; }
-    return route.fulfill({ json: session });
+    return route.fulfill({ json: { session: publicSession(session), candidates: candidatesFor(session.gameId, session.candidateId === 'manual') } });
   });
   async function serveMedia(route, file) {
     let body = await readFile(path.join(media, file));
@@ -133,6 +142,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
     const url = new URL(route.request().url());
     const file = path.basename(url.pathname);
     if (url.pathname === `/api/stream/${games[0].id}/index.m3u8`) indexRequests.add(url.href);
+    if (fixtureOffline && url.pathname === `/api/stream/${games[0].id}/index.m3u8`) return route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: 'Offline fixture playlist' });
     if (providerFailure && url.pathname === `/api/stream/${games[0].id}/index.m3u8`) {
       manifestRequests.add(url.href);
       if (providerFailure === 'unavailable' || Number(url.searchParams.get('generation')) < 2) {
@@ -155,15 +165,20 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
     }, games);
     seededContexts.add(context);
   }
+  if (offlineStart) await context.addInitScript(() => {
+    if (new URL(location.href).searchParams.has('offlineFixture')) Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+  });
   const page = desktopPage || await context.newPage();
   await page.setViewportSize({ width: 1440, height: 1100 });
   page.setDefaultTimeout(15000);
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}`);
+  await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}${offlineStart ? '&offlineFixture=1' : ''}`);
   await page.locator('.game-tile').first().waitFor();
   if (!provider) await page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(v => v.readyState >= 2));
   return { context, page, pageErrors, manifestRequests, indexRequests, finalFailure, sessionCounts,
+    publishBackup: () => { backupAvailable = true; },
+    restoreOnline: async () => { fixtureOffline = false; await page.evaluate(() => Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })); },
     publishLiveGames: () => { roomGames = games.map(g => ({ ...g, sourceUrl: `https://isportsurge.ws/watch/nfl/test-game/${g.id}` })); },
     finishGame: () => { roomGames = roomGames.map((g, index) => index === 0 ? { ...g, status: 'post', detail: 'Final' } : index === 1 ? { ...g, sourceUrl: undefined } : g); },
     expireGame: () => { roomGames = roomGames.map((g, index) => index === 0 ? { ...g, status: 'post', lifecycle: 'final', detail: 'Final', sourceUrl: undefined, graceEndsAt: Date.now() + 1500 } : g); },
@@ -381,6 +396,71 @@ try {
   assert.deepEqual(providerRoom.pageErrors, []);
   results.push('Listed provider playback uses the shared controls; server changes preserve pause and reset quality to Auto.');
   if (!desktopApp) await providerRoom.context.close();
+
+  const discoveredRoom = await openRoom({ provider: true, delayedBackup: true });
+  const discoveredTile = discoveredRoom.page.locator('.game-tile').first();
+  await discoveredRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && !document.querySelector('video').paused);
+  assert.equal(await discoveredTile.getByRole('button', { name: 'Switch server', exact: true }).isDisabled(), true);
+  discoveredRoom.publishBackup();
+  const refreshedPrimary = discoveredRoom.page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === `/api/stream/${games[0].id}/index.m3u8` && url.searchParams.get('generation') === '1';
+  });
+  await discoveredTile.locator('video').dispatchEvent('ended');
+  await refreshedPrimary;
+  await discoveredTile.getByRole('button', { name: 'Switch server', exact: true }).waitFor({ state: 'visible' });
+  await discoveredRoom.page.waitForFunction(() => !document.querySelector('.game-tile .provider-controls button')?.disabled && document.querySelector('video')?.readyState >= 2);
+  const discoveredBackup = discoveredRoom.page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === `/api/stream/${games[0].id}/index.m3u8` && url.searchParams.get('candidate')?.endsWith('-1') && response.ok();
+  });
+  await discoveredTile.locator('video').dispatchEvent('error');
+  await discoveredBackup;
+  await discoveredRoom.page.waitForFunction(() => document.querySelector('.game-tile video')?.readyState >= 2 && document.querySelector('.game-tile video')?.currentTime > 0);
+  assert.equal(discoveredRoom.sessionCounts.failures, 2);
+  assert.deepEqual(discoveredRoom.pageErrors, []);
+  results.push('A live provider EOS retries; a backup discovered after open reaches the player on PATCH and plays after primary failure.');
+  if (!desktopApp) await discoveredRoom.context.close();
+
+  const offlineRoom = await openRoom({ provider: true, offlineStart: true });
+  await offlineRoom.page.waitForFunction(() => document.querySelector('.game-tile video') !== null);
+  await offlineRoom.page.waitForTimeout(22000);
+  assert.equal(offlineRoom.sessionCounts.failures, 0);
+  assert.equal(offlineRoom.indexRequests.size, 1);
+  await offlineRoom.restoreOnline();
+  await offlineRoom.page.waitForFunction(() => document.querySelector('.game-tile video')?.readyState >= 2 && document.querySelector('.game-tile video')?.currentTime > 0, { timeout: 20000 });
+  assert.equal(offlineRoom.sessionCounts.failures, 0);
+  assert.deepEqual(offlineRoom.pageErrors, []);
+  results.push('An offline fatal playlist and startup timeout wait for connectivity, then reload without penalizing the source.');
+  if (!desktopApp) await offlineRoom.context.close();
+
+  const deferredRoom = await openRoom({ provider: true });
+  await deferredRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && !document.querySelector('video').paused);
+  const deferredControls = deferredRoom.page.getByRole('group', { name: 'Focused stream controls', exact: true });
+  await revealControls(deferredRoom.page);
+  await deferredControls.getByRole('button', { name: 'Pause stream', exact: true }).click();
+  await deferredRoom.page.locator('video').first().dispatchEvent('error');
+  await deferredRoom.page.waitForTimeout(2200);
+  assert.equal(deferredRoom.sessionCounts.failures, 0);
+  await revealControls(deferredRoom.page);
+  await deferredControls.getByRole('button', { name: 'Play stream', exact: true }).click();
+  await deferredRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && !document.querySelector('video').paused);
+  await deferredRoom.page.evaluate(() => Object.defineProperty(document, 'hidden', { configurable: true, value: true }));
+  await deferredRoom.page.locator('video').first().dispatchEvent('error');
+  await deferredRoom.page.waitForTimeout(2200);
+  assert.equal(deferredRoom.sessionCounts.failures, 0);
+  await deferredRoom.page.evaluate(() => Object.defineProperty(document, 'hidden', { configurable: true, value: false }));
+  await deferredRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && !document.querySelector('video').paused);
+  await deferredRoom.page.evaluate(() => {
+    const until = performance.now() + 6500;
+    while (performance.now() < until) {}
+    document.querySelector('video').dispatchEvent(new Event('error'));
+  });
+  await deferredRoom.page.waitForTimeout(2200);
+  assert.equal(deferredRoom.sessionCounts.failures, 0);
+  assert.deepEqual(deferredRoom.pageErrors, []);
+  results.push('Paused, hidden, and wake-from-sleep media faults reload locally without marking the provider failed.');
+  if (!desktopApp) await deferredRoom.context.close();
 
   const stallRoom = await openRoom({ provider: true });
   await stallRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && !document.querySelector('video').paused);

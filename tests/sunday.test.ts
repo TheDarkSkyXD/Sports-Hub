@@ -4,7 +4,7 @@ import { parseScoreboard, parsePlayers, validFeedUrl, priority } from '../lib/su
 import type { Game } from '../lib/sunday.ts';
 
 const team = (name:string) => ({name,short:name,abbreviation:name.slice(0,3),color:'112233',score:'0'});
-const game:Game = {id:'1',league:'nfl',name:'Away at Home',home:team('Home'),away:team('Away'),status:'in',detail:'Q1',redzone:false};
+const game:Game = {id:'1',league:'nfl',name:'Away at Home',home:team('Home'),away:team('Away'),status:'in',lifecycle:'live',detail:'Q1',redzone:false};
 
 test('scoreboard keeps ESPN scores and home/away identity',() => {
   const data = {events:[{id:'9',name:'Away at Home',status:{type:{state:'in',shortDetail:'Q2'}},competitions:[{competitors:[
@@ -48,5 +48,5 @@ test('manual feed accepts HTTPS and loopback video addresses only',() => {
 
 test('red-zone live games rank ahead of ordinary live and scheduled games',() => {
   assert.ok(priority({...game,redzone:true}) > priority(game));
-  assert.ok(priority(game) > priority({...game,status:'pre'}));
+  assert.ok(priority(game) > priority({...game,status:'pre',lifecycle:'scheduled'}));
 });

@@ -26,7 +26,7 @@ async function startServer() {
   serverProcess = spawn(process.execPath,[path.join(root,'node_modules','next','dist','bin','next'),production?'start':'dev','--hostname','127.0.0.1','--port',String(port)],{
     cwd:root,
     windowsHide:true,
-    env:{...process.env,ELECTRON_RUN_AS_NODE:'1',SUNDAY_ROOM_DESKTOP:'1',SUNDAY_ROOM_DATA_DIR:app.getPath('userData'),SUNDAY_ROOM_CONTROL_TOKEN:controlToken},
+    env:{...process.env,ELECTRON_RUN_AS_NODE:'1',SUNDAY_ROOM_DESKTOP:'1',SUNDAY_ROOM_DESKTOP_PARENT_PID:String(process.pid),SUNDAY_ROOM_DATA_DIR:app.getPath('userData'),SUNDAY_ROOM_CONTROL_TOKEN:controlToken},
     stdio:['ignore',log,log],
   });
   fs.closeSync(log);

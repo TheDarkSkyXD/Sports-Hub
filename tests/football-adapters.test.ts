@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { SOURCES, SourceFetchError, compatiblePlayers, enrichObservation, parseKickoff, parseListings, readHtml } from '../lib/football/adapters/sources.ts';
 import { SCHEDULES, readSchedule, readSeasonMembership } from '../lib/football/adapters/schedule.ts';
 import { matchObservation, mergeSchedulePartitions } from '../lib/football/domain/matching.ts';
+import { GameSchema, ScheduleGameSchema, SessionSchema } from '../lib/football/shared.ts';
 import type { Game, Observation } from '../lib/football/shared.ts';
 
 const now = Date.parse('2026-09-26T16:00:00Z');
@@ -79,7 +80,7 @@ test('matching rejects ambiguous aliases, stale rows, uncertain times, and final
   assert.deepEqual(matchObservation(observation(['Bucknell','Pitt']),[pit],now),{kind:'matched',gameId:pit.id});
   assert.equal(matchObservation(observation(['Bucknell','Pitt'],null),[pit],now).kind,'unmatched');
   assert.equal(matchObservation({...observation(['Bucknell','Pitt']),observedAt:now-31*60_000},[pit],now).kind,'unmatched');
-  assert.deepEqual(matchObservation(observation(['Bucknell','Pitt']),[{...pit,lifecycle:'final'}],now),{kind:'unmatched',reason:'finished-game',possibleGameIds:[pit.id]});
+  assert.deepEqual(matchObservation(observation(['Bucknell','Pitt']),[{...pit,status:'post',lifecycle:'final',finalObservedAt:now,graceEndsAt:now+300000}],now),{kind:'unmatched',reason:'finished-game',possibleGameIds:[pit.id]});
   const ohio = game('ncaaf-2',team('miami-oh','Miami RedHawks','Miami'),team('uconn','UConn Huskies','UConn'));
   const florida = game('ncaaf-3',team('miami-fl','Miami Hurricanes','Miami'),team('central','Central Michigan Chippewas','Central Michigan'));
   assert.deepEqual(matchObservation(observation(['UConn','Miami']),[ohio,florida],now),{kind:'unmatched',reason:'unknown-teams',possibleGameIds:[]});
@@ -89,6 +90,19 @@ test('FBS and FCS crossover is one game with both partitions, conflicting IDs ar
   const crossover = game('ncaaf-401858236',team('espn:ncaaf:221','Pittsburgh'),team('espn:ncaaf:2083','Bucknell'));
   assert.deepEqual(mergeSchedulePartitions([[{...crossover,partitions:['fbs']}],[{...crossover,partitions:['fcs']}]]).map(item => [item.id,item.partitions]),[[crossover.id,['fbs','fcs']]]);
   assert.deepEqual(mergeSchedulePartitions([[crossover],[{...crossover,home:team('wrong','Elsewhere')}]]),[]);
+});
+
+test('game and session states reject contradictory final and grace fields', () => {
+  const scheduled = game('ncaaf-1',team('home','Home'),team('away','Away'));
+  const rawFinal = {...scheduled,status:'post',lifecycle:'final'};
+  assert.equal(ScheduleGameSchema.safeParse(rawFinal).success,true);
+  assert.equal(GameSchema.safeParse(rawFinal).success,false);
+  assert.equal(GameSchema.safeParse({...scheduled,finalObservedAt:now,graceEndsAt:now+300000}).success,false);
+  assert.equal(GameSchema.safeParse({...rawFinal,finalObservedAt:now,graceEndsAt:now+300000}).success,true);
+  const session = {id:'1',gameId:'ncaaf-1',candidateId:'gooz-1',generation:0};
+  assert.equal(SessionSchema.safeParse({...session,state:'active',graceEndsAt:now}).success,false);
+  assert.equal(SessionSchema.safeParse({...session,state:'draining',graceEndsAt:null}).success,false);
+  assert.equal(SessionSchema.safeParse({...session,state:'draining',graceEndsAt:now}).success,true);
 });
 
 test('Sportsurge collection visits both categories sequentially under its one source identity', async () => {

@@ -1,4 +1,5 @@
-﻿import type { Team, League, Game } from './football/shared.ts';
+﻿import { ScheduleGameSchema } from './football/shared.ts';
+import type { Team, League, Game, ScheduleGame } from './football/shared.ts';
 export type { Team, League, Game, LeagueFeedStatus, Board } from './football/shared.ts';
 export type Feed = { url: string; label: string };
 export type SourcePlayer = { id: string; label: string; url: string };
@@ -22,10 +23,10 @@ export function scoreboardWeek(data: unknown): number | undefined {
   const week = object(object(data)?.week)?.number;
   return typeof week === 'number' && Number.isInteger(week) ? week : undefined;
 }
-export function parseScoreboard(data: unknown, league: League = 'nfl'): Game[] {
+export function parseScoreboard(data: unknown, league: League = 'nfl'): ScheduleGame[] {
   const events = object(data)?.events;
   if (!Array.isArray(events)) throw new Error('Scoreboard format changed');
-  return events.flatMap((raw): Game[] => {
+  return events.flatMap((raw): ScheduleGame[] => {
     const event = object(raw);
     const competition = object(items(event?.competitions)[0]);
     const competitors = items(competition?.competitors).map(object).filter((item): item is Record<string, unknown> => item !== null);
@@ -49,7 +50,7 @@ export function parseScoreboard(data: unknown, league: League = 'nfl'): Game[] {
     const situation = object(competition?.situation);
     const names = items(object(items(competition?.broadcasts)[0])?.names).filter((name): name is string => typeof name === 'string');
     const season = object(event?.season)?.year;
-    return [{ id: league === 'ncaaf' ? `ncaaf-${id}` : id, league, lifecycle, season: typeof season === 'number' ? season : undefined, name: text(event?.name) || `${awayTeam.displayName} at ${homeTeam.displayName}`, date: text(event?.date), home: team(home, homeTeam), away: team(away, awayTeam), status: gameStatus, detail: text(statusType?.shortDetail) || 'Status unavailable', redzone: situation?.isRedZone === true && gameStatus === 'in', down: text(situation?.downDistanceText), possession: situation?.possession === home.id ? text(homeTeam.abbreviation) : situation?.possession === away.id ? text(awayTeam.abbreviation) : undefined, lastPlay: text(object(situation?.lastPlay)?.text), venue: text(object(competition?.venue)?.fullName), broadcast: names.length ? names.join(' / ') : undefined }];
+    return [ScheduleGameSchema.parse({ id: league === 'ncaaf' ? `ncaaf-${id}` : id, league, lifecycle, season: typeof season === 'number' ? season : undefined, name: text(event?.name) || `${awayTeam.displayName} at ${homeTeam.displayName}`, date: text(event?.date), home: team(home, homeTeam), away: team(away, awayTeam), status: gameStatus, detail: text(statusType?.shortDetail) || 'Status unavailable', redzone: situation?.isRedZone === true && gameStatus === 'in', down: text(situation?.downDistanceText), possession: situation?.possession === home.id ? text(homeTeam.abbreviation) : situation?.possession === away.id ? text(awayTeam.abbreviation) : undefined, lastPlay: text(object(situation?.lastPlay)?.text), venue: text(object(competition?.venue)?.fullName), broadcast: names.length ? names.join(' / ') : undefined })];
   });
 }
 export function validFeedUrl(input: string): string | null {

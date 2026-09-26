@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { FootballStore } from '../lib/football/adapters/store.ts';
-import { FootballCoordinator } from '../lib/football/runtime/coordinator.ts';
+import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 import { reconcileSession } from '../lib/football/domain/lifecycle.ts';
 import { command as workerCommand } from '../lib/football/runtime/client.ts';
 import { SOURCES, parseListings, compatiblePlayers } from '../lib/football/adapters/sources.ts';
@@ -20,7 +20,7 @@ const live:Game = {
   home:team('Home','espn:nfl:1'),away:team('Away','espn:nfl:2'),status:'in',lifecycle:'live',
   detail:'Q1',redzone:false,partitions:['nfl'],
 };
-const final:Game = {...live,status:'post',lifecycle:'final',detail:'Final'};
+const final:Game = {...live,status:'post',lifecycle:'final',detail:'Final',finalObservedAt:kickoff,graceEndsAt:kickoff+300000};
 
 test('the first fresh final timestamp survives restart and never extends the grace period',() => {
   const dir = mkdtempSync(join(tmpdir(),'football-store-'));
@@ -36,6 +36,28 @@ test('the first fresh final timestamp survives restart and never extends the gra
     assert.equal(second.finals()[0].home.score,'7');
     second.close();
   } finally { rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('a delayed schedule response starts final grace when the coordinator accepts it',async () => {
+  const dir = mkdtempSync(join(tmpdir(),'football-delayed-final-'));
+  let now = kickoff;
+  const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
+    now:() => now,
+    sources:[],
+    readSchedule:async (partition,at) => {
+      if (partition.id==='nfl') now += 90000;
+      return {games:partition.id==='nfl' ? [final] : [],at,league:partition.league};
+    },
+  });
+  try {
+    await coordinator.refresh(true);
+    const board = await coordinator.command({kind:'board'});
+    assert.equal(board.kind,'board');
+    if (board.kind==='board') {
+      assert.equal(board.board.games[0].finalObservedAt,kickoff+90000);
+      assert.equal(board.board.games[0].graceEndsAt,kickoff+390000);
+    }
+  } finally { await coordinator.stop(); rmSync(dir,{recursive:true,force:true}); }
 });
 
 test('source aliases become unusable when two games claim the same old ID',() => {
@@ -89,7 +111,7 @@ test('active playback rejects stale failures, drains at final, then closes on th
   assert.equal(observation.kickoff,kickoff,JSON.stringify(observation));
   assert.deepEqual(matchObservation(observation,[live],now),{kind:'matched',gameId:'100'});
   assert.equal(compatiblePlayers('100',observation,'<iframe src="https://gooz.aapmains.net/new-stream-embed/123"></iframe>',now).length,1);
-  const coordinator = new FootballCoordinator(join(dir,'state.sqlite'),{
+  const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
     now:() => now,
     sources:[SOURCES[0]],
     id:() => `00000000-0000-4000-8000-${String(++serial).padStart(12,'0')}`,
@@ -176,7 +198,7 @@ test('active playback rejects stale failures, drains at final, then closes on th
 test('automatic failover reaches the fourth source after one bounded wait, then stops',async () => {
   const dir = mkdtempSync(join(tmpdir(),'football-failover-'));
   let now = kickoff;
-  const coordinator = new FootballCoordinator(join(dir,'state.sqlite'),{
+  const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
     now:() => now,
     sources:[SOURCES[0]],
     readSchedule:async (partition,at) => ({games:partition.id==='nfl' ? [live] : [],at,league:partition.league}),
@@ -221,6 +243,52 @@ test('automatic failover reaches the fourth source after one bounded wait, then 
     const exhausted = await coordinator.command({kind:'session',sessionId,generation,failure:true,retry:false});
     assert.equal(exhausted.kind,'error');
     if (exhausted.kind === 'error') assert.equal(exhausted.retryAfter,undefined);
+  } finally { await coordinator.stop(); rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('a newly discovered candidate accompanies the session reply that selects it',async () => {
+  const dir = mkdtempSync(join(tmpdir(),'football-late-candidate-'));
+  let now = kickoff;
+  const detailUrl = 'https://isportsurge.ws/watch/nfl/away-home/123';
+  const listing = `<a href="${detailUrl}" datetime="${new Date(kickoff).toISOString()}"><span class="team-name-event-row"><img alt="Away"></span><span class="team-name-event-row"><img alt="Home"></span></a>`;
+  let detail = '<iframe src="https://gooz.aapmains.net/new-stream-embed/123"></iframe>';
+  const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
+    now:() => now,
+    sources:[SOURCES[0]],
+    readSchedule:async (partition,at) => ({games:partition.id==='nfl' ? [live] : [],at,league:partition.league}),
+    readHtml:async url => url===SOURCES[0].url ? listing : detail,
+  });
+  try {
+    await coordinator.refresh(true);
+    let opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
+    for (let attempt=0;opened.kind==='error' && attempt<30;attempt++) {
+      await new Promise(resolve => setTimeout(resolve,10));
+      opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
+    }
+    assert.equal(opened.kind,'playback',JSON.stringify(opened));
+    if (opened.kind!=='playback') return;
+    assert.equal(opened.playback.session.candidateId,'gooz-123');
+    const sessionId = opened.playback.session.id;
+    detail += '<button onclick="changeStream(124)"></button>';
+    now += 60000;
+    assert.equal((await coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false})).kind,'session');
+    now += 60001;
+    await coordinator.refresh(true);
+    let discovered = await coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false});
+    for (let attempt=0;discovered.kind==='session' && !discovered.candidates.some(candidate=>candidate.id==='gooz-124') && attempt<30;attempt++) {
+      await new Promise(resolve => setTimeout(resolve,10));
+      discovered = await coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false});
+    }
+    assert.equal(discovered.kind,'session');
+    if (discovered.kind==='session') assert.ok(discovered.candidates.some(candidate=>candidate.id==='gooz-124'));
+    const first = await coordinator.command({kind:'session',sessionId,generation:0,failure:true,retry:false});
+    assert.equal(first.kind,'session');
+    const switched = await coordinator.command({kind:'session',sessionId,generation:1,failure:true,retry:false});
+    assert.equal(switched.kind,'session',JSON.stringify(switched));
+    if (switched.kind==='session') {
+      assert.equal(switched.session.candidateId,'gooz-124');
+      assert.ok(switched.candidates.some(candidate=>candidate.id===switched.session.candidateId));
+    }
   } finally { await coordinator.stop(); rmSync(dir,{recursive:true,force:true}); }
 });
 

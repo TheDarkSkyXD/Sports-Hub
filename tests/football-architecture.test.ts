@@ -14,6 +14,7 @@ test('browser and domain imports stay outside the football worker and adapters',
     ['components/probe.tsx','import "@/lib/football/runtime/client";'],
     ['app/page.tsx','import "@/lib/football/adapters/sources";'],
     ['components/probe.tsx','import "@/lib/playback-server";'],
+    ['components/probe.tsx','import "@/lib/football/domain/matching";'],
     ['lib/football/domain/probe.ts','import "../adapters/store.ts";'],
   ]) assert.equal((await boundaryMessages(path,source)).length,1,`${path}: ${source}`);
 });
@@ -30,6 +31,21 @@ test('routes use the client or HTTP facade and only the worker owns the coordina
     ['app/api/probe/route.ts','import "@/lib/playback-server";'],
     ['components/probe.tsx','import "@/lib/football/shared";'],
     ['lib/football/runtime/worker.ts','import "./coordinator.ts";'],
-    ['lib/football/runtime/coordinator.ts','import "../adapters/store.ts";'],
+    ['lib/football/runtime/worker.ts','import "../adapters/store.ts";'],
+  ]) assert.deepEqual(await boundaryMessages(path,source),[],`${path}: ${source}`);
+
+  assert.equal((await boundaryMessages('lib/football/runtime/coordinator.ts','import "../adapters/store.ts";')).length,1);
+});
+
+test('desktop and diagnostic scripts have explicit import boundaries', async () => {
+  for (const [path,source] of [
+    ['desktop/probe.cjs','require("../lib/football/runtime/coordinator.ts");'],
+    ['scripts/probe.mjs','import "../lib/football/runtime/worker.ts";'],
+  ]) assert.equal((await boundaryMessages(path,source)).length,1,`${path}: ${source}`);
+
+  for (const [path,source] of [
+    ['desktop/probe.cjs','require("./port.cjs");'],
+    ['scripts/probe.mjs','import "../lib/football/adapters/sources.ts";'],
+    ['tests/probe.ts','import "../lib/football/runtime/coordinator.ts";'],
   ]) assert.deepEqual(await boundaryMessages(path,source),[],`${path}: ${source}`);
 });

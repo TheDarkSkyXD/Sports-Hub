@@ -1,25 +1,10 @@
-import { randomUUID } from 'node:crypto';
-import { FootballStore } from '../adapters/store.ts';
-import { SCHEDULES, readSchedule, readSeasonMembership } from '../adapters/schedule.ts';
-import { SOURCES, SourceFetchError, compatiblePlayers, enrichObservation, parseListings, readHtml } from '../adapters/sources.ts';
-import type { Source } from '../adapters/sources.ts';
 import { matchObservation, mergeSchedulePartitions } from '../domain/matching.ts';
 import { SESSION_LEASE_MS, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
 import type { Recovery } from '../domain/lifecycle.ts';
+import type { FootballDependencies, FootballRepository } from '../domain/ports.ts';
 import type { Board, Candidate, Command, Game, LeagueFeedStatus, Observation, Reply, Session } from '../shared.ts';
 
 type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;waitingUntil:number|null;requestId?:string};
-type CoordinatorOptions = {
-  now?: () => number;
-  schedules?: typeof SCHEDULES;
-  sources?: readonly Source[];
-  readSchedule?: typeof readSchedule;
-  readSeasonMembership?: typeof readSeasonMembership;
-  readHtml?: typeof readHtml;
-  id?: () => string;
-  ownerToken?: string;
-  reclaimToken?: string;
-};
 function errorCode(error: unknown): string {
   return (error instanceof Error ? error.message : 'request-failed').replace(/https?:\/\/\S+/g,'[url]').slice(0,120);
 }
@@ -54,7 +39,7 @@ async function runBounded<T>(items: T[], group: (item:T) => string, globalLimit:
   if (errors.length) throw errors[0];
 }
 export class FootballCoordinator {
-  private store: FootballStore;
+  private store: FootballRepository;
   private controller = new AbortController();
   private games: Game[] = [];
   private finalDeadlines = new Map<string,number>();
@@ -75,21 +60,29 @@ export class FootballCoordinator {
   private lastStoreSweep = 0;
   private detailCursor = 0;
   private readonly now: () => number;
-  private readonly schedules: typeof SCHEDULES;
-  private readonly sources: readonly Source[];
-  private readonly fetchSchedule: typeof readSchedule;
-  private readonly fetchMembership: typeof readSeasonMembership;
-  private readonly fetchHtml: typeof readHtml;
+  private readonly schedules: FootballDependencies['schedules'];
+  private readonly sources: FootballDependencies['sources'];
+  private readonly fetchSchedule: FootballDependencies['readSchedule'];
+  private readonly fetchMembership: FootballDependencies['readSeasonMembership'];
+  private readonly fetchHtml: FootballDependencies['readHtml'];
+  private readonly parseListings: FootballDependencies['parseListings'];
+  private readonly enrichObservation: FootballDependencies['enrichObservation'];
+  private readonly compatiblePlayers: FootballDependencies['compatiblePlayers'];
+  private readonly retryAfterMs: FootballDependencies['retryAfterMs'];
   private readonly id: () => string;
-  constructor(path: string, options: CoordinatorOptions = {}) {
-    this.now = options.now || Date.now;
-    this.schedules = options.schedules || SCHEDULES;
-    this.sources = options.sources || SOURCES;
-    this.fetchSchedule = options.readSchedule || readSchedule;
-    this.fetchMembership = options.readSeasonMembership || readSeasonMembership;
-    this.fetchHtml = options.readHtml || readHtml;
-    this.id = options.id || randomUUID;
-    this.store = new FootballStore(path,{ownerToken:options.ownerToken,reclaimToken:options.reclaimToken});
+  constructor(dependencies: FootballDependencies) {
+    this.now = dependencies.now;
+    this.schedules = dependencies.schedules;
+    this.sources = dependencies.sources;
+    this.fetchSchedule = dependencies.readSchedule;
+    this.fetchMembership = dependencies.readSeasonMembership;
+    this.fetchHtml = dependencies.readHtml;
+    this.parseListings = dependencies.parseListings;
+    this.enrichObservation = dependencies.enrichObservation;
+    this.compatiblePlayers = dependencies.compatiblePlayers;
+    this.retryAfterMs = dependencies.retryAfterMs;
+    this.id = dependencies.id;
+    this.store = dependencies.store;
     this.rebuild();
   }
   start(): void {
@@ -140,7 +133,7 @@ export class FootballCoordinator {
         try {
           const result = await this.fetchSchedule(source,now,this.controller.signal);
           if (this.stopped) return;
-          this.store.savePartition(source.id,result);
+          this.store.savePartition(source.id,{...result,at:this.now()});
           this.errors.delete(source.id);
         } catch(error) { if (!this.stopped) this.errors.set(source.id,errorCode(error)); }
       }));
@@ -175,7 +168,7 @@ export class FootballCoordinator {
       try {
         const html = await this.fetchHtml(source.url,this.controller.signal);
         const at = this.now();
-        const result = parseListings(source,html,at);
+        const result = this.parseListings(source,html,at);
         if (this.stopped) return;
         this.store.source(source.id,{at,outcome:result.outcome,count:result.observations.length});
         observations.push(...result.observations.slice(0,1000));
@@ -187,7 +180,7 @@ export class FootballCoordinator {
         const count = (this.sourceFailures.get(source.id) || 0) + 1;
         this.sourceFailures.set(source.id,count);
         const backoff = Math.min(600000,60000*2**(count-1));
-        this.sourceRetry.set(source.id,this.now()+Math.max(backoff,error instanceof SourceFetchError ? error.retryAfterMs || 0 : 0));
+        this.sourceRetry.set(source.id,this.now()+Math.max(backoff,this.retryAfterMs(error)));
         this.store.source(source.id,{at:this.now(),outcome:'failed',count:0,error:errorCode(error)});
       }
     });
@@ -218,13 +211,13 @@ export class FootballCoordinator {
       try {
         const html = await this.fetchHtml(original.url,this.controller.signal);
         if (this.stopped) return;
-        observation = enrichObservation(original,html);
+        observation = this.enrichObservation(original,html);
         const match = matchObservation(observation,this.games,this.now());
         this.store.observe(observation,match);
         if (match.kind !== 'matched') return;
         const game = this.games.find(game => game.id === match.gameId);
         if (!game || !this.scheduleFresh(game) || game.finalObservedAt !== undefined) return;
-        const players = compatiblePlayers(game.id,observation,html,this.now());
+        const players = this.compatiblePlayers(game.id,observation,html,this.now());
         if (!players.length) {
           this.store.observe(observation,{kind:'unmatched',reason:'compatible-media-not-resolved',possibleGameIds:[game.id]});
           return;
@@ -272,6 +265,10 @@ export class FootballCoordinator {
     }
     if (now-this.lastStoreSweep >= 3600000) { this.store.sweep(now); this.lastStoreSweep=now; }
   }
+  private sessionReply(session: Session): Reply {
+    const now=this.now();
+    return {kind:'session',session,candidates:(this.candidates.get(session.gameId) || []).filter(candidate => candidate.id===session.candidateId || now-candidate.observedAt<30*60000)};
+  }
   async command(command: Command): Promise<Reply> {
     if (this.stopped && command.kind!=='stop') return {kind:'error',status:503,message:'Pipeline is stopped.'};
     this.sweep();
@@ -311,16 +308,16 @@ export class FootballCoordinator {
         owned.drainRefreshes++;
         session.generation++;
       }
-      return {kind:'session',session};
+      return this.sessionReply(session);
     }
     if (command.retry) {
       owned.recovery={attempted:[],cooled:{},failures:{},cycleStartedAt:this.now()};
       owned.refreshes=0;
       owned.waitingUntil=null;
       if (session.candidateId!=='manual') session.generation++;
-      return {kind:'session',session};
+      return this.sessionReply(session);
     }
-    if (session.candidateId==='manual') return {kind:'session',session};
+    if (session.candidateId==='manual') return this.sessionReply(session);
     if (owned.waitingUntil !== null) {
       if (this.now()<owned.waitingUntil) return {kind:'error',status:503,message:'Checking the next available stream.',retryAfter:owned.waitingUntil};
       owned.waitingUntil=null;
@@ -331,10 +328,10 @@ export class FootballCoordinator {
       owned.refreshes=0;
       session.candidateId=next.id;
       session.generation++;
-      return {kind:'session',session};
+      return this.sessionReply(session);
     }
     if (command.failure) {
-      if (owned.refreshes<1) { owned.refreshes++; session.generation++; return {kind:'session',session}; }
+      if (owned.refreshes<1) { owned.refreshes++; session.generation++; return this.sessionReply(session); }
       owned.recovery=failedCandidate(owned.recovery,session.candidateId,this.now());
       owned.refreshes=0;
       const next=nextCandidate(candidates.filter(candidate => this.now()-candidate.observedAt<30*60000),owned.recovery,this.now(),session.candidateId);
@@ -351,7 +348,7 @@ export class FootballCoordinator {
       if (!candidates.some(candidate=>candidate.id===command.candidateId && this.now()-candidate.observedAt<30*60000)) return {kind:'error',status:404,message:'Stream is no longer listed.'};
       session.candidateId=command.candidateId; session.generation++; owned.refreshes=0;
     }
-    return {kind:'session',session};
+    return this.sessionReply(session);
   }
   async stop(): Promise<void> {
     if (this.stopped) return;

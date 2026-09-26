@@ -52,14 +52,16 @@ export class FootballStore {
     const partition = PartitionSchema.parse(value);
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      const acceptedGames: Game[] = [];
       for (const game of partition.games) {
-        if (game.lifecycle !== 'final') continue;
+        if (game.lifecycle !== 'final') { acceptedGames.push(game); continue; }
         const previous = this.db.prepare('SELECT at FROM finals WHERE id=?').get(game.id);
         const firstObserved = typeof previous?.at === 'number' ? previous.at : partition.at;
-        const final = recordFinal({...game,lifecycle:'final'},firstObserved);
+        const final = recordFinal(game,firstObserved);
         this.db.prepare('INSERT INTO finals VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload').run(game.id,JSON.stringify(final),firstObserved);
+        acceptedGames.push(final);
       }
-      this.db.prepare('INSERT INTO partitions VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload').run(id,JSON.stringify(partition));
+      this.db.prepare('INSERT INTO partitions VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload').run(id,JSON.stringify({...partition,games:acceptedGames}));
       this.db.exec('COMMIT');
     } catch(error) { this.db.exec('ROLLBACK'); throw error; }
   }

@@ -7,16 +7,22 @@ export const TeamSchema = z.object({
   aliases: z.array(z.string()).optional(),
   membership: z.object({subdivision:z.enum(['fbs','fcs']),season:z.number().int(),observedAt:z.number(),source:z.literal('espn-core')}).optional(),
 });
-export const GameSchema = z.object({
+const GameFields = z.object({
   id: z.string(), league: LeagueSchema, name: z.string(), date: z.string().optional(),
-  home: TeamSchema, away: TeamSchema, status: z.enum(['pre', 'in', 'post', 'unknown']),
-  lifecycle: z.enum(['scheduled', 'live', 'final', 'unknown']).optional(),
+  home: TeamSchema, away: TeamSchema,
   season: z.number().optional(), partitions: z.array(z.string()).optional(),
   detail: z.string(), redzone: z.boolean(), possession: z.string().optional(), down: z.string().optional(),
   lastPlay: z.string().optional(), venue: z.string().optional(), broadcast: z.string().optional(),
   sourceUrl: z.string().optional(), sourceUrls: z.array(z.string()).optional(),
-  finalObservedAt: z.number().optional(), graceEndsAt: z.number().optional(),
 });
+const NonfinalFields = { finalObservedAt:z.never().optional(), graceEndsAt:z.never().optional() };
+const ScheduledGameSchema = GameFields.extend({...NonfinalFields,status:z.literal('pre'),lifecycle:z.literal('scheduled')}).strict();
+const LiveGameSchema = GameFields.extend({...NonfinalFields,status:z.literal('in'),lifecycle:z.literal('live')}).strict();
+const UnknownGameSchema = GameFields.extend({...NonfinalFields,status:z.enum(['pre','in','post','unknown']),lifecycle:z.literal('unknown')}).strict();
+const RawFinalGameSchema = GameFields.extend({...NonfinalFields,status:z.literal('post'),lifecycle:z.literal('final')}).strict();
+const FinalGameSchema = GameFields.extend({status:z.literal('post'),lifecycle:z.literal('final'),finalObservedAt:z.number(),graceEndsAt:z.number()}).strict();
+export const ScheduleGameSchema = z.discriminatedUnion('lifecycle',[ScheduledGameSchema,LiveGameSchema,UnknownGameSchema,RawFinalGameSchema]);
+export const GameSchema = z.discriminatedUnion('lifecycle',[ScheduledGameSchema,LiveGameSchema,UnknownGameSchema,FinalGameSchema]);
 export const LeagueFeedSchema = z.object({ week: z.number().optional(), scoresAt: z.string().nullable(), sourceAt: z.string().nullable(), errors: z.array(z.string()) });
 export const BoardSchema = z.object({
   schemaVersion: z.literal(2), revision: z.number().int().nonnegative(), games: z.array(GameSchema), updatedAt: z.string(),
@@ -24,6 +30,9 @@ export const BoardSchema = z.object({
 });
 export type Team = z.infer<typeof TeamSchema>;
 export type Game = z.infer<typeof GameSchema>;
+export type ScheduleGame = z.infer<typeof ScheduleGameSchema>;
+export type FinalGame = z.infer<typeof FinalGameSchema>;
+export type RawFinalGame = z.infer<typeof RawFinalGameSchema>;
 export type League = z.infer<typeof LeagueSchema>;
 export type LeagueFeedStatus = z.infer<typeof LeagueFeedSchema>;
 export type Board = z.infer<typeof BoardSchema>;
@@ -46,10 +55,14 @@ export const CandidateSchema = z.object({
   label: z.string(), sourceIds: z.array(z.string()), observedAt: z.number(),
 });
 export type Candidate = z.infer<typeof CandidateSchema>;
-export const SessionSchema = z.object({
+const SessionFields = z.object({
   id: z.string(), gameId: z.string(), candidateId: z.string(), generation: z.number(),
-  state: z.enum(['active', 'draining', 'closed']), graceEndsAt: z.number().nullable(),
 });
+export const SessionSchema = z.discriminatedUnion('state',[
+  SessionFields.extend({state:z.literal('active'),graceEndsAt:z.null()}).strict(),
+  SessionFields.extend({state:z.literal('draining'),graceEndsAt:z.number()}).strict(),
+  SessionFields.extend({state:z.literal('closed'),graceEndsAt:z.number()}).strict(),
+]);
 export type Session = z.infer<typeof SessionSchema>;
 export const PlaybackSchema = z.object({ session: SessionSchema, candidates: z.array(CandidateSchema) });
 export type Playback = z.infer<typeof PlaybackSchema>;
@@ -66,7 +79,7 @@ export type Command = z.infer<typeof CommandSchema>;
 export const ReplySchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('board'),board:BoardSchema}),
   z.object({kind:z.literal('playback'),playback:PlaybackSchema}),
-  z.object({kind:z.literal('session'),session:SessionSchema}),
+  z.object({kind:z.literal('session'),session:SessionSchema,candidates:z.array(CandidateSchema)}),
   z.object({kind:z.literal('authorized'),candidate:CandidateSchema,session:SessionSchema}),
   z.object({kind:z.literal('ok')}),
   z.object({kind:z.literal('error'),status:z.number(),message:z.string(),retryAfter:z.number().int().nonnegative().optional()}),
