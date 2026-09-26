@@ -1,0 +1,141 @@
+# Football pipeline application contracts
+
+Research date: 2026-09-25. Repository baseline: `229fd78dbcb7f208f7c3c538a6eca45167825e2c`. Scope: source inspection and existing local tests. This report does not assert that an external stream is currently playable. The user selected collection and cleanup while the app is open, with no collector running after it closes. The user also selected removal of final games from live discovery with a short viewing grace, and a separate unverified listing area for unmatched sources. Parent map: [issue 6](https://github.com/TheDarkSkyXD/Sports-Hub/issues/6). Research ticket: [issue 9](https://github.com/TheDarkSkyXD/Sports-Hub/issues/9).
+
+## Findings that determine the plan
+
+The current app has one stream directory integration, Sportsurge, with separate NFL and college pages. It combines those listings with ESPN scoreboards. A game can hold one `sourceUrl`, and that page can yield at most six players from one embed host. Adding every requested directory requires a candidate collection per game, not additional values in the current single-source field. [Source configuration and contracts](../../lib/sunday.ts#L1), [player extraction](../../lib/sunday.ts#L16).
+
+The active player is the same browser HLS relay inside both the web app and Electron. `app/page.tsx` imports and renders `BrowserProviderPlayer`; it detects Electron only for presentation. A separate native `ProviderPlayer`, its preload bridge, and native server-switching loop exist, but the page does not mount that component. Native behavior must not be described as the current desktop viewing experience. [Page imports](../../app/page.tsx#L10), [rendered player](../../app/page.tsx#L83), [native component](../../components/provider-player.tsx#L17), [native loop](../../desktop/main.cjs#L94).
+
+There is no final-game cleanup workflow. Final games can retain source links; explicit provider choices remain active after the score changes to `post`; playback resolution does not check game status; relay tokens have idle eviction rather than game completion revocation. [Merge](../../lib/sunday.ts#L72), [provider selection](../../app/page.tsx#L34), [automatic provider choice](../../app/page.tsx#L54), [resolver](../../lib/playback-server.ts#L8), [relay registry](../../lib/stream-relay.ts#L56).
+
+## Existing sources and playback routes
+
+| Source or route | Current behavior and evidence |
+| --- | --- |
+| ESPN NFL | `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard`; supplies IDs, display names, dates, scores and coarse game state. [Configuration](../../lib/sunday.ts#L9), [parser](../../lib/sunday.ts#L45). |
+| ESPN college | `https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80&limit=200`; one fixed query with no date traversal, pagination or separate FBS/FCS representation. Repository code alone does not prove that this query covers every FBS/FCS game. [Configuration](../../lib/sunday.ts#L10). |
+| Sportsurge NFL | `https://isportsurge.ws/nfl/livestreams3`; only matching `/watch/nfl/<slug>/<digits>` game links. The supplied `/index6` landing page is not the configured endpoint. [Configuration and validation](../../lib/sunday.ts#L9). |
+| Sportsurge college | `https://isportsurge.ws/cfb/livestreams2`; only matching `/watch/cfb/<slug>/<digits>` game links. [Configuration and validation](../../lib/sunday.ts#L10). |
+| Sportsurge NFL RedZone | Special `redzone` resolver ID maps to `/event/nfl/nfl-redzone-live-streaming-links`; the UI opens it externally. It is a channel, not a scheduled matchup, and needs separate expiry rules. [Resolver](../../lib/playback-server.ts#L13), [UI link](../../app/page.tsx#L92). |
+| Gooz player pages | Parser accepts an initial iframe at `https://gooz.aapmains.net/new-stream-embed/<digits>`, followed by `changeStream(<digits>)` backups. Deduplicates player IDs and truncates to six. No initial matching iframe means no players. [Parser](../../lib/sunday.ts#L16). |
+| Browser HLS relay | Resolves the selected Gooz page, reads a literal `source` or `atobClappr` value, validates the HLS address and rewrites playlist resources to local opaque tokens. [Stream resolver](../../lib/stream-server.ts#L16), [embed extraction](../../lib/stream-relay.ts#L40), [rewriter](../../lib/stream-relay.ts#L88). |
+| Allowed HLS roots and variants | Exact root `chatgpt.hereisman.net/playlist/<player>/load-playlist`; fixed variant host set includes `red.redirector1.space`, `pl.kamfir5.space`, `pl.goozekhar2.space`, and `pl.playlist3.space` through `pl.playlist6.space`. Variant paths remain player scoped. [Host list](../../lib/stream-relay.ts#L10), [validation](../../lib/stream-relay.ts#L19). |
+| Relayed media | Signed R2 URLs with a player-specific base64 path, allowed hostname shape, and one 64-digit signature. The server emits `video/mp2t` for every resource classified as media. It has no separate transport contract for DASH, DRM, keys or other media formats. [Resource validation](../../lib/stream-relay.ts#L31), [media response](../../lib/stream-server.ts#L35). |
+| Manual feed | One user-supplied URL per game. HTTPS or loopback HTTP accepted. `.m3u8` extension selects hls.js when supported; otherwise the URL goes to the native video element. Webpage URLs are not resolvers. This path bypasses the server relay and has no automatic alternate-source callback. [Validation](../../lib/sunday.ts#L92), [manual form](../../app/page.tsx#L65), [player dispatch](../../components/game-player.tsx#L104), [rendering](../../app/page.tsx#L83). |
+| External redirect | `/play/[gameId]` resolves playback and redirects to the first player. It does not implement alternate selection or an independent lifecycle. [Route](../../app/play/[gameId]/route.ts#L1). |
+| Native Electron embed | Separate unused UI integration can open only the exact Gooz origin and path in sandboxed `WebContentsView` instances. Maximum four native players; no arbitrary provider navigation. [Security](../../desktop/security.cjs#L1), [native open](../../desktop/main.cjs#L27), [component](../../components/provider-player.tsx#L17). |
+| Other requested providers | No adapters/configuration for CrackStreams, BuffStreams, LiveTV, VIPBox, VIPBoxTV, StrikeOut, NFLHunter, NFLStreams, StreamEast or MethStreams were found in the production source inventory. All configured discovery URLs are in the two `LEAGUES` entries. [Configuration](../../lib/sunday.ts#L8). |
+
+## Identity and normalization facts
+
+`League` is only `nfl | ncaaf`. `Team` has display values but no canonical team ID. `Game` has a string ID, optional string date, a single optional source URL and `pre | in | post | unknown` status. The parser retains ESPN event IDs, prefixes college IDs with `ncaaf-`, and creates `source-<id>` or `ncaaf-source-<id>` for unmatched directory rows. The same ID regular expression is duplicated in the Electron security module. No schema version or identity migration exists for saved preferences. [Types](../../lib/sunday.ts#L1), [directory IDs](../../lib/sunday.ts#L32), [scoreboard IDs](../../lib/sunday.ts#L69), [desktop validation](../../desktop/security.cjs#L5), [preferences](../../app/page.tsx#L17).
+
+Matching lowercases team display names, removes all characters outside ASCII letters and digits, sorts the two names and includes the league. It deliberately tolerates reversed home/away order. It only joins when there is one scoreboard game, one directory row and one occurrence of the source URL. Ambiguous rows remain separate. It never consults kickoff date, source observation time, school IDs, aliases or season. This prevents some duplicate joins but cannot standardize school nicknames and abbreviations or distinguish a stale rematch. [Matcher](../../lib/sunday.ts#L72).
+
+Directory parsing requires particular HTML classes, attribute order and double quotes. It extracts team names from image `alt`, decodes only `&amp;` and `&#039;`, and leaves schedule text as a display string. Directory games have `unknown` status even when the provider says "In Progress". No UTC kickoff is produced from a listing. A successful empty parse can replace the previous directory if a search marker is present. [Directory parser](../../lib/sunday.ts#L22), [refresh validation](../../lib/sunday-server.ts#L28).
+
+The scoreboard parser checks selected fields but collapses status to the upstream `state`. It does not retain distinct cancelled, postponed, suspended, abandoned or corrected-final evidence. A malformed events container throws; malformed individual entries are dropped. Client `/api/games` handling checks only that `games` is an array before accepting a typed `Board`, and playback handling checks only a nonempty players array. [Scoreboard parser](../../lib/sunday.ts#L45), [board client](../../app/page.tsx#L51), [playback client](../../components/browser-provider-player.tsx#L19).
+
+## Runtime, caches and cleanup facts
+
+| Owner | Lifetime and existing cleanup |
+| --- | --- |
+| Board service | Module-level snapshots per league, 25-second board cache and one shared refresh promise. NFL and college refresh concurrently; scores and directory refresh independently. Failed sources retain the last successful snapshot with no maximum age. `updatedAt` is new even if individual inputs are stale; `scoresAt` and `sourceAt` retain input times. [Service](../../lib/sunday-server.ts#L3). |
+| Board scheduler | Renderer fetches at mount and every 30 seconds only when `document.hidden` is false. There is no standalone server collection loop. Unmount clears the interval but does not abort an in-flight board request; the request times out after 15 seconds. [Renderer](../../app/page.tsx#L51). |
+| Playback resolution | In-memory game-keyed cache lasts 90 seconds. A valid cached result returns before checking the latest board. When size is greater than 64 the next successful insertion clears the whole map. No per-game invalidation, shared pending lookup or negative cache. Fetch retries once only for a 5xx response, with an eight-second timeout per try. [Resolver](../../lib/playback-server.ts#L6). |
+| Relay resources | Global maps hold tokens and reverse identities. Five-minute idle lifetime, a 4096 resource ceiling, and lazy pruning during registration or access. A token's use extends its lifetime. Media identity ignores query parameters and replaces the stored signed URL with the latest one. There is no revoke-by-game, playback session ownership or completion generation. [Registry](../../lib/stream-relay.ts#L4). |
+| Stream requests | Provider requests have independent ten-second timeouts. Route `Request.signal` does not flow into stream reads; there is no parent shutdown signal in the service. [Routes](../../app/api/stream/media/[token]/route.ts#L5), [fetch](../../lib/stream-server.ts#L5). |
+| Browser provider lookup | Aborts the playback metadata fetch on component cleanup. Players are loaded only for game/retry changes, not periodically; index-based selection can refer to a different server if the resolver list changes. [Component](../../components/browser-provider-player.tsx#L16). |
+| Video resources | On URL change, retry or unmount, clears startup timeout, destroys hls.js, pauses video, removes handlers and removes `src`. Other effects remove their listeners/timers. This is a useful existing disposal contract. [Player cleanup](../../components/game-player.tsx#L123). |
+| Preferences | Selected game IDs, favorites, manual feeds, volume and layout persist in localStorage. Initial selection removes IDs absent from the first loaded board only once. Removing a tile deletes selection, provider choice and playback override, but leaves its favorite, manual URL and delay. There is no final-game sweep. [Storage/init](../../app/page.tsx#L47), [removal](../../app/page.tsx#L62). |
+| Electron runtime | Single-instance lock; starts a loopback Next server. Window close closes native views and clears maps/poll; all windows closed quits the app; `will-quit` sends a kill to the owned server process. This supports app-open scope but has no graceful collection shutdown handshake or explicit child-process exit verification. [Startup/shutdown](../../desktop/main.cjs#L74). |
+
+The app can therefore remain open while collection stops because its renderer is hidden. App-open scope should explicitly cover minimized windows and sleep/resume. Current visibility gating is a different policy. Also, stopping the desktop app does not imply stopping a separate `npm run dev` server that a user started themselves. [Refresh gate](../../app/page.tsx#L52), [owned process](../../desktop/main.cjs#L80).
+
+## Current failure detection
+
+The browser path retries a failed server twice within a rolling minute, then increments its array index if a backup exists. The URL changes to force a fresh root lookup, but the service ignores the `retry` and `source` query fields and can still use the 90-second player list cache. There is no provider-level cooldown, shared health history, identity-based selection or cross-provider fallback. A later failure outside the rolling minute may restart the same retry budget. [Failover](../../components/browser-provider-player.tsx#L27), [route parameters](../../app/api/stream/[gameId]/index.m3u8/route.ts#L5), [cache](../../lib/playback-server.ts#L10).
+
+`GamePlayer` reports a fatal hls.js error, media element error or failure to load within 20 seconds. A `waiting` event after playback starts merely sets buffering state. `ended` shows replay; it does not establish that the scheduled game is final. A nonfatal stall can remain without a bounded application recovery. Pause and autoplay denial have separate paths and should remain distinct from a dead stream. [Handlers](../../components/game-player.tsx#L81), [hls.js errors and startup timer](../../components/game-player.tsx#L113).
+
+The native loop checks every two seconds and switches after 25 seconds without startup. Once media starts it sets `reported=true` and stops checking that view, so it does not detect later stalls. View load/process errors report an error rather than directly invoking the next server. This is a second failure policy if the native component is ever enabled. [Native events](../../desktop/main.cjs#L45), [poll](../../desktop/main.cjs#L94).
+
+## Recommended contracts and invariants
+
+These are proposed requirements, not current behavior. They should become decision tickets before implementation.
+
+1. Keep competition identity separate from provider categories. Represent NFL and college football; retain season-specific team membership in FBS/FCS and permit cross-subdivision games. Do not invent separate duplicate games for the NCAAF, FBS and FCS views. Missing subdivision is explicit rather than inferred from a page title.
+2. Assign stable application game IDs and team IDs. Retain namespaced upstream IDs, season, UTC kickoff, source observation time and provenance. Keep a provisional listing identity until reconciliation succeeds. Record any provisional-to-canonical redirect so selections, saved feeds and health history survive reconciliation.
+3. Parse each external boundary from `unknown` into a schema-derived contract. Distinguish a successful empty directory from blocked, failed, malformed and partially parsed responses. Keep raw labels and parsing evidence outside the consumer display contract; version adapters and alias tables.
+4. Resolve provider-scoped aliases to canonical teams before event matching. Require an unambiguous competition, team pair and compatible kickoff window, with an explicit reschedule rule. Missing dates or ambiguous aliases produce an unmatched result, visible separately as unverified per the user's choice. Provider observation freshness limits joins to old schedules.
+5. Model one game with many candidate IDs. Candidate identity must include provider namespace and a stable provider locator; player arrays are presentation order, never identity. Track common underlying player hosts so ten mirrors do not masquerade as ten independent fallbacks. Preserve rotating query signatures on playback URLs while keeping stable identity separately.
+6. Use discriminated playback descriptors for relayed HLS, direct media, supported provider embed and external-only links. Carry runtime support and needed request policy in the adapter-owned descriptor. Do not pass a webpage URL to a video element or claim an external-only link supports automatic health checks.
+7. Separate game state, listing freshness, provider health and session playback state. A 403, parser change, timeout, missing listing and decoded-video stall have different recovery actions. An HTTP 200 page does not prove playable media. Pause, muted autoplay denial and hidden rendering must not mark a candidate dead.
+8. Make finalization authoritative and idempotent. Require fresh schedule evidence. Per the user's choice, remove final games from live discovery and permit a short grace for existing viewing sessions. Stop discovery and new playback immediately; at grace expiry, invalidate resolver entries, revoke game/session resources, stop retries, detach players and retire game-scoped manual URLs. Overtime, delay, suspension and stale scoreboards must not trigger final cleanup. Keep a bounded score/history record and a finalization generation to reject late asynchronous writes. RedZone needs channel-specific rules.
+9. Keep candidate failure reversible. Temporarily quarantine transient failures, refresh expiring locators and re-probe on a bounded schedule. Permanently retire only on the relevant lifecycle rule; one viewer's network failure must not erase all provider listings. Expose healthy, unknown, cooling-down and exhausted states to consumers.
+10. One app-owned coordinator controls collection, TTL sweeps and reconciliation while the desktop app is open. The existing owned Next runtime is a plausible location, with explicit startup/shutdown integration. Browser views should share a runtime owner/lease if browser mode remains supported. Minimize and resume should not duplicate loops or depend on a visible tile. No timers or collection processes survive the owning app's shutdown.
+11. Give every refresh/session a cancellation scope and generation. Shared refreshes do not cancel when one caller disconnects; individual playback requests do. Abort abandoned upstream requests, reject late writes and close all owned resources. Cleanup must be safe to call twice and safe during pending discovery.
+12. Define deterministic candidate order, retry budget, backoff, cooldown and all-exhausted behavior. Server changes preserve pause, mute, volume and focus. Source-specific quality selection resets. Avoid rapid ping-pong between mirrors and re-evaluate candidates by stable ID after rediscovery.
+13. Publish a versioned consumer snapshot with canonical game IDs, source freshness, available playback modes, candidate counts and actionable failure states. Keep provider HTML, arbitrary upstream headers and transient signed tokens out of persisted preferences. Record outcome counts so every requested source is accounted for as supported, blocked, incompatible, empty, failing or pending validation.
+
+## Recommended ownership
+
+Keep this inside the current application; source inspection does not justify a new service deployment. `app/api/**` should parse requests and translate application results. A framework-independent football workflow should own matching, candidate eligibility, health transitions and finalization. Provider adapters should own ESPN/directory parsing and request restrictions. A runtime coordinator should wire these parts to the owned Next process and shutdown signal. Browser and Electron player adapters should emit the same session events and implement disposal, while the shared workflow decides when to switch. The UI should consume typed snapshots and issue user intentions.
+
+The present split is inconsistent with that target: `lib/sunday.ts` combines shared view contracts, provider configuration/parsing and matching; `lib/stream-server.ts` combines HTTP responses and provider fetches; browser component and Electron main each decide failover. These are targeted extraction points, not grounds for reorganizing the unrelated UI component library. [Shared/provider module](../../lib/sunday.ts#L1), [stream server](../../lib/stream-server.ts#L1), [browser policy](../../components/browser-provider-player.tsx#L27), [desktop policy](../../desktop/main.cjs#L94).
+
+ESLint currently uses the Next flat configurations with UI vendor exceptions and has no import-layer rules or package lint script. If implementation creates architecture folders, add matching enforced import rules and a normal lint command in that same unit. Domain policy should not import React, Electron, Next request types or concrete provider fetch code. [ESLint](../../eslint.config.mjs#L1), [scripts](../../package.json#L6).
+
+## Acceptance matrix for implementation
+
+| Scenario | Required observable result |
+| --- | --- |
+| NFL, FBS-only, FCS-only and FBS/FCS crossover slate | Each real event appears once under a stable ID. Coverage report identifies unobserved schedule partitions and source failures. |
+| Same names in different competitions or seasons | No cross-competition or stale-season join. |
+| Provider nickname, school abbreviation, punctuation, HTML entity and reversed order | Verified aliases join the intended event; ambiguous names remain unmatched with a reason. |
+| Same opponents on different dates; postponed kickoff | Match uses event identity/date evidence and explicit reschedule reconciliation. |
+| Ten providers list the same event | One game, all valid distinct candidates and provenance; duplicates do not create extra games. |
+| Same player mirrored by several sites | One underlying playback failure does not cause an endless mirror cycle. |
+| Provider returns empty valid page, challenge page, broken markup or partial parse | Different outcome states; last-good data retains its actual age and eventually expires. |
+| NFL scoreboard succeeds while college or directory fails | Unaffected partitions update; stale input cannot silently become fresh or finalize games. |
+| Initial candidate fails then backup plays | Bounded retries, deterministic switch and preserved pause/audio/volume/focus. |
+| Mid-playback nonfatal stall, fatal error, expired signed URL | Appropriate refresh/switch within specified deadlines; candidate identity survives token rotation. |
+| Manual direct HLS/video fails; embed unsupported in browser | Explicit capability-based fallback/exhausted result; no attempt to treat an HTML page as direct media. |
+| User pauses or autoplay requires a gesture | No dead-link classification and no unwanted autoplay during recovery. |
+| All candidates fail; provider later recovers | Exhausted state with backoff; subsequent probe/retry recovers without rapid cycling. |
+| Event reaches verified final | Remove from live discovery and block new sessions immediately. Existing sessions receive a short grace, then tokens stop resolving and players, requests and game-scoped links are released. Score/history retention remains bounded and explicit. |
+| Overtime, suspended game, delayed kickoff, stale final report | Active or uncertain game is not prematurely purged. Corrected lifecycle evidence follows the documented reopen rule. |
+| Discovery/playback finishes after finalization | Stale generation cannot restore a candidate, token or player. |
+| Close one tile, switch layout, change game, disconnect manual feed | Removed player stops network/media work; other active sessions remain valid. |
+| Repeat cleanup and close while lookup is pending | No resurrected resources or uncaught errors; cleanup is idempotent. |
+| Minimize, hide, sleep and resume with the app open | Defined collection cadence and immediate stale-state reconciliation on resume, with one coordinator. |
+| App closes; app reopens after games ended | No collection continues after close; reopen reconciliation cannot restore expired playable links. |
+| Multiple browser clients or development hot reload | No duplicate coordinators, overlapping writes or client-owned cancellation of shared work. |
+| Candidate count exceeds six; list reorders | No silent six-item truncation; stable selected ID resolves to the intended candidate. |
+| Host redirect, cross-player playlist, invalid IPC and oversized body | Adapter policy rejects unsupported resources without weakening existing origin/player restrictions. |
+| Long slate under resource limits | Bounded memory and retained history; eviction does not revoke unrelated active sessions without a defined recovery path. |
+| RedZone channel and arbitrary saved manual feeds | Channel cleanup follows channel rules; game-scoped manual feeds participate in retirement. |
+
+Choose concrete timeout, grace, freshness and retention values in the policy ticket. Tests should use a controllable clock and recorded provider fixtures, plus real local media playback for user-visible recovery and disposal. Do not depend on live external stream uptime for deterministic acceptance.
+
+Schedule coverage must verify FBS and FCS separately against expected game IDs for a known slate. A fixed `limit=200` is not proof of completeness. The parent investigation reported cached ESPN responses for groups 80 and 81 but fresh requests returning 403. That observation was not independently repeated in this source audit. The schedule adapter must distinguish access failure from an empty slate, preserve bounded last-good data with its real timestamp, and avoid finalization from stale or unavailable evidence.
+
+## Verification performed
+
+`npm test` ran in the isolated research checkout on 2026-09-25. All 20 tests passed. They cover current parser/matching examples, URL restrictions, byte ranges, relay rewriting, signed URL rotation, desktop bounds and port selection. They do not prove the proposed multi-provider lifecycle. [Tests](../../tests/sunday.test.ts#L9), [relay tests](../../tests/stream.test.ts#L9), [desktop tests](../../tests/desktop.test.ts#L10).
+
+An in-memory Node check called the real `mergeGames` and `parsePlayers` without changing application files. Its literal fixtures produced these results:
+
+| Fixture | Actual result |
+| --- | --- |
+| One 2026 scoreboard game plus same-name listing dated 2025 | The old source URL attached to the 2026 game. |
+| `A` versus provider label `A University` | Two separate games remained. |
+| One scoreboard game plus two same-pair listing URLs | Three games remained, with no source attached to the score game. |
+| Final scoreboard game plus matching listing | The source URL remained attached. |
+| Initial player plus seven distinct backup IDs | Six players returned. |
+
+The browser script already contains tests for two manifest refreshes, fallback exhaustion and control preservation on a server change. Those tests were inspected but not executed in this report; no live UI verification is claimed. [Browser recovery assertions](../../tests/player.browser.mjs#L278).
+
+The installed Next 16.3.4 route-handler guide was read from the parent checkout at `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`. It documents Web Request/Response route handlers and request-time defaults. The in-memory caches discussed here are application code, so framework cache directives alone cannot supply final-game invalidation.
