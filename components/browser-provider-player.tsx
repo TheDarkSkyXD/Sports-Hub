@@ -1,11 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, LoaderCircle, RefreshCw, X } from 'lucide-react';
+import { AlertCircle, LoaderCircle, RefreshCw } from 'lucide-react';
 import { GamePlayer } from './game-player';
 
 type Player = { label: string };
-export function BrowserProviderPlayer({ gameId, focused, audible, volume, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange, onClose }: { gameId: string; focused: boolean; audible: boolean; volume: number; playing: boolean; delay: number; onPlayingChange: (playing: boolean) => void; onAudibleChange: (audible: boolean) => void; onVolumeChange: (volume: number) => void; onClose: () => void }) {
+export function BrowserProviderPlayer({ gameId, focused, audible, volume, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange }: { gameId: string; focused: boolean; audible: boolean; volume: number; playing: boolean; delay: number; onPlayingChange: (playing: boolean) => void; onAudibleChange: (audible: boolean) => void; onVolumeChange: (volume: number) => void }) {
   const [players, setPlayers] = useState<Player[] | null>(null);
   const [message, setMessage] = useState('Finding your game…');
   const [server, setServer] = useState(0);
@@ -38,6 +38,6 @@ export function BrowserProviderPlayer({ gameId, focused, audible, volume, playin
     <div className="provider-surface">
       {players ? <GamePlayer feed={{ url, label: players[server]?.label || `Server ${server + 1}` }} focused={focused} audible={audible} volume={volume} playing={playing} delay={delay} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={failover} errorHint="This server is unavailable. Try again or switch to another listed server."/> : <div className="player-message">{message==='Finding your game…'?<LoaderCircle className="spin"/>:<AlertCircle/>}<strong>{message==='Finding your game…'?'Opening the live player':'Player unavailable'}</strong><p>{message}</p>{message!=='Finding your game…'&&<button className="button" onClick={() => setRetry(current => current + 1)}><RefreshCw size={14}/>Try again</button>}</div>}
     </div>
-    <div className="provider-controls"><span>{players ? `${players[server]?.label || 'Server'} · ${server + 1} of ${players.length}` : 'Connecting'}</span><button onClick={next} disabled={!players || players.length < 2} title="Switch provider server"><RefreshCw size={12}/>Switch server</button><button aria-label="Stop this game" onClick={onClose}><X size={13}/></button></div>
+    <div className="provider-controls"><button onClick={next} disabled={!players || players.length < 2} title="Switch provider server"><RefreshCw size={12}/>Switch server</button></div>
   </div>;
 }
