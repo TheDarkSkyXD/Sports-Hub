@@ -141,13 +141,30 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
       else if (now - lastProgress >= 15000) error();
     }, 2000);
     let hls: Hls | null = null;
+    let decodedHeight: number | null = null;
+    const refreshQualities = () => {
+      if (!active || !hls) return;
+      const singleLevel = hls.levels.length === 1;
+      setQualities(hls.levels.map((level, index) => {
+        const height = Number.isFinite(level.height) && level.height > 0 ? level.height : singleLevel ? decodedHeight : null;
+        const bitrateKbps = Number.isFinite(level.bitrate) && level.bitrate > 0 ? Math.round(level.bitrate / 1000) : 0;
+        const label = height ? `${height}p${bitrateKbps > 0 ? ` · ${bitrateKbps} kbps` : ''}` : bitrateKbps > 0 ? `${bitrateKbps} kbps` : 'Quality unavailable';
+        return { index, label };
+      }));
+    };
+    const onVideoDimensions = () => {
+      if (!active || video.readyState < 1) return;
+      decodedHeight = Number.isFinite(video.videoHeight) && video.videoHeight > 0 ? video.videoHeight : null;
+      refreshQualities();
+    };
+    video.addEventListener('loadedmetadata', onVideoDimensions);
+    video.addEventListener('resize', onVideoDimensions);
     if (/\.m3u8(?:\?|$)/i.test(feed.url) && Hls.isSupported()) {
       hls = new Hls({ maxBufferLength: 45, backBufferLength: 90, liveSyncDurationCount: 3 });
       hlsRef.current = hls;
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (!active || !hls) return;
-        const levels = hls.levels.map((level, index) => ({ index, label: level.height ? `${level.height}p${level.bitrate ? ` · ${Math.round(level.bitrate / 1000)} kbps` : ''}` : `${Math.round(level.bitrate / 1000)} kbps` }));
-        setQualities(levels);
+        refreshQualities();
         setUsesHls(true);
       });
       hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => { if (active) { liveRef.current = data.details.live; setSyncPosition(hls?.liveSyncPosition ?? null); updateTimeline(); } });
@@ -173,6 +190,7 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
       video.removeEventListener('play', playInPip); video.removeEventListener('pause', pauseInPip);
       video.removeEventListener('timeupdate', updateTimeline);
       video.removeEventListener('durationchange', updateTimeline); video.removeEventListener('progress', updateTimeline);
+      video.removeEventListener('loadedmetadata', onVideoDimensions); video.removeEventListener('resize', onVideoDimensions);
       video.removeAttribute('src'); video.load();
     };
   }, [feed.url, retry, updateTimeline]);
