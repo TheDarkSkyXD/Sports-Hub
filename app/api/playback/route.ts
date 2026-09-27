@@ -23,7 +23,7 @@ export async function PATCH(request: Request) {
   if (!parsed.success || parsed.data.kind !== 'session') return Response.json({ error: 'Invalid playback request.' }, { status: 400 });
   const body = parsed.data;
   const result = await updatePlayback(body.sessionId, body.generation, body.candidateId, body.failure, body.retry);
-  if ('error' in result) return Response.json({ error: result.error, retryAfter: result.retryAfter }, { status: result.status, headers: { 'Cache-Control': 'no-store' } });
+  if ('error' in result) return Response.json({ error: result.error, retryAfter: result.retryAfter, code: result.code }, { status: result.status, headers: { 'Cache-Control': 'no-store' } });
   return Response.json(result.value, { headers: { 'Cache-Control': 'no-store' } });
 }
 
