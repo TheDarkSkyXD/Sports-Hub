@@ -8,8 +8,9 @@ import ffmpeg from 'ffmpeg-static';
 import { chromium, _electron as electron } from 'playwright';
 
 const desktop = process.argv.includes('--desktop');
+const qualityOnly = process.argv.includes('--quality-only');
 let origin = process.env.PLAYER_BASE_URL || 'http://127.0.0.1:3100';
-const artifacts = path.resolve(`work/player-verification${desktop ? '-electron' : ''}`);
+const artifacts = path.resolve(`work/player-verification${desktop ? '-electron' : ''}${qualityOnly ? '-quality' : ''}`);
 const media = path.join(artifacts, 'media');
 await mkdir(media, { recursive: true });
 await promisify(execFile)(ffmpeg, [
@@ -61,7 +62,7 @@ async function screenshot(page, name, fullPage = false) {
   } else await page.screenshot({ path: target, fullPage });
 }
 
-async function openRoom({ live = false, provider = false, manyQualities = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false, holdHeartbeat = false } = {}) {
+async function openRoom({ live = false, provider = false, manyQualities = false, mediaPlaylist = false, backupMediaPlaylist = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false, holdHeartbeat = false } = {}) {
   const context = desktopApp ? desktopApp.context() : await browser.newContext({ viewport: { width: 1440, height: 1100 } });
   await context.unrouteAll({ behavior: 'wait' });
   let roomGames = games.map((g, index) => provider ? { ...g, status: waitingForLive && index === 0 ? 'pre' : g.status, sourceUrl: waitingForLive && index === 1 ? undefined : `https://isportsurge.ws/watch/nfl/test-game/${g.id}` } : g);
@@ -172,15 +173,22 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
         return response;
       }
     }
-    return serveMedia(route, file === 'index.m3u8' ? 'master.m3u8' : file);
+    let mediaFile = file;
+    if (file === 'index.m3u8') {
+      const backup = url.searchParams.get('candidate')?.endsWith('-1');
+      mediaFile = mediaPlaylist || backupMediaPlaylist && backup ? 'level_0.m3u8' : 'master.m3u8';
+    }
+    return serveMedia(route, mediaFile);
   });
   if (!seededContexts.has(context)) {
     await context.addInitScript(games => {
-      const provider = new URL(location.href).searchParams.get('playerFixture') === 'provider';
+      const parameters = new URL(location.href).searchParams;
+      const provider = parameters.get('playerFixture') === 'provider';
+      const mediaPlaylist = parameters.has('mediaPlaylist');
       localStorage.setItem('sunday-room:v1', JSON.stringify({
         selected: games.map(g => g.id), favorites: [], layout: 'quad', volume: 70, spoilers: false,
         feeds: provider ? {} : Object.fromEntries(games.map((g, i) => [g.id, {
-          url: `${location.origin}/__player_fixture__/master.m3u8?tile=${i}`, label: `Test stream ${i + 1}`,
+          url: `${location.origin}/__player_fixture__/${mediaPlaylist ? 'level_0.m3u8' : 'master.m3u8'}?tile=${i}`, label: `Test stream ${i + 1}`,
         }])),
       }));
     }, games);
@@ -194,7 +202,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   page.setDefaultTimeout(15000);
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}${offlineStart ? '&offlineFixture=1' : ''}`);
+  await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}${mediaPlaylist ? '&mediaPlaylist=1' : ''}${offlineStart ? '&offlineFixture=1' : ''}`);
   await page.locator('.game-tile').first().waitFor();
   if (!provider) await page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(v => v.readyState >= 2));
   return { context, page, pageErrors, manifestRequests, indexRequests, finalFailure, sessionCounts, heartbeatObserved, releaseHeartbeat,
@@ -216,6 +224,42 @@ async function revealControls(page) {
 }
 
 try {
+  const mediaRoom = await openRoom({ mediaPlaylist: true });
+  await revealControls(mediaRoom.page);
+  await mediaRoom.page.getByRole('button', { name: 'Video quality', exact: true }).click();
+  const mediaMenu = mediaRoom.page.getByRole('dialog', { name: 'Playback quality', exact: true });
+  await screenshot(mediaRoom.page, 'single-rendition-quality.png');
+  const mediaOptions = await mediaMenu.innerText();
+  assert.match(mediaOptions, /360p/, 'Decoded 360p media playlist must expose its actual quality');
+  assert.doesNotMatch(mediaOptions, /\b0 kbps\b/, 'Unknown playlist bandwidth must not appear as 0 kbps');
+  assert.deepEqual(mediaRoom.pageErrors, []);
+  results.push('A single-rendition media playlist reports decoded 360p without invented 0 kbps.');
+  if (!desktopApp) await mediaRoom.context.close();
+
+  const switchRoom = await openRoom({ provider: true, backupMediaPlaylist: true });
+  const switchControls = switchRoom.page.getByRole('group', { name: 'Focused stream controls', exact: true });
+  await revealControls(switchRoom.page);
+  await switchControls.getByRole('button', { name: 'Video quality', exact: true }).click();
+  await switchRoom.page.getByRole('button', { name: /^180p/ }).click();
+  await switchRoom.page.waitForFunction(() => document.querySelector('video')?.videoHeight === 180);
+  const backupLoaded = switchRoom.page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === `/api/stream/${games[0].id}/index.m3u8` && url.searchParams.get('candidate')?.endsWith('-1') && response.ok();
+  });
+  await switchRoom.page.locator('.game-tile').first().getByRole('button', { name: 'Switch server', exact: true }).click();
+  await backupLoaded;
+  await switchRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && document.querySelector('video').videoHeight === 360);
+  await revealControls(switchRoom.page);
+  await switchControls.getByRole('button', { name: 'Video quality', exact: true }).click();
+  const switchedMenu = switchRoom.page.getByRole('dialog', { name: 'Playback quality', exact: true });
+  assert.match(await switchedMenu.getByRole('button', { name: /^Auto/ }).getAttribute('class'), /selected/);
+  const switchedOptions = await switchedMenu.innerText();
+  assert.match(switchedOptions, /360p/);
+  assert.doesNotMatch(switchedOptions, /180p|\b0 kbps\b/, 'New media playlist must replace the old variant menu');
+  assert.deepEqual(switchRoom.pageErrors, []);
+  results.push('Switching from a multi-variant server to a media playlist clears old quality options and restores Auto.');
+  if (!desktopApp) await switchRoom.context.close();
+  if (!qualityOnly) {
   const { context, page, pageErrors, sessionCounts, expireGame } = await openRoom();
   assert.equal(sessionCounts.opened, 4);
   assert.equal(sessionCounts.closed, 0);
@@ -638,6 +682,7 @@ try {
   assert.deepEqual(qualityRoom.pageErrors, []);
   results.push('Four quality options are fully visible; the Quality heading stays fixed while the options scroll.');
   if (!desktopApp) await qualityRoom.context.close();
+  }
   await writeFile(path.join(artifacts, 'results.json'), JSON.stringify(results, null, 2));
   await rm(path.join(artifacts, 'failure.json'), { force: true });
   console.log(results.join('\n'));
