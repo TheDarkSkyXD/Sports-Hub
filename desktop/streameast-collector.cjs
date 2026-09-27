@@ -75,34 +75,40 @@ function createStreameastCollector({origin,controlToken}) {
     const deadline=Date.now()+READY_TIMEOUT_MS;
     requestedPath=path;
     let pageStatus=0;
+    let documentReady=false;
     const onNavigate=(_event,navigatedUrl,httpResponseCode,_status,isMainFrame)=>{
-      if(isMainFrame&&navigatedUrl===url)pageStatus=httpResponseCode;
+      if(isMainFrame) {
+        documentReady=false;
+        pageStatus=navigatedUrl===url?httpResponseCode:0;
+      }
     };
+    const onReady=()=>{documentReady=current.webContents.getURL()===url;};
     current.webContents.on('did-frame-navigate',onNavigate);
+    current.webContents.on('dom-ready',onReady);
     try {
-      await beforeDeadline(current.loadURL(url).catch(()=>{}),deadline,signal,current);
-      if(pageStatus>=400)throw new Error('unavailable');
+      void current.loadURL(url).catch(()=>{});
       let challenge=false;
       while(Date.now()<deadline) {
         if(pageStatus>=400)throw new Error('unavailable');
         if (signal.aborted || current.isDestroyed()) throw new Error('unavailable');
+        if(!documentReady || pageStatus<200 || pageStatus>=300) {await pause(400,signal);continue;}
         try {
-          const state=await beforeDeadline(current.webContents.executeJavaScript(`({url:location.href,title:document.title,cards:document.querySelectorAll('.m-card').length,
+          const state=await beforeDeadline(current.webContents.mainFrame.executeJavaScript(`({url:location.href,title:document.title,cards:document.querySelectorAll('.m-card').length,
           empty:!!document.querySelector('#m-schedule-empty.m-empty .m-empty__title') && /no (?:college football|cfb|nfl) games available/i.test(document.querySelector('#m-schedule-empty.m-empty .m-empty__title').textContent||''),
           detail:!!document.querySelector('.stream-alt-list a.stream-alt-item')})`),deadline,signal,current);
           challenge=/just a moment|verify you are human|checking your browser/i.test(state.title);
           if (state.url===url && !challenge && (category ? state.cards>0 || state.empty : state.detail)) {
             if (category) {
               for (;;) {
-                const before=await beforeDeadline(current.webContents.executeJavaScript(`({count:document.querySelectorAll('.m-card').length,
+                const before=await beforeDeadline(current.webContents.mainFrame.executeJavaScript(`({count:document.querySelectorAll('.m-card').length,
                 more:!!document.querySelector('button.m-show-more[aria-label="Load more games"]'),
                 enabled:!!document.querySelector('button.m-show-more[aria-label="Load more games"]:not([disabled])')})`),deadline,signal,current);
                 if (!before.more) break;
                 if (!before.enabled) {await pause(300,signal);continue;}
-                await beforeDeadline(current.webContents.executeJavaScript(`document.querySelector('button.m-show-more[aria-label="Load more games"]').click()`),deadline,signal,current);
+                await beforeDeadline(current.webContents.mainFrame.executeJavaScript(`document.querySelector('button.m-show-more[aria-label="Load more games"]').click()`),deadline,signal,current);
                 let grew=false;
                 while(Date.now()<deadline) {
-                  const after=await beforeDeadline(current.webContents.executeJavaScript(`({count:document.querySelectorAll('.m-card').length,
+                  const after=await beforeDeadline(current.webContents.mainFrame.executeJavaScript(`({count:document.querySelectorAll('.m-card').length,
                   more:!!document.querySelector('button.m-show-more[aria-label="Load more games"]')})`),deadline,signal,current);
                   if (after.count>before.count || !after.more) {grew=true;break;}
                   await pause(300,signal);
@@ -110,7 +116,7 @@ function createStreameastCollector({origin,controlToken}) {
                 if (!grew) throw new Error('timeout');
               }
             }
-            const html=await beforeDeadline(current.webContents.executeJavaScript('document.documentElement.outerHTML'),deadline,signal,current);
+            const html=await beforeDeadline(current.webContents.mainFrame.executeJavaScript('document.documentElement.outerHTML'),deadline,signal,current);
             if (Buffer.byteLength(html,'utf8')>MAX_PAGE_BYTES) throw new Error('limit');
             return html;
           }
@@ -118,7 +124,13 @@ function createStreameastCollector({origin,controlToken}) {
         await pause(400,signal);
       }
       throw new Error(challenge?'blocked':'timeout');
-    } finally {if(!current.isDestroyed())current.webContents.off('did-frame-navigate',onNavigate);}
+    } finally {
+      if(!current.isDestroyed()) {
+        current.webContents.off('did-frame-navigate',onNavigate);
+        current.webContents.off('dom-ready',onReady);
+        current.webContents.stop();
+      }
+    }
   }
 
   async function checkpoint(catalog,signal) {

@@ -27,16 +27,19 @@ function serverUrl(value, event) {
   } catch { return null; }
 }
 
-function channelId(html) {
+function freePlayer(html) {
   const $=load(html);
   const matches=$('iframe[src]').toArray().flatMap(node=>{
     try {
       const url=new URL($(node).attr('src'),ORIGIN);
-      const match=CHANNEL_PATH.exec(url.pathname);
-      return url.origin==='https://streame.center' && !url.username && !url.password && !url.search && !url.hash && match ? [match[1]]:[];
+      if(url.username || url.password || url.port || url.search || url.hash)return [];
+      const channel=CHANNEL_PATH.exec(url.pathname);
+      if(url.origin==='https://streame.center' && channel)return [{kind:'channel',id:channel[1]}];
+      const wikisport=/^\/(0nhl|strm)\/(\d{1,4})\.php$/.exec(url.pathname);
+      return url.origin==='https://wikisport.info' && wikisport ? [{kind:'wikisport',section:wikisport[1],id:wikisport[2]}]:[];
     } catch{return [];}
   });
-  return matches.length===1?matches[0]:null;
+  return matches.length===1?matches[0]:{kind:'unsupported'};
 }
 
 function parseCategory(html,league) {
@@ -91,6 +94,7 @@ function parseDetail(html,event,at,freePages) {
     else if (free) {
       const result=freePages.get(link.url);
       availability=result?.kind==='channel' ? {kind:'free-channel',channelId:result.id} :
+        result?.kind==='wikisport' ? {kind:'free-wikisport',section:result.section,playerId:result.id} :
         result?.kind==='unsupported' ? {kind:'free-unsupported'} : {kind:'free-unresolved'};
     }
     servers.push({id:link.id,label,url:link.url,availability});
@@ -116,4 +120,4 @@ function activeFreeServerUrl(html,event) {
     !!node.find('.stream-alt-free-badge').length ? link.url : null;
 }
 
-module.exports={ORIGIN,CATEGORY_URLS,MAX_PAGE_BYTES,MAX_CHECKPOINT_BYTES,eventUrl,serverUrl,channelId,parseCategory,parseDetail,freeServerUrls,activeFreeServerUrl};
+module.exports={ORIGIN,CATEGORY_URLS,MAX_PAGE_BYTES,MAX_CHECKPOINT_BYTES,eventUrl,serverUrl,freePlayer,parseCategory,parseDetail,freeServerUrls,activeFreeServerUrl};
