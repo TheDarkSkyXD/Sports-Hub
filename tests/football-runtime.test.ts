@@ -474,6 +474,16 @@ test('an exhausted session waits for a newly discovered candidate without recycl
       assert.ok(next.candidates.some(candidate=>candidate.id==='gooz-126'));
       assert.deepEqual({candidateId:next.session.candidateId,generation:next.session.generation},
         {candidateId:'gooz-126',generation:generation+1});
+      const refreshed=await coordinator.command({kind:'session',sessionId,generation:next.session.generation,failure:true,retry:false});
+      assert.equal(refreshed.kind,'session');
+      if (refreshed.kind==='session') {
+        const exhausted=await coordinator.command({kind:'session',sessionId,generation:refreshed.session.generation,failure:true,retry:false});
+        assert.equal(exhausted.kind,'error');
+        const heartbeat=await coordinator.command({kind:'session',sessionId,generation:refreshed.session.generation,failure:false,retry:false});
+        assert.equal(heartbeat.kind,'session');
+        if (heartbeat.kind==='session') assert.deepEqual({candidateId:heartbeat.session.candidateId,generation:heartbeat.session.generation},
+          {candidateId:'gooz-126',generation:refreshed.session.generation});
+      }
     }
   } finally { await coordinator.stop(); rmSync(dir,{recursive:true,force:true}); }
 });

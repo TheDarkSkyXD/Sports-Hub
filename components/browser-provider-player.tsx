@@ -35,7 +35,12 @@ class PlaybackRequestError extends Error {
   constructor(message: string, readonly status: number, readonly retryAfter?: number) { super(message); }
 }
 
-async function updateSession(session: Session, changes: { failure?: boolean; candidateId?: string; retry?: boolean } = {}): Promise<Playback> {
+type SessionChange = { failure?: boolean; candidateId?: string; retry?: boolean };
+function changePriority(change: SessionChange): number {
+  return change.candidateId ? 3 : change.retry ? 2 : change.failure ? 1 : 0;
+}
+
+async function updateSession(session: Session, changes: SessionChange = {}): Promise<Playback> {
   const response = await fetch('/api/playback', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ kind: 'session', sessionId: session.id, generation: session.generation, ...changes }),
@@ -55,8 +60,8 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const inFlight = useRef(false);
-  const pendingChange = useRef<{ failure?: boolean; candidateId?: string; retry?: boolean } | null>(null);
-  const changeRef = useRef<(changes: { failure?: boolean; candidateId?: string; retry?: boolean }) => Promise<void>>(async () => {});
+  const pendingChange = useRef<SessionChange | null>(null);
+  const changeRef = useRef<(changes: SessionChange) => Promise<void>>(async () => {});
   const currentGame = useRef(gameId);
   const currentMode = useRef(!!manualFeed);
   const requestSerial = useRef(0);
@@ -138,11 +143,11 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
     void fetch(`/api/playback?session=${encodeURIComponent(session.id)}`, { method: 'DELETE', keepalive: true });
   }, [ended]);
 
-  const change = useCallback(async (changes: { failure?: boolean; candidateId?: string; retry?: boolean }) => {
+  const change = useCallback(async (changes: SessionChange) => {
     const session = sessionRef.current;
     if (!session) return;
     if (inFlight.current) {
-      if (changes.failure || !pendingChange.current?.failure) pendingChange.current = changes;
+      if (!pendingChange.current || changePriority(changes) >= changePriority(pendingChange.current)) pendingChange.current = changes;
       return;
     }
     inFlight.current = true;
@@ -174,6 +179,7 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
 
   const session = playback?.session;
   const candidate = playback?.candidates.find(item => item.id === session?.candidateId);
+  const candidateIndex = playback?.candidates.findIndex(item => item.id === session?.candidateId) ?? -1;
   const feed = playback && manualFeed ? manualFeed : (session && candidate ? {
     url: `/api/stream/${encodeURIComponent(gameId)}/index.m3u8?session=${encodeURIComponent(session.id)}&candidate=${encodeURIComponent(candidate.id)}&generation=${session.generation}`,
     label: candidate.label,
@@ -185,11 +191,17 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
         : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} playing={playing} delay={delay} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : () => void change({ failure: true })} onEnded={() => { if (!manualFeed && session?.state === 'active') void change({ failure: true }); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : () => void change({ retry: true })} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
         : <div className="player-message">{message === 'Finding your game…' ? <LoaderCircle className="spin"/> : <AlertCircle/>}<strong>{message === 'Finding your game…' ? 'Opening the live player' : 'Player unavailable'}</strong><p>{message}</p>{message !== 'Finding your game…' && <button className="button" onClick={() => setRetry(value => value + 1)}><RefreshCw size={14}/>Try again</button>}</div>}
     </div>
-    {!manualFeed && <div className="provider-controls"><button onClick={() => {
-      if (!playback?.candidates.length || !session) return;
-      const index = playback.candidates.findIndex(item => item.id === session.candidateId);
-      const next = playback.candidates[(index + 1) % playback.candidates.length];
-      if (next && next.id !== session.candidateId) void change({ candidateId: next.id });
-    }} disabled={!playback || playback.candidates.length < 2 || ended} title="Switch provider server"><RefreshCw size={12}/>Switch server</button></div>}
+    {!manualFeed && <div className="provider-controls">
+      {playback && <><span>{candidateIndex < 0 ? 'Server unavailable' : `Server ${candidateIndex + 1} of ${playback.candidates.length}`}</span>
+        <select aria-label="Choose listed server" value={session?.candidateId || ''} disabled={ended || playback.candidates.length < 2}
+          onChange={event => void change({ candidateId: event.target.value })}>
+          {playback.candidates.map((item,index) => <option key={item.id} value={item.id}>{index + 1}. {item.label}{/^(?:Primary|Backup \d+)$/.test(item.label) ? ` · ${item.sourceIds.join(', ')}` : ''}</option>)}
+        </select></>}
+      <button onClick={() => {
+        if (!playback?.candidates.length || !session) return;
+        const index = playback.candidates.findIndex(item => item.id === session.candidateId);
+        const next = playback.candidates[(index + 1) % playback.candidates.length];
+        if (next && next.id !== session.candidateId) void change({ candidateId: next.id });
+      }} disabled={!playback || playback.candidates.length < 2 || ended} title="Switch provider server"><RefreshCw size={12}/>Switch server</button></div>}
   </div>;
 }

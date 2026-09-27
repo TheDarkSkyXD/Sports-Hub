@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { Candidate, League, Observation } from '../shared.ts';
 import type { ListingSource } from '../domain/ports.ts';
 import { parsePlayers } from '../../sunday.ts';
+import { parseStreamcenterPlayer } from '../../playback/providers/streamcenter-player.ts';
 
 const TVAPP_API = 'https://api-backups.handleapi.win/matches/sport/american-football';
 const PPV_API = 'https://api.ppv.st/api/streams';
@@ -305,8 +306,7 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
     const path = new URL(observation.url).pathname;
     const link = streamcenterLink.exec(path);
     if (!link || gameId !== `ncaaf-${link[1]}`) return [];
-    const frame = /<iframe\b[^>]*src=["'](?:https?:)?\/\/streame\.center\/embed\/hls\.php\?stream=([a-z0-9]{1,40})["']/i.exec(html);
-    if (!frame) return [];
+    if (!parseStreamcenterPlayer(html)) return [];
     return [{id:`streamcenter-${link[1]}-${link[2]}`,gameId,
       locator:{provider:'streamcenter',eventId:link[1],linkId:link[2]},label:'Streamcenter',sourceIds:[observation.sourceId],observedAt:now}];
   }

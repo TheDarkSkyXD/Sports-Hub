@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CandidateSchema, PlaybackSchema, candidateSummary } from '../lib/football/shared.ts';
 import { goozResource, goozSourceFromEmbed, validGoozResourceUrl } from '../lib/playback/providers/gooz.ts';
 import { streamcenterProvider, streamcenterResource, validStreamcenterResourceUrl } from '../lib/playback/providers/streamcenter.ts';
+import { parseStreamcenterPlayer } from '../lib/playback/providers/streamcenter-player.ts';
 import type { ProviderResource } from '../lib/playback/provider.ts';
 import { expireIdleStreams, openGeneration, registeredResource, registerResource, resourceCount, revokeGeneration, revokeSession,
   rewritePlaylist, streamSignal, touchStreamSession, validByteRange } from '../lib/stream-relay.ts';
@@ -65,6 +66,23 @@ test('relay rewrites only resources resolved by the provider and scopes tokens t
   revokeSession(first.sessionId);
   assert.equal(nextSignal.aborted,true);
   assert.equal(registeredResource(newer),null);
+});
+
+test('Streamcenter player parser accepts only published exact HLS iframe URLs',()=>{
+  assert.deepEqual(parseStreamcenterPlayer('<iframe src="//streame.center/embed/hls.php?stream=lmdsjkfgv52"></iframe>'),
+    {stream:'lmdsjkfgv52',url:'https://streame.center/embed/hls.php?stream=lmdsjkfgv52'});
+  assert.deepEqual(parseStreamcenterPlayer('<iframe src="https://streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85"></iframe>'),
+    {stream:'jkhfsgqghjqsd85',url:'https://streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85'});
+  for (const bad of [
+    'http://streame.center/embed/hls2.php?stream=abc',
+    'https://streame.center.evil.test/embed/hls2.php?stream=abc',
+    'https://user@streame.center/embed/hls2.php?stream=abc',
+    'https://streame.center:443/embed/hls2.php?stream=abc',
+    'https://streame.center/embed/hls3.php?stream=abc',
+    'https://streame.center/embed/hls2.php?stream=abc&stream=def',
+    'https://streame.center/embed/hls2.php?stream=abc&other=1',
+    'https://streame.center/embed/hls2.php?stream=abc#fragment',
+  ]) assert.equal(parseStreamcenterPlayer(`<iframe src="${bad}"></iframe>`),null,bad);
 });
 
 test('Streamcenter resource grammar binds signed manifest and segments to one stream and host',()=>{

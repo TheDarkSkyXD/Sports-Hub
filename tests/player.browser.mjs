@@ -68,7 +68,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   const manifestRequests = new Set();
   const indexRequests = new Set();
   const sessions = new Map();
-  const sessionCounts = { opened: 0, closed: 0, failures: 0 };
+  const sessionCounts = { opened: 0, closed: 0, failures: 0, lateSwitches: 0 };
   let markHeartbeat;
   let releaseHeartbeat;
   const heartbeatObserved = new Promise(resolve => { markHeartbeat = resolve; });
@@ -127,10 +127,21 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
       markHeartbeat();
       await heartbeatGate;
     }
+    if (providerFailure === 'late' && session.exhausted && backupAvailable && !body.failure && !body.retry && !body.candidateId) {
+      session.candidateId = `gooz-${session.gameId}-1`;
+      session.generation += 1;
+      session.failures = 0;
+      session.exhausted = false;
+      sessionCounts.lateSwitches += 1;
+    }
     if (body.retry) { session.generation += 1; session.failures = 0; }
     else if (body.failure) {
       sessionCounts.failures += 1;
       session.failures = (session.failures || 0) + 1;
+      if (providerFailure === 'late' && session.failures > 1 && !backupAvailable) {
+        session.exhausted = true;
+        return route.fulfill({ status: 503, json: { error: 'Available streams failed. Choose Try again when ready.' } });
+      }
       if (session.failures > 1 && session.candidateId.endsWith('-1')) return route.fulfill({ status: 503, json: { error: 'Available streams are cooling down.' } });
       if (session.failures > 1 && backupAvailable) { session.candidateId = `gooz-${session.gameId}-1`; session.failures = 0; }
       session.generation += 1;
@@ -155,7 +166,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
     if (fixtureOffline && url.pathname === `/api/stream/${games[0].id}/index.m3u8`) return route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: 'Offline fixture playlist' });
     if (providerFailure && url.pathname === `/api/stream/${games[0].id}/index.m3u8`) {
       manifestRequests.add(url.href);
-      if (providerFailure === 'unavailable' || Number(url.searchParams.get('generation')) < 2) {
+      if (providerFailure === 'unavailable' || providerFailure === 'late' && url.searchParams.get('candidate')?.endsWith('-0') || Number(url.searchParams.get('generation')) < 2) {
         const response = route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: 'Expired provider playlist' });
         if (url.searchParams.get('candidate')?.endsWith('-1') && url.searchParams.get('generation') === '3') response.then(finishFailures);
         return response;
@@ -450,6 +461,26 @@ try {
   results.push('A media failure during an in-flight heartbeat is queued and recovers after the heartbeat finishes.');
   if (!desktopApp) await heartbeatRoom.context.close();
 
+  const selectionRoom = await openRoom({ provider: true, holdHeartbeat: true });
+  await selectionRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && !document.querySelector('video').paused);
+  await Promise.race([
+    selectionRoom.heartbeatObserved,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Provider heartbeat did not start')), 36000)),
+  ]);
+  const selectedBackup = selectionRoom.page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === `/api/stream/${games[0].id}/index.m3u8` && url.searchParams.get('candidate')?.endsWith('-1') && response.ok();
+  });
+  await selectionRoom.page.locator('.game-tile').first().getByRole('combobox', { name: 'Choose listed server' }).selectOption(`gooz-${games[0].id}-1`);
+  await selectionRoom.page.locator('.game-tile video').first().dispatchEvent('error');
+  selectionRoom.releaseHeartbeat();
+  await selectedBackup;
+  await selectionRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && document.querySelector('video')?.currentTime > 0);
+  assert.equal(selectionRoom.sessionCounts.failures, 0);
+  assert.deepEqual(selectionRoom.pageErrors, []);
+  results.push('Explicit server selection outranks a concurrent media failure during an in-flight heartbeat.');
+  if (!desktopApp) await selectionRoom.context.close();
+
   const offlineRoom = await openRoom({ provider: true, offlineStart: true });
   await offlineRoom.page.waitForFunction(() => document.querySelector('.game-tile video') !== null);
   await offlineRoom.page.waitForTimeout(22000);
@@ -536,6 +567,20 @@ try {
   assert.deepEqual(unavailableRoom.pageErrors, []);
   results.push('Unavailable providers refresh, try the backup, and expose a retry control after exhaustion.');
   if (!desktopApp) await unavailableRoom.context.close();
+
+  const lateRoom = await openRoom({ provider: true, providerFailure: 'late', delayedBackup: true });
+  await lateRoom.page.getByText('Available streams failed. Choose Try again when ready.', { exact: true }).waitFor();
+  assert.equal(lateRoom.sessionCounts.failures, 2);
+  lateRoom.publishBackup();
+  await lateRoom.page.waitForFunction(() => {
+    const video = document.querySelector('video');
+    return video?.readyState >= 2 && !video.paused && video.currentTime > 0;
+  }, null, { timeout: 45000 });
+  assert.equal(lateRoom.sessionCounts.lateSwitches, 1);
+  assert.equal(lateRoom.sessionCounts.failures, 2);
+  assert.deepEqual(lateRoom.pageErrors, []);
+  results.push('A newly listed backup starts through the normal heartbeat after the first server exhausts.');
+  if (!desktopApp) await lateRoom.context.close();
 
   const scheduledRoom = await openRoom({ provider: true, waitingForLive: true });
   await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 2 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2));
