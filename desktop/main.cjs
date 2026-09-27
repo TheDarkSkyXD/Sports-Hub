@@ -1,51 +1,47 @@
 const { app, BrowserWindow, shell, powerMonitor } = require('electron');
-const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
 const { localServerPort } = require('./port.cjs');
+const { createLocalServer } = require('./local-server.cjs');
 const { createSportsurgeCollector } = require('./sportsurge-collector.cjs');
 const { createStreameastCollector } = require('./streameast-collector.cjs');
 
 const root = path.resolve(__dirname,'..');
 let win;
-let serverProcess;
+let localServer;
 let origin;
 let sportsurgeCollector;
 let streameastCollector;
 const controlToken = randomUUID();
 let shuttingDown = false;
+let mainFrameFailed = false;
+let reloadingMainFrame = false;
 app.setName('Sunday Room');
 const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) app.quit();
 app.on('second-instance',() => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 
+function restoreMainFrame() {
+  if (!mainFrameFailed || reloadingMainFrame || !win || win.isDestroyed() || shuttingDown) return;
+  mainFrameFailed = false;
+  reloadingMainFrame = true;
+  void win.loadURL(origin).catch(() => { mainFrameFailed = true; }).finally(() => { reloadingMainFrame = false; });
+}
+
 async function startServer() {
   const port = await localServerPort();
   origin = `http://127.0.0.1:${port}`;
-  const production = process.env.SUNDAY_ROOM_FORCE_DEV !== '1' && fs.existsSync(path.join(root,'.next','BUILD_ID'));
-  const logDir = path.join(root,'.desktop-runtime');
-  fs.mkdirSync(logDir,{recursive:true});
-  const log = fs.openSync(path.join(logDir,'server.log'),'a');
-  serverProcess = spawn(process.execPath,[path.join(__dirname,'server-supervisor.cjs'),path.join(root,'node_modules','next','dist','bin','next'),production?'start':'dev',String(port)],{
-    cwd:root,
-    windowsHide:true,
-    env:{...process.env,ELECTRON_RUN_AS_NODE:'1',SUNDAY_ROOM_DESKTOP:'1',SUNDAY_ROOM_DATA_DIR:app.getPath('userData'),SUNDAY_ROOM_CONTROL_TOKEN:controlToken},
-    stdio:['ignore',log,log,'ipc'],
+  localServer = createLocalServer({
+    root, origin, port, userData:app.getPath('userData'), controlToken,
+    onReady:() => {
+      sportsurgeCollector?.requestSweep();
+      streameastCollector?.requestSweep();
+      restoreMainFrame();
+    },
+    onHealthy:restoreMainFrame,
   });
-  fs.closeSync(log);
-  for (let attempt=0;attempt<120;attempt++) {
-    if (serverProcess.exitCode !== null) throw new Error('Local server stopped');
-    try {
-      const response = await fetch(origin,{signal:AbortSignal.timeout(1000)});
-      if (response.ok) {
-        const board = await fetch(`${origin}/api/games`,{signal:AbortSignal.timeout(5000)});
-        if (board.ok) return;
-      }
-    } catch {}
-    await new Promise(resolve => setTimeout(resolve,500));
-  }
-  throw new Error('Local server did not start');
+  await localServer.start();
 }
 
 app.whenReady().then(async () => {
@@ -65,9 +61,12 @@ app.whenReady().then(async () => {
     return {action:'deny'};
   });
   win.webContents.on('will-navigate',(event,url) => { if (new URL(url).origin !== origin) event.preventDefault(); });
+  win.webContents.on('did-fail-load',(_event,code,_description,url,isMainFrame) => {
+    if (isMainFrame && code !== -3 && url === `${origin}/`) mainFrameFailed = true;
+  });
   win.on('closed',() => { win=undefined; app.quit(); });
-  powerMonitor.on('resume',() => { if (origin && !shuttingDown) { void fetch(`${origin}/api/games`).catch(() => {}); sportsurgeCollector?.requestSweep(); streameastCollector?.requestSweep(); } });
-  await win.loadURL(origin);
+  powerMonitor.on('resume',() => { if (!shuttingDown) { void localServer?.checkNow(); sportsurgeCollector?.requestSweep(); streameastCollector?.requestSweep(); } });
+  await win.loadURL(origin).catch(() => { mainFrameFailed = true; });
 }).catch(error => {
   const logDir = path.join(root,'.desktop-runtime');
   fs.mkdirSync(logDir,{recursive:true});
@@ -76,25 +75,19 @@ app.whenReady().then(async () => {
 });
 app.on('window-all-closed',() => app.quit());
 async function stopServer() {
-  if (!serverProcess) return;
+  if (!localServer) return;
   try {
     await fetch(`${origin}/api/internal/pipeline`,{
       method:'POST',headers:{'x-sunday-control-token':controlToken},signal:AbortSignal.timeout(5000),
     });
   } catch {}
-  if (serverProcess.exitCode !== null) return;
-  if (process.platform === 'win32') {
-    await new Promise(resolve => {
-      const killer = spawn('taskkill.exe',['/PID',String(serverProcess.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
-      killer.on('error',resolve);
-      killer.on('exit',resolve);
-    });
-  } else serverProcess.kill();
+  await localServer.stop();
 }
 app.on('before-quit',event => {
   if (shuttingDown) return;
   event.preventDefault();
   shuttingDown=true;
+  localServer?.beginStop();
   sportsurgeCollector?.stop();
   streameastCollector?.stop();
   void stopServer().finally(() => app.quit());
