@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseScoreboard, parsePlayers, validFeedUrl, priority } from '../lib/sunday.ts';
+import { parseScoreboard, parsePlayers, scoreboardFeedData, scoreboardWeek, validFeedUrl, priority } from '../lib/sunday.ts';
 import type { Game } from '../lib/sunday.ts';
 
 const team = (name:string) => ({name,short:name,abbreviation:name.slice(0,3),color:'112233',score:'0'});
@@ -32,6 +32,20 @@ test('a final is recognized only from ESPN completed state',() => {
   assert.equal(parsed.away.short,'Brown');
   event.status.type.completed=false;
   assert.equal(parseScoreboard({events:[event]},'ncaaf')[0].lifecycle,'unknown');
+});
+
+test('scheduled detail leaves kickoff time to the local timing display',() => {
+  const event = {id:'401858236',date:'2026-09-26T16:00:00Z',status:{type:{state:'pre',name:'STATUS_SCHEDULED',shortDetail:'9/26 - 12:00 PM EDT'}},competitions:[{competitors:[
+    {homeAway:'away',team:{id:'2083',displayName:'Bucknell'}},
+    {homeAway:'home',team:{id:'221',displayName:'Pittsburgh'}},
+  ]}]};
+  assert.equal(parseScoreboard({events:[event]},'ncaaf')[0].detail,'Scheduled');
+  event.status.type.shortDetail='TBD';
+  assert.equal(parseScoreboard({events:[event]},'ncaaf')[0].detail,'TBD');
+  const cdn = scoreboardFeedData({content:{sbData:{events:[event],week:{number:4}}}},'cdn');
+  assert.equal(parseScoreboard(cdn,'ncaaf')[0].date,'2026-09-26T16:00:00Z');
+  assert.equal(scoreboardWeek(cdn),4);
+  assert.throws(() => scoreboardFeedData({content:{}},'cdn'));
 });
 
 test('player extraction accepts only the known embed host and deduplicates backup IDs',() => {

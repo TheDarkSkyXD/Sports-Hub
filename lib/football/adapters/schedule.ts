@@ -1,4 +1,4 @@
-import { parseScoreboard, scoreboardWeek } from '../../sunday.ts';
+import { parseScoreboard, scoreboardFeedData, scoreboardWeek } from '../../sunday.ts';
 import { GameSchema } from '../shared.ts';
 import type { Game, League, SeasonMembership } from '../shared.ts';
 import type { ScheduleSource } from '../domain/ports.ts';
@@ -9,6 +9,19 @@ export const SCHEDULES = [
   {id:'fbs',league:'ncaaf',path:'college-football',group:'80'},
   {id:'fcs',league:'ncaaf',path:'college-football',group:'81'},
 ] as const;
+
+function validKickoff(date: string | undefined): boolean {
+  if (!date || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/.test(date)) return false;
+  const time = Date.parse(date);
+  const day = date.slice(0,10);
+  const calendar = Date.parse(`${day}T00:00:00Z`);
+  return Number.isFinite(time) && time >= Date.UTC(2000,0,1) && time < Date.UTC(2100,0,1) && Number.isFinite(calendar) && new Date(calendar).toISOString().slice(0,10) === day;
+}
+
+function sameTeams(a: Pick<Game,'home' | 'away'>, b: Pick<Game,'home' | 'away'>): boolean {
+  const same = (left: Game['home'], right: Game['home']) => left.id && right.id ? left.id === right.id : left.name === right.name;
+  return same(a.home,b.home) && same(a.away,b.away);
+}
 
 export async function readSeasonMembership(season: number, signal: AbortSignal): Promise<SeasonMembership> {
   if (!Number.isInteger(season) || season < 2000 || season > 2100) throw new Error('invalid-season');
@@ -67,6 +80,20 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
       games.set(game.id,game);
     }
     if (day === 0) week = scoreboardWeek(input);
+  }
+  if (partition.league === 'ncaaf' && partition.group && [...games.values()].some(game => !validKickoff(game.date))) {
+    try {
+      const url = `https://cdn.espn.com/core/college-football/scoreboard?xhr=1&limit=500&group=${partition.group}`;
+      const response = await fetch(url,{cache:'no-store',redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:{'User-Agent':'SundayRoom/1.0',Accept:'application/json'}});
+      if (!response.ok) { await response.body?.cancel(); throw new Error(`cdn-http-${response.status}`); }
+      const supplemental = parseScoreboard(scoreboardFeedData(await response.json() as unknown,'cdn'),'ncaaf');
+      for (const extra of supplemental) {
+        const game = games.get(extra.id);
+        if (game && !validKickoff(game.date) && validKickoff(extra.date) && sameTeams(game,extra)) games.set(game.id,GameSchema.parse({...game,date:extra.date}));
+      }
+    } catch (error) {
+      if (signal.aborted) throw error;
+    }
   }
   return {games:[...games.values()],week,league:partition.league,at:Date.now()};
 }

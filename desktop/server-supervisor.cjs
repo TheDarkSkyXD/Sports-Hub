@@ -1,10 +1,10 @@
 const { spawn } = require('node:child_process');
 
 const [nextCli, mode, port] = process.argv.slice(2);
-if (!process.connected || !nextCli || !['start', 'dev'].includes(mode) || !/^\d{1,5}$/.test(port || '')) process.exit(1);
+if (!process.connected || !nextCli || !['start', 'dev', 'standalone'].includes(mode) || !/^\d{1,5}$/.test(port || '')) process.exit(1);
 
-const next = spawn(process.execPath,[nextCli,mode,'--hostname','127.0.0.1','--port',port],{
-  cwd:process.cwd(),env:process.env,windowsHide:true,stdio:['ignore','inherit','inherit'],
+const next = spawn(process.execPath,mode === 'standalone' ? [nextCli] : [nextCli,mode,'--hostname','127.0.0.1','--port',port],{
+  cwd:process.cwd(),env:{...process.env,PORT:port,HOSTNAME:'127.0.0.1'},windowsHide:true,stdio:['ignore','inherit','inherit'],
 });
 let stopping = false;
 function stop() {

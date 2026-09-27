@@ -5,13 +5,14 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { localServerPort } = require('./port.cjs');
 
-const root = path.resolve(__dirname,'..');
+app.setName('Sunday Room');
+const root = app.isPackaged ? path.join(process.resourcesPath,'server') : path.resolve(__dirname,'..');
+const logDir = app.isPackaged ? path.join(app.getPath('userData'),'logs') : path.join(root,'.desktop-runtime');
 let win;
 let serverProcess;
 let origin;
 const controlToken = randomUUID();
 let shuttingDown = false;
-app.setName('Sunday Room');
 const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) app.quit();
 app.on('second-instance',() => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
@@ -19,11 +20,11 @@ app.on('second-instance',() => { if (win) { if (win.isMinimized()) win.restore()
 async function startServer() {
   const port = await localServerPort();
   origin = `http://127.0.0.1:${port}`;
-  const production = process.env.SUNDAY_ROOM_FORCE_DEV !== '1' && fs.existsSync(path.join(root,'.next','BUILD_ID'));
-  const logDir = path.join(root,'.desktop-runtime');
+  const production = app.isPackaged || (process.env.SUNDAY_ROOM_FORCE_DEV !== '1' && fs.existsSync(path.join(root,'.next','BUILD_ID')));
   fs.mkdirSync(logDir,{recursive:true});
   const log = fs.openSync(path.join(logDir,'server.log'),'a');
-  serverProcess = spawn(process.execPath,[path.join(__dirname,'server-supervisor.cjs'),path.join(root,'node_modules','next','dist','bin','next'),production?'start':'dev',String(port)],{
+  const target = app.isPackaged ? path.join(root,'server.js') : path.join(root,'node_modules','next','dist','bin','next');
+  serverProcess = spawn(process.execPath,[path.join(__dirname,'server-supervisor.cjs'),target,app.isPackaged?'standalone':production?'start':'dev',String(port)],{
     cwd:root,
     windowsHide:true,
     env:{...process.env,ELECTRON_RUN_AS_NODE:'1',SUNDAY_ROOM_DESKTOP:'1',SUNDAY_ROOM_DATA_DIR:app.getPath('userData'),SUNDAY_ROOM_CONTROL_TOKEN:controlToken},
@@ -61,7 +62,6 @@ app.whenReady().then(async () => {
   powerMonitor.on('resume',() => { if (origin && !shuttingDown) void fetch(`${origin}/api/games`).catch(() => {}); });
   await win.loadURL(origin);
 }).catch(error => {
-  const logDir = path.join(root,'.desktop-runtime');
   fs.mkdirSync(logDir,{recursive:true});
   fs.appendFileSync(path.join(logDir,'startup.log'),String(error)+'\n');
   app.quit();
