@@ -6,7 +6,8 @@ import type { Recovery } from '../domain/lifecycle.ts';
 import type { FootballDependencies, FootballRepository } from '../domain/ports.ts';
 import { candidateSummary, type Board, type Candidate, type Command, type Game, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourcesSnapshot } from '../shared.ts';
 
-type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;waitingUntil:number|null;requestId?:string};
+type RecoveryPhase = {kind:'cycling'} | {kind:'waiting';until:number} | {kind:'exhausted'};
+type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;phase:RecoveryPhase;requestId?:string};
 function errorCode(error: unknown): string {
   return (error instanceof Error ? error.message : 'request-failed').replace(/https?:\/\/\S+/g,'[url]').slice(0,120);
 }
@@ -322,7 +323,7 @@ export class FootballCoordinator {
       if (prior) { prior.lastSeen=this.now(); return {kind:'playback',playback:{session:prior.value,candidates:candidates.map(candidateSummary)}}; }
       if (this.sessions.size>=32) return {kind:'error',status:429,message:'Too many playback sessions.'};
       const session: Session = {id:this.id(),gameId,candidateId:command.manual ? 'manual' : candidates[0].id,generation:0,state:'active',graceEndsAt:null};
-      this.sessions.set(session.id,{value:session,lastSeen:this.now(),refreshes:0,drainRefreshes:0,waitingUntil:null,requestId:command.requestId,recovery:{attempted:[],cooled:{},failures:{},cycleStartedAt:this.now()}});
+      this.sessions.set(session.id,{value:session,lastSeen:this.now(),refreshes:0,drainRefreshes:0,phase:{kind:'cycling'},requestId:command.requestId,recovery:{attempted:[],cooled:{},failures:{},cycleStartedAt:this.now()}});
       return {kind:'playback',playback:{session,candidates:candidates.map(candidateSummary)}};
     }
     const owned = this.sessions.get(command.sessionId);
@@ -338,7 +339,7 @@ export class FootballCoordinator {
     if (command.generation!==session.generation) return {kind:'error',status:409,message:'Playback state changed. Refresh this stream.'};
     owned.lastSeen=this.now();
     if (session.state==='draining') {
-      owned.waitingUntil=null;
+      owned.phase={kind:'cycling'};
       if (command.failure || command.retry) {
         if (owned.drainRefreshes>=1) return {kind:'error',status:503,message:'This game has ended. The current stream cannot refresh again.'};
         owned.drainRefreshes++;
@@ -349,17 +350,38 @@ export class FootballCoordinator {
     if (command.retry) {
       owned.recovery={attempted:[],cooled:{},failures:{},cycleStartedAt:this.now()};
       owned.refreshes=0;
-      owned.waitingUntil=null;
+      owned.phase={kind:'cycling'};
       if (session.candidateId!=='manual') session.generation++;
       return this.sessionReply(session);
     }
     if (session.candidateId==='manual') return this.sessionReply(session);
-    if (owned.waitingUntil !== null) {
-      if (this.now()<owned.waitingUntil) return {kind:'error',status:503,message:'Checking the next available stream.',retryAfter:owned.waitingUntil};
-      owned.waitingUntil=null;
+    if (command.candidateId && command.candidateId!==session.candidateId) {
+      if (!candidates.some(candidate=>candidate.id===command.candidateId && this.now()-candidate.observedAt<30*60000)) return {kind:'error',status:404,message:'Stream is no longer listed.'};
+      session.candidateId=command.candidateId;
+      session.generation++;
+      owned.refreshes=0;
+      owned.phase={kind:'cycling'};
+      return this.sessionReply(session);
+    }
+    if (owned.phase.kind==='exhausted') {
+      if (command.failure) return {kind:'error',status:503,message:'Available streams failed. Choose Try again when ready.'};
+      const fresh=candidates.filter(candidate=>this.now()-candidate.observedAt<30*60000);
+      const next=nextCandidate(fresh,{...owned.recovery,attempted:[]},this.now(),session.candidateId);
+      if (next) {
+        owned.recovery={...owned.recovery,attempted:[],cycleStartedAt:this.now()};
+        owned.refreshes=0;
+        owned.phase={kind:'cycling'};
+        session.candidateId=next.id;
+        session.generation++;
+      }
+      return this.sessionReply(session);
+    }
+    if (owned.phase.kind==='waiting') {
+      if (this.now()<owned.phase.until) return {kind:'error',status:503,message:'Checking the next available stream.',retryAfter:owned.phase.until};
+      owned.phase={kind:'cycling'};
       const fresh = candidates.filter(candidate => this.now()-candidate.observedAt<30*60000);
       const next = nextCandidate(fresh,{...owned.recovery,attempted:[]},this.now(),session.candidateId);
-      if (!next) return {kind:'error',status:503,message:'Available streams failed. Choose Try again when ready.'};
+      if (!next) { owned.phase={kind:'exhausted'}; return {kind:'error',status:503,message:'Available streams failed. Choose Try again when ready.'}; }
       owned.recovery={...owned.recovery,attempted:[],cycleStartedAt:this.now()};
       owned.refreshes=0;
       session.candidateId=next.id;
@@ -374,15 +396,13 @@ export class FootballCoordinator {
       if (!next) {
         const remaining = candidates.some(candidate => this.now()-candidate.observedAt<30*60000 && !owned.recovery.failures[candidate.id] && candidate.id!==session.candidateId);
         if (remaining) {
-          owned.waitingUntil=this.now()+30000;
-          return {kind:'error',status:503,message:'Checking the next available stream.',retryAfter:owned.waitingUntil};
+          owned.phase={kind:'waiting',until:this.now()+30000};
+          return {kind:'error',status:503,message:'Checking the next available stream.',retryAfter:owned.phase.until};
         }
+        owned.phase={kind:'exhausted'};
         return {kind:'error',status:503,message:'Available streams failed. Choose Try again when ready.'};
       }
       session.candidateId=next.id; session.generation++;
-    } else if (command.candidateId && command.candidateId!==session.candidateId) {
-      if (!candidates.some(candidate=>candidate.id===command.candidateId && this.now()-candidate.observedAt<30*60000)) return {kind:'error',status:404,message:'Stream is no longer listed.'};
-      session.candidateId=command.candidateId; session.generation++; owned.refreshes=0;
     }
     return this.sessionReply(session);
   }

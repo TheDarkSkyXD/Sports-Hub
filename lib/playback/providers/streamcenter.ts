@@ -1,5 +1,6 @@
 import type { CandidateLocator } from '../../football/shared.ts';
 import { boundedText, sanitizedRead, type PlaybackProvider, type ProviderPlayback, type ProviderResource, type ResourceKind } from '../provider.ts';
+import { parseStreamcenterPlayer } from './streamcenter-player.ts';
 
 type StreamcenterLocator = Extract<CandidateLocator,{provider:'streamcenter'}>;
 type MediaSession = { stream: string; host: string; referer: string; fetcher: typeof fetch };
@@ -60,10 +61,9 @@ export function streamcenterProvider(fetcher: typeof fetch = fetch): PlaybackPro
       }
       const playerResponse=await fetcher(player.href,{cache:'no-store',redirect:'manual',signal:active,headers:{Accept:'text/html'}});
       const playerHtml=await boundedText(playerResponse);
-      const match=/<iframe\b[^>]*src=["'](?:https?:)?\/\/streame\.center\/embed\/hls\.php\?stream=([a-z0-9]{1,40})["']/i.exec(playerHtml);
-      if (!match) throw new Error('Streamcenter player did not publish HLS');
-      const stream=match[1];
-      const hls=`https://streame.center/embed/hls.php?stream=${stream}`;
+      const published=parseStreamcenterPlayer(playerHtml);
+      if (!published) throw new Error('Streamcenter player did not publish HLS');
+      const {stream,url:hls}=published;
       const hlsResponse=await fetcher(hls,{cache:'no-store',redirect:'manual',signal:active,
         headers:{Accept:'text/html',Referer:player.href}});
       const hlsHtml=await boundedText(hlsResponse);

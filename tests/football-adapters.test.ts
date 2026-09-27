@@ -144,6 +144,8 @@ test('Streamcenter published game cards create exact ESPN-bound source locators'
   assert.deepEqual(candidates[0].locator,{provider:'streamcenter',eventId:'401856699',linkId:'aef974e2-5ef2-412c-b65e-e6905af1edfa'});
   assert.deepEqual(compatiblePlayers('ncaaf-401856700',result.observations[0],detail,now),[]);
   assert.deepEqual(compatiblePlayers('ncaaf-401856699',result.observations[0],'<iframe src="https://attacker.test/embed/hls.php?stream=lmdsjkfgv52"></iframe>',now),[]);
+  assert.equal(compatiblePlayers('ncaaf-401856699',result.observations[0],
+    '<iframe src="//streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85"></iframe>',now).length,1);
 });
 
 test('matching rejects ambiguous aliases, stale rows, uncertain times, and final games', () => {
