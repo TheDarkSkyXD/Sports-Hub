@@ -86,7 +86,7 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
   useEffect(() => { graceRef.current = graceEndsAt; if (graceEndsAt !== undefined) fixedDeadline.current = graceEndsAt; }, [graceEndsAt]);
   const endingDeadline = useCallback(() => fixedDeadline.current ?? graceRef.current ?? ownedSession.current?.graceEndsAt ?? null, []);
 
-  const reopen = useCallback(() => {
+  const reopen = useCallback((reason = 'Reconnecting to your game…') => {
     const deadline = endingDeadline();
     if (deadline !== null && (deadline <= Date.now() || !ownedSession.current)) {
       setEndedReason(deadline <= Date.now() ? 'final' : 'media');
@@ -102,7 +102,7 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
     if (commandTimer.current !== null) { window.clearTimeout(commandTimer.current); commandTimer.current = null; }
     setPlayback(null);
     setRetryAfter(null);
-    setMessage('Reconnecting to your game…');
+    setMessage(reason);
     if (openTimer.current !== null) window.clearTimeout(openTimer.current);
     const delays = [1000, 2000, 5000, 10000, 30000, 60000];
     const delay = delays[Math.min(openFailures.current++, delays.length - 1)];
@@ -139,7 +139,7 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
       const deadline = endingDeadline();
       if (deadline !== null && (deadline <= Date.now() || !ownedSession.current)) { setEndedReason(deadline <= Date.now() ? 'final' : 'media'); return; }
       setEndedReason(null);
-      setMessage(openFailures.current ? 'Reconnecting to your game…' : 'Finding your game…');
+      if (!openFailures.current) setMessage('Finding your game…');
       setPlayback(null);
       setRetryAfter(null);
       void fetch('/api/playback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(15000) }).then(async response => {
@@ -166,6 +166,7 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
       sessionRef.current = parsed.data.session;
       ownedSession.current = parsed.data.session;
       if (parsed.data.session.graceEndsAt !== null) fixedDeadline.current = parsed.data.session.graceEndsAt;
+      setMessage('');
       setPlayback(parsed.data);
       const replay = reconcileIntent.current;
       reconcileIntent.current = null;
@@ -181,8 +182,7 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
         setEndedReason(deadline <= Date.now() ? 'final' : 'media');
         return;
       }
-      setMessage(error instanceof Error ? error.message : 'Player unavailable.');
-      reopen();
+      reopen(error instanceof PlaybackRequestError && error.status === 404 ? error.message : undefined);
     }); }, 0);
     return () => {
       active = false;
