@@ -8,6 +8,7 @@ const { createSportsurgeCollector } = require('./sportsurge-collector.cjs');
 const { createStreameastCollector } = require('./streameast-collector.cjs');
 
 app.setName('Sunday Room');
+if (process.platform === 'win32') app.setAppUserModelId('com.sundayroom.desktop');
 const root = app.isPackaged ? path.join(process.resourcesPath,'server') : path.resolve(__dirname,'..');
 const logDir = app.isPackaged ? path.join(app.getPath('userData'),'logs') : path.join(root,'.desktop-runtime');
 let win;
@@ -55,6 +56,7 @@ app.whenReady().then(async () => {
   win = new BrowserWindow({
     title:'Sunday Room',width:1500,height:1060,minWidth:900,minHeight:650,
     backgroundColor:'#101114',autoHideMenuBar:true,
+    icon:path.join(__dirname,'icons','sunday-room.png'),
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,webSecurity:true,backgroundThrottling:false},
   });
   win.webContents.setWindowOpenHandler(({url}) => {
