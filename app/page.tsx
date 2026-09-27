@@ -11,6 +11,8 @@ import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BrowserProviderPlayer } from '@/components/browser-provider-player';
 import { SourceInventory } from '@/components/source-inventory';
+import { ServerControls, discoveredServersForGame } from '@/components/server-controls';
+import { SourcesSnapshotSchema, type SourcesSnapshot } from '@/lib/football/shared';
 import { Board, Feed, Game, LEAGUES, League, Team, priority, validFeedUrl, validGameId } from '@/lib/sunday';
 
 type Layout = 'quad' | 'focus' | 'duo' | 'single';
@@ -27,6 +29,7 @@ function score(team: Team, game: Game, hide: boolean) { return hide ? '—' : ga
 
 export default function Home() {
  const [board,setBoard]=useState<Board|null>(null),[fetchError,setFetchError]=useState(''),[loading,setLoading]=useState(true);
+ const [sources,setSources]=useState<SourcesSnapshot|null>(null);
  const [selected,setSelected]=useState<string[]>([]),[favorites,setFavorites]=useState<string[]>([]),[feeds,setFeeds]=useState<Record<string,Feed>>({});
  const [desktop,setDesktop]=useState(false),[providerChoices,setProviderChoices]=useState<Partial<Record<string,true>>>({});
  const [layout,setLayout]=useState<Layout>('quad'),[focus,setFocus]=useState(''),[audio,setAudio]=useState(''),[muted,setMuted]=useState(false),[volume,setVolume]=useState(70),[playback,setPlayback]=useState<RoomPlayback>({defaultPlaying:true,overrides:{}});
@@ -46,6 +49,23 @@ export default function Home() {
  const live=discovery.filter(g=>g.status==='in'),hot=live.filter(g=>g.redzone);
  const filtered=centerGames.filter(g=>(filter==='all'||filter==='live'&&g.status==='in'||filter==='redzone'&&g.redzone||filter==='favorites'&&favorites.includes(g.id))&&`${g.name} ${g.home.abbreviation} ${g.away.abbreviation}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>priority(b)-priority(a));
  const stale=!!fetchError||!!errors.length;
+ const needsServers=chosen.some(game=>game.lifecycle!=='final'&&!feeds[game.id]);
+ useEffect(()=>{
+  if(!needsServers)return;
+  const controller=new AbortController();
+  let timer:ReturnType<typeof setTimeout>;
+  const refreshSources=async()=>{
+   try{
+    const response=await fetch('/api/sources',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])});
+    if(!response.ok)throw new Error('Source inventory unavailable');
+    const snapshot=SourcesSnapshotSchema.parse(await response.json());
+    if(!controller.signal.aborted)setSources(snapshot);
+   }catch{if(!controller.signal.aborted)setSources(null);}
+   finally{if(!controller.signal.aborted)timer=setTimeout(()=>void refreshSources(),30000);}
+  };
+  void refreshSources();
+  return()=>{controller.abort();clearTimeout(timer);};
+ },[needsServers]);
  useEffect(()=>{const timer=window.setTimeout(()=>setDesktop(!!window.sundayDesktop),0);return()=>window.clearTimeout(timer);},[]);
  const toast=useCallback((message:string)=>setNotice(message),[]);
  useEffect(()=>{ if(notice){const timer=setTimeout(()=>setNotice(''),4500);return ()=>clearTimeout(timer);} },[notice]);
@@ -111,7 +131,8 @@ export default function Home() {
     <div className={`game-grid ${layout}`}>
      {visible.map((g,index)=><article key={g.id} className={`game-tile ${focus===g.id?'focused':''}`} style={{'--away':`#${g.away.color}`,'--home':`#${g.home.color}`} as React.CSSProperties}>
       <div className="tile-top"><div><span className="tile-number">0{index+1}</span><span className="league-tag">{LEAGUES[g.league].label}</span>{g.redzone&&!spoilers?<span className="redzone-pill"><Flame size={12}/>RED ZONE</span>:<GameStatus game={g}/>}</div><div className="tile-actions"><button className={`icon-button ${favorites.includes(g.id)?'starred':''}`} aria-label={`${favorites.includes(g.id)?'Unfavorite':'Favorite'} ${g.name}`} onClick={()=>star(g.id)}><Star size={14} fill={favorites.includes(g.id)?'currentColor':'none'}/></button><button className="icon-button" aria-label={`Remove ${g.name}`} onClick={()=>removeGame(g.id)}><X size={15}/></button></div></div>
-      <div className="tile-screen">{providerGames.includes(g.id)||feeds[g.id]?<BrowserProviderPlayer gameId={g.id} manualFeed={feeds[g.id]} graceEndsAt={g.graceEndsAt} focused={focus===g.id} audible={audio===g.id&&!muted} volume={volume} playing={effectivePlaying(playback,g.id)} onPlayingChange={value=>setGamePlaying(g.id,value)} onAudibleChange={value=>setGameAudible(g.id,value)} onVolumeChange={value=>setGameVolume(g.id,value)} delay={delays[g.id]||0}/>:<div className="matchup-screen"><div className="team-watermark left">{g.away.abbreviation}</div><div className="team-watermark right">{g.home.abbreviation}</div><div className="matchup"><div><Badge team={g.away} large/><span>{g.away.short}</span></div><span className="versus">VS</span><div><Badge team={g.home} large/><span>{g.home.short}</span></div></div><button className="connect-button" disabled={!g.sourceUrl} onClick={()=>playGame(g.id)}>{g.sourceUrl&&<Play size={14} fill="currentColor"/>}{g.sourceUrl?'Play game':'No compatible stream yet'}</button><span className="screen-caption">{g.broadcast?`${g.broadcast} · `:''}{g.sourceUrl?'Plays inside your room':'Source checks continue automatically'}</span></div>}</div>
+      <div className="tile-screen">{providerGames.includes(g.id)||feeds[g.id]?<BrowserProviderPlayer gameId={g.id} manualFeed={feeds[g.id]} discoveredServers={g.lifecycle === 'final' ? [] : discoveredServersForGame(sources,g.id)} graceEndsAt={g.graceEndsAt} focused={focus===g.id} audible={audio===g.id&&!muted} volume={volume} playing={effectivePlaying(playback,g.id)} onPlayingChange={value=>setGamePlaying(g.id,value)} onAudibleChange={value=>setGameAudible(g.id,value)} onVolumeChange={value=>setGameVolume(g.id,value)} delay={delays[g.id]||0}/>:<div className="matchup-screen"><div className="team-watermark left">{g.away.abbreviation}</div><div className="team-watermark right">{g.home.abbreviation}</div><div className="matchup"><div><Badge team={g.away} large/><span>{g.away.short}</span></div><span className="versus">VS</span><div><Badge team={g.home} large/><span>{g.home.short}</span></div></div><button className="connect-button" disabled={!g.sourceUrl} onClick={()=>playGame(g.id)}>{g.sourceUrl&&<Play size={14} fill="currentColor"/>}{g.sourceUrl?'Play game':'No compatible stream yet'}</button><span className="screen-caption">{g.broadcast?`${g.broadcast} · `:''}{g.sourceUrl?'Plays inside your room':'Source checks continue automatically'}</span></div>}</div>
+      {!providerGames.includes(g.id)&&!feeds[g.id]&&g.lifecycle!=='final'&&<ServerControls candidates={[]} selectedCandidateId="" discovered={discoveredServersForGame(sources,g.id)}/>}
       <div className="tile-score"><div className="tile-teams"><span>{g.away.abbreviation}<b>{score(g.away,g,spoilers)}</b></span><i/><span>{g.home.abbreviation}<b>{score(g.home,g,spoilers)}</b></span></div><button className={`audio-focus ${focus===g.id?'active':''}`} onClick={()=>pick(g.id)} title={feeds[g.id]||providerGames.includes(g.id)?'Focus this game and its audio':'Focus this game'}>{(feeds[g.id]||providerGames.includes(g.id))&&audio===g.id&&!muted?<Volume2 size={14}/>:<Headphones size={14}/>}<span>{focus===g.id?'IN FOCUS':'FOCUS'}</span></button></div>
       <div className="tile-bottom"><span>{spoilers?'Scores hidden':g.down||g.venue||`${LEAGUES[g.league].label} game day`}</span><div><button aria-label={`Feed settings for ${g.name}`} title="Feed settings" onClick={()=>openFeed(g.id)}><SlidersHorizontal size={13}/></button></div></div>
      </article>)}
