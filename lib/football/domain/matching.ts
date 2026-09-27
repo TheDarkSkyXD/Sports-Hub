@@ -1,7 +1,20 @@
 import type { Game, Match, Observation } from '../shared.ts';
+import { COLLEGE_TEAM_CATALOG } from './college-teams.generated.ts';
 
 export function normalizedName(value: string): string {
-  return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\band\b/g, '&').replace(/[^a-z0-9]/g, '');
+}
+
+const collegeAliases = new Map<string, readonly string[]>();
+const collegeOwners = new Map<string, Set<string>>();
+for (const team of COLLEGE_TEAM_CATALOG) {
+  const aliases = [...new Set(team.aliases.map(normalizedName).filter(Boolean))];
+  collegeAliases.set(team.id,aliases);
+  for (const alias of aliases) {
+    const owners = collegeOwners.get(alias) || new Set<string>();
+    owners.add(`ncaaf:${team.id}`);
+    collegeOwners.set(alias,owners);
+  }
 }
 
 export function matchObservation(observation: Observation, games: Game[], now: number): Match {
@@ -10,19 +23,28 @@ export function matchObservation(observation: Observation, games: Game[], now: n
   const [first, second] = observation.teams.map(normalizedName);
   if (!first || !second || first === second) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
   const identity = (game: Game, team: Game['home']) => `${game.league}:${team.id || normalizedName(team.name)}`;
-  const aliases = (team: Game['home']) => new Set([team.name, team.short, team.abbreviation, ...(team.aliases || [])].map(normalizedName).filter(Boolean));
-  const owners = new Map<string,Set<string>>();
-  for (const game of games) for (const team of [game.home,game.away]) {
-    for (const alias of aliases(team)) {
+  const aliases = (game: Game, team: Game['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || [])].map(normalizedName).filter(Boolean)]);
+  const liveOwners = new Map<string,Set<string>>();
+  const gameAliases = new Map<Game,[Set<string>,Set<string>]>();
+  for (const game of games) {
+    const pair: [Set<string>,Set<string>] = [aliases(game,game.home),aliases(game,game.away)];
+    gameAliases.set(game,pair);
+    for (const [index,team] of [game.home,game.away].entries()) for (const alias of pair[index]) {
       const key = `${game.league}:${alias}`;
-      if (!owners.has(key)) owners.set(key,new Set());
-      owners.get(key)?.add(identity(game,team));
+      const owners = liveOwners.get(key) || new Set<string>();
+      owners.add(identity(game,team));
+      liveOwners.set(key,owners);
     }
   }
-  const names = (game: Game, team: Game['home']) => new Set([...aliases(team)].filter(alias => owners.get(`${game.league}:${alias}`)?.size === 1));
+  const names = (game: Game, team: Game['home'], index: 0 | 1) => new Set([...(gameAliases.get(game)?.[index] || [])].filter(alias => {
+    const owner = identity(game,team);
+    const live = liveOwners.get(`${game.league}:${alias}`);
+    const catalog = game.league === 'ncaaf' ? collegeOwners.get(alias) : undefined;
+    return (!live || live.size === 1 && live.has(owner)) && (!catalog || catalog.size === 1 && catalog.has(owner));
+  }));
   const possible = games.filter(game => {
     if (observation.league && game.league !== observation.league) return false;
-    const home = names(game,game.home), away = names(game,game.away);
+    const home = names(game,game.home,0), away = names(game,game.away,1);
     return home.has(first) && away.has(second) || home.has(second) && away.has(first);
   });
   const ids = [...new Set(possible.map(game => game.id))];
