@@ -17,7 +17,7 @@ for (const team of COLLEGE_TEAM_CATALOG) {
   }
 }
 
-export function createObservationMatcher(games: Game[]): (observation: Observation, now: number) => Match {
+export function createObservationMatcher(games: Game[], mode: 'current' | 'inventory-live' = 'current'): (observation: Observation, now: number) => Match {
   const identity = (game: Game, team: Game['home']) => `${game.league}:${team.id || normalizedName(team.name)}`;
   const aliases = (game: Game, team: Game['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || [])].map(normalizedName).filter(Boolean)]);
   const liveOwners = new Map<string,Set<string>>();
@@ -42,7 +42,8 @@ export function createObservationMatcher(games: Game[]): (observation: Observati
     date:game.date ? Date.parse(game.date) : NaN}));
   return (observation,now) => {
     if (!observation.teams) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
-    if (observation.observedAt > now + 60_000 || now - observation.observedAt > 30 * 60_000)
+    const stale=now-observation.observedAt>30*60_000;
+    if (observation.observedAt > now + 60_000 || stale && mode==='current')
       return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[]};
     const [first,second]=observation.teams.map(normalizedName);
     if (!first || !second || first===second) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
@@ -56,6 +57,8 @@ export function createObservationMatcher(games: Game[]): (observation: Observati
     const dated=possible.filter(({date})=>Number.isFinite(date) && Math.abs(date-kickoff)<=3*60*60_000);
     if (dated.length!==1) return {kind:'unmatched',reason:dated.length?'ambiguous-matchup':possible.length?'conflicting-date':'unknown-teams',possibleGameIds:ids};
     const game=dated[0].game;
+    if (stale && game.lifecycle!=='live')
+      return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[game.id]};
     if (game.lifecycle==='final') return {kind:'unmatched',reason:'finished-game',possibleGameIds:[game.id]};
     return {kind:'matched',gameId:game.id};
   };

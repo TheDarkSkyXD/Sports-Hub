@@ -39,6 +39,7 @@ export const SOURCES = [
     'https://v2.sportsurge.net/watch-cfb-streams/','https://v2.sportsurge.net/watch-nfl-streams/',
   ]},
 ] as const;
+const vipboxSourceIds = new Set<string>(SOURCES.filter(source => source.family === 'vipbox').map(source => source.id));
 export class SourceFetchError extends Error {
   readonly retryAfterMs?: number;
   constructor(message:string,retryAfterMs?:number) { super(message); this.retryAfterMs=retryAfterMs; }
@@ -297,6 +298,15 @@ function parseStreamcenterListings(source: ListingSource, html: string, now: num
 export function enrichObservation(observation: Observation, html: string): Observation {
   if (observation.sourceId === 'streamcenter') return observation;
   const $ = load(html);
+  if (vipboxSourceIds.has(observation.sourceId) && $('meta[property="og:url"]').first().attr('content') === observation.url) {
+    const config = $('script').map((_index,node) => $(node).html()).get()
+      .find(value => /\bconst\s+siteConfig\s*=\s*\{/.test(value || '')) || '';
+    if (/"loaded_page"\s*:\s*"stream"/.test(config)) {
+      const rawTime = /"event_start_ts"\s*:\s*(\d{10}(?:\d{3})?)\b/.exec(config)?.[1] || '';
+      const kickoff = parseKickoff(rawTime);
+      if (kickoff !== null) return {...observation,rawTime,kickoff};
+    }
+  }
   $('script,style').remove();
   const text = $('body').text().replace(/\s+/g,' ');
   const time = $('[datetime]').first().attr('datetime') || $('[data-utc]').first().attr('data-utc') || /\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}\s*(?:AM|PM)?\s*ET\b/i.exec(text)?.[0] || observation.rawTime;

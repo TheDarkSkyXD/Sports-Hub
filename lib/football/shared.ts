@@ -80,6 +80,7 @@ export const PlaybackSchema = z.object({ session: SessionSchema, candidates: z.a
 export type Playback = z.infer<typeof PlaybackSchema>;
 export const SourceAttemptSchema = z.object({
   at:z.number(),outcome:z.enum(['parsed','empty','unsupported','parser-changed','failed']),
+  failure:z.enum(['not-found','rate-limited','timed-out','network-unavailable','unsupported-address','invalid-response','upstream-error']).optional(),
 });
 export type SourceAttempt = z.infer<typeof SourceAttemptSchema>;
 export const SourceMatchReasonSchema=z.enum(['not-a-matchup','unknown-teams','unverified-kickoff',
@@ -201,15 +202,19 @@ export const SourcesSnapshotSchema = z.object({
   streameast:z.object({current:StreameastCatalogViewSchema.nullable(),lastComplete:StreameastCatalogViewSchema.nullable(),previous:StreameastCatalogViewSchema.nullable()}),
   sources:z.array(z.object({
     id:z.string(),name:z.string(),catalogUrl:z.string().url(),publicUrls:z.array(z.string().url()),pending:z.boolean(),
+    collectionMode:z.enum(['listings-only','compatible-feed-discovery']),
     lastAttempt:SourceAttemptSchema.nullable(),listingCount:z.number().int().nonnegative(),
-    matchedGameCount:z.number().int().nonnegative(),
+    matchedGameCount:z.number().int().nonnegative(),staleListingCount:z.number().int().nonnegative(),
+    compatibleFeedCount:z.number().int().nonnegative(),
     unmatchedListingCount:z.number().int().nonnegative(),
     unmatchedReasons:z.array(z.object({reason:SourceMatchReasonSchema,count:z.number().int().positive()})),
-    links:z.array(z.object({title:z.string(),url:z.string().url(),gameId:z.string().nullable()})),
+    links:z.array(z.object({title:z.string(),url:z.string().url(),gameId:z.string().nullable(),
+      observedAt:z.number(),freshness:z.enum(['fresh','stale-live'])})),
   })),
   games:z.array(z.object({
     gameId:z.string(),name:z.string(),sourceCount:z.number().int().nonnegative(),
-    uniqueFeedCount:z.number().int().nonnegative(),sourceLinks:z.array(z.object({sourceId:z.string(),title:z.string(),url:z.string().url()})),
+    uniqueFeedCount:z.number().int().nonnegative(),sourceLinks:z.array(z.object({sourceId:z.string(),title:z.string(),url:z.string().url(),
+      observedAt:z.number(),freshness:z.enum(['fresh','stale-live'])})),
   })),
 });
 export type SourcesSnapshot = z.infer<typeof SourcesSnapshotSchema>;
