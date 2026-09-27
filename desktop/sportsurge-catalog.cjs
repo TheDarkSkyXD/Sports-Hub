@@ -1,6 +1,13 @@
 const { createHash } = require('node:crypto');
+const fs = require('node:fs');
+const { createRequire } = require('node:module');
 const { isIP } = require('node:net');
-const { load } = require('cheerio');
+const path = require('node:path');
+
+const packagedServer = process.resourcesPath && path.join(process.resourcesPath, 'server', 'package.json');
+const { load } = packagedServer && fs.existsSync(packagedServer)
+  ? createRequire(packagedServer)('cheerio')
+  : require('cheerio');
 
 const ORIGIN = 'https://v2.sportsurge.net';
 const CATEGORY_URLS = {
