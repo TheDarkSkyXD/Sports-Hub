@@ -1,5 +1,5 @@
 const { randomUUID } = require('node:crypto');
-const { CATEGORY_URLS,parseCategory,parseDetail,freeServerUrls,activeFreeServerUrl,channelId } = require('./streameast-catalog.cjs');
+const { CATEGORY_URLS,parseCategory,parseDetail,freeServerUrls,activeFreeServerUrl,freePlayer } = require('./streameast-catalog.cjs');
 
 function failure(error) {
   return ['blocked','timeout','parser-changed','unavailable','limit'].includes(error?.message) ? error.message : 'unavailable';
@@ -39,16 +39,14 @@ async function runStreameastSweep({read,send,signal,now=Date.now,runId=randomUUI
       const freePages=new Map();
       const active=activeFreeServerUrl(html,event);
       if (active) {
-        const id=channelId(html);
-        freePages.set(active,id ? {kind:'channel',id} : {kind:'unsupported'});
+        freePages.set(active,freePlayer(html));
       }
       for (const url of freeServerUrls(html,event)) {
         if (signal.aborted) throw new Error('unavailable');
         if (freePages.has(url)) continue;
         try {
           const page=await read(url,'server',event.league,signal);
-          const id=channelId(page);
-          freePages.set(url,id ? {kind:'channel',id} : {kind:'unsupported'});
+          freePages.set(url,freePlayer(page));
         } catch { freePages.set(url,{kind:'unknown'}); unresolvedRead=true; }
       }
       event.detail=parseDetail(html,event,now(),freePages);

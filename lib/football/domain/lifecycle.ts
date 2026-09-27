@@ -19,7 +19,7 @@ export function compareCandidates(a:Candidate,b:Candidate):number {
 }
 export function nextCandidate(candidates: Candidate[], recovery: Recovery, now: number, exclude?: string): Candidate | undefined {
   if (recovery.attempted.length >= 3) return undefined;
-  return [...candidates].filter(candidate => candidate.id !== exclude && !recovery.attempted.includes(candidate.id) && !recovery.failures[candidate.id] && (recovery.cooled[candidate.id] || 0) <= now)
+  return [...candidates].filter(candidate => candidate.id !== exclude && !recovery.attempted.includes(candidate.id) && (recovery.cooled[candidate.id] || 0) <= now)
     .sort((a,b) => (recovery.failures[a.id] || 0) - (recovery.failures[b.id] || 0) || compareCandidates(a,b))[0];
 }
 export function failedCandidate(recovery: Recovery, id: string, now: number): Recovery {
