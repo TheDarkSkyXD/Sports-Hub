@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { SourcesSnapshotSchema, type SourcesSnapshot, type SportsurgeCatalogView } from '@/lib/football/shared';
+import { SourcesSnapshotSchema, type SourcesSnapshot, type SportsurgeCatalogView, type StreameastCatalogView } from '@/lib/football/shared';
 
 const attemptLabel:Record<NonNullable<SourcesSnapshot['sources'][number]['lastAttempt']>['outcome'],string>={
   parsed:'Fetched',empty:'No listings',unsupported:'Unsupported page','parser-changed':'Parser changed',failed:'Last fetch failed',
@@ -40,11 +40,32 @@ function SportsurgeRun({run}:{run:SportsurgeCatalogView}) {
   </div>;
 }
 
+function StreameastRun({run}:{run:StreameastCatalogView}) {
+  return <div className="source-inventory-catalog">
+    <p>{run.interrupted?'Interrupted':collectionLabel(run.state)} · Started {time(run.startedAt)} · Last checkpoint {time(run.receivedAt)}</p>
+    <p>CFB {categoryLabel(run.categories.ncaaf)} · NFL {categoryLabel(run.categories.nfl)}</p>
+    <p>{run.gameCount} games · {run.collectedDetails} details collected · {run.pendingDetails} pending · {run.failedDetails} failed</p>
+    <p>{run.serverRows} server rows · {run.freeRows} marked free · {run.premiumRows} premium · {run.unknownRows} unresolved · {run.unsupportedFreeRows} unsupported free · {run.matchedCompatibleChannels} compatible channels for matched games (untested)</p>
+    {run.rejectedGames.length>0&&<details className="source-inventory-diagnostics"><summary>Rejected game links · {run.rejectedGames.length}</summary><ul>
+      {run.rejectedGames.map((game,index)=><li key={`${game.league}:${index}`}>{game.title}: {game.reason}</li>)}
+    </ul></details>}
+    <div className="source-inventory-list">{run.games.map(game=><details key={game.url} className="source-inventory-item">
+      <summary><strong>{game.title}</strong><span>{game.detail.kind==='collected'?`${game.detail.servers.length} server rows`:game.detail.kind==='failed'?`Detail failed (${game.detail.reason})`:'Detail pending'}</span></summary>
+      <p><a href={game.url} target="_blank" rel="noopener noreferrer">Game listing ↗</a> · {game.gameId?'Matched to ESPN':matchReasonLabel[game.matchReason || 'other']}</p>
+      {game.detail.kind==='collected'&&<ul>{game.detail.servers.map(server=><li key={server.id}>
+        <a href={server.url} target="_blank" rel="noopener noreferrer">{server.label} ↗</a> · {server.availability.kind==='free-channel'?'Free compatible channel (untested)':
+          server.availability.kind==='free-unsupported'?'Free · unsupported player':server.availability.kind==='free-unresolved'?'Free · player unresolved':
+            server.availability.kind==='premium'?'Premium':'Access unresolved'}
+      </li>)}</ul>}
+    </details>)}</div>
+  </div>;
+}
+
 export function SourceInventory() {
   const [snapshot,setSnapshot]=useState<SourcesSnapshot|null>(null);
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
-  const collecting=snapshot?.sportsurgeV2.current?.state.kind==='collecting';
+  const collecting=snapshot?.sportsurgeV2.current?.state.kind==='collecting'||snapshot?.streameast.current?.state.kind==='collecting';
   const active=useRef<AbortController|null>(null);
   const load=useCallback(async()=>{
     active.current?.abort();
@@ -76,22 +97,32 @@ export function SourceInventory() {
       <p className="source-inventory-time">Last scan {snapshot.lastDiscoveryAt ? time(snapshot.lastDiscoveryAt) : 'not yet available'} · Snapshot {time(snapshot.at)}</p>
       <div className="source-inventory-list">
         {snapshot.sources.map(source=><details key={source.id} className="source-inventory-item">
-          <summary><strong>{source.name}</strong><span>{source.id==='sportsurge-v2' ? snapshot.sportsurgeV2.current ?
+          <summary><strong>{source.name}</strong><span>{source.id==='streameast' ? snapshot.streameast.current ?
+            `${snapshot.streameast.current.gameCount} games · ${snapshot.streameast.current.serverRows} server rows · ${collectionLabel(snapshot.streameast.current.state)}`:snapshot.desktopCollectorsAvailable?'Awaiting desktop collection':'Desktop collector unavailable':
+            source.id==='sportsurge-v2' ? snapshot.sportsurgeV2.current ?
             `${snapshot.sportsurgeV2.current.gameCount} games · ${snapshot.sportsurgeV2.current.providerRows} provider rows · ${collectionLabel(snapshot.sportsurgeV2.current.state)}`:
-            'Awaiting first collection' : source.pending?'Integration pending':`${source.listingCount} links · ${source.matchedGameCount} games`}</span></summary>
-          <p>{source.id==='sportsurge-v2' ? snapshot.sportsurgeV2.current ? `Last browser checkpoint ${time(snapshot.sportsurgeV2.current.receivedAt)}`:'No browser collection recorded yet':
+            snapshot.desktopCollectorsAvailable?'Awaiting first collection':'Desktop collector unavailable' : source.pending?'Integration pending':`${source.listingCount} links · ${source.matchedGameCount} games`}</span></summary>
+          <p>{source.id==='streameast' ? snapshot.streameast.current ? `Last browser checkpoint ${time(snapshot.streameast.current.receivedAt)}`:snapshot.desktopCollectorsAvailable?'Waiting for desktop collection':'Open the desktop app to collect StreamEast':
+            source.id==='sportsurge-v2' ? snapshot.sportsurgeV2.current ? `Last browser checkpoint ${time(snapshot.sportsurgeV2.current.receivedAt)}`:snapshot.desktopCollectorsAvailable?'No browser collection recorded yet':'Open the desktop app to collect Sportsurge v2':
             source.pending?'Listed for future integration':source.lastAttempt ? `${attemptLabel[source.lastAttempt.outcome]} ${time(source.lastAttempt.at)}`:'No fetch recorded yet'}
           </p>
           <div className="source-inventory-public-links"><a href={source.catalogUrl} target="_blank" rel="noopener noreferrer">Listing endpoint ↗</a>
             {source.publicUrls.filter(url=>url!==source.catalogUrl).map(url=><a key={url} href={url} target="_blank" rel="noopener noreferrer">{publicLinkLabel(url)} ↗</a>)}</div>
           {source.id==='sportsurge-v2'&&snapshot.sportsurgeV2.current&&<SportsurgeRun run={snapshot.sportsurgeV2.current}/>}
+          {source.id==='streameast'&&snapshot.streameast.current&&<StreameastRun run={snapshot.streameast.current}/>}
+          {source.id==='streameast'&&snapshot.streameast.lastComplete&&snapshot.streameast.lastComplete.runId!==snapshot.streameast.current?.runId&&
+            <details className="source-inventory-diagnostics"><summary>Previous complete scan · {age(snapshot.streameast.lastComplete.receivedAt,snapshot.at)} · {time(snapshot.streameast.lastComplete.receivedAt)}</summary>
+              <StreameastRun run={snapshot.streameast.lastComplete}/></details>}
+          {source.id==='streameast'&&snapshot.streameast.previous&&snapshot.streameast.previous.runId!==snapshot.streameast.current?.runId&&
+            <details className="source-inventory-diagnostics"><summary>Previous interrupted or partial scan · {age(snapshot.streameast.previous.receivedAt,snapshot.at)} · {time(snapshot.streameast.previous.receivedAt)}</summary>
+              <StreameastRun run={snapshot.streameast.previous}/></details>}
           {source.id==='sportsurge-v2'&&snapshot.sportsurgeV2.lastComplete&&snapshot.sportsurgeV2.lastComplete.runId!==snapshot.sportsurgeV2.current?.runId&&
             <details className="source-inventory-diagnostics"><summary>Previous complete scan · {age(snapshot.sportsurgeV2.lastComplete.receivedAt,snapshot.at)} · {time(snapshot.sportsurgeV2.lastComplete.receivedAt)}</summary>
               <SportsurgeRun run={snapshot.sportsurgeV2.lastComplete}/></details>}
           {source.id==='sportsurge-v2'&&snapshot.sportsurgeV2.previous&&snapshot.sportsurgeV2.previous.runId!==snapshot.sportsurgeV2.current?.runId&&
             <details className="source-inventory-diagnostics"><summary>Previous interrupted or partial scan · {age(snapshot.sportsurgeV2.previous.receivedAt,snapshot.at)} · {time(snapshot.sportsurgeV2.previous.receivedAt)}</summary>
               <SportsurgeRun run={snapshot.sportsurgeV2.previous}/></details>}
-          {source.id!=='sportsurge-v2'&&source.links.length>0&&<ul>{source.links.map(link=><li key={link.url}><a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a></li>)}</ul>}
+          {source.id!=='sportsurge-v2'&&source.id!=='streameast'&&source.links.length>0&&<ul>{source.links.map(link=><li key={link.url}><a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a></li>)}</ul>}
           {source.unmatchedListingCount>0&&<details className="source-inventory-diagnostics"><summary>Matching diagnostics · {source.unmatchedListingCount} links</summary>
             <ul>{source.unmatchedReasons.map(item=><li key={item.reason}>{matchReasonLabel[item.reason]}: {item.count}</li>)}</ul></details>}
         </details>)}

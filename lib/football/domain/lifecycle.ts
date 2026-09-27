@@ -14,10 +14,13 @@ export function reconcileSession(session: Session, game: Game | undefined, now: 
   return session;
 }
 export type Recovery = { attempted: string[]; cooled: Record<string, number>; cycleStartedAt: number; failures: Record<string, number> };
+export function compareCandidates(a:Candidate,b:Candidate):number {
+  return Number(b.sourceIds.includes('streameast'))-Number(a.sourceIds.includes('streameast'))||a.id.localeCompare(b.id);
+}
 export function nextCandidate(candidates: Candidate[], recovery: Recovery, now: number, exclude?: string): Candidate | undefined {
   if (recovery.attempted.length >= 3) return undefined;
   return [...candidates].filter(candidate => candidate.id !== exclude && !recovery.attempted.includes(candidate.id) && !recovery.failures[candidate.id] && (recovery.cooled[candidate.id] || 0) <= now)
-    .sort((a,b) => (recovery.failures[a.id] || 0) - (recovery.failures[b.id] || 0) || a.id.localeCompare(b.id))[0];
+    .sort((a,b) => (recovery.failures[a.id] || 0) - (recovery.failures[b.id] || 0) || compareCandidates(a,b))[0];
 }
 export function failedCandidate(recovery: Recovery, id: string, now: number): Recovery {
   const count = (recovery.failures[id] || 0) + 1;

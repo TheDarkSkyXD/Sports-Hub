@@ -57,6 +57,7 @@ export type CandidateSummary = z.infer<typeof CandidateSummarySchema>;
 export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
   z.object({provider:z.literal('gooz'),playerId:z.string().regex(/^\d{1,20}$/)}),
   z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid()}),
+  z.object({provider:z.literal('streameast'),channelId:z.string().regex(/^\d{1,4}$/)}),
 ]);
 export type CandidateLocator = z.infer<typeof CandidateLocatorSchema>;
 export const CandidateSchema = CandidateSummarySchema.extend({locator:CandidateLocatorSchema});
@@ -124,6 +125,59 @@ export const SportsurgeCatalogSchema=z.object({
 export type SportsurgeCatalog=z.infer<typeof SportsurgeCatalogSchema>;
 export const StoredSportsurgeCatalogSchema=z.object({catalog:SportsurgeCatalogSchema,receivedAt:z.number().int().nonnegative()}).strict();
 export type StoredSportsurgeCatalog=z.infer<typeof StoredSportsurgeCatalogSchema>;
+export const StreameastFailureSchema=z.enum(['blocked','timeout','parser-changed','unavailable','limit']);
+export const StreameastCategorySchema=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('pending')}).strict(),
+  z.object({kind:z.literal('collected'),at:z.number().int().nonnegative()}).strict(),
+  z.object({kind:z.literal('failed'),at:z.number().int().nonnegative(),reason:StreameastFailureSchema}).strict(),
+]);
+export const StreameastAvailabilitySchema=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('free-channel'),channelId:z.string().regex(/^\d{1,4}$/)}).strict(),
+  z.object({kind:z.literal('free-unsupported')}).strict(),
+  z.object({kind:z.literal('free-unresolved')}).strict(),
+  z.object({kind:z.literal('premium')}).strict(),
+  z.object({kind:z.literal('unknown')}).strict(),
+]);
+export const StreameastServerSchema=z.object({
+  id:z.string().regex(/^\d{1,4}$/),label:z.string().min(1).max(120),url:z.string().url().max(400),
+  availability:StreameastAvailabilitySchema,
+}).strict();
+export const StreameastDetailSchema=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('pending')}).strict(),
+  z.object({kind:z.literal('collected'),at:z.number().int().nonnegative(),servers:z.array(StreameastServerSchema)}).strict(),
+  z.object({kind:z.literal('failed'),at:z.number().int().nonnegative(),reason:StreameastFailureSchema}).strict(),
+]);
+export const StreameastEventSchema=z.object({
+  id:z.string().regex(/^(?:ncaaf|nfl):\d{1,12}$/),league:LeagueSchema,url:z.string().url().max(400),
+  title:z.string().min(1).max(240),teams:z.tuple([z.string().min(1).max(120),z.string().min(1).max(120)]).nullable(),
+  kickoff:z.number().int().nonnegative().nullable(),espnEventId:z.string().regex(/^\d{5,12}$/).nullable(),
+  detail:StreameastDetailSchema,
+}).strict();
+export const StreameastCatalogSchema=z.object({
+  runId:z.string().uuid(),sequence:z.number().int().nonnegative(),startedAt:z.number().int().nonnegative(),
+  state:z.discriminatedUnion('kind',[
+    z.object({kind:z.literal('collecting')}).strict(),
+    z.object({kind:z.literal('complete'),at:z.number().int().nonnegative()}).strict(),
+    z.object({kind:z.literal('partial'),at:z.number().int().nonnegative(),reason:StreameastFailureSchema}).strict(),
+  ]),
+  categories:z.object({ncaaf:StreameastCategorySchema,nfl:StreameastCategorySchema}).strict(),
+  events:z.array(StreameastEventSchema),
+  rejectedGames:z.array(z.object({league:LeagueSchema,title:z.string().max(240),reason:z.enum(['invalid-detail-url','duplicate-game-id'])}).strict()),
+}).strict();
+export type StreameastCatalog=z.infer<typeof StreameastCatalogSchema>;
+export const StoredStreameastCatalogSchema=z.object({catalog:StreameastCatalogSchema,receivedAt:z.number().int().nonnegative()}).strict();
+export type StoredStreameastCatalog=z.infer<typeof StoredStreameastCatalogSchema>;
+export const StreameastCatalogViewSchema=z.object({
+  runId:z.string().uuid(),startedAt:z.number(),receivedAt:z.number(),interrupted:z.boolean(),state:StreameastCatalogSchema.shape.state,
+  categories:StreameastCatalogSchema.shape.categories,gameCount:z.number().int().nonnegative(),
+  collectedDetails:z.number().int().nonnegative(),pendingDetails:z.number().int().nonnegative(),failedDetails:z.number().int().nonnegative(),
+  serverRows:z.number().int().nonnegative(),freeRows:z.number().int().nonnegative(),premiumRows:z.number().int().nonnegative(),
+  unknownRows:z.number().int().nonnegative(),unsupportedFreeRows:z.number().int().nonnegative(),matchedCompatibleChannels:z.number().int().nonnegative(),
+  rejectedGames:StreameastCatalogSchema.shape.rejectedGames,
+  games:z.array(z.object({id:z.string(),title:z.string(),url:z.string().url(),league:LeagueSchema,gameId:z.string().nullable(),
+    matchReason:SourceMatchReasonSchema.nullable(),detail:StreameastDetailSchema})),
+}).strict();
+export type StreameastCatalogView=z.infer<typeof StreameastCatalogViewSchema>;
 export const SportsurgeCatalogViewSchema=z.object({
   runId:z.string().uuid(),startedAt:z.number(),receivedAt:z.number(),interrupted:z.boolean(),state:SportsurgeCatalogSchema.shape.state,
   categories:SportsurgeCatalogSchema.shape.categories,
@@ -140,8 +194,9 @@ export const SportsurgeCatalogViewSchema=z.object({
 });
 export type SportsurgeCatalogView=z.infer<typeof SportsurgeCatalogViewSchema>;
 export const SourcesSnapshotSchema = z.object({
-  at:z.number(),revision:z.number(),windowStartAt:z.number(),lastDiscoveryAt:z.number().nullable(),
+  at:z.number(),revision:z.number(),windowStartAt:z.number(),lastDiscoveryAt:z.number().nullable(),desktopCollectorsAvailable:z.boolean(),
   sportsurgeV2:z.object({current:SportsurgeCatalogViewSchema.nullable(),lastComplete:SportsurgeCatalogViewSchema.nullable(),previous:SportsurgeCatalogViewSchema.nullable()}),
+  streameast:z.object({current:StreameastCatalogViewSchema.nullable(),lastComplete:StreameastCatalogViewSchema.nullable(),previous:StreameastCatalogViewSchema.nullable()}),
   sources:z.array(z.object({
     id:z.string(),name:z.string(),catalogUrl:z.string().url(),publicUrls:z.array(z.string().url()),pending:z.boolean(),
     lastAttempt:SourceAttemptSchema.nullable(),listingCount:z.number().int().nonnegative(),
@@ -165,6 +220,7 @@ export const CommandSchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('authorize'),sessionId:z.string().uuid(),candidateId:z.string().min(1).max(100),generation:z.number().int().nonnegative()}),
   z.object({kind:z.literal('refresh')}),
   z.object({kind:z.literal('sportsurge-catalog'),catalog:SportsurgeCatalogSchema}),
+  z.object({kind:z.literal('streameast-catalog'),catalog:StreameastCatalogSchema}),
   z.object({kind:z.literal('stop')}),
 ]);
 export type Command = z.infer<typeof CommandSchema>;

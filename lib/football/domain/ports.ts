@@ -1,4 +1,4 @@
-import type { Candidate, Game, League, Match, Observation, SeasonMembership, SourceAttempt, StoredSportsurgeCatalog } from '../shared.ts';
+import type { Candidate, Game, League, Match, Observation, SeasonMembership, SourceAttempt, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
 
 export type ScheduleSource = { id: string; league: League; path: string; group: string | null };
 export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[] };
@@ -16,6 +16,8 @@ export interface FootballRepository {
   source(id: string, value: { at: number; outcome: string; count: number; error?: string }): void;
   sportsurgeCatalog(): {current:StoredSportsurgeCatalog|null;lastComplete:StoredSportsurgeCatalog|null;previous:StoredSportsurgeCatalog|null};
   saveSportsurgeCatalog(value:StoredSportsurgeCatalog,observations:{observation:Observation;result:Match}[]): void;
+  streameastCatalog(): {current:StoredStreameastCatalog|null;lastComplete:StoredStreameastCatalog|null;previous:StoredStreameastCatalog|null};
+  saveStreameastCatalog(value:StoredStreameastCatalog,observations:{observation:Observation;result:Match}[]): void;
   membership(season: number): SeasonMembership | undefined;
   saveMembership(value: SeasonMembership): void;
   alias(oldId: string, gameId: string): void;
@@ -25,6 +27,7 @@ export interface FootballRepository {
 }
 
 export type FootballDependencies = {
+  desktop?:boolean;
   store: FootballRepository;
   schedules: readonly ScheduleSource[];
   sources: readonly ListingSource[];
