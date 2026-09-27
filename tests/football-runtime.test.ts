@@ -11,6 +11,7 @@ import { reconcileSession } from '../lib/football/domain/lifecycle.ts';
 import { command as workerCommand } from '../lib/football/runtime/client.ts';
 import { SOURCES, parseListings, compatiblePlayers } from '../lib/football/adapters/sources.ts';
 import { matchObservation } from '../lib/football/domain/matching.ts';
+import { parseScoreboard } from '../lib/sunday.ts';
 import type { Game, Session } from '../lib/football/shared.ts';
 
 const kickoff = Date.parse('2026-09-26T16:00:00Z');
@@ -21,6 +22,53 @@ const live:Game = {
   detail:'Q1',redzone:false,partitions:['nfl'],
 };
 const final:Game = {...live,status:'post',lifecycle:'final',detail:'Final',finalObservedAt:kickoff,graceEndsAt:kickoff+300000};
+
+test('North Dakota historical listing reaches detail but an empty embed creates no playback',async () => {
+  const dir = mkdtempSync(join(tmpdir(),'football-north-dakota-'));
+  const path = join(dir,'state.sqlite');
+  const at = Date.parse('2026-09-26T17:00:00Z');
+  const [scheduled] = parseScoreboard({events:[{
+    id:'401867858',date:new Date(at).toISOString(),status:{type:{state:'pre',name:'STATUS_SCHEDULED'}},competitions:[{competitors:[
+      {homeAway:'home',team:{id:'155',displayName:'North Dakota Fighting Hawks',shortDisplayName:'North Dakota',abbreviation:'UND'}},
+      {homeAway:'away',team:{id:'282',displayName:'Indiana State Sycamores',shortDisplayName:'Indiana State',abbreviation:'INST'}},
+    ]}],
+  }]},'ncaaf');
+  const detailUrl = 'https://isportsurge.ws/watch/cfb/indiana-state-north-dakota/401867858';
+  const listing = `<a href="${detailUrl}"><span class="team-name-event-row"><img alt="Indiana State Sycamores"></span><span class="team-name-event-row"><img alt="North Dakota Fighting Sioux"></span></a>`;
+  const visited: string[] = [];
+  const coordinator = createFootballCoordinator(path,{
+    now:() => at,
+    sources:[SOURCES[0]],
+    readSchedule:async (partition,time) => ({games:partition.id==='fcs' ? [{...scheduled,partitions:['fcs']}] : [],at:time,league:partition.league}),
+    readHtml:async url => {
+      visited.push(url);
+      return url===SOURCES[0].url ? listing : `<time datetime="${new Date(at).toISOString()}"></time><iframe src="https://gooz.aapmains.net/new-stream-embed/"></iframe>`;
+    },
+  });
+  try {
+    await coordinator.refresh(true);
+    let board = await coordinator.command({kind:'board'});
+    for (let attempt=0;board.kind==='board' && board.board.revision<3 && attempt<100;attempt++) {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      board = await coordinator.command({kind:'board'});
+    }
+    assert.equal(board.kind,'board');
+    if (board.kind==='board') assert.ok(board.board.revision>=3);
+    assert.equal(visited.includes(detailUrl),true);
+    const db = new DatabaseSync(path);
+    try {
+      const row = db.prepare('SELECT result FROM observations').get();
+      assert.ok(row && typeof row.result === 'string');
+      assert.deepEqual(JSON.parse(row.result),{kind:'unmatched',reason:'compatible-media-not-resolved',possibleGameIds:['ncaaf-401867858']});
+    } finally { db.close(); }
+    if (board.kind==='board') assert.equal(board.board.games.find(game => game.id==='ncaaf-401867858')?.sourceUrl,undefined);
+    assert.deepEqual(await coordinator.command({kind:'open',gameId:'ncaaf-401867858',manual:false,requestId:'11111111-1111-4111-8111-111111111111'}),
+      {kind:'error',status:404,message:'No compatible stream is available yet.'});
+  } finally {
+    await coordinator.stop();
+    rmSync(dir,{recursive:true,force:true});
+  }
+});
 
 test('the first fresh final timestamp survives restart and never extends the grace period',() => {
   const dir = mkdtempSync(join(tmpdir(),'football-store-'));
