@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
-const origin = process.env.TIMING_BASE_URL || 'http://127.0.0.1:3100';
+const origin = process.env.TIMING_BASE_URL || 'http://127.0.0.1:3101';
 const browser = await chromium.launch({ channel: process.platform === 'win32' ? 'msedge' : undefined, headless: true });
 const team = (name, abbreviation) => ({ name, short: name, abbreviation, color: '445566', score: null });
 const makeGame = (id, away, home, status, detail, date) => ({
-  id, league: 'nfl', name: `${away.name} at ${home.name}`, away, home, status, detail, date, redzone: false,
+  id, league: 'nfl', name: `${away.name} at ${home.name}`, away, home, status,
+  lifecycle: status === 'pre' ? 'scheduled' : status === 'in' ? 'live' : 'unknown', detail, date, redzone: false,
 });
 const games = [
   makeGame('1', team('Pre Away', 'PRA'), team('Pre Home', 'PRH'), 'pre', 'Scheduled', '2026-09-27T00:00Z'),
@@ -14,7 +15,7 @@ const games = [
   makeGame('3', team('Bad Away', 'BDA'), team('Bad Home', 'BDH'), 'pre', 'Delayed', 'tomorrow'),
   makeGame('4', team('Live Away', 'LVA'), team('Live Home', 'LVH'), 'in', 'Q2', '2026-09-26T20:00Z'),
 ];
-const board = () => ({ games, updatedAt: '2026-09-26T23:59:57Z', leagues: {
+const board = () => ({ schemaVersion: 2, revision: 1, aliases: {}, games, updatedAt: '2026-09-26T23:59:57Z', leagues: {
   nfl: { week: 4, scoresAt: '2026-09-26T23:59:57Z', sourceAt: null, errors: [] },
   ncaaf: { scoresAt: null, sourceAt: null, errors: [] },
 } });
@@ -45,6 +46,9 @@ try {
   await page.clock.pauseAt(new Date('2026-09-26T23:59:57Z'));
   await page.route('**/api/games', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(board()) }));
   await page.goto(origin);
+  await page.clock.runFor(1);
+  await page.locator('.mini-game').filter({ hasText: 'PRA' }).waitFor();
+  await page.clock.runFor(1);
   const surfaces = ['.mini-game', '.game-tile', '.center-game'];
   for (const surface of surfaces) {
     const timing = await timingFor(page, surface, 'PRA');
@@ -63,7 +67,7 @@ try {
   await page.clock.runFor(2000);
   for (const surface of surfaces) assert.match(await (await timingFor(page, surface, 'PRA')).innerText(), /Awaiting kickoff/);
 
-  games[0] = { ...games[0], status: 'in', detail: 'Q1' };
+  games[0] = { ...games[0], status: 'in', lifecycle: 'live', detail: 'Q1' };
   await page.getByRole('button', { name: 'Refresh game data' }).click();
   for (const surface of surfaces) {
     const card = page.locator(surface).filter({ hasText: 'PRA' }).first();
@@ -71,7 +75,7 @@ try {
     assert.doesNotMatch(await card.locator('.game-timing').innerText(), /Kickoff in|Awaiting kickoff/);
   }
 
-  games[0] = { ...games[0], status: 'pre', detail: 'Scheduled', date: '2026-09-28T00:00Z' };
+  games[0] = { ...games[0], status: 'pre', lifecycle: 'scheduled', detail: 'Scheduled', date: '2026-09-28T00:00Z' };
   await page.getByRole('button', { name: 'Refresh game data' }).click();
   await page.getByRole('button', { name: 'Game schedule' }).click();
   const scheduleTiming = await timingFor(page, '.schedule-card', 'PRA');

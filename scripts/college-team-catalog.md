@@ -1,0 +1,9 @@
+# Refresh the college team catalog
+
+Run `npm run catalog:college` to fetch the ESPN team directory and every 2026 FBS and FCS member from ESPN Core. The generator writes `lib/football/domain/college-teams.generated.ts` and `lib/football/domain/college-teams.coverage.json` only after it validates both membership groups, all member records, and the directory count. Run `npm run catalog:college:check` to compare the checked-in files with a fresh fetch.
+
+The 2026 directory has 762 records. The generator expects that count to catch partial responses. When the directory changes, inspect the returned IDs and pass `--bulk-count=N` directly to `node scripts/generate-college-team-catalog.mjs`. A new season also needs `--season=YYYY` and an explicit directory count. Review the generated coverage file before checking in the result.
+
+Add source spellings or historical names to `scripts/college-team-alias-overrides.json` under their ESPN team ID. Each entry needs at least one evidence URL. The matcher accepts exact official names from ESPN and reviewed names from this file, then rejects any spelling owned by more than one college team. It keeps live schedule names for teams outside the generated catalog. The catalog does not change names shown in the UI.
+
+Run `npm run catalog:college:replay` to audit the local read-only diagnostics database. Pass `-- --database=PATH` to use another database. To save a comparison point, run `npm run catalog:college:replay -- --capture=SNAPSHOT_PATH`. After a catalog change, run `npm run catalog:college:replay -- --snapshot=SNAPSHOT_PATH --output=REPORT_PATH`. The capture removes source URLs and stores the schedule, observations, and matching results. The report separates newly name-eligible observations from newly dated game matches and lists any lost or changed previous matches. Both modes group unmatched team labels by source and count.

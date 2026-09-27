@@ -1,0 +1,400 @@
+[
+    {
+        "espnId":  "21",
+        "aliases":  [
+                        "SDSU"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/21",
+                           "https://goaztecs.com/news/2026/08/31/san-diego-state-begins-inaugural-pac-12-season-with-non-conference-game-vs-portland-state"
+                       ]
+    },
+    {
+        "espnId":  "41",
+        "aliases":  [
+                        "Connecticut Huskies",
+                        "Connecticut",
+                        "University of Connecticut",
+                        "University of Connecticut Huskies"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/41",
+                           "https://uconnhuskies.com/sports/football"
+                       ]
+    },
+    {
+        "espnId":  "152",
+        "aliases":  [
+                        "North Carolina State Wolfpack",
+                        "North Carolina State",
+                        "North Carolina State University",
+                        "North Carolina State University Wolfpack"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/152",
+                           "https://gopack.com/sports/football/schedule"
+                       ]
+    },
+    {
+        "espnId":  "155",
+        "aliases":  [
+                        "North Dakota Fighting Sioux"
+                    ],
+        "sourceUrls":  [
+                           "https://fightinghawks.com/news/2015/11/24/210528397.aspx"
+                       ]
+    },
+    {
+        "espnId":  "166",
+        "aliases":  [
+                        "NM State"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/166",
+                           "https://nmstatesports.com/sports/football/schedule"
+                       ]
+    },
+    {
+        "espnId":  "233",
+        "aliases":  [
+                        "USD"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/233",
+                           "https://usd.edu/Student-Life/Activities-and-Involvement/Athletics-and-Spirit-Squad/Coyote-Athletics"
+                       ]
+    },
+    {
+        "espnId":  "301",
+        "aliases":  [
+                        "USD"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/301",
+                           "https://usdtoreros.com/news/2026/9/5/football-mbakwe-monach-reach-end-zone-as-toreros-open-2026-against-no-6-uc-davis.aspx"
+                       ]
+    },
+    {
+        "espnId":  "302",
+        "aliases":  [
+                        "California-Davis Aggies",
+                        "California-Davis",
+                        "University of California, Davis",
+                        "University of California, Davis Aggies"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/302",
+                           "https://ucdavisaggies.com/news/2024/12/10/athletics-uc-davis-to-join-mountain-west-conference-in-2026-27.aspx"
+                       ]
+    },
+    {
+        "espnId":  "399",
+        "aliases":  [
+                        "Albany Great Danes",
+                        "University at Albany",
+                        "University at Albany Great Danes"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/399",
+                           "https://www.albany.edu/undergraduate-bulletin/athletics.php",
+                           "https://ualbanysports.com/sports/2026/7/1/football-tickets.aspx"
+                       ]
+    },
+    {
+        "espnId":  "2026",
+        "aliases":  [
+                        "Appalachian State Mountaineers",
+                        "Appalachian State",
+                        "Appalachian State University",
+                        "Appalachian State University Mountaineers"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2026",
+                           "https://appstatesports.com/news/1970/1/1/1541150.aspx"
+                       ]
+    },
+    {
+        "espnId":  "2229",
+        "aliases":  [
+                        "Florida Intl Golden Panthers",
+                        "Florida Intl",
+                        "Florida International Golden Panthers",
+                        "Florida International University Golden Panthers"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2229",
+                           "https://fiusports.com/news/2006/2/1/FB_8162.aspx"
+                       ]
+    },
+    {
+        "espnId":  "2277",
+        "aliases":  [
+                        "Houston Baptist Huskies",
+                        "Houston Baptist",
+                        "Houston Baptist University",
+                        "Houston Baptist University Huskies"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2277",
+                           "https://hc.edu/news-and-events/2022/09/21/hbu-changes-name-to-houston-christian-university/"
+                       ]
+    },
+    {
+        "espnId":  "2341",
+        "aliases":  [
+                        "Liu Sharks",
+                        "LIU Sharks"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2341",
+                           "https://www.liuathletics.com/news/2024/8/30/sharks-football-heads-up-to-albany-to-start-2024-season.aspx"
+                       ]
+    },
+    {
+        "espnId":  "2377",
+        "aliases":  [
+                        "McNeese State",
+                        "Mcneese State Cowboys",
+                        "McNeese State University",
+                        "McNeese State University Cowboys"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2377",
+                           "https://mcneesesports.com/sports/football/schedule"
+                       ]
+    },
+    {
+        "espnId":  "2433",
+        "aliases":  [
+                        "Louisiana-Monroe",
+                        "Louisiana-Monroe Warhawks",
+                        "University of Louisiana at Monroe",
+                        "University of Louisiana at Monroe Warhawks"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2433",
+                           "https://www.ulm.edu/omc/history.html"
+                       ]
+    },
+    {
+        "espnId":  "2447",
+        "aliases":  [
+                        "Nicholls State Colonels",
+                        "Nicholls State",
+                        "Nicholls State University",
+                        "Nicholls State University Colonels"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2447",
+                           "https://geauxcolonels.com/news/2026/8/20/colonel-football-to-open-season-aug-27-at-home.aspx"
+                       ]
+    },
+    {
+        "espnId":  "2448",
+        "aliases":  [
+                        "North Carolina A and T",
+                        "North Carolina A\u0026T State University",
+                        "North Carolina A\u0026T State University Aggies",
+                        "North Carolina Agricultural and Technical State University",
+                        "North Carolina Agricultural and Technical State University Aggies"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2448",
+                           "https://ncataggies.com/",
+                           "https://www.ncat.edu/about/index.php"
+                       ]
+    },
+    {
+        "espnId":  "2504",
+        "aliases":  [
+                        "Prairie View A and M",
+                        "Prairie View A\u0026M University",
+                        "Prairie View A\u0026M University Panthers"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2504",
+                           "https://pvpanthers.com/"
+                       ]
+    },
+    {
+        "espnId":  "2534",
+        "aliases":  [
+                        "Sam Houston State Bearkats",
+                        "Sam Houston State",
+                        "Sam Houston State University",
+                        "Sam Houston State University Bearkats"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2534",
+                           "https://todayatsam.shsu.edu/T@S/2024/new-visual-identity"
+                       ]
+    },
+    {
+        "espnId":  "2545",
+        "aliases":  [
+                        "Southeastern Louisiana",
+                        "Southeastern Louisiana Lions",
+                        "Southeastern Louisiana University",
+                        "Southeastern Louisiana University Lions"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2545",
+                           "https://lionsports.net/sports/football/schedule/2026"
+                       ]
+    },
+    {
+        "espnId":  "2546",
+        "aliases":  [
+                        "Southeast Missouri",
+                        "Southeast Missouri State University",
+                        "Southeast Missouri State University Redhawks"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2546",
+                           "https://semoredhawks.com/sports/football"
+                       ]
+    },
+    {
+        "espnId":  "2567",
+        "aliases":  [
+                        "Southern Methodist Mustangs",
+                        "Southern Methodist",
+                        "Southern Methodist University",
+                        "Southern Methodist University Mustangs"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2567",
+                           "https://www.smu.edu/policy/1-institutional-affairs/1-13-intercollegiate-athletics"
+                       ]
+    },
+    {
+        "espnId":  "2571",
+        "aliases":  [
+                        "SDSU"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2571",
+                           "https://www.sdstate.edu/about-us/university-facts"
+                       ]
+    },
+    {
+        "espnId":  "2572",
+        "aliases":  [
+                        "Southern Mississippi Golden Eagles",
+                        "Southern Mississippi",
+                        "University of Southern Mississippi",
+                        "University of Southern Mississippi Golden Eagles"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2572",
+                           "https://southernmiss.com/sports/football"
+                       ]
+    },
+    {
+        "espnId":  "2582",
+        "aliases":  [
+                        "Southern University Jaguars",
+                        "Southern University",
+                        "Southern University and A\u0026M College",
+                        "Southern University and A\u0026M College Jaguars"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2582",
+                           "https://www.subr.edu/news/second-annual-pete-richardson-classic-kicks-off-friday"
+                       ]
+    },
+    {
+        "espnId":  "2630",
+        "aliases":  [
+                        "Tennessee-Martin Skyhawks",
+                        "University of Tennessee at Martin",
+                        "University of Tennessee at Martin Skyhawks",
+                        "Tennessee-Martin"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2630",
+                           "https://utmsports.com/documents/download/2024/10/29/2024-25_media_guide.pdf",
+                           "https://utmsports.com/sports/2018/5/29/sports-information"
+                       ]
+    },
+    {
+        "espnId":  "2643",
+        "aliases":  [
+                        "Citadel Bulldogs"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2643",
+                           "https://citadelsports.com/sports/football/"
+                       ]
+    },
+    {
+        "espnId":  "2678",
+        "aliases":  [
+                        "Virginia Military Keydets",
+                        "Virginia Military Institute",
+                        "Virginia Military Institute Keydets"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2678",
+                           "https://vmikeydets.com/"
+                       ]
+    },
+    {
+        "espnId":  "2729",
+        "aliases":  [
+                        "William and Mary",
+                        "College of William \u0026 Mary",
+                        "College of William \u0026 Mary Tribe"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2729",
+                           "https://tribeathletics.com/sports/2015/10/7/FB_1007151541.aspx?id=55"
+                       ]
+    },
+    {
+        "espnId":  "2755",
+        "aliases":  [
+                        "Grambling State",
+                        "Grambling State Tigers",
+                        "Grambling State University",
+                        "Grambling State University Tigers"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2755",
+                           "https://gsutigers.com/sports/football/schedule"
+                       ]
+    },
+    {
+        "espnId":  "2837",
+        "aliases":  [
+                        "East Texas A\u0026M-Commerce Lions",
+                        "East Texas A and M",
+                        "East Texas A\u0026M-Commerce",
+                        "Texas A\u0026M-Commerce",
+                        "Texas A\u0026M-Commerce Lions",
+                        "Texas A\u0026M University-Commerce",
+                        "Texas A\u0026M University-Commerce Lions"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2837",
+                           "https://lionathletics.com/news/2024/11/7/general-texas-am-university-system-board-of-regents-approves-name-change-for-texas-am-university-commerce.aspx",
+                           "https://lionathletics.com/sports/football/schedule"
+                       ]
+    },
+    {
+        "espnId":  "2900",
+        "aliases":  [
+                        "Saint Thomas Tommies",
+                        "University of St. Thomas",
+                        "University of St. Thomas Tommies",
+                        "Saint Thomas (MN)",
+                        "Saint Thomas (MN) Tommies",
+                        "St. Thomas (MN)",
+                        "St. Thomas (MN) Tommies"
+                    ],
+        "sourceUrls":  [
+                           "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2900",
+                           "https://tommiesports.com/sports/football"
+                       ]
+    }
+]
