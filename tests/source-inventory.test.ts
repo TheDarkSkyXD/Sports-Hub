@@ -22,7 +22,7 @@ const candidate=(id:string,sourceIds:string[],observedAt=at):Candidate=>({
   id,gameId:florida.id,label:'Primary',sourceIds,observedAt,locator:{provider:'gooz',playerId:'57069'},
 });
 
-test('source snapshot counts distinct current listings, canonical games, and compatible feeds without media locators',()=>{
+test('source snapshot retains stale live listings without counting them as compatible feeds',()=>{
   const sources=[
     {id:'tvapp',url:'https://api-backups.handleapi.win/matches/sport/american-football',family:'tvapp',kind:'catalog' as const,
       name:'TVApp',publicUrls:['https://tvapp1.com/cfb-streams','https://thetvapp67.st/cfb-streams']},
@@ -54,17 +54,21 @@ test('source snapshot counts distinct current listings, canonical games, and com
     attempts:{tvapp:{at,outcome:'parsed'},sportsurge:{at,outcome:'failed'}},desktopCollectorsAvailable:false,
     sportsurgeCatalog:{current:null,lastComplete:null,previous:null},streameastCatalog:{current:null,lastComplete:null,previous:null}});
   assert.equal(SourcesSnapshotSchema.safeParse(snapshot).success,true);
-  assert.equal(snapshot.sources[0].listingCount,7);
+  assert.equal(snapshot.sources[0].listingCount,8);
+  assert.equal(snapshot.sources[0].staleListingCount,1);
+  assert.equal(snapshot.sources[0].links.find(link=>link.url==='https://tvapp1.com/watch/stale')?.freshness,'stale-live');
   assert.ok(snapshot.sources[0].links.some(link=>link.url===first+'?channel=backup'));
   assert.ok(snapshot.sources[0].links.some(link=>link.url===first+'?stream=alt&start=10'));
   assert.ok(snapshot.sources[0].links.some(link=>link.url===first+'#feed=one'));
   assert.ok(snapshot.sources[0].links.some(link=>link.url===first+'#feed=two'));
   assert.equal(snapshot.sources[0].matchedGameCount,2);
   assert.equal(snapshot.sources[1].listingCount,1);
-  assert.equal(snapshot.sources[2].listingCount,0);
+  assert.equal(snapshot.sources[2].listingCount,1);
+  assert.equal(snapshot.sources[2].staleListingCount,1);
+  assert.equal(snapshot.sources[2].compatibleFeedCount,0);
   assert.equal(snapshot.sources[3].pending,true);
   assert.equal(snapshot.sources[3].lastAttempt,null);
-  assert.equal(snapshot.games.find(game=>game.gameId===florida.id)?.sourceCount,2);
+  assert.equal(snapshot.games.find(game=>game.gameId===florida.id)?.sourceCount,3);
   assert.equal(snapshot.games.find(game=>game.gameId===florida.id)?.uniqueFeedCount,1);
   assert.equal(snapshot.games.find(game=>game.gameId===georgia.id)?.uniqueFeedCount,0);
   assert.equal(snapshot.games.some(game=>game.gameId===finished.id),false);

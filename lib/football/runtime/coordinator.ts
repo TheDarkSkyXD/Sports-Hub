@@ -1,11 +1,11 @@
-import { createObservationMatcher, matchObservation, mergeSchedulePartitions } from '../domain/matching.ts';
+import { createObservationMatcher, matchObservation, mergeSchedulePartitions, normalizedName } from '../domain/matching.ts';
 import { SESSION_LEASE_MS, compareCandidates, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
 import { sourceInventory } from '../domain/source-inventory.ts';
 import { catalogDecision, sanitizeSportsurgeCatalog, sportsurgeObservation } from '../domain/sportsurge-catalog.ts';
 import { sanitizeStreameastCatalog, streameastDecision, streameastObservation, streameastCandidates, verifiedStreameastMatch } from '../domain/streameast-catalog.ts';
 import type { Recovery } from '../domain/lifecycle.ts';
 import type { FootballDependencies, FootballRepository } from '../domain/ports.ts';
-import { candidateSummary, type Board, type Candidate, type Command, type Game, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourcesSnapshot } from '../shared.ts';
+import { candidateSummary, type Board, type Candidate, type Command, type Game, type LeagueFeedStatus, type Match, type Observation, type Reply, type Session, type SourcesSnapshot } from '../shared.ts';
 
 type RecoveryPhase = {kind:'cycling'} | {kind:'exhausted';until:number;knownIds:string[]};
 type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;phase:RecoveryPhase;requestId?:string};
@@ -193,7 +193,19 @@ export class FootballCoordinator {
       }
     });
     if (this.stopped) return;
-    for (const observation of observations) this.store.observe(observation,matchObservation(observation,this.games,this.now()));
+    const previousObservations = new Map(this.store.observations().map(observation => [observation.id,observation]));
+    const matchInventory = createObservationMatcher(this.games,'inventory-live');
+    const saveObservation = (observation:Observation,result:Match) => {
+      const previous = previousObservations.get(observation.id);
+      if (observation.kickoff === null && previous && previous.kickoff !== null &&
+        previous.sourceId === observation.sourceId && previous.url === observation.url && previous.league === observation.league && previous.teams && observation.teams &&
+        previous.teams.map(normalizedName).sort().join('|') === observation.teams.map(normalizedName).sort().join('|')) {
+        const known = matchInventory(previous,this.now());
+        if (known.kind === 'matched' && this.games.some(game => game.id === known.gameId && game.lifecycle === 'live')) return;
+      }
+      this.store.observe(observation,result);
+    };
+    for (const observation of observations) saveObservation(observation,matchObservation(observation,this.games,this.now()));
     const catalogIds = new Set(this.sources.filter(source => source.kind === 'catalog').map(source => source.id));
     const eligible = observations.filter(observation => {
       if (catalogIds.has(observation.sourceId)) return false;
@@ -223,13 +235,13 @@ export class FootballCoordinator {
         if (this.stopped) return;
         observation = this.enrichObservation(original,html);
         const match = matchObservation(observation,this.games,this.now());
-        this.store.observe(observation,match);
+        saveObservation(observation,match);
         if (match.kind !== 'matched') return;
         const game = this.games.find(game => game.id === match.gameId);
         if (!game || !this.scheduleFresh(game) || game.finalObservedAt !== undefined) return;
         const players = this.compatiblePlayers(game.id,observation,html,this.now());
         if (!players.length) {
-          this.store.observe(observation,{kind:'unmatched',reason:'compatible-media-not-resolved',possibleGameIds:[game.id]});
+          saveObservation(observation,{kind:'unmatched',reason:'compatible-media-not-resolved',possibleGameIds:[game.id]});
           return;
         }
         const byId = new Map((this.candidates.get(game.id) || []).map(candidate => [candidate.id,candidate]));
@@ -241,7 +253,7 @@ export class FootballCoordinator {
         this.candidates.set(game.id,[...byId.values()]);
         if (observation.legacyId) this.store.alias(observation.legacyId,game.id);
       } catch(error) {
-        if (!this.stopped) this.store.observe(observation,{kind:'unmatched',reason:errorCode(error),possibleGameIds:[]});
+        if (!this.stopped) saveObservation(observation,{kind:'unmatched',reason:errorCode(error),possibleGameIds:[]});
       }
     });
     this.revision++;

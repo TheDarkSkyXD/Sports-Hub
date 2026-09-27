@@ -1,8 +1,8 @@
-import type { Candidate, Game, Observation, SourceAttempt, SourceMatchReason, SourcesSnapshot, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
+import type { Candidate, Game, Match, Observation, SourceAttempt, SourceMatchReason, SourcesSnapshot, StoredSportsurgeCatalog, StoredStreameastCatalog, StreameastCatalog } from '../shared.ts';
 import type { ListingSource } from './ports.ts';
-import { createObservationMatcher } from './matching.ts';
-import { sportsurgeCatalogView } from './sportsurge-catalog.ts';
-import { streameastCatalogView } from './streameast-catalog.ts';
+import { createObservationMatcher, normalizedName } from './matching.ts';
+import { sportsurgeCatalogView, sportsurgeObservation } from './sportsurge-catalog.ts';
+import { streameastCatalogView, streameastObservation, verifiedStreameastMatch } from './streameast-catalog.ts';
 
 type Input = {
   at:number; revision:number; lastDiscoveryAt:number|null; desktopCollectorsAvailable:boolean; sources:readonly ListingSource[];
@@ -30,26 +30,45 @@ function sourceReason(reason:string):SourceMatchReason {
   }
 }
 
+function sameMatchup(left:Observation,right:Observation):boolean {
+  if (left.sourceId!==right.sourceId || left.url!==right.url || left.league!==right.league || !left.teams || !right.teams) return false;
+  const pair=(teams:[string,string])=>teams.map(normalizedName).sort().join('|');
+  return pair(left.teams)===pair(right.teams);
+}
+
 export function sourceInventory(input:Input):SourcesSnapshot {
   const {at,sources,games,candidates}=input;
   const windowStartAt=at-30*60_000;
   const gameById=new Map(games.map(game=>[game.id,game]));
   const sourceById=new Map(sources.map(source=>[source.id,source]));
   const publicHosts=new Set(sources.flatMap(source=>[source.url,...(source.publicUrls || [])].map(value=>new URL(value).hostname)));
-  const match=createObservationMatcher(games);
+  const match=createObservationMatcher(games,'inventory-live');
+  const liveDates=games.filter(game=>game.lifecycle==='live' && game.date).map(game=>({league:game.league,date:Date.parse(game.date || '')}));
   const linksBySource=new Map<string,Map<string,SourcesSnapshot['sources'][number]['links'][number]>>();
   const linksByGame=new Map<string,SourcesSnapshot['games'][number]['sourceLinks']>();
   const reasonsBySource=new Map<string,Map<SourceMatchReason,number>>();
-  for (const observation of input.observations) {
-    if (observation.observedAt<windowStartAt || observation.observedAt>at+60_000) continue;
-    if (!sourceById.has(observation.sourceId)) continue;
+  const matchedBySource=new Map<string,Set<string>>();
+  const add=(observation:Observation,fallback=false,event:StreameastCatalog['events'][number]|null=null,sourceLive=false):void=>{
+    if (!sourceById.has(observation.sourceId)) return;
     const url=publicObservationUrl(observation.url,publicHosts);
-    if (!url) continue;
+    if (!url || observation.observedAt>at+60_000) return;
+    const stale=fallback || observation.observedAt<windowStartAt;
+    const kickoff=observation.kickoff;
+    if (stale && (!observation.teams || kickoff===null || !liveDates.some(game=>
+      (!observation.league || game.league===observation.league) && Math.abs(game.date-kickoff)<=3*60*60_000))) return;
     const links=linksBySource.get(observation.sourceId) || new Map();
-    if (links.has(url)) continue;
-    const result=match(observation,at);
+    if (links.has(url)) return;
+    const raw=match(observation,at);
+    const liveIds=sourceLive && !stale && observation.league && observation.teams && observation.kickoff===null &&
+      raw.kind==='unmatched' && raw.reason==='unverified-kickoff' && raw.possibleGameIds.length===1 &&
+      gameById.get(raw.possibleGameIds[0])?.lifecycle==='live' ? raw.possibleGameIds : [];
+    const result:Match=liveIds.length===1 ? {kind:'matched',gameId:liveIds[0]}:
+      event===null?raw:verifiedStreameastMatch(event,raw,gameById.get(raw.kind==='matched'?raw.gameId:''));
     const gameId=result.kind==='matched' && gameById.has(result.gameId) ? result.gameId : null;
-    links.set(url,{title:observation.title,url,gameId});
+    if (stale && (!gameId || gameById.get(gameId)?.lifecycle!=='live')) return;
+    if (fallback && gameId && matchedBySource.get(observation.sourceId)?.has(gameId)) return;
+    const freshness=stale?'stale-live':'fresh';
+    links.set(url,{title:observation.title,url,gameId,observedAt:observation.observedAt,freshness});
     linksBySource.set(observation.sourceId,links);
     if (!gameId) {
       const reasons=reasonsBySource.get(observation.sourceId) || new Map<SourceMatchReason,number>();
@@ -58,18 +77,86 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       reasonsBySource.set(observation.sourceId,reasons);
     }
     if (gameId) {
+      const matched=matchedBySource.get(observation.sourceId) || new Set<string>();
+      matched.add(gameId);
+      matchedBySource.set(observation.sourceId,matched);
       const gameLinks=linksByGame.get(gameId) || [];
-      gameLinks.push({sourceId:observation.sourceId,title:observation.title,url});
+      gameLinks.push({sourceId:observation.sourceId,title:observation.title,url,observedAt:observation.observedAt,freshness});
       linksByGame.set(gameId,gameLinks);
+    }
+  };
+  for (const observation of input.observations) {
+    if (observation.sourceId==='sportsurge-v2'||observation.sourceId==='streameast') continue;
+    add(observation);
+  }
+  const datedLive=(observation:Observation,event:StreameastCatalog['events'][number]|null=null):boolean=>{
+    const raw=match(observation,at);
+    const result=event===null?raw:verifiedStreameastMatch(event,raw,gameById.get(raw.kind==='matched'?raw.gameId:''));
+    return result.kind==='matched' && gameById.get(result.gameId)?.lifecycle==='live';
+  };
+  const sportsurgeRuns=[input.sportsurgeCatalog.current,input.sportsurgeCatalog.previous,input.sportsurgeCatalog.lastComplete];
+  const sportsurgeHistory=sportsurgeRuns.slice(1).map(stored=>new Map(stored?.catalog.events.map(event=>[event.id,event]) || []));
+  const sportsurgeSeen=new Set<string>();
+  for (const [runIndex,stored] of sportsurgeRuns.entries()) {
+    if (!stored) continue;
+    for (const event of stored.catalog.events) {
+      if (sportsurgeSeen.has(event.id)) continue;
+      sportsurgeSeen.add(event.id);
+      const category=stored.catalog.categories[event.league];
+      const observation=sportsurgeObservation(event,category.kind==='pending'?stored.catalog.startedAt:category.at);
+      if (runIndex===0 && observation.kickoff===null) {
+        const historical=sportsurgeHistory.flatMap((events,index)=>{
+          const prior=events.get(event.id);
+          const run=sportsurgeRuns[index+1];
+          if (!prior || !run) return [];
+          const priorCategory=run.catalog.categories[prior.league];
+          return [sportsurgeObservation(prior,priorCategory.kind==='pending'?run.catalog.startedAt:priorCategory.at)];
+        }).find(prior=>prior.kickoff!==null && sameMatchup(observation,prior));
+        if (historical && datedLive(historical)) {add(historical,true);continue;}
+      }
+      add(observation,runIndex>0,null,runIndex===0 && category.kind==='collected' && event.sourceStatus==='live');
+    }
+  }
+  const streameastRuns=[input.streameastCatalog.current,input.streameastCatalog.previous,input.streameastCatalog.lastComplete];
+  const streameastHistory=streameastRuns.slice(1).map(stored=>new Map(stored?.catalog.events.map(event=>[event.id,event]) || []));
+  const streameastSeen=new Set<string>();
+  for (const [runIndex,stored] of streameastRuns.entries()) {
+    if (!stored) continue;
+    for (const event of stored.catalog.events) {
+      if (streameastSeen.has(event.id)) continue;
+      streameastSeen.add(event.id);
+      const category=stored.catalog.categories[event.league];
+      const observation=streameastObservation(event,category.kind==='pending'?stored.catalog.startedAt:category.at);
+      if (runIndex===0 && observation.kickoff===null) {
+        const historical=streameastHistory.flatMap((events,index)=>{
+          const prior=events.get(event.id);
+          const run=streameastRuns[index+1];
+          if (!prior || !run) return [];
+          const priorCategory=run.catalog.categories[prior.league];
+          return [{event:prior,observation:streameastObservation(prior,priorCategory.kind==='pending'?run.catalog.startedAt:priorCategory.at)}];
+        }).find(prior=>prior.observation.kickoff!==null && sameMatchup(observation,prior.observation));
+        if (historical && datedLive(historical.observation,historical.event) && datedLive(historical.observation,event)) {
+          add(historical.observation,true,event);
+          continue;
+        }
+      }
+      add(observation,runIndex>0,event);
     }
   }
   const sourceRows=sources.map(source=>{
     const links=[...(linksBySource.get(source.id)?.values() || [])];
     const matched=new Set(links.flatMap(link=>link.gameId ? [link.gameId] : []));
+    const freshGames=new Set(links.flatMap(link=>link.gameId && link.freshness==='fresh' ? [link.gameId] : []));
+    const compatibleFeedCount=new Set([...freshGames].flatMap(gameId=>(candidates.get(gameId) || [])
+      .filter(candidate=>candidate.observedAt>=windowStartAt && candidate.observedAt<=at+60_000 && candidate.sourceIds.includes(source.id))
+      .map(candidate=>`${gameId}:${candidate.id}`))).size;
     return {
       id:source.id,name:source.name || source.id.replace(/-/g,' '),catalogUrl:source.url,
       publicUrls:[...new Set(source.publicUrls || [source.url])],pending:source.kind==='pending',
+      collectionMode:source.kind==='catalog' || source.kind==='browser-catalog' && source.family==='sportsurge'
+        ? 'listings-only' as const : 'compatible-feed-discovery' as const,
       lastAttempt:input.attempts[source.id] || null,listingCount:links.length,matchedGameCount:matched.size,
+      staleListingCount:links.filter(link=>link.freshness==='stale-live').length,compatibleFeedCount,
       unmatchedListingCount:links.length-links.filter(link=>link.gameId).length,
       unmatchedReasons:[...(reasonsBySource.get(source.id) || new Map()).entries()].map(([reason,count])=>({reason,count})),links,
     };
@@ -79,7 +166,7 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     const sourceLinks=linksByGame.get(game.id) || [];
     if (!sourceLinks.length) return [];
     const sourceCount=new Set(sourceLinks.map(link=>link.sourceId)).size;
-    const currentSources=new Set(sourceLinks.map(link=>link.sourceId));
+    const currentSources=new Set(sourceLinks.filter(link=>link.freshness==='fresh').map(link=>link.sourceId));
     const uniqueFeedCount=new Set((candidates.get(game.id) || []).filter(candidate=>candidate.observedAt>=windowStartAt &&
       candidate.observedAt<=at+60_000 && candidate.sourceIds.some(sourceId=>currentSources.has(sourceId)))
       .map(candidate=>candidate.id)).size;
