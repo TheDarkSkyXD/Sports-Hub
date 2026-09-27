@@ -24,8 +24,13 @@ try {
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
     timeout: 90_000,
   });
-  const page = await desktop.firstWindow({ timeout: 90_000 });
-  await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+  const windowDeadline = Date.now() + 90_000;
+  let page;
+  while (!page && Date.now() < windowDeadline) {
+    page = desktop.windows().find(candidate => /^http:\/\/127\.0\.0\.1:\d+\/$/.test(candidate.url()));
+    if (!page) await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  assert.ok(page, 'Packaged app window did not reach its loopback origin');
   await page.getByRole('button', { name: 'Watch room' }).waitFor();
   assert.match(await page.title(), /Sunday Room/);
   assert.equal(await page.evaluate(() => typeof window.sundayDesktop), 'object');
