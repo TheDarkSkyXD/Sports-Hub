@@ -1,6 +1,7 @@
-import { matchObservation, mergeSchedulePartitions } from '../domain/matching.ts';
+import { createObservationMatcher, matchObservation, mergeSchedulePartitions } from '../domain/matching.ts';
 import { SESSION_LEASE_MS, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
 import { sourceInventory } from '../domain/source-inventory.ts';
+import { catalogDecision, sanitizeSportsurgeCatalog, sportsurgeObservation } from '../domain/sportsurge-catalog.ts';
 import type { Recovery } from '../domain/lifecycle.ts';
 import type { FootballDependencies, FootballRepository } from '../domain/ports.ts';
 import { candidateSummary, type Board, type Candidate, type Command, type Game, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourcesSnapshot } from '../shared.ts';
@@ -165,7 +166,7 @@ export class FootballCoordinator {
   }
   private async discover(): Promise<void> {
     const observations: Observation[] = [];
-    await runBounded(this.sources.filter(source => source.kind !== 'pending'), source => source.family === 'unknown' ? new URL(source.url).hostname : source.family,4,1,async source => {
+    await runBounded(this.sources.filter(source => source.kind !== 'pending' && source.kind !== 'browser-catalog'), source => source.family === 'unknown' ? new URL(source.url).hostname : source.family,4,1,async source => {
       if (this.stopped || (this.sourceRetry.get(source.id) || 0) > this.now()) return;
       try {
         const html = await this.fetchHtml(source.url,this.controller.signal);
@@ -281,7 +282,8 @@ export class FootballCoordinator {
     const attempts=this.store.sourceAttempts();
     const lastDiscoveryAt=Object.values(attempts).length ? Math.max(...Object.values(attempts).map(item=>item.at)) : null;
     const snapshot=sourceInventory({at,revision:this.revision,lastDiscoveryAt,sources:this.sources,
-      observations:this.store.observations(),games:this.games,candidates:this.candidates,attempts});
+      observations:this.store.observations(),games:this.games,candidates:this.candidates,attempts,
+      sportsurgeCatalog:this.store.sportsurgeCatalog()});
     this.inventoryCache={at,revision:this.revision,snapshot};
     return snapshot;
   }
@@ -289,6 +291,23 @@ export class FootballCoordinator {
     if (this.stopped && command.kind!=='stop') return {kind:'error',status:503,message:'Pipeline is stopped.'};
     this.sweep();
     if (command.kind==='stop') { await this.stop(); return {kind:'ok'}; }
+    if (command.kind==='sportsurge-catalog') {
+      const catalog=sanitizeSportsurgeCatalog(command.catalog);
+      if (!catalog) return {kind:'error',status:400,message:'Invalid Sportsurge catalog checkpoint.'};
+      const decision=catalogDecision(this.store.sportsurgeCatalog().current,catalog);
+      if (decision==='replay') return {kind:'ok'};
+      if (decision==='rejected') return {kind:'error',status:409,message:'Sportsurge catalog checkpoint is obsolete.'};
+      const receivedAt=this.now();
+      const match=createObservationMatcher(this.games);
+      const observations=catalog.events.map(event=>{
+        const category=catalog.categories[event.league];
+        const observation=sportsurgeObservation(event,category.kind==='pending' ? catalog.startedAt : category.at);
+        return {observation,result:match(observation,receivedAt)};
+      });
+      this.store.saveSportsurgeCatalog({catalog,receivedAt},observations);
+      this.revision++;
+      return {kind:'ok'};
+    }
     if (command.kind==='refresh') { await this.refresh(true); return {kind:'ok'}; }
     if (command.kind==='board') { if (!this.games.length) await this.refresh(); else void this.refresh(); return {kind:'board',board:this.board()}; }
     if (command.kind==='sources') return {kind:'sources',snapshot:this.sourcesSnapshot()};

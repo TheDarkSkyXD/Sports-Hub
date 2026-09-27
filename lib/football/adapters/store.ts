@@ -1,8 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema } from '../shared.ts';
-import type { Game, Match, Observation, SeasonMembership, SourceAttempt } from '../shared.ts';
+import { GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema, StoredSportsurgeCatalogSchema } from '../shared.ts';
+import type { Game, Match, Observation, SeasonMembership, SourceAttempt, StoredSportsurgeCatalog } from '../shared.ts';
 import { recordFinal } from '../domain/lifecycle.ts';
 
 const PartitionSchema = z.object({games:z.array(GameSchema),at:z.number(),week:z.number().optional()});
@@ -35,12 +35,15 @@ export class FootballStore {
       CREATE TABLE IF NOT EXISTS finals (id TEXT PRIMARY KEY, payload TEXT NOT NULL, at INTEGER NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS observations (id TEXT PRIMARY KEY, payload TEXT NOT NULL, result TEXT NOT NULL, at INTEGER NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, payload TEXT NOT NULL) STRICT;
+      CREATE TABLE IF NOT EXISTS source_catalogs (id TEXT PRIMARY KEY, current_payload TEXT NOT NULL, complete_payload TEXT, previous_payload TEXT) STRICT;
       CREATE TABLE IF NOT EXISTS aliases (id TEXT PRIMARY KEY, game_id TEXT NOT NULL, at INTEGER NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS alias_conflicts (id TEXT PRIMARY KEY, at INTEGER NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS diagnostics (id INTEGER PRIMARY KEY, source_id TEXT NOT NULL, at INTEGER NOT NULL, outcome TEXT NOT NULL, count INTEGER NOT NULL, error TEXT) STRICT;
       CREATE TABLE IF NOT EXISTS memberships (season INTEGER PRIMARY KEY, payload TEXT NOT NULL, at INTEGER NOT NULL) STRICT;
       PRAGMA user_version=1;`); }
     catch(error) { this.close(); throw error; }
+    if (!this.db.prepare('PRAGMA table_info(source_catalogs)').all().some(row=>row.name==='previous_payload'))
+      this.db.exec('ALTER TABLE source_catalogs ADD COLUMN previous_payload TEXT');
   }
   partition(id: string): Partition | undefined {
     const row = this.db.prepare('SELECT payload FROM partitions WHERE id=?').get(id);
@@ -95,6 +98,33 @@ export class FootballStore {
   source(id: string, value: {at:number;outcome:string;count:number;error?:string}): void {
     this.db.prepare('INSERT INTO sources VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload').run(id,JSON.stringify(value));
     this.db.prepare('INSERT INTO diagnostics (source_id,at,outcome,count,error) VALUES (?,?,?,?,?)').run(id,value.at,value.outcome,value.count,value.error?.slice(0,120) || null);
+  }
+  sportsurgeCatalog(): {current:StoredSportsurgeCatalog|null;lastComplete:StoredSportsurgeCatalog|null;previous:StoredSportsurgeCatalog|null} {
+    const row=this.db.prepare("SELECT current_payload,complete_payload,previous_payload FROM source_catalogs WHERE id='sportsurge-v2'").get();
+    const parse=(value:unknown):StoredSportsurgeCatalog|null=>{
+      if (typeof value!=='string') return null;
+      try { const result=StoredSportsurgeCatalogSchema.safeParse(JSON.parse(value)); return result.success ? result.data : null; }
+      catch { return null; }
+    };
+    return {current:parse(row?.current_payload),lastComplete:parse(row?.complete_payload),previous:parse(row?.previous_payload)};
+  }
+  saveSportsurgeCatalog(value:StoredSportsurgeCatalog,observations:{observation:Observation;result:Match}[]): void {
+    const parsed=StoredSportsurgeCatalogSchema.parse(value);
+    const payload=JSON.stringify(parsed);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const old=this.db.prepare("SELECT current_payload,complete_payload,previous_payload FROM source_catalogs WHERE id='sportsurge-v2'").get();
+      const oldCurrent=typeof old?.current_payload==='string' ? StoredSportsurgeCatalogSchema.safeParse(JSON.parse(old.current_payload)) : null;
+      const prior=oldCurrent?.success && oldCurrent.data.catalog.runId!==parsed.catalog.runId && oldCurrent.data.catalog.state.kind!=='complete'
+        ? old?.current_payload || null : old?.previous_payload || null;
+      this.db.prepare(`INSERT INTO source_catalogs (id,current_payload,complete_payload,previous_payload) VALUES ('sportsurge-v2',?,?,?)
+        ON CONFLICT(id) DO UPDATE SET current_payload=excluded.current_payload,complete_payload=excluded.complete_payload,previous_payload=excluded.previous_payload`)
+        .run(payload,parsed.catalog.state.kind==='complete' ? payload : old?.complete_payload || null,prior);
+      this.db.exec("DELETE FROM observations WHERE json_extract(payload,'$.sourceId')='sportsurge-v2'");
+      const insert=this.db.prepare('INSERT INTO observations VALUES (?,?,?,?)');
+      for (const {observation,result} of observations) insert.run(observation.id,JSON.stringify(observation),JSON.stringify(result),observation.observedAt);
+      this.db.exec('COMMIT');
+    } catch(error) { this.db.exec('ROLLBACK'); throw error; }
   }
   membership(season: number): SeasonMembership | undefined {
     const row = this.db.prepare('SELECT payload FROM memberships WHERE season=?').get(season);
