@@ -12,6 +12,7 @@ export function createFootballCoordinator(path: string, options: Overrides = {})
   try {
     return new FootballCoordinator({
       store,
+      desktop:options.desktop,
       schedules:options.schedules ?? SCHEDULES,
       sources:options.sources ?? SOURCES,
       readSchedule:options.readSchedule ?? readSchedule,
