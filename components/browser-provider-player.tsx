@@ -5,9 +5,11 @@ import { AlertCircle, LoaderCircle, RefreshCw } from 'lucide-react';
 import { PlaybackSchema, type Playback, type Session } from '@/lib/football/shared';
 import type { Feed } from '@/lib/sunday';
 import { GamePlayer } from './game-player';
+import { ServerControls, type DiscoveredServer } from './server-controls';
 
 type Props = {
   gameId: string;
+  discoveredServers?: DiscoveredServer[];
   manualFeed?: Feed;
   graceEndsAt?: number;
   focused: boolean;
@@ -61,7 +63,7 @@ async function updateSession(session: Session, changes: SessionChange = {}): Pro
   return parsed.data;
 }
 
-export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused, audible, volume, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange }: Props) {
+export function BrowserProviderPlayer({ gameId, discoveredServers = [], manualFeed, graceEndsAt, focused, audible, volume, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange }: Props) {
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [message, setMessage] = useState('Finding your game…');
   const [endedReason, setEndedReason] = useState<'final' | 'media' | null>(null);
@@ -295,7 +297,6 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
 
   const session = playback?.session;
   const candidate = playback?.candidates.find(item => item.id === session?.candidateId);
-  const candidateIndex = playback?.candidates.findIndex(item => item.id === session?.candidateId) ?? -1;
   const feed = playback && manualFeed ? manualFeed : (session && candidate ? {
     url: `/api/stream/${encodeURIComponent(gameId)}/index.m3u8?session=${encodeURIComponent(session.id)}&candidate=${encodeURIComponent(candidate.id)}&generation=${session.generation}`,
     label: candidate.label,
@@ -307,17 +308,12 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
         : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} playing={playing} delay={delay} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : () => void change({ failure: true })} onEnded={() => { if (!manualFeed && session?.state === 'active') void change({ failure: true }); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : () => void change({ retry: true })} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
         : <div className="player-message">{message === 'Finding your game…' || message === 'Reconnecting to your game…' ? <LoaderCircle className="spin"/> : <AlertCircle/>}<strong>{message === 'Finding your game…' ? 'Opening the live player' : message === 'Reconnecting to your game…' ? 'Reconnecting' : 'Player unavailable'}</strong><p>{message}</p>{message !== 'Finding your game…' && <button className="button" onClick={() => { if (openTimer.current !== null) { window.clearTimeout(openTimer.current); openTimer.current = null; } setRetry(value => value + 1); }}><RefreshCw size={14}/>Try again</button>}</div>}
     </div>
-    {!manualFeed && <div className="provider-controls">
-      {playback && <><span>{candidateIndex < 0 ? 'Server unavailable' : `Server ${candidateIndex + 1} of ${playback.candidates.length}`}</span>
-        <select aria-label="Choose listed server" value={session?.candidateId || ''} disabled={ended || playback.candidates.length < 2}
-          onChange={event => void change({ candidateId: event.target.value })}>
-          {playback.candidates.map((item,index) => <option key={item.id} value={item.id}>{index + 1}. {item.label}{/^(?:Primary|Backup \d+)$/.test(item.label) ? ` · ${item.sourceIds.join(', ')}` : ''}</option>)}
-        </select></>}
-      <button onClick={() => {
+    {!manualFeed && <ServerControls candidates={playback?.candidates ?? []} selectedCandidateId={session?.candidateId ?? ''} discovered={discoveredServers} disabled={ended}
+      onSelect={candidateId => void change({ candidateId })} onSwitch={() => {
         if (!playback?.candidates.length || !session) return;
         const index = playback.candidates.findIndex(item => item.id === session.candidateId);
         const next = playback.candidates[(index + 1) % playback.candidates.length];
         if (next && next.id !== session.candidateId) void change({ candidateId: next.id });
-      }} disabled={!playback || playback.candidates.length < 2 || ended} title="Switch provider server"><RefreshCw size={12}/>Switch server</button></div>}
+      }}/>}
   </div>;
 }
