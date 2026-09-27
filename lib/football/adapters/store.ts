@@ -87,11 +87,20 @@ export class FootballStore {
     });
   }
   sourceAttempts(): Record<string,SourceAttempt> {
-    return Object.fromEntries(this.db.prepare('SELECT id,payload FROM sources').all().flatMap(row => {
+    return Object.fromEntries(this.db.prepare('SELECT id,payload FROM sources').all().flatMap<[string,SourceAttempt]>(row => {
       if (typeof row.id !== 'string' || typeof row.payload !== 'string') return [];
       try {
-        const result=SourceAttemptSchema.safeParse(JSON.parse(row.payload));
-        return result.success ? [[row.id,result.data]] : [];
+        const payload:unknown=JSON.parse(row.payload);
+        const result=SourceAttemptSchema.safeParse(payload);
+        if (!result.success) return [];
+        if (result.data.outcome!=='failed') return [[row.id,{at:result.data.at,outcome:result.data.outcome}]];
+        const raw=payload && typeof payload==='object' && 'error' in payload ? payload.error : null;
+        const error=typeof raw==='string' ? raw : '';
+        const failure:NonNullable<SourceAttempt['failure']>=error==='http-404'?'not-found':error==='http-429'?'rate-limited':
+          /timeout|timed out/i.test(error)?'timed-out':error==='fetch failed'?'network-unavailable':
+          error==='unsupported-discovery-address'?'unsupported-address':
+          /^(?:empty-response|response-too-large|redirect-without-location|redirect-limit)$/.test(error)?'invalid-response':'upstream-error';
+        return [[row.id,{at:result.data.at,outcome:'failed',failure}]];
       } catch {return [];}
     }));
   }
