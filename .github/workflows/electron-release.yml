@@ -31,6 +31,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run desktop:package
+      - run: node tests/installer-path.mjs
       - run: npm run desktop:smoke
       - uses: actions/upload-artifact@v7
         with:
@@ -38,7 +39,7 @@ jobs:
           path: dist-electron/Sunday-Room-*-Setup-x64.exe
           if-no-files-found: error
 
-  draft-release:
+  prepare-release:
     if: github.event_name == 'push' && github.ref_type == 'tag'
     needs: package
     runs-on: ubuntu-latest
@@ -49,9 +50,14 @@ jobs:
         with:
           name: sunday-room-windows-installer
           path: installer
-      - name: Create draft release
+      - name: Create or update release installer
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ github.ref_name }}
-        run: gh release create "$TAG_NAME" installer/*.exe --draft --verify-tag --title "Sunday Room ${TAG_NAME#v}"
+        run: |
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" installer/*.exe --clobber
+          else
+            gh release create "$TAG_NAME" installer/*.exe --draft --verify-tag --title "Sunday Room ${TAG_NAME#v}"
+          fi

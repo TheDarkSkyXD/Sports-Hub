@@ -18,11 +18,15 @@ extraResources:
     filter:
       - '**/*'
 win:
+  icon: desktop/icons/sunday-room.ico
   target:
     - target: nsis
       arch:
         - x64
 nsis:
+  installerIcon: desktop/icons/sunday-room.ico
+  uninstallerIcon: desktop/icons/sunday-room.ico
   oneClick: false
   allowToChangeInstallationDirectory: true
+  include: desktop/installer.nsh
 artifactName: Sunday-Room-${version}-Setup-${arch}.${ext}
