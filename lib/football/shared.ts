@@ -233,6 +233,6 @@ export const ReplySchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('session'),session:SessionSchema,candidates:z.array(CandidateSummarySchema)}),
   z.object({kind:z.literal('authorized'),candidate:CandidateSchema,session:SessionSchema}),
   z.object({kind:z.literal('ok')}),
-  z.object({kind:z.literal('error'),status:z.number(),message:z.string(),retryAfter:z.number().int().nonnegative().optional()}),
+  z.object({kind:z.literal('error'),status:z.number(),message:z.string(),retryAfter:z.number().int().nonnegative().optional(),code:z.enum(['drain-exhausted']).optional()}),
 ]);
 export type Reply = z.infer<typeof ReplySchema>;
