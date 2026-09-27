@@ -1,4 +1,4 @@
-const { load } = require('cheerio');
+const { load } = require('./cheerio.cjs');
 
 const ORIGIN = 'https://v2.streameast.ga';
 const CATEGORY_URLS = { ncaaf:`${ORIGIN}/cfb-streams/`, nfl:`${ORIGIN}/nfl-streams/` };
