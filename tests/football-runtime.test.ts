@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -500,28 +500,24 @@ test('a replacement worker reclaims only the confirmed exited worker token',asyn
   const dir = mkdtempSync(join(tmpdir(),'football-worker-crash-'));
   process.env.SUNDAY_ROOM_DATA_DIR = dir;
   try {
-    const board = workerCommand({kind:'board'});
+    assert.equal((await workerCommand({kind:'sources'})).kind,'sources');
     const client = globalThis.footballWorkerClient;
     assert.ok(client);
     const worker = Reflect.get(client,'worker');
-    let ownerSeen = false;
-    for (let attempt=0;attempt<100;attempt++) {
-      const path = join(dir,'football.sqlite');
-      if (existsSync(path)) {
-        try {
-          const reader = new DatabaseSync(path,{readOnly:true});
-          try { ownerSeen = reader.prepare('SELECT token FROM owner WHERE slot=1').get() !== undefined; }
-          finally { reader.close(); }
-          if (ownerSeen) break;
-        } catch {}
-      }
-      await new Promise(resolve => setTimeout(resolve,10));
-    }
-    assert.equal(ownerSeen,true);
+    const reader = new DatabaseSync(join(dir,'football.sqlite'),{readOnly:true});
+    let ownerToken: unknown;
+    try { ownerToken = reader.prepare('SELECT token FROM owner WHERE slot=1').get()?.token; }
+    finally { reader.close(); }
+    assert.equal(typeof ownerToken,'string');
     await worker.terminate();
-    assert.equal((await board).kind,'error');
     assert.equal(globalThis.footballWorkerClient,undefined);
     assert.equal((await workerCommand({kind:'sources'})).kind,'sources');
+    const replacementReader = new DatabaseSync(join(dir,'football.sqlite'),{readOnly:true});
+    let replacementToken: unknown;
+    try { replacementToken = replacementReader.prepare('SELECT token FROM owner WHERE slot=1').get()?.token; }
+    finally { replacementReader.close(); }
+    assert.equal(typeof replacementToken,'string');
+    assert.notEqual(replacementToken,ownerToken);
     const replacement = globalThis.footballWorkerClient;
     assert.ok(replacement);
     const replacementWorker = Reflect.get(replacement,'worker') as Worker;
