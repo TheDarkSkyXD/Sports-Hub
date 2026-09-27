@@ -75,6 +75,7 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     };
   });
   const gameRows=games.flatMap(game=>{
+    if(game.lifecycle!=='scheduled'&&game.lifecycle!=='live')return [];
     const sourceLinks=linksByGame.get(game.id) || [];
     if (!sourceLinks.length) return [];
     const sourceCount=new Set(sourceLinks.map(link=>link.sourceId)).size;
