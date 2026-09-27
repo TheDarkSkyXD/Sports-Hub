@@ -5,6 +5,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { Worker } from 'node:worker_threads';
 import { FootballStore } from '../lib/football/adapters/store.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 import { reconcileSession } from '../lib/football/domain/lifecycle.ts';
@@ -119,6 +121,17 @@ test('catalog matches are retained without consuming detail slots or minting pla
     const catalogRows = rows.filter(row => JSON.parse(row.payload).sourceId==='tvapp');
     assert.equal(catalogRows.length,3);
     assert.ok(catalogRows.every(row => JSON.parse(row.result).kind==='matched'));
+    const fetched=visited.length;
+    const inventory=await coordinator.command({kind:'sources'});
+    assert.equal(inventory.kind,'sources');
+    if (inventory.kind==='sources') {
+      assert.equal(inventory.snapshot.sources.find(source=>source.id==='tvapp')?.listingCount,3);
+      assert.equal(inventory.snapshot.games.find(game=>game.gameId==='ncaaf-1')?.sourceCount,2);
+      assert.equal(inventory.snapshot.games.find(game=>game.gameId==='ncaaf-1')?.uniqueFeedCount,1);
+      assert.equal(inventory.snapshot.games.find(game=>game.gameId==='ncaaf-2')?.uniqueFeedCount,0);
+      assert.equal(JSON.stringify(inventory.snapshot).includes('ppv-ole-miss-rebels-at-florida-gators'),false);
+    }
+    assert.equal(visited.length,fetched);
     const board = await coordinator.command({kind:'board'});
     assert.equal(board.kind,'board');
     if (board.kind==='board') {
@@ -408,11 +421,17 @@ test('the worker bridge validates a command and shuts down its SQLite writer',as
   const dir = mkdtempSync(join(tmpdir(),'football-worker-'));
   process.env.SUNDAY_ROOM_DATA_DIR = dir;
   try {
-    const reply = await workerCommand({kind:'stop'});
+    assert.equal((await workerCommand({kind:'sources'})).kind,'sources');
+    const client = globalThis.footballWorkerClient;
+    assert.ok(client);
+    const worker = Reflect.get(client,'worker') as Worker;
+    const exited = once(worker,'exit',{signal:AbortSignal.timeout(5000)});
+    const [reply] = await Promise.all([workerCommand({kind:'stop'}),exited]);
     assert.deepEqual(reply,{kind:'ok'});
-    for (let attempt=0;globalThis.footballWorkerClient && attempt<50;attempt++) await new Promise(resolve => setTimeout(resolve,10));
     assert.equal(globalThis.footballWorkerClient,undefined);
   } finally {
+    const client = globalThis.footballWorkerClient;
+    if (client) await (Reflect.get(client,'worker') as Worker).terminate();
     delete process.env.SUNDAY_ROOM_DATA_DIR;
     const target=resolve(dir);
     assert.equal(dirname(target),resolve(tmpdir()));
@@ -445,12 +464,18 @@ test('a replacement worker reclaims only the confirmed exited worker token',asyn
     assert.equal(ownerSeen,true);
     await worker.terminate();
     assert.equal((await board).kind,'error');
-    for (let attempt=0;globalThis.footballWorkerClient && attempt<20;attempt++) await new Promise(resolve => setTimeout(resolve,10));
     assert.equal(globalThis.footballWorkerClient,undefined);
-    assert.deepEqual(await workerCommand({kind:'stop'}),{kind:'ok'});
-    for (let attempt=0;globalThis.footballWorkerClient && attempt<50;attempt++) await new Promise(resolve => setTimeout(resolve,10));
+    assert.equal((await workerCommand({kind:'sources'})).kind,'sources');
+    const replacement = globalThis.footballWorkerClient;
+    assert.ok(replacement);
+    const replacementWorker = Reflect.get(replacement,'worker') as Worker;
+    const exited = once(replacementWorker,'exit',{signal:AbortSignal.timeout(5000)});
+    const [reply] = await Promise.all([workerCommand({kind:'stop'}),exited]);
+    assert.deepEqual(reply,{kind:'ok'});
     assert.equal(globalThis.footballWorkerClient,undefined);
   } finally {
+    const client = globalThis.footballWorkerClient;
+    if (client) await (Reflect.get(client,'worker') as Worker).terminate();
     delete process.env.SUNDAY_ROOM_DATA_DIR;
     const target=resolve(dir);
     assert.equal(dirname(target),resolve(tmpdir()));

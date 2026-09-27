@@ -26,9 +26,13 @@ export const SOURCES = [
   {id:'buffstream-nfl',url:'https://ms.buffstream.io/nfl-streams-live-31',family:'buffstream'},
   {id:'methstreams',url:'https://methstreams.st/NFL',family:'event'},
   {id:'crackstreams-st',url:'https://crackstreams.st/NFL',family:'event'},
-  {id:'tvapp',url:TVAPP_API,family:'tvapp',kind:'catalog'},
-  {id:'ppv',url:PPV_API,family:'ppv',kind:'catalog'},
-  {id:'streamcenter',url:STREAMCENTER_CATALOG,family:'streamcenter'},
+  {id:'tvapp',name:'TVApp',url:TVAPP_API,family:'tvapp',kind:'catalog',publicUrls:[
+    'https://tvapp1.com/cfb-streams','https://tvapp1.com/nfl-streams',
+    'https://thetvapp67.st/cfb-streams','https://thetvapp67.st/nfl-streams',
+  ]},
+  {id:'ppv',name:'PPV',url:PPV_API,family:'ppv',kind:'catalog',publicUrls:['https://ppv.st/#26']},
+  {id:'streamcenter',name:'Streamcenter',url:STREAMCENTER_CATALOG,family:'streamcenter',publicUrls:['https://streame.center/']},
+  {id:'sportsurge-v2',name:'Sportsurge v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'pending'},
 ] as const;
 export class SourceFetchError extends Error {
   readonly retryAfterMs?: number;
