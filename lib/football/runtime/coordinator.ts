@@ -442,7 +442,7 @@ export class FootballCoordinator {
         session.generation++;
         return this.sessionReply(session);
       }
-      owned.phase={kind:'exhausted',until:Math.max(phase.until,Math.min(...fresh.map(candidate=>Math.max(this.now()+1000,owned.recovery.cooled[candidate.id]||this.now()+30000)),this.now()+30000)),knownIds:fresh.map(candidate=>candidate.id)};
+      if (this.now()>=phase.until) owned.phase={kind:'exhausted',until:Math.min(...fresh.map(candidate=>Math.max(this.now()+1000,owned.recovery.cooled[candidate.id]||this.now()+30000)),this.now()+30000),knownIds:fresh.map(candidate=>candidate.id)};
       return {kind:'error',status:503,message:'Checking the next available stream.',retryAfter:owned.phase.until};
     }
     if (command.failure) {
