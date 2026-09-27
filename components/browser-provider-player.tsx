@@ -20,11 +20,15 @@ type Props = {
   onVolumeChange: (volume: number) => void;
 };
 
-async function readError(response: Response): Promise<{ message: string; retryAfter?: number }> {
+async function readError(response: Response): Promise<{ message: string; retryAfter?: number; code?: 'drain-exhausted' }> {
   try {
     const body: unknown = await response.json();
     if (body && typeof body === 'object' && 'error' in body && typeof body.error === 'string') {
-      return { message: body.error, retryAfter: 'retryAfter' in body && typeof body.retryAfter === 'number' ? body.retryAfter : undefined };
+      return {
+        message: body.error,
+        retryAfter: 'retryAfter' in body && typeof body.retryAfter === 'number' ? body.retryAfter : undefined,
+        code: 'code' in body && body.code === 'drain-exhausted' ? body.code : undefined,
+      };
     }
   }
   catch {}
@@ -32,7 +36,11 @@ async function readError(response: Response): Promise<{ message: string; retryAf
 }
 
 class PlaybackRequestError extends Error {
-  constructor(message: string, readonly status: number, readonly retryAfter?: number) { super(message); }
+  constructor(message: string, readonly status: number, readonly retryAfter?: number, readonly code?: 'drain-exhausted') { super(message); }
+}
+
+function isTransientRequestError(error: unknown): boolean {
+  return !(error instanceof PlaybackRequestError) || error.status === 408 || error.status === 429 || error.status >= 500;
 }
 
 type SessionChange = { failure?: boolean; candidateId?: string; retry?: boolean };
@@ -47,7 +55,7 @@ async function updateSession(session: Session, changes: SessionChange = {}): Pro
     body: JSON.stringify({ kind: 'session', sessionId: session.id, generation: session.generation, ...changes }),
     signal: AbortSignal.timeout(15000),
   });
-  if (!response.ok) { const failure = await readError(response); throw new PlaybackRequestError(failure.message, response.status, failure.retryAfter); }
+  if (!response.ok) { const failure = await readError(response); throw new PlaybackRequestError(failure.message, response.status, failure.retryAfter, failure.code); }
   const parsed = PlaybackSchema.safeParse(await response.json());
   if (!parsed.success) throw new Error('The player returned an invalid playback.');
   return parsed.data;
@@ -209,7 +217,7 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
     if (!session) {
       if (changes.candidateId || changes.retry) {
         if (!reconcileIntent.current || changePriority(changes) >= changePriority(reconcileIntent.current.changes)) reconcileIntent.current = { changes, priorId: '', kind: 'rejected' };
-        if (openTimer.current !== null) window.clearTimeout(openTimer.current);
+        if (openTimer.current !== null) { window.clearTimeout(openTimer.current); openTimer.current = null; }
         setRetry(value => value + 1);
       }
       return;
@@ -242,13 +250,13 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
             reopen();
           }
         }
-        else if (error instanceof PlaybackRequestError && error.status === 503 && error.retryAfter !== undefined) {
+        else if (error instanceof PlaybackRequestError && error.code === 'drain-exhausted') {
+          setEndedReason('media');
+        } else if (error instanceof PlaybackRequestError && error.status === 503 && error.retryAfter !== undefined) {
           setMessage(error.message);
           setRetryAfter(error.retryAfter);
-        } else if (error instanceof PlaybackRequestError && error.status === 503 && session.state === 'draining') {
-          setEndedReason('media');
         } else {
-          if (!(error instanceof PlaybackRequestError)) {
+          if (isTransientRequestError(error)) {
             const pending = pendingChange.current;
             if (changePriority(changes) === 0) {
               if (!pending) {
@@ -265,7 +273,7 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
               reopen();
             }
           } else {
-            setMessage(error.message);
+            setMessage(error instanceof Error ? error.message : 'Player unavailable.');
           }
         }
       }
@@ -297,7 +305,7 @@ export function BrowserProviderPlayer({ gameId, manualFeed, graceEndsAt, focused
     <div className="provider-surface">
       {ended ? <div className="player-message"><AlertCircle/><strong>{endedReason === 'final' ? 'Game stream ended' : 'Video ended'}</strong><p>{endedReason === 'final' ? 'Playback ended after the game became final.' : 'This video reached its end.'}</p></div>
         : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} playing={playing} delay={delay} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : () => void change({ failure: true })} onEnded={() => { if (!manualFeed && session?.state === 'active') void change({ failure: true }); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : () => void change({ retry: true })} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
-        : <div className="player-message">{message === 'Finding your game…' || message === 'Reconnecting to your game…' ? <LoaderCircle className="spin"/> : <AlertCircle/>}<strong>{message === 'Finding your game…' ? 'Opening the live player' : message === 'Reconnecting to your game…' ? 'Reconnecting' : 'Player unavailable'}</strong><p>{message}</p>{message !== 'Finding your game…' && <button className="button" onClick={() => { if (openTimer.current !== null) window.clearTimeout(openTimer.current); setRetry(value => value + 1); }}><RefreshCw size={14}/>Try again</button>}</div>}
+        : <div className="player-message">{message === 'Finding your game…' || message === 'Reconnecting to your game…' ? <LoaderCircle className="spin"/> : <AlertCircle/>}<strong>{message === 'Finding your game…' ? 'Opening the live player' : message === 'Reconnecting to your game…' ? 'Reconnecting' : 'Player unavailable'}</strong><p>{message}</p>{message !== 'Finding your game…' && <button className="button" onClick={() => { if (openTimer.current !== null) { window.clearTimeout(openTimer.current); openTimer.current = null; } setRetry(value => value + 1); }}><RefreshCw size={14}/>Try again</button>}</div>}
     </div>
     {!manualFeed && <div className="provider-controls">
       {playback && <><span>{candidateIndex < 0 ? 'Server unavailable' : `Server ${candidateIndex + 1} of ${playback.candidates.length}`}</span>

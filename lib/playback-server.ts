@@ -3,7 +3,7 @@ import type { Playback } from './football/shared';
 import { validGameId } from './sunday';
 import { revokeGeneration, revokeSession, touchStreamSession } from './stream-relay';
 
-export type PlaybackResult<T> = { status: 200; value: T } | { status: number; error: string; retryAfter?: number };
+export type PlaybackResult<T> = { status: 200; value: T } | { status: number; error: string; retryAfter?: number; code?: 'drain-exhausted' };
 const validSessionId = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value);
 
 export async function resolvePlayback(gameId: unknown, manual = false, requestId: unknown): Promise<PlaybackResult<Playback>> {
@@ -22,7 +22,7 @@ export async function updatePlayback(sessionId: unknown, generation: unknown, ca
   const reply = await command({ kind: 'session', sessionId, generation, candidateId, failure: failure === true, retry: retry === true });
   if (reply.kind === 'error') {
     if (reply.status === 410) revokeSession(sessionId);
-    return { status: reply.status, error: reply.message, retryAfter: 'retryAfter' in reply && typeof reply.retryAfter === 'number' ? reply.retryAfter : undefined };
+    return { status: reply.status, error: reply.message, retryAfter: reply.retryAfter, code: reply.code };
   }
   if (reply.kind !== 'session') return { status: 502, error: 'Unexpected playback response.' };
   if (reply.session.generation !== generation) revokeGeneration(sessionId, reply.session.generation);
