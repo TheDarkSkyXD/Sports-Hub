@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CandidateSchema, PlaybackSchema, candidateSummary } from '../lib/football/shared.ts';
 import { goozResource, goozSourceFromEmbed, validGoozResourceUrl } from '../lib/playback/providers/gooz.ts';
 import { streamcenterProvider, streamcenterResource, validStreamcenterResourceUrl } from '../lib/playback/providers/streamcenter.ts';
+import { parseStreamcenterPlayer } from '../lib/playback/providers/streamcenter-player.ts';
 import type { ProviderResource } from '../lib/playback/provider.ts';
 import { expireIdleStreams, openGeneration, registeredResource, registerResource, resourceCount, revokeGeneration, revokeSession,
   rewritePlaylist, streamSignal, touchStreamSession, validByteRange } from '../lib/stream-relay.ts';
@@ -67,6 +68,23 @@ test('relay rewrites only resources resolved by the provider and scopes tokens t
   assert.equal(registeredResource(newer),null);
 });
 
+test('Streamcenter player parser accepts only published exact HLS iframe URLs',()=>{
+  assert.deepEqual(parseStreamcenterPlayer('<iframe src="//streame.center/embed/hls.php?stream=lmdsjkfgv52"></iframe>'),
+    {stream:'lmdsjkfgv52',url:'https://streame.center/embed/hls.php?stream=lmdsjkfgv52'});
+  assert.deepEqual(parseStreamcenterPlayer('<iframe src="https://streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85"></iframe>'),
+    {stream:'jkhfsgqghjqsd85',url:'https://streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85'});
+  for (const bad of [
+    'http://streame.center/embed/hls2.php?stream=abc',
+    'https://streame.center.evil.test/embed/hls2.php?stream=abc',
+    'https://user@streame.center/embed/hls2.php?stream=abc',
+    'https://streame.center:443/embed/hls2.php?stream=abc',
+    'https://streame.center/embed/hls3.php?stream=abc',
+    'https://streame.center/embed/hls2.php?stream=abc&stream=def',
+    'https://streame.center/embed/hls2.php?stream=abc&other=1',
+    'https://streame.center/embed/hls2.php?stream=abc#fragment',
+  ]) assert.equal(parseStreamcenterPlayer(`<iframe src="${bad}"></iframe>`),null,bad);
+});
+
 test('Streamcenter resource grammar binds signed manifest and segments to one stream and host',()=>{
   const session={stream:'lmdsjkfgv52',host:'edgestream4.pro',referer:'https://streame.center/embed/hls.php?stream=lmdsjkfgv52',fetcher:fetch};
   const manifest=`https://edgestream4.pro/hls/lmdsjkfgv52.m3u8?st=${'a'.repeat(32)}&e=${Math.floor(Date.now()/1000)+3600}`;
@@ -125,6 +143,31 @@ test('Streamcenter opens published public link once, then reads signed HLS with 
   assert.equal(requests[3].origin,'https://streame.center');
   assert.equal(requests[4].range,'bytes=0-2');
   assert.equal(requests[4].referer,hls);
+  playback.close();
+});
+
+test('Streamcenter opens a published hls2 player with its exact parent Referer',async()=>{
+  const linkId='aef974e2-5ef2-412c-b65e-e6905af1edfa';
+  const publicUrl=`https://streamcenter.st/api/stream-link/iframe/event-espn-league-football-college-football-401858469/${linkId}`;
+  const player='https://streame.center/embed/ch85.php';
+  const hls='https://streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85';
+  const manifest=`https://edgestream3.pro/hls/jkhfsgqghjqsd85.m3u8?st=${'a'.repeat(32)}&e=${Math.floor(Date.now()/1000)+3600}`;
+  const requests:{url:string;referer:string|null}[]=[];
+  const fetcher:typeof fetch=async (input,init)=>{
+    const url=String(input);
+    requests.push({url,referer:new Headers(init?.headers).get('referer')});
+    if (url===publicUrl) return new Response(null,{status:302,headers:{Location:player}});
+    if (url===player) return new Response('<iframe src="//streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85"></iframe>');
+    if (url===hls) return new Response(`<script>const streamUrl = ${JSON.stringify(manifest)};</script>`);
+    if (url===manifest) return new Response('#EXTM3U\n#EXTINF:5,\n/hls/jkhfsgqghjqsd85-907340670.ts\n');
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  const playback=await streamcenterProvider(fetcher).open({provider:'streamcenter',eventId:'401858469',linkId},new AbortController().signal);
+  const read=await playback.root.read({signal:new AbortController().signal});
+  assert.equal(read.status,200);
+  assert.deepEqual(requests.map(request=>request.url),[publicUrl,player,hls,manifest]);
+  assert.equal(requests[2].referer,player);
+  assert.equal(requests[3].referer,hls);
   playback.close();
 });
 

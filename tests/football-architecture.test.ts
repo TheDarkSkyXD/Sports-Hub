@@ -16,6 +16,7 @@ test('browser and domain imports stay outside the football worker and adapters',
     ['components/probe.tsx','import "@/lib/playback-server";'],
     ['components/probe.tsx','import "@/lib/football/domain/matching";'],
     ['components/probe.tsx','import "@/lib/football/domain/sportsurge-catalog";'],
+    ['components/probe.tsx','import "@/lib/playback/providers/streamcenter-player";'],
     ['lib/football/domain/probe.ts','import "../adapters/store.ts";'],
     ['lib/football/domain/probe.ts','import "../../../desktop/sportsurge-catalog.cjs";'],
   ]) assert.equal((await boundaryMessages(path,source)).length,1,`${path}: ${source}`);
@@ -35,6 +36,8 @@ test('routes use the client or HTTP facade and the worker uses composition', asy
     ['components/probe.tsx','import "@/lib/football/shared";'],
     ['lib/football/runtime/worker.ts','import "./composition.ts";'],
     ['lib/football/runtime/composition.ts','import "../adapters/store.ts";'],
+    ['lib/football/adapters/sources.ts','import "../../playback/providers/streamcenter-player.ts";'],
+    ['lib/playback/providers/streamcenter.ts','import "./streamcenter-player.ts";'],
   ]) assert.deepEqual(await boundaryMessages(path,source),[],`${path}: ${source}`);
 
   assert.equal((await boundaryMessages('lib/football/runtime/coordinator.ts','import "../adapters/store.ts";')).length,1);
