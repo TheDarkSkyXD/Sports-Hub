@@ -1,7 +1,7 @@
 import { sanitizedRead, type ProviderResource, type ResourceKind } from '../provider.ts';
 
 export type MediaSession = {stream:string;host:string;referer:string;fetcher:typeof fetch};
-const mediaHosts=new Set(['edgestream1.pro','edgestream3.pro','edgestream4.pro','edgestream5.pro','edgestream6.pro']);
+const mediaHosts=new Set(['edgestream1.pro','edgestream3.pro','edgestream4.pro','edgestream5.pro','edgestream6.pro','edgestream7.pro']);
 
 function exactHttps(value:string):URL|null {
   try {

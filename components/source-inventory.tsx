@@ -46,7 +46,7 @@ function StreameastRun({run}:{run:StreameastCatalogView}) {
     <p>{run.interrupted?'Interrupted':collectionLabel(run.state)} · Started {time(run.startedAt)} · Last checkpoint {time(run.receivedAt)}</p>
     <p>CFB {categoryLabel(run.categories.ncaaf)} · NFL {categoryLabel(run.categories.nfl)}</p>
     <p>{run.gameCount} games · {run.collectedDetails} details collected · {run.pendingDetails} pending · {run.failedDetails} failed</p>
-    <p>{run.serverRows} server rows · {run.freeRows} marked free · {run.premiumRows} premium · {run.unknownRows} unresolved · {run.unsupportedFreeRows} unsupported free · {run.matchedCompatibleChannels} compatible channels for matched games (untested)</p>
+    <p>{run.serverRows} server rows · {run.freeRows} marked free · {run.premiumRows} premium · {run.unknownRows} unresolved · {run.unsupportedFreeRows} unsupported free · {run.matchedCompatibleChannels} compatible players for matched games (untested)</p>
     {run.rejectedGames.length>0&&<details className="source-inventory-diagnostics"><summary>Rejected game links · {run.rejectedGames.length}</summary><ul>
       {run.rejectedGames.map((game,index)=><li key={`${game.league}:${index}`}>{game.title}: {game.reason}</li>)}
     </ul></details>}
@@ -55,6 +55,7 @@ function StreameastRun({run}:{run:StreameastCatalogView}) {
       <p><a href={game.url} target="_blank" rel="noopener noreferrer">Game listing ↗</a> · {game.gameId?'Matched to ESPN':matchReasonLabel[game.matchReason || 'other']}</p>
       {game.detail.kind==='collected'&&<ul>{game.detail.servers.map(server=><li key={server.id}>
         <a href={server.url} target="_blank" rel="noopener noreferrer">{server.label} ↗</a> · {server.availability.kind==='free-channel'?'Free compatible channel (untested)':
+          server.availability.kind==='free-wikisport'?'Free compatible Wikisport player (untested)':
           server.availability.kind==='free-unsupported'?'Free · unsupported player':server.availability.kind==='free-unresolved'?'Free · player unresolved':
             server.availability.kind==='premium'?'Premium':'Access unresolved'}
       </li>)}</ul>}
