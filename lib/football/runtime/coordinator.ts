@@ -1,8 +1,9 @@
 import { matchObservation, mergeSchedulePartitions } from '../domain/matching.ts';
 import { SESSION_LEASE_MS, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
+import { sourceInventory } from '../domain/source-inventory.ts';
 import type { Recovery } from '../domain/lifecycle.ts';
 import type { FootballDependencies, FootballRepository } from '../domain/ports.ts';
-import { candidateSummary, type Board, type Candidate, type Command, type Game, type LeagueFeedStatus, type Observation, type Reply, type Session } from '../shared.ts';
+import { candidateSummary, type Board, type Candidate, type Command, type Game, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourcesSnapshot } from '../shared.ts';
 
 type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;waitingUntil:number|null;requestId?:string};
 function errorCode(error: unknown): string {
@@ -59,6 +60,7 @@ export class FootballCoordinator {
   private sourceRetry = new Map<string,number>();
   private lastStoreSweep = 0;
   private detailCursor = 0;
+  private inventoryCache: {at:number;revision:number;snapshot:SourcesSnapshot} | undefined;
   private readonly now: () => number;
   private readonly schedules: FootballDependencies['schedules'];
   private readonly sources: FootballDependencies['sources'];
@@ -163,7 +165,7 @@ export class FootballCoordinator {
   }
   private async discover(): Promise<void> {
     const observations: Observation[] = [];
-    await runBounded([...this.sources], source => source.family === 'unknown' ? new URL(source.url).hostname : source.family,4,1,async source => {
+    await runBounded(this.sources.filter(source => source.kind !== 'pending'), source => source.family === 'unknown' ? new URL(source.url).hostname : source.family,4,1,async source => {
       if (this.stopped || (this.sourceRetry.get(source.id) || 0) > this.now()) return;
       try {
         const html = await this.fetchHtml(source.url,this.controller.signal);
@@ -273,12 +275,23 @@ export class FootballCoordinator {
     const now=this.now();
     return {kind:'session',session,candidates:(this.candidates.get(session.gameId) || []).filter(candidate => candidate.id===session.candidateId || now-candidate.observedAt<30*60000).map(candidateSummary)};
   }
+  private sourcesSnapshot(): SourcesSnapshot {
+    const at=this.now();
+    if (this.inventoryCache?.revision===this.revision && at-this.inventoryCache.at<15_000) return this.inventoryCache.snapshot;
+    const attempts=this.store.sourceAttempts();
+    const lastDiscoveryAt=Object.values(attempts).length ? Math.max(...Object.values(attempts).map(item=>item.at)) : null;
+    const snapshot=sourceInventory({at,revision:this.revision,lastDiscoveryAt,sources:this.sources,
+      observations:this.store.observations(),games:this.games,candidates:this.candidates,attempts});
+    this.inventoryCache={at,revision:this.revision,snapshot};
+    return snapshot;
+  }
   async command(command: Command): Promise<Reply> {
     if (this.stopped && command.kind!=='stop') return {kind:'error',status:503,message:'Pipeline is stopped.'};
     this.sweep();
     if (command.kind==='stop') { await this.stop(); return {kind:'ok'}; }
     if (command.kind==='refresh') { await this.refresh(true); return {kind:'ok'}; }
     if (command.kind==='board') { if (!this.games.length) await this.refresh(); else void this.refresh(); return {kind:'board',board:this.board()}; }
+    if (command.kind==='sources') return {kind:'sources',snapshot:this.sourcesSnapshot()};
     if (command.kind==='close') { this.sessions.delete(command.sessionId); return {kind:'ok'}; }
     if (command.kind==='open') {
       const gameId = this.store.aliases()[command.gameId] || command.gameId;

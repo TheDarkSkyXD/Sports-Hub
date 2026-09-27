@@ -1,8 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { GameSchema, ObservationSchema, SeasonMembershipSchema } from '../shared.ts';
-import type { Game, Match, Observation, SeasonMembership } from '../shared.ts';
+import { GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema } from '../shared.ts';
+import type { Game, Match, Observation, SeasonMembership, SourceAttempt } from '../shared.ts';
 import { recordFinal } from '../domain/lifecycle.ts';
 
 const PartitionSchema = z.object({games:z.array(GameSchema),at:z.number(),week:z.number().optional()});
@@ -82,6 +82,15 @@ export class FootballStore {
       const result = ObservationSchema.safeParse(JSON.parse(row.payload));
       return result.success ? [result.data] : [];
     });
+  }
+  sourceAttempts(): Record<string,SourceAttempt> {
+    return Object.fromEntries(this.db.prepare('SELECT id,payload FROM sources').all().flatMap(row => {
+      if (typeof row.id !== 'string' || typeof row.payload !== 'string') return [];
+      try {
+        const result=SourceAttemptSchema.safeParse(JSON.parse(row.payload));
+        return result.success ? [[row.id,result.data]] : [];
+      } catch {return [];}
+    }));
   }
   source(id: string, value: {at:number;outcome:string;count:number;error?:string}): void {
     this.db.prepare('INSERT INTO sources VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload').run(id,JSON.stringify(value));

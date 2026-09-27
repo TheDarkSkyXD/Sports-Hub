@@ -76,8 +76,32 @@ export const SessionSchema = z.discriminatedUnion('state',[
 export type Session = z.infer<typeof SessionSchema>;
 export const PlaybackSchema = z.object({ session: SessionSchema, candidates: z.array(CandidateSummarySchema) });
 export type Playback = z.infer<typeof PlaybackSchema>;
+export const SourceAttemptSchema = z.object({
+  at:z.number(),outcome:z.enum(['parsed','empty','unsupported','parser-changed','failed']),
+});
+export type SourceAttempt = z.infer<typeof SourceAttemptSchema>;
+export const SourceMatchReasonSchema=z.enum(['not-a-matchup','unknown-teams','unverified-kickoff',
+  'ambiguous-matchup','conflicting-date','finished-game','other']);
+export type SourceMatchReason=z.infer<typeof SourceMatchReasonSchema>;
+export const SourcesSnapshotSchema = z.object({
+  at:z.number(),revision:z.number(),windowStartAt:z.number(),lastDiscoveryAt:z.number().nullable(),
+  sources:z.array(z.object({
+    id:z.string(),name:z.string(),catalogUrl:z.string().url(),publicUrls:z.array(z.string().url()),pending:z.boolean(),
+    lastAttempt:SourceAttemptSchema.nullable(),listingCount:z.number().int().nonnegative(),
+    matchedGameCount:z.number().int().nonnegative(),
+    unmatchedListingCount:z.number().int().nonnegative(),
+    unmatchedReasons:z.array(z.object({reason:SourceMatchReasonSchema,count:z.number().int().positive()})),
+    links:z.array(z.object({title:z.string(),url:z.string().url(),gameId:z.string().nullable()})),
+  })),
+  games:z.array(z.object({
+    gameId:z.string(),name:z.string(),sourceCount:z.number().int().nonnegative(),
+    uniqueFeedCount:z.number().int().nonnegative(),sourceLinks:z.array(z.object({sourceId:z.string(),title:z.string(),url:z.string().url()})),
+  })),
+});
+export type SourcesSnapshot = z.infer<typeof SourcesSnapshotSchema>;
 export const CommandSchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('board')}),
+  z.object({kind:z.literal('sources')}),
   z.object({kind:z.literal('open'),gameId:z.string().min(1).max(100),manual:z.boolean().default(false),requestId:z.string().uuid().optional()}),
   z.object({kind:z.literal('session'),sessionId:z.string().uuid(),generation:z.number().int().nonnegative(),candidateId:z.string().max(100).optional(),failure:z.boolean().default(false),retry:z.boolean().default(false)}),
   z.object({kind:z.literal('close'),sessionId:z.string().uuid()}),
@@ -88,6 +112,7 @@ export const CommandSchema = z.discriminatedUnion('kind', [
 export type Command = z.infer<typeof CommandSchema>;
 export const ReplySchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('board'),board:BoardSchema}),
+  z.object({kind:z.literal('sources'),snapshot:SourcesSnapshotSchema}),
   z.object({kind:z.literal('playback'),playback:PlaybackSchema}),
   z.object({kind:z.literal('session'),session:SessionSchema,candidates:z.array(CandidateSummarySchema)}),
   z.object({kind:z.literal('authorized'),candidate:CandidateSchema,session:SessionSchema}),

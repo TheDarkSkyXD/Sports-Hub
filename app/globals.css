@@ -2,6 +2,29 @@
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
+.source-inventory{border-top:1px solid #353a44;padding-top:18px;display:flex;flex-direction:column;gap:10px}
+.settings-dialog{width:min(900px,calc(100vw - 32px))!important;max-width:min(900px,calc(100vw - 32px))!important}
+.source-inventory-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.source-inventory-heading h3,.source-inventory h4{font-size:14px;font-weight:600;color:#e8eaf0;margin:0}
+.source-inventory-heading p,.source-inventory-time,.source-inventory-state{font-size:12px;line-height:1.5;color:#a2aab8;margin:5px 0 0}
+.source-inventory-heading button{display:flex;align-items:center;gap:6px;flex-shrink:0;font-size:12px}
+.source-inventory-error{font-size:12px;color:#ff9b89;margin:0}
+.source-inventory-list{max-height:280px;overflow:auto;border:1px solid #353a44;border-radius:6px}
+.source-inventory-item+.source-inventory-item{border-top:1px solid #353a44}
+.source-inventory-item summary{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center;cursor:pointer;padding:10px 12px;list-style:none}
+.source-inventory-item summary::-webkit-details-marker{display:none}
+.source-inventory-item summary strong{font-size:12px;font-weight:500;color:#e8eaf0}
+.source-inventory-item summary span{font-size:11px;color:#abb4c0;text-align:right}
+.source-inventory-item>p{font-size:11px;color:#a2aab8;margin:0 12px 8px}
+.source-inventory-public-links{display:flex;flex-wrap:wrap;gap:7px 13px;padding:0 12px 10px}
+.source-inventory a{color:#ffac9b;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere;font-size:11px}
+.source-inventory-item ul{list-style:none;margin:0;padding:0 12px 10px;display:flex;flex-direction:column;gap:7px}
+.source-inventory-item li{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:#abb4c0}
+.source-inventory-item li span{flex-shrink:0}
+.source-inventory-diagnostics{margin:0 12px 10px;border-top:1px solid #353a44}
+.source-inventory-diagnostics summary{padding:8px 0;color:#abb4c0;font-size:11px}
+.source-inventory-diagnostics ul{padding:0!important}
+
 .viewing-room:fullscreen .game-grid.quad{grid-template-rows:repeat(2,minmax(0,1fr))}
 
 :root{color-scheme:dark;--background:#101114;--foreground:#efeff2;--card:#17181d;--card-foreground:#efeff2;--popover:#1b1c21;--popover-foreground:#efeff2;--primary:#ff624b;--primary-foreground:#151515;--secondary:#24252c;--secondary-foreground:#efeff2;--muted:#26272e;--muted-foreground:#9699a5;--accent:#2b2c34;--accent-foreground:#fff;--destructive:#ff624b;--border:#303138;--input:#34353e;--ring:#ff8c77;--radius:.5rem}
