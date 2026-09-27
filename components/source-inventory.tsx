@@ -14,6 +14,7 @@ const matchReasonLabel:Record<SourcesSnapshot['sources'][number]['unmatchedReaso
 const time=(value:number)=>new Date(value).toLocaleString();
 const age=(value:number,now:number)=>`${Math.max(0,Math.floor((now-value)/60_000))} min old`;
 const publicLinkLabel=(value:string)=>{const url=new URL(value);return `${url.hostname}${url.pathname}${url.hash}`;};
+const GAME_PAGE_SIZE=20;
 const collectionLabel=(value:SportsurgeCatalogView['state'])=>value.kind==='collecting'?'Collecting':value.kind==='complete'?'Complete':`Partial (${value.reason})`;
 const categoryLabel=(value:SportsurgeCatalogView['categories']['ncaaf'])=>value.kind==='collected'?'collected':value.kind==='pending'?'pending':`failed (${value.reason})`;
 
@@ -64,11 +65,19 @@ function StreameastRun({run}:{run:StreameastCatalogView}) {
 export function SourceInventory() {
   const [snapshot,setSnapshot]=useState<SourcesSnapshot|null>(null);
   const [gameQuery,setGameQuery]=useState('');
+  const [gameLimit,setGameLimit]=useState(GAME_PAGE_SIZE);
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
   const collecting=snapshot?.sportsurgeV2.current?.state.kind==='collecting'||snapshot?.streameast.current?.state.kind==='collecting';
   const query=gameQuery.trim().toLowerCase();
   const listedGames=snapshot?.games.filter(game=>game.name.toLowerCase().includes(query))||[];
+  const visibleGames=listedGames.slice(0,gameLimit);
+  const gameList=useRef<HTMLDivElement|null>(null);
+  const resetGameSearch=(value:string)=>{
+    setGameQuery(value);
+    setGameLimit(GAME_PAGE_SIZE);
+    if(gameList.current)gameList.current.scrollTop=0;
+  };
   const active=useRef<AbortController|null>(null);
   const load=useCallback(async()=>{
     active.current?.abort();
@@ -130,18 +139,26 @@ export function SourceInventory() {
             <ul>{source.unmatchedReasons.map(item=><li key={item.reason}>{matchReasonLabel[item.reason]}: {item.count}</li>)}</ul></details>}
         </details>)}
       </div>
-      <h4>Games with listed sources</h4>
+      <h4>Upcoming and live games with listed sources</h4>
       <div className="source-inventory-game-search"><label htmlFor="listed-game-search">Find a listed game</label>
-        <div><input id="listed-game-search" type="search" aria-label="Find a listed game" value={gameQuery} onChange={event=>setGameQuery(event.target.value)} placeholder="Team or game"/>
-          <button type="button" onClick={()=>setGameQuery('')} disabled={!gameQuery}>Clear</button></div>
-        <p>Showing {listedGames.length} of {snapshot.games.length} games</p></div>
-      {snapshot.games.length===0?<p className="source-inventory-state">No current links match a scheduled game.</p>:
+        <div><input id="listed-game-search" type="search" aria-label="Find a listed game" value={gameQuery} onChange={event=>resetGameSearch(event.target.value)} placeholder="Team or game"/>
+          <button type="button" onClick={()=>resetGameSearch('')} disabled={!gameQuery}>Clear</button></div>
+        <p aria-live="polite">Showing {visibleGames.length} of {listedGames.length} {query?`matching games (${snapshot.games.length} listed total)`:'games'}{listedGames.length>0?` · Page ${Math.ceil(visibleGames.length/GAME_PAGE_SIZE)} of ${Math.ceil(listedGames.length/GAME_PAGE_SIZE)}`:''}</p></div>
+      {snapshot.games.length===0?<p className="source-inventory-state">No upcoming or live games currently have matched source links.</p>:
         listedGames.length===0?<p className="source-inventory-state">No listed games match your search.</p>:
-        <div className="source-inventory-list source-inventory-game-list" role="region" aria-label="Games with listed sources">{listedGames.map(game=><details key={game.gameId} className="source-inventory-item">
+        <div ref={gameList} className="source-inventory-list source-inventory-game-list" role="region" aria-label="Games with listed sources" tabIndex={0}
+          onScroll={event=>{
+            const list=event.currentTarget;
+            const nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<80;
+            if(nearBottom&&visibleGames.length<listedGames.length)
+              setGameLimit(limit=>Math.min(limit+GAME_PAGE_SIZE,listedGames.length));
+          }}>{visibleGames.map(game=><details key={game.gameId} className="source-inventory-item">
           <summary><strong>{game.name}</strong><span>{game.sourceCount} sources · {game.uniqueFeedCount} compatible feeds (untested)</span></summary>
           <ul>{game.sourceLinks.map(link=><li key={`${link.sourceId}:${link.url}`}><span>{snapshot.sources.find(source=>source.id===link.sourceId)?.name || link.sourceId}</span>
             <a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a></li>)}</ul>
-        </details>)}</div>}
+        </details>)}<div className="source-inventory-game-pagination">{visibleGames.length<listedGames.length?
+          <button type="button" className="button subtle" onClick={()=>setGameLimit(limit=>Math.min(limit+GAME_PAGE_SIZE,listedGames.length))}>Load more games</button>:
+          <span>All {listedGames.length} games shown</span>}</div></div>}
     </>}
   </section>;
 }
