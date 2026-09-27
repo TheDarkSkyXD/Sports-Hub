@@ -128,6 +128,31 @@ test('Streamcenter opens published public link once, then reads signed HLS with 
   playback.close();
 });
 
+test('Streamcenter opens a published hls2 player with its exact parent Referer',async()=>{
+  const linkId='aef974e2-5ef2-412c-b65e-e6905af1edfa';
+  const publicUrl=`https://streamcenter.st/api/stream-link/iframe/event-espn-league-football-college-football-401858469/${linkId}`;
+  const player='https://streame.center/embed/ch85.php';
+  const hls='https://streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85';
+  const manifest=`https://edgestream3.pro/hls/jkhfsgqghjqsd85.m3u8?st=${'a'.repeat(32)}&e=${Math.floor(Date.now()/1000)+3600}`;
+  const requests:{url:string;referer:string|null}[]=[];
+  const fetcher:typeof fetch=async (input,init)=>{
+    const url=String(input);
+    requests.push({url,referer:new Headers(init?.headers).get('referer')});
+    if (url===publicUrl) return new Response(null,{status:302,headers:{Location:player}});
+    if (url===player) return new Response('<iframe src="//streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85"></iframe>');
+    if (url===hls) return new Response(`<script>const streamUrl = ${JSON.stringify(manifest)};</script>`);
+    if (url===manifest) return new Response('#EXTM3U\n#EXTINF:5,\n/hls/jkhfsgqghjqsd85-907340670.ts\n');
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  const playback=await streamcenterProvider(fetcher).open({provider:'streamcenter',eventId:'401858469',linkId},new AbortController().signal);
+  const read=await playback.root.read({signal:new AbortController().signal});
+  assert.equal(read.status,200);
+  assert.deepEqual(requests.map(request=>request.url),[publicUrl,player,hls,manifest]);
+  assert.equal(requests[2].referer,player);
+  assert.equal(requests[3].referer,hls);
+  playback.close();
+});
+
 test('one opening is shared, revoked late opening closes once, and a failed opening can retry',async()=>{
   const sessionId='22222222-2222-4222-8222-222222222222';
   const g=grant(sessionId);

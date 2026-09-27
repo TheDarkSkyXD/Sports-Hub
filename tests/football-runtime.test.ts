@@ -417,6 +417,67 @@ test('a newly discovered candidate accompanies the session reply that selects it
   } finally { await coordinator.stop(); rmSync(dir,{recursive:true,force:true}); }
 });
 
+test('an exhausted session waits for a newly discovered candidate without recycling failed feeds',async () => {
+  const dir = mkdtempSync(join(tmpdir(),'football-exhausted-candidate-'));
+  let now = kickoff;
+  const detailUrl = 'https://isportsurge.ws/watch/nfl/away-home/123';
+  const listing = `<a href="${detailUrl}" datetime="${new Date(kickoff).toISOString()}"><span class="team-name-event-row"><img alt="Away"></span><span class="team-name-event-row"><img alt="Home"></span></a>`;
+  let detail = '<iframe src="https://gooz.aapmains.net/new-stream-embed/123"></iframe><button onclick="changeStream(124)"></button><button onclick="changeStream(125)"></button>';
+  const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
+    now:() => now,
+    sources:[SOURCES[0]],
+    readSchedule:async (partition,at) => ({games:partition.id==='nfl' ? [live] : [],at,league:partition.league}),
+    readHtml:async url => url===SOURCES[0].url ? listing : detail,
+  });
+  try {
+    await coordinator.refresh(true);
+    let opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
+    for (let attempt=0;opened.kind==='error' && attempt<30;attempt++) {
+      await new Promise(resolve => setTimeout(resolve,10));
+      opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
+    }
+    assert.equal(opened.kind,'playback',JSON.stringify(opened));
+    if (opened.kind!=='playback') return;
+    assert.deepEqual(opened.playback.candidates.map(candidate=>candidate.id),['gooz-123','gooz-124','gooz-125']);
+    const sessionId=opened.playback.session.id;
+    let generation=0;
+    for (const expected of ['gooz-123','gooz-124','gooz-125']) {
+      const refreshed=await coordinator.command({kind:'session',sessionId,generation,failure:true,retry:false});
+      assert.equal(refreshed.kind,'session');
+      if (refreshed.kind!=='session') return;
+      assert.equal(refreshed.session.candidateId,expected);
+      generation=refreshed.session.generation;
+      const failed=await coordinator.command({kind:'session',sessionId,generation,failure:true,retry:false});
+      if (expected==='gooz-125') assert.deepEqual(failed.kind==='error' ? {status:failed.status,retryAfter:failed.retryAfter} : failed,{status:503,retryAfter:undefined});
+      else {
+        assert.equal(failed.kind,'session');
+        if (failed.kind!=='session') return;
+        generation=failed.session.generation;
+      }
+    }
+    const stalled=await coordinator.command({kind:'session',sessionId,generation,failure:false,retry:false});
+    assert.equal(stalled.kind,'session');
+    if (stalled.kind==='session') assert.deepEqual({candidateId:stalled.session.candidateId,generation:stalled.session.generation},
+      {candidateId:'gooz-125',generation});
+    detail += '<button onclick="changeStream(126)"></button>';
+    now += 60000;
+    await coordinator.command({kind:'session',sessionId,generation,failure:false,retry:false});
+    now += 60001;
+    await coordinator.refresh(true);
+    let next=await coordinator.command({kind:'session',sessionId,generation,failure:false,retry:false});
+    for (let attempt=0;next.kind==='session' && !next.candidates.some(candidate=>candidate.id==='gooz-126') && attempt<30;attempt++) {
+      await new Promise(resolve => setTimeout(resolve,10));
+      next=await coordinator.command({kind:'session',sessionId,generation,failure:false,retry:false});
+    }
+    assert.equal(next.kind,'session',JSON.stringify(next));
+    if (next.kind==='session') {
+      assert.ok(next.candidates.some(candidate=>candidate.id==='gooz-126'));
+      assert.deepEqual({candidateId:next.session.candidateId,generation:next.session.generation},
+        {candidateId:'gooz-126',generation:generation+1});
+    }
+  } finally { await coordinator.stop(); rmSync(dir,{recursive:true,force:true}); }
+});
+
 test('the worker bridge validates a command and shuts down its SQLite writer',async () => {
   const dir = mkdtempSync(join(tmpdir(),'football-worker-'));
   process.env.SUNDAY_ROOM_DATA_DIR = dir;
