@@ -404,7 +404,7 @@ export class FootballCoordinator {
     if (session.state==='draining') {
       owned.phase={kind:'cycling'};
       if (command.failure || command.retry) {
-        if (owned.drainRefreshes>=1) return {kind:'error',status:503,message:'This game has ended. The current stream cannot refresh again.'};
+        if (owned.drainRefreshes>=1) return {kind:'error',status:503,code:'drain-exhausted',message:'This game has ended. The current stream cannot refresh again.'};
         owned.drainRefreshes++;
         session.generation++;
       }
