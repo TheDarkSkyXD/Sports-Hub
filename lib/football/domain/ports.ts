@@ -1,7 +1,7 @@
 import type { Candidate, Game, League, Match, Observation, SeasonMembership } from '../shared.ts';
 
 export type ScheduleSource = { id: string; league: League; path: string; group: string | null };
-export type ListingSource = { id: string; url: string; family: string };
+export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' };
 export type SchedulePartition = { games: Game[]; at: number; week?: number };
 export type ScheduleResult = SchedulePartition & { league: League };
 export type ListingResult = { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' };

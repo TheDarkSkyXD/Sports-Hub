@@ -2,7 +2,7 @@ import { matchObservation, mergeSchedulePartitions } from '../domain/matching.ts
 import { SESSION_LEASE_MS, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
 import type { Recovery } from '../domain/lifecycle.ts';
 import type { FootballDependencies, FootballRepository } from '../domain/ports.ts';
-import type { Board, Candidate, Command, Game, LeagueFeedStatus, Observation, Reply, Session } from '../shared.ts';
+import { candidateSummary, type Board, type Candidate, type Command, type Game, type LeagueFeedStatus, type Observation, type Reply, type Session } from '../shared.ts';
 
 type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;waitingUntil:number|null;requestId?:string};
 function errorCode(error: unknown): string {
@@ -186,7 +186,9 @@ export class FootballCoordinator {
     });
     if (this.stopped) return;
     for (const observation of observations) this.store.observe(observation,matchObservation(observation,this.games,this.now()));
+    const catalogIds = new Set(this.sources.filter(source => source.kind === 'catalog').map(source => source.id));
     const eligible = observations.filter(observation => {
+      if (catalogIds.has(observation.sourceId)) return false;
       if (!observation.teams) return false;
       const match = matchObservation(observation,this.games,this.now());
       return match.kind === 'matched' || match.reason === 'unverified-kickoff' && match.possibleGameIds.length > 0;
@@ -222,12 +224,13 @@ export class FootballCoordinator {
           this.store.observe(observation,{kind:'unmatched',reason:'compatible-media-not-resolved',possibleGameIds:[game.id]});
           return;
         }
-        const byUrl = new Map((this.candidates.get(game.id) || []).map(candidate => [candidate.url,candidate]));
+        const byId = new Map((this.candidates.get(game.id) || []).map(candidate => [candidate.id,candidate]));
         for (const candidate of players) {
-          const previous = byUrl.get(candidate.url);
-          byUrl.set(candidate.url,{...candidate,sourceIds:[...new Set([...(previous?.sourceIds || []),...candidate.sourceIds])]});
+          const previous = byId.get(candidate.id);
+          if (previous && JSON.stringify(previous.locator) !== JSON.stringify(candidate.locator)) continue;
+          byId.set(candidate.id,{...candidate,sourceIds:[...new Set([...(previous?.sourceIds || []),...candidate.sourceIds])]});
         }
-        this.candidates.set(game.id,[...byUrl.values()]);
+        this.candidates.set(game.id,[...byId.values()]);
         if (observation.legacyId) this.store.alias(observation.legacyId,game.id);
       } catch(error) {
         if (!this.stopped) this.store.observe(observation,{kind:'unmatched',reason:errorCode(error),possibleGameIds:[]});
@@ -268,7 +271,7 @@ export class FootballCoordinator {
   }
   private sessionReply(session: Session): Reply {
     const now=this.now();
-    return {kind:'session',session,candidates:(this.candidates.get(session.gameId) || []).filter(candidate => candidate.id===session.candidateId || now-candidate.observedAt<30*60000)};
+    return {kind:'session',session,candidates:(this.candidates.get(session.gameId) || []).filter(candidate => candidate.id===session.candidateId || now-candidate.observedAt<30*60000).map(candidateSummary)};
   }
   async command(command: Command): Promise<Reply> {
     if (this.stopped && command.kind!=='stop') return {kind:'error',status:503,message:'Pipeline is stopped.'};
@@ -284,11 +287,11 @@ export class FootballCoordinator {
       const candidates = (this.candidates.get(gameId) || []).filter(candidate => this.now()-candidate.observedAt<30*60000);
       if (!command.manual && !candidates.length) return {kind:'error',status:404,message:'No compatible stream is available yet.'};
       const prior = command.requestId ? [...this.sessions.values()].find(owned => owned.requestId===command.requestId && owned.value.gameId===gameId && owned.value.state==='active' && (owned.value.candidateId==='manual')===command.manual) : undefined;
-      if (prior) { prior.lastSeen=this.now(); return {kind:'playback',playback:{session:prior.value,candidates}}; }
+      if (prior) { prior.lastSeen=this.now(); return {kind:'playback',playback:{session:prior.value,candidates:candidates.map(candidateSummary)}}; }
       if (this.sessions.size>=32) return {kind:'error',status:429,message:'Too many playback sessions.'};
       const session: Session = {id:this.id(),gameId,candidateId:command.manual ? 'manual' : candidates[0].id,generation:0,state:'active',graceEndsAt:null};
       this.sessions.set(session.id,{value:session,lastSeen:this.now(),refreshes:0,drainRefreshes:0,waitingUntil:null,requestId:command.requestId,recovery:{attempted:[],cooled:{},failures:{},cycleStartedAt:this.now()}});
-      return {kind:'playback',playback:{session,candidates}};
+      return {kind:'playback',playback:{session,candidates:candidates.map(candidateSummary)}};
     }
     const owned = this.sessions.get(command.sessionId);
     if (!owned) return {kind:'error',status:410,message:'Playback session ended.'};
