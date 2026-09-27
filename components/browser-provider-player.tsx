@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, LoaderCircle, RefreshCw } from 'lucide-react';
 import { PlaybackSchema, type Playback, type Session } from '@/lib/football/shared';
+import type { QualityPreference } from '@/lib/playback-quality';
 import type { Feed } from '@/lib/sunday';
 import { GamePlayer } from './game-player';
 import { ServerControls, type DiscoveredServer } from './server-controls';
@@ -15,6 +16,7 @@ type Props = {
   focused: boolean;
   audible: boolean;
   volume: number;
+  defaultQuality: QualityPreference;
   playing: boolean;
   delay: number;
   onPlayingChange: (playing: boolean) => void;
@@ -63,7 +65,7 @@ async function updateSession(session: Session, changes: SessionChange = {}): Pro
   return parsed.data;
 }
 
-export function BrowserProviderPlayer({ gameId, discoveredServers = [], manualFeed, graceEndsAt, focused, audible, volume, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange }: Props) {
+export function BrowserProviderPlayer({ gameId, discoveredServers = [], manualFeed, graceEndsAt, focused, audible, volume, defaultQuality, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange }: Props) {
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [message, setMessage] = useState('Finding your game…');
   const [endedReason, setEndedReason] = useState<'final' | 'media' | null>(null);
@@ -305,7 +307,7 @@ export function BrowserProviderPlayer({ gameId, discoveredServers = [], manualFe
   return <div className="provider-player">
     <div className="provider-surface">
       {ended ? <div className="player-message"><AlertCircle/><strong>{endedReason === 'final' ? 'Game stream ended' : 'Video ended'}</strong><p>{endedReason === 'final' ? 'Playback ended after the game became final.' : 'This video reached its end.'}</p></div>
-        : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} playing={playing} delay={delay} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : () => void change({ failure: true })} onEnded={() => { if (!manualFeed && session?.state === 'active') void change({ failure: true }); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : () => void change({ retry: true })} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
+        : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} defaultQuality={defaultQuality} playing={playing} delay={delay} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : () => void change({ failure: true })} onEnded={() => { if (!manualFeed && session?.state === 'active') void change({ failure: true }); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : () => void change({ retry: true })} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
         : <div className="player-message">{message === 'Finding your game…' || message === 'Reconnecting to your game…' ? <LoaderCircle className="spin"/> : <AlertCircle/>}<strong>{message === 'Finding your game…' ? 'Opening the live player' : message === 'Reconnecting to your game…' ? 'Reconnecting' : 'Player unavailable'}</strong><p>{message}</p>{message !== 'Finding your game…' && <button className="button" onClick={() => { if (openTimer.current !== null) { window.clearTimeout(openTimer.current); openTimer.current = null; } setRetry(value => value + 1); }}><RefreshCw size={14}/>Try again</button>}</div>}
     </div>
     {!manualFeed && <ServerControls candidates={playback?.candidates ?? []} selectedCandidateId={session?.candidateId ?? ''} discovered={discoveredServers} disabled={ended}

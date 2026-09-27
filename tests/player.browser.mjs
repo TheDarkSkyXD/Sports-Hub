@@ -24,6 +24,14 @@ await promisify(execFile)(ffmpeg, [
   '-hls_segment_filename', path.join(media, 'level_%v_%03d.ts'),
   '-master_pl_name', 'master.m3u8', '-var_stream_map', 'v:0,a:0 v:1,a:1', path.join(media, 'level_%v.m3u8'),
 ], { windowsHide: true });
+await promisify(execFile)(ffmpeg, [
+  '-y', '-hide_banner', '-loglevel', 'error',
+  '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=24',
+  '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100',
+  '-t', '30', '-c:v', 'libx264', '-preset', 'ultrafast', '-b:v', '350k',
+  '-c:a', 'aac', '-b:a', '32k', '-movflags', '+faststart',
+  path.join(media, 'single.mp4'),
+], { windowsHide: true });
 
 const games = Array.from({ length: 4 }, (_, i) => ({
   id: String(910001 + i), league: 'nfl', name: `Away ${i + 1} at Home ${i + 1}`,
@@ -62,7 +70,7 @@ async function screenshot(page, name, fullPage = false) {
   } else await page.screenshot({ path: target, fullPage });
 }
 
-async function openRoom({ live = false, provider = false, manyQualities = false, mediaPlaylist = false, backupMediaPlaylist = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false, holdHeartbeat = false } = {}) {
+async function openRoom({ live = false, provider = false, manyQualities = false, mediaPlaylist = false, backupMediaPlaylist = false, mp4 = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false, holdHeartbeat = false } = {}) {
   const context = desktopApp ? desktopApp.context() : await browser.newContext({ viewport: { width: 1440, height: 1100 } });
   await context.unrouteAll({ behavior: 'wait' });
   let roomGames = games.map((g, index) => provider ? { ...g, status: waitingForLive && index === 0 ? 'pre' : g.status, sourceUrl: waitingForLive && index === 1 ? undefined : `https://isportsurge.ws/watch/nfl/test-game/${g.id}` } : g);
@@ -157,7 +165,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
     if (live && file.endsWith('.m3u8')) {
       body = Buffer.from(body.toString().replace('#EXT-X-PLAYLIST-TYPE:VOD\n', '').replace('#EXT-X-ENDLIST', ''));
     }
-    await route.fulfill({ body, contentType: file.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp2t' });
+    await route.fulfill({ body, contentType: file.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : file.endsWith('.mp4') ? 'video/mp4' : 'video/mp2t' });
   }
   await context.route('**/__player_fixture__/**', route => serveMedia(route, path.basename(new URL(route.request().url()).pathname)));
   await context.route('**/api/stream/**', route => {
@@ -183,12 +191,14 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   if (!seededContexts.has(context)) {
     await context.addInitScript(games => {
       const parameters = new URL(location.href).searchParams;
+      if (parameters.has('preserveFixtureStorage') && localStorage.getItem('sunday-room:v1')) return;
       const provider = parameters.get('playerFixture') === 'provider';
       const mediaPlaylist = parameters.has('mediaPlaylist');
+      const mp4 = parameters.has('mp4Fixture');
       localStorage.setItem('sunday-room:v1', JSON.stringify({
         selected: games.map(g => g.id), favorites: [], layout: 'quad', volume: 70, spoilers: false,
         feeds: provider ? {} : Object.fromEntries(games.map((g, i) => [g.id, {
-          url: `${location.origin}/__player_fixture__/${mediaPlaylist ? 'level_0.m3u8' : 'master.m3u8'}?tile=${i}`, label: `Test stream ${i + 1}`,
+          url: `${location.origin}/__player_fixture__/${mp4 ? 'single.mp4' : mediaPlaylist ? 'level_0.m3u8' : 'master.m3u8'}?tile=${i}`, label: `Test stream ${i + 1}`,
         }])),
       }));
     }, games);
@@ -202,7 +212,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   page.setDefaultTimeout(15000);
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}${mediaPlaylist ? '&mediaPlaylist=1' : ''}${offlineStart ? '&offlineFixture=1' : ''}`);
+  await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}${mediaPlaylist ? '&mediaPlaylist=1' : ''}${mp4 ? '&mp4Fixture=1' : ''}${offlineStart ? '&offlineFixture=1' : ''}`);
   await page.locator('.game-tile').first().waitFor();
   if (!provider) await page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(v => v.readyState >= 2));
   return { context, page, pageErrors, manifestRequests, indexRequests, finalFailure, sessionCounts, heartbeatObserved, releaseHeartbeat,
@@ -221,6 +231,11 @@ async function revealControls(page) {
   assert.ok(bounds);
   await page.mouse.move(bounds.x + 12, bounds.y + bounds.height - 16);
   await page.mouse.move(bounds.x + 24, bounds.y + bounds.height - 16);
+}
+
+async function selectDefaultQuality(page, label) {
+  await page.getByRole('combobox', { name: 'Default video quality' }).click();
+  await page.getByRole('option', { name: label, exact: true }).click();
 }
 
 try {
@@ -259,6 +274,100 @@ try {
   assert.deepEqual(switchRoom.pageErrors, []);
   results.push('Switching from a multi-variant server to a media playlist clears old quality options and restores Auto.');
   if (!desktopApp) await switchRoom.context.close();
+
+  const defaultRoom = await openRoom();
+  const defaultVideos = await defaultRoom.page.locator('video').elementHandles();
+  const initialSources = await defaultRoom.page.locator('video').evaluateAll(videos => videos.map(video => video.currentSrc));
+  await defaultRoom.page.getByRole('button', { name: 'Room settings' }).click();
+  assert.match(await defaultRoom.page.getByRole('combobox', { name: 'Default video quality' }).innerText(), /Auto/);
+  await selectDefaultQuality(defaultRoom.page, '360p');
+  await defaultRoom.page.waitForFunction(() => {
+    const videos = [...document.querySelectorAll('.game-tile video')];
+    return videos.length === 4 && videos.every(video => video.readyState >= 2 && video.videoHeight === 360);
+  });
+  for (const video of defaultVideos) assert.equal(await video.evaluate(element => element.isConnected), true);
+  assert.deepEqual(await defaultRoom.page.locator('video').evaluateAll(videos => videos.map(video => video.currentSrc)), initialSources);
+  assert.equal(defaultRoom.sessionCounts.opened, 4);
+  assert.equal(defaultRoom.sessionCounts.closed, 0);
+  await defaultRoom.page.getByRole('button', { name: 'Close', exact: true }).click();
+  await defaultRoom.page.getByRole('button', { name: 'Remove Away 1 at Home 1', exact: true }).click();
+  await defaultRoom.page.getByTitle('Add Away 1 at Home 1', { exact: true }).click();
+  await defaultRoom.page.waitForFunction(() => {
+    const videos = [...document.querySelectorAll('.game-tile video')];
+    return videos.length === 4 && videos.every(video => video.readyState >= 2 && video.videoHeight === 360);
+  });
+  await revealControls(defaultRoom.page);
+  await defaultRoom.page.getByRole('button', { name: 'Video quality', exact: true }).click();
+  await defaultRoom.page.getByRole('button', { name: /^180p/ }).click();
+  await defaultRoom.page.waitForFunction(() => document.querySelector('.game-tile video')?.videoHeight === 180);
+  await defaultRoom.page.locator('.audio-focus').nth(1).click();
+  await defaultRoom.page.locator('.audio-focus').first().click();
+  assert.equal(await defaultRoom.page.locator('.game-tile video').first().evaluate(video => video.videoHeight), 180);
+  await defaultRoom.page.getByRole('button', { name: 'Room settings' }).click();
+  await selectDefaultQuality(defaultRoom.page, '1080p');
+  await defaultRoom.page.waitForFunction(() => [...document.querySelectorAll('.game-tile video')].every(video => video.readyState >= 2 && video.videoHeight === 360));
+  assert.match(await defaultRoom.page.getByRole('combobox', { name: 'Default video quality' }).innerText(), /1080p/);
+  await selectDefaultQuality(defaultRoom.page, 'Highest available');
+  await defaultRoom.page.waitForFunction(() => [...document.querySelectorAll('.game-tile video')].every(video => video.readyState >= 2 && video.videoHeight === 360));
+  assert.match(await defaultRoom.page.getByRole('combobox', { name: 'Default video quality' }).innerText(), /Highest available/);
+  const beforePersist = await defaultRoom.page.evaluate(() => localStorage.getItem('sunday-room:v1'));
+  await selectDefaultQuality(defaultRoom.page, '360p');
+  await defaultRoom.page.waitForFunction(previous => {
+    const raw = localStorage.getItem('sunday-room:v1');
+    return raw !== previous && JSON.parse(raw || '{}').defaultQuality === '360';
+  }, beforePersist);
+  await defaultRoom.page.evaluate(() => history.replaceState(null, '', `${location.pathname}${location.search}&preserveFixtureStorage=1`));
+  await defaultRoom.page.reload();
+  await defaultRoom.page.waitForFunction(() => {
+    const videos = [...document.querySelectorAll('.game-tile video')];
+    return videos.length === 4 && videos.every(video => video.readyState >= 2 && video.videoHeight === 360);
+  });
+  await defaultRoom.page.getByRole('button', { name: 'Room settings' }).click();
+  assert.match(await defaultRoom.page.getByRole('combobox', { name: 'Default video quality' }).innerText(), /360p/);
+  await defaultRoom.page.getByRole('button', { name: 'Reset room and remove saved feeds' }).click();
+  await defaultRoom.page.getByRole('button', { name: 'Room settings' }).click();
+  assert.match(await defaultRoom.page.getByRole('combobox', { name: 'Default video quality' }).innerText(), /Auto/);
+  assert.deepEqual(defaultRoom.pageErrors, []);
+  results.push('Room default controls four decoded streams without recreating sources and applies to new streams; a manual override survives focus, a new default resets it, reload restores the preference, and room reset returns to Auto.');
+  if (!desktopApp) await defaultRoom.context.close();
+
+  const sourceRoom = await openRoom({ provider: true });
+  await sourceRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
+  await sourceRoom.page.getByRole('button', { name: 'Room settings' }).click();
+  await selectDefaultQuality(sourceRoom.page, '360p');
+  await sourceRoom.page.getByRole('button', { name: 'Close', exact: true }).click();
+  await revealControls(sourceRoom.page);
+  await sourceRoom.page.getByRole('button', { name: 'Video quality', exact: true }).click();
+  await sourceRoom.page.getByRole('button', { name: /^180p/ }).click();
+  await sourceRoom.page.waitForFunction(() => document.querySelector('video')?.videoHeight === 180);
+  const defaultBackupLoaded = sourceRoom.page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === `/api/stream/${games[0].id}/index.m3u8` && url.searchParams.get('candidate')?.endsWith('-1') && response.ok();
+  });
+  await sourceRoom.page.locator('.game-tile').first().getByRole('button', { name: 'Switch server', exact: true }).click();
+  await defaultBackupLoaded;
+  await sourceRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && document.querySelector('video').videoHeight === 360);
+  await revealControls(sourceRoom.page);
+  await sourceRoom.page.getByRole('button', { name: 'Video quality', exact: true }).click();
+  assert.match(await sourceRoom.page.getByRole('dialog', { name: 'Playback quality' }).getByRole('button', { name: /^360p/ }).getAttribute('class'), /selected/);
+  assert.deepEqual(sourceRoom.pageErrors, []);
+  results.push('A source change clears the stream override and applies the saved room default to the replacement feed.');
+  if (!desktopApp) await sourceRoom.context.close();
+
+  const mp4Room = await openRoom({ mp4: true });
+  await mp4Room.page.getByRole('button', { name: 'Room settings' }).click();
+  await selectDefaultQuality(mp4Room.page, '1080p');
+  await mp4Room.page.waitForFunction(() => [...document.querySelectorAll('.game-tile video')].every(video => video.readyState >= 2 && video.videoHeight === 360));
+  await mp4Room.page.getByRole('button', { name: 'Close', exact: true }).click();
+  await revealControls(mp4Room.page);
+  await mp4Room.page.getByRole('button', { name: 'Video quality', exact: true }).click();
+  const mp4Options = await mp4Room.page.getByRole('dialog', { name: 'Playback quality' }).innerText();
+  assert.match(mp4Options, /360p/);
+  assert.doesNotMatch(mp4Options, /1080p|720p|480p/);
+  assert.deepEqual(mp4Room.pageErrors, []);
+  results.push('A direct MP4 remains at its actual 360p resolution under a 1080p room preference, with no invented quality options.');
+  if (!desktopApp) await mp4Room.context.close();
+
   if (!qualityOnly) {
   const { context, page, pageErrors, sessionCounts, expireGame } = await openRoom();
   assert.equal(sessionCounts.opened, 4);
