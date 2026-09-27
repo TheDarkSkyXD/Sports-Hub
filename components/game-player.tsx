@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'rea
 import Hls from 'hls.js';
 import { Popover } from 'radix-ui';
 import { AlertCircle, LoaderCircle, Maximize, Minimize, Pause, PictureInPicture2, Play, Radio, RotateCcw, Settings2, Volume2, VolumeX } from 'lucide-react';
+import { chooseDefaultLevel, type QualityPreference } from '@/lib/playback-quality';
 import type { Feed } from '@/lib/sunday';
 
 type Status = 'loading' | 'ready' | 'buffering' | 'error' | 'gesture' | 'audio-gesture' | 'ended';
@@ -14,6 +15,7 @@ type Props = {
   focused: boolean;
   audible: boolean;
   volume: number;
+  defaultQuality: QualityPreference;
   playing: boolean;
   delay: number;
   onPlayingChange: (playing: boolean) => void;
@@ -31,10 +33,11 @@ function time(seconds: number) {
   return `${Math.floor(whole / 3600) ? `${Math.floor(whole / 3600)}:` : ''}${Math.floor(whole % 3600 / 60).toString().padStart(whole >= 3600 ? 2 : 1, '0')}:${(whole % 60).toString().padStart(2, '0')}`;
 }
 
-export function GamePlayer({ feed, focused, audible, volume, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onEnded, onRetry, errorHint }: Props) {
+export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onEnded, onRetry, errorHint }: Props) {
   const shell = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const preferenceRef = useRef(defaultQuality);
   const sourceGeneration = useRef(0);
   const needsGesture = useRef(false);
   const pointerTimer = useRef<number | null>(null);
@@ -47,6 +50,7 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
   const [qualities, setQualities] = useState<Quality[]>([]);
   const [quality, setQuality] = useState(-1);
   const [nativeHls, setNativeHls] = useState(false);
+  const [nativeHeight, setNativeHeight] = useState<number | null>(null);
   const [usesHls, setUsesHls] = useState(false);
   const [syncPosition, setSyncPosition] = useState<number | null>(null);
   const [settings, setSettings] = useState(false);
@@ -60,6 +64,14 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
   const callbacks = useRef({ onFatal, onEnded, onPlayingChange, onAudibleChange, onVolumeChange });
   useEffect(() => { playingRef.current = playing; }, [playing]);
   useEffect(() => { callbacks.current = { onFatal, onEnded, onPlayingChange, onAudibleChange, onVolumeChange }; }, [onFatal, onEnded, onPlayingChange, onAudibleChange, onVolumeChange]);
+  useEffect(() => {
+    preferenceRef.current = defaultQuality;
+    const hls = hlsRef.current;
+    if (!hls || hls.levels.length === 0) return;
+    const index = chooseDefaultLevel({ preference: defaultQuality, levels: hls.levels.map((level, index) => ({ index, height: level.height, bitrate: level.bitrate })) });
+    hls.nextLevel = index;
+    setQuality(index);
+  }, [defaultQuality]);
 
   const updateTimeline = useCallback(() => {
     const video = ref.current;
@@ -79,12 +91,14 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
     let failed = false;
     let hasLoaded = false;
     let deferredFailure = false;
+    let manifestParsed = false;
+    let metadataLoaded = false;
     let startupElapsed = 0;
     let lastTick = performance.now();
     needsGesture.current = false;
     liveRef.current = false;
     const native = /\.m3u8(?:\?|$)/i.test(feed.url) && !Hls.isSupported();
-    const reset = window.setTimeout(() => { setStatus('loading'); setSettings(false); setQualities([]); setQuality(-1); setTimeline(null); setNativeHls(native); setUsesHls(false); setSyncPosition(null); setNotice(''); }, 0);
+    const reset = window.setTimeout(() => { if (!active) return; setStatus('loading'); setSettings(false); if (!manifestParsed) { setQualities([]); setQuality(-1); setUsesHls(false); } if (!metadataLoaded) setNativeHeight(null); setTimeline(null); setNativeHls(native); setSyncPosition(null); setNotice(''); }, 0);
     const ready = () => { if (active) { hasLoaded = true; setStatus(needsGesture.current ? 'audio-gesture' : 'ready'); updateTimeline(); } };
     const loaded = () => { if (!active) return; hasLoaded = true; if (!playingRef.current) setStatus('ready'); updateTimeline(); };
     const canRecover = () => playingRef.current && navigator.onLine && !document.hidden;
@@ -154,7 +168,9 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
     };
     const onVideoDimensions = () => {
       if (!active || video.readyState < 1) return;
+      metadataLoaded = true;
       decodedHeight = Number.isFinite(video.videoHeight) && video.videoHeight > 0 ? video.videoHeight : null;
+      if (!hls) setNativeHeight(decodedHeight);
       refreshQualities();
     };
     video.addEventListener('loadedmetadata', onVideoDimensions);
@@ -164,7 +180,11 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
       hlsRef.current = hls;
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (!active || !hls) return;
+        manifestParsed = true;
         refreshQualities();
+        const index = chooseDefaultLevel({ preference: preferenceRef.current, levels: hls.levels.map((level, index) => ({ index, height: level.height, bitrate: level.bitrate })) });
+        hls.nextLevel = index;
+        setQuality(index);
         setUsesHls(true);
       });
       hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => { if (active) { liveRef.current = data.details.live; setSyncPosition(hls?.liveSyncPosition ?? null); updateTimeline(); } });
@@ -354,7 +374,7 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
             <Popover.Content className="player-settings" side="top" align="end" sideOffset={6} collisionPadding={8} aria-label="Playback quality">
               <strong>Quality</strong>
               <div className="player-settings-options" role="group" aria-label="Playback quality options">
-                {usesHls ? <><button className={quality === -1 ? 'selected' : ''} onClick={() => chooseQuality(-1)}>Auto {quality === -1 ? '✓' : ''}</button>{qualities.map(level => <button key={level.index} className={quality === level.index ? 'selected' : ''} onClick={() => chooseQuality(level.index)}>{level.label} {quality === level.index ? '✓' : ''}</button>)}</> : <span>{nativeHls ? 'Managed by your browser' : 'This feed has one quality'}</span>}
+                {usesHls ? <><button className={quality === -1 ? 'selected' : ''} onClick={() => chooseQuality(-1)}>Auto {quality === -1 ? '✓' : ''}</button>{qualities.map(level => <button key={level.index} className={quality === level.index ? 'selected' : ''} onClick={() => chooseQuality(level.index)}>{level.label} {quality === level.index ? '✓' : ''}</button>)}</> : <span>{nativeHeight ? `${nativeHeight}p · ` : ''}{nativeHls ? 'Managed by your browser' : 'This feed has one quality'}</span>}
               </div>
             </Popover.Content>
           </Popover.Portal>

@@ -120,3 +120,4 @@ main{padding:32px 36px 0;max-width:1920px;margin:auto}.eyebrow{font-size:10px;le
 .schedule-card>.game-timing{margin-top:9px;min-height:27px}
 @media(max-width:600px){.score-strip{height:118px}.mini-game{min-width:180px;padding:7px 10px}.game-tile>.game-timing{padding:5px 9px}}
 .desktop .score-strip{height:112px}
+.quality-setting{display:flex;flex-direction:column;gap:7px}.quality-setting strong{font-size:14px;font-weight:500}.quality-setting p{font-size:12px;color:#a2aab8;margin:0 0 3px;line-height:1.5}.quality-setting [data-slot=select-trigger]{width:100%;height:42px;background:#111319;border-color:#3b404b}
