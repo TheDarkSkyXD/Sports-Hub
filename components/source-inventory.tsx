@@ -63,9 +63,12 @@ function StreameastRun({run}:{run:StreameastCatalogView}) {
 
 export function SourceInventory() {
   const [snapshot,setSnapshot]=useState<SourcesSnapshot|null>(null);
+  const [gameQuery,setGameQuery]=useState('');
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
   const collecting=snapshot?.sportsurgeV2.current?.state.kind==='collecting'||snapshot?.streameast.current?.state.kind==='collecting';
+  const query=gameQuery.trim().toLowerCase();
+  const listedGames=snapshot?.games.filter(game=>game.name.toLowerCase().includes(query))||[];
   const active=useRef<AbortController|null>(null);
   const load=useCallback(async()=>{
     active.current?.abort();
@@ -128,8 +131,13 @@ export function SourceInventory() {
         </details>)}
       </div>
       <h4>Games with listed sources</h4>
+      <div className="source-inventory-game-search"><label htmlFor="listed-game-search">Find a listed game</label>
+        <div><input id="listed-game-search" type="search" aria-label="Find a listed game" value={gameQuery} onChange={event=>setGameQuery(event.target.value)} placeholder="Team or game"/>
+          <button type="button" onClick={()=>setGameQuery('')} disabled={!gameQuery}>Clear</button></div>
+        <p>Showing {listedGames.length} of {snapshot.games.length} games</p></div>
       {snapshot.games.length===0?<p className="source-inventory-state">No current links match a scheduled game.</p>:
-        <div className="source-inventory-list">{snapshot.games.map(game=><details key={game.gameId} className="source-inventory-item">
+        listedGames.length===0?<p className="source-inventory-state">No listed games match your search.</p>:
+        <div className="source-inventory-list source-inventory-game-list" role="region" aria-label="Games with listed sources">{listedGames.map(game=><details key={game.gameId} className="source-inventory-item">
           <summary><strong>{game.name}</strong><span>{game.sourceCount} sources · {game.uniqueFeedCount} compatible feeds (untested)</span></summary>
           <ul>{game.sourceLinks.map(link=><li key={`${link.sourceId}:${link.url}`}><span>{snapshot.sources.find(source=>source.id===link.sourceId)?.name || link.sourceId}</span>
             <a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a></li>)}</ul>
