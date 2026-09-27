@@ -1,11 +1,13 @@
-import type { Candidate, Game, Observation, SourceAttempt, SourceMatchReason, SourcesSnapshot } from '../shared.ts';
+import type { Candidate, Game, Observation, SourceAttempt, SourceMatchReason, SourcesSnapshot, StoredSportsurgeCatalog } from '../shared.ts';
 import type { ListingSource } from './ports.ts';
 import { createObservationMatcher } from './matching.ts';
+import { sportsurgeCatalogView } from './sportsurge-catalog.ts';
 
 type Input = {
   at:number; revision:number; lastDiscoveryAt:number|null; sources:readonly ListingSource[];
   observations:Observation[]; games:Game[]; candidates:ReadonlyMap<string,Candidate[]>;
   attempts:Record<string,SourceAttempt>;
+  sportsurgeCatalog:{current:StoredSportsurgeCatalog|null;lastComplete:StoredSportsurgeCatalog|null;previous:StoredSportsurgeCatalog|null};
 };
 
 function publicObservationUrl(value:string,hosts:Set<string>):string|null {
@@ -80,5 +82,10 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       .map(candidate=>candidate.id)).size;
     return [{gameId:game.id,name:game.name,sourceCount,uniqueFeedCount,sourceLinks}];
   });
-  return {at,revision:input.revision,windowStartAt,lastDiscoveryAt:input.lastDiscoveryAt,sources:sourceRows,games:gameRows};
+  return {at,revision:input.revision,windowStartAt,lastDiscoveryAt:input.lastDiscoveryAt,
+    sportsurgeV2:{
+      current:input.sportsurgeCatalog.current ? sportsurgeCatalogView(input.sportsurgeCatalog.current,games,at) : null,
+      lastComplete:input.sportsurgeCatalog.lastComplete ? sportsurgeCatalogView(input.sportsurgeCatalog.lastComplete,games,at) : null,
+      previous:input.sportsurgeCatalog.previous ? sportsurgeCatalogView(input.sportsurgeCatalog.previous,games,at) : null,
+    },sources:sourceRows,games:gameRows};
 }

@@ -4,6 +4,7 @@ const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
 const { localServerPort } = require('./port.cjs');
+const { createSportsurgeCollector } = require('./sportsurge-collector.cjs');
 
 app.setName('Sunday Room');
 const root = app.isPackaged ? path.join(process.resourcesPath,'server') : path.resolve(__dirname,'..');
@@ -11,6 +12,7 @@ const logDir = app.isPackaged ? path.join(app.getPath('userData'),'logs') : path
 let win;
 let serverProcess;
 let origin;
+let sportsurgeCollector;
 const controlToken = randomUUID();
 let shuttingDown = false;
 const singleInstance = app.requestSingleInstanceLock();
@@ -48,6 +50,8 @@ async function startServer() {
 app.whenReady().then(async () => {
   if (!singleInstance) return;
   await startServer();
+  sportsurgeCollector=createSportsurgeCollector({origin,controlToken});
+  sportsurgeCollector.start();
   win = new BrowserWindow({
     title:'Sunday Room',width:1500,height:1060,minWidth:900,minHeight:650,
     backgroundColor:'#101114',autoHideMenuBar:true,
@@ -59,7 +63,7 @@ app.whenReady().then(async () => {
   });
   win.webContents.on('will-navigate',(event,url) => { if (new URL(url).origin !== origin) event.preventDefault(); });
   win.on('closed',() => { win=undefined; app.quit(); });
-  powerMonitor.on('resume',() => { if (origin && !shuttingDown) void fetch(`${origin}/api/games`).catch(() => {}); });
+  powerMonitor.on('resume',() => { if (origin && !shuttingDown) { void fetch(`${origin}/api/games`).catch(() => {}); sportsurgeCollector?.requestSweep(); } });
   await win.loadURL(origin);
 }).catch(error => {
   fs.mkdirSync(logDir,{recursive:true});
@@ -87,5 +91,6 @@ app.on('before-quit',event => {
   if (shuttingDown) return;
   event.preventDefault();
   shuttingDown=true;
+  sportsurgeCollector?.stop();
   void stopServer().finally(() => app.quit());
 });

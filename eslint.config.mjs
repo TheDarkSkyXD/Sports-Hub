@@ -43,6 +43,7 @@ const eslintConfig = defineConfig([
         { pattern: "lib/stream-relay.ts", category: "relay" },
         { pattern: "lib/{sunday,utils}.ts", category: "pure-lib" },
         { pattern: "desktop/**/*.cjs", category: "desktop" },
+        { pattern: "scripts/verify-sportsurge-catalog.cjs", category: "desktop-verifier" },
         { pattern: "scripts/**/*.{ts,mjs,cjs}", category: "script" },
         { pattern: "tests/**/*.{ts,mjs,cjs}", category: "test" },
       ],
@@ -76,6 +77,7 @@ const eslintConfig = defineConfig([
           { from: { file: { categories: "relay" } }, allow: { to: { file: { categories: { anyOf: ["domain", "shared", "provider-contract", "provider-composition"] } } } } },
           { from: { file: { categories: "pure-lib" } }, allow: { to: { file: { categories: { anyOf: ["pure-lib", "shared"] } } } } },
           { from: { file: { categories: "desktop" } }, allow: { to: { file: { categories: "desktop" } } } },
+          { from: { file: { categories: "desktop-verifier" } }, allow: { to: { file: { categories: "desktop" } } } },
           { from: { file: { categories: "script" } }, allow: { to: { file: { categories: { anyOf: ["adapter", "domain", "shared", "pure-lib"] } } } } },
           { from: { file: { categories: "test" } }, allow: { to: { file: { categories: { anyOf: ["ui", "route", "shared", "domain", "adapter", "store", "runtime", "composition", "server-facade", "relay", "provider-contract", "provider-adapter", "provider-composition", "pure-lib", "desktop", "script", "test"] } } } } },
         ],
@@ -83,7 +85,7 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["desktop/**/*.cjs"],
+    files: ["desktop/**/*.cjs", "scripts/verify-sportsurge-catalog.cjs"],
     rules: { "@typescript-eslint/no-require-imports": "off" },
   },
   {

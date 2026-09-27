@@ -51,7 +51,7 @@ test('source snapshot counts distinct current listings, canonical games, and com
   const snapshot=sourceInventory({at,revision:7,lastDiscoveryAt:at-1000,sources,observations,
     games:[florida,georgia,finished],candidates:new Map([[florida.id,[candidate('gooz-57069',['tvapp','sportsurge','old-source']),
       candidate('gooz-57069',['tvapp']),candidate('old',['tvapp'],at-31*60_000)]]]),
-    attempts:{tvapp:{at,outcome:'parsed'},sportsurge:{at,outcome:'failed'}}});
+    attempts:{tvapp:{at,outcome:'parsed'},sportsurge:{at,outcome:'failed'}},sportsurgeCatalog:{current:null,lastComplete:null,previous:null}});
   assert.equal(SourcesSnapshotSchema.safeParse(snapshot).success,true);
   assert.equal(snapshot.sources[0].listingCount,7);
   assert.ok(snapshot.sources[0].links.some(link=>link.url===first+'?channel=backup'));
