@@ -10,6 +10,13 @@
 .source-inventory-heading button{display:flex;align-items:center;gap:6px;flex-shrink:0;font-size:12px}
 .source-inventory-error{font-size:12px;color:#ff9b89;margin:0}
 .source-inventory-list{max-height:280px;overflow:auto;border:1px solid #353a44;border-radius:6px}
+.source-inventory-game-list{max-height:none;overflow:visible}
+.source-inventory-game-search{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;font-size:12px;color:#a2aab8}
+.source-inventory-game-search>div{display:flex;gap:8px;min-width:min(100%,280px);flex:1}
+.source-inventory-game-search input{min-width:0;flex:1;background:#111319;border:1px solid #3b404b;border-radius:6px;padding:7px 9px;color:#eef0f5}
+.source-inventory-game-search button{color:#ffac9b}
+.source-inventory-game-search button:disabled{color:#727985}
+.source-inventory-game-search p{margin:0}
 .source-inventory-item+.source-inventory-item{border-top:1px solid #353a44}
 .source-inventory-item summary{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center;cursor:pointer;padding:10px 12px;list-style:none}
 .source-inventory-item summary::-webkit-details-marker{display:none}
