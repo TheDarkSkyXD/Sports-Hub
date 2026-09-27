@@ -50,11 +50,21 @@ export const ObservationSchema = z.object({
 });
 export type Observation = z.infer<typeof ObservationSchema>;
 export type Match = { kind: 'matched'; gameId: string } | { kind: 'unmatched'; reason: string; possibleGameIds: string[] };
-export const CandidateSchema = z.object({
-  id: z.string(), gameId: z.string(), playerId: z.string(), url: z.string().url(),
-  label: z.string(), sourceIds: z.array(z.string()), observedAt: z.number(),
+export const CandidateSummarySchema = z.object({
+  id: z.string(), gameId: z.string(), label: z.string(), sourceIds: z.array(z.string()), observedAt: z.number(),
 });
+export type CandidateSummary = z.infer<typeof CandidateSummarySchema>;
+export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
+  z.object({provider:z.literal('gooz'),playerId:z.string().regex(/^\d{1,20}$/)}),
+  z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid()}),
+]);
+export type CandidateLocator = z.infer<typeof CandidateLocatorSchema>;
+export const CandidateSchema = CandidateSummarySchema.extend({locator:CandidateLocatorSchema});
 export type Candidate = z.infer<typeof CandidateSchema>;
+export function candidateSummary(candidate: Candidate): CandidateSummary {
+  const {id,gameId,label,sourceIds,observedAt} = candidate;
+  return {id,gameId,label,sourceIds,observedAt};
+}
 const SessionFields = z.object({
   id: z.string(), gameId: z.string(), candidateId: z.string(), generation: z.number(),
 });
@@ -64,7 +74,7 @@ export const SessionSchema = z.discriminatedUnion('state',[
   SessionFields.extend({state:z.literal('closed'),graceEndsAt:z.number()}).strict(),
 ]);
 export type Session = z.infer<typeof SessionSchema>;
-export const PlaybackSchema = z.object({ session: SessionSchema, candidates: z.array(CandidateSchema) });
+export const PlaybackSchema = z.object({ session: SessionSchema, candidates: z.array(CandidateSummarySchema) });
 export type Playback = z.infer<typeof PlaybackSchema>;
 export const CommandSchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('board')}),
@@ -79,7 +89,7 @@ export type Command = z.infer<typeof CommandSchema>;
 export const ReplySchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('board'),board:BoardSchema}),
   z.object({kind:z.literal('playback'),playback:PlaybackSchema}),
-  z.object({kind:z.literal('session'),session:SessionSchema,candidates:z.array(CandidateSchema)}),
+  z.object({kind:z.literal('session'),session:SessionSchema,candidates:z.array(CandidateSummarySchema)}),
   z.object({kind:z.literal('authorized'),candidate:CandidateSchema,session:SessionSchema}),
   z.object({kind:z.literal('ok')}),
   z.object({kind:z.literal('error'),status:z.number(),message:z.string(),retryAfter:z.number().int().nonnegative().optional()}),

@@ -1,0 +1,69 @@
+import type { CandidateLocator } from '../../football/shared.ts';
+import { boundedText, sanitizedRead, type PlaybackProvider, type ProviderPlayback, type ProviderResource, type ResourceKind } from '../provider.ts';
+
+type GoozLocator = Extract<CandidateLocator,{provider:'gooz'}>;
+const VARIANT_HOSTS = new Set(['red.redirector1.space','pl.kamfir5.space','pl.goozekhar2.space','pl.playlist3.space','pl.playlist4.space','pl.playlist5.space','pl.playlist6.space']);
+const headers = {'User-Agent':'Mozilla/5.0',Referer:'https://gooz.aapmains.net/',Origin:'https://gooz.aapmains.net'};
+
+export function validGoozResourceUrl(value: string, playerId: string, kind: ResourceKind): boolean {
+  try {
+    const authority = /^https:\/\/([^/?#]+)/.exec(value)?.[1];
+    if (!authority || authority.includes(':') || authority.includes('@')) return false;
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.hash || url.username || url.password || url.port || url.hostname !== authority) return false;
+    if (kind === 'playlist') {
+      if (url.search) return false;
+      if (url.hostname === 'chatgpt.hereisman.net') return url.pathname === `/playlist/${playerId}/load-playlist`;
+      if (!VARIANT_HOSTS.has(url.hostname)) return false;
+      const match = /^\/playlist\/\d{1,20}\/([a-z0-9]{1,32})\/caxi$/.exec(url.pathname);
+      return !!match && url.pathname === `/playlist/${playerId}/${match[1]}/caxi`;
+    }
+    if (!/^[a-z0-9]{1,32}\.[a-f0-9]{32}(?:\.(?:us|eu|fedramp))?\.r2\.cloudflarestorage\.com$/.test(url.hostname)) return false;
+    const match = /^\/scripts\/([^/]+)\/([A-Za-z0-9._-]+)$/.exec(url.pathname);
+    if (!match || match[1] !== encodeURIComponent(Buffer.from(playerId,'utf8').toString('base64'))) return false;
+    const signatures=url.searchParams.getAll('X-Amz-Signature');
+    return signatures.length===1 && /^[a-f0-9]{64}$/i.test(signatures[0]);
+  } catch { return false; }
+}
+
+export function goozSourceFromEmbed(html: string, playerId: string): string | null {
+  const direct=/\b(?:const|let|var)\s+source\s*=\s*['"]([^'"]+)['"]/.exec(html)?.[1];
+  const encoded=/\batobClappr\s*\(\s*['"]([A-Za-z0-9+/=]+)['"]\s*\)/.exec(html)?.[1];
+  const url=direct || (encoded ? Buffer.from(encoded,'base64').toString('utf8') : null);
+  return url && validGoozResourceUrl(url,playerId,'playlist') ? url : null;
+}
+
+function identity(url: string, kind: ResourceKind): string {
+  if (kind === 'playlist') return url;
+  const address=new URL(url);
+  for (const name of [...address.searchParams.keys()]) if (/^X-Amz-(?:Signature|Date|Expires|Credential|Security-Token|Algorithm|SignedHeaders)$/i.test(name)) address.searchParams.delete(name);
+  return address.href;
+}
+
+export function goozResource(url: string, playerId: string, kind: ResourceKind, fetcher: typeof fetch = fetch): ProviderResource | null {
+  if (!validGoozResourceUrl(url,playerId,kind)) return null;
+  return {
+    kind,identity:identity(url,kind),
+    async read({signal,range}) {
+      const response=await fetcher(url,{cache:'no-store',redirect:'manual',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:{...headers,...(range?{Range:range}:{})}});
+      return sanitizedRead(response);
+    },
+    resolve(reference,expected) {
+      try { return goozResource(new URL(reference,url).href,playerId,expected,fetcher); } catch { return null; }
+    },
+  };
+}
+
+export const goozProvider: PlaybackProvider<GoozLocator> = {
+  provider:'gooz',
+  async open(locator,signal): Promise<ProviderPlayback> {
+    const {playerId}=locator;
+    if (!/^\d{1,20}$/.test(playerId)) throw new Error('Unsupported Gooz player');
+    const response=await fetch(`https://gooz.aapmains.net/new-stream-embed/${playerId}`,
+      {cache:'no-store',redirect:'manual',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers});
+    const source=goozSourceFromEmbed(await boundedText(response),playerId);
+    const root=source && goozResource(source,playerId,'playlist');
+    if (!root) throw new Error('Gooz player did not publish supported HLS');
+    return {root,close() {}};
+  },
+};

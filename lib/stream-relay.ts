@@ -1,181 +1,192 @@
 import { randomBytes } from 'node:crypto';
 import { SESSION_LEASE_MS } from './football/domain/lifecycle.ts';
+import type { CandidateLocator } from './football/shared.ts';
+import { openProvider } from './playback/provider-registry.ts';
+import type { ProviderPlayback, ProviderResource, ResourceKind } from './playback/provider.ts';
 
-export type ResourceKind = 'playlist' | 'media';
-export type StreamGrant = { sessionId: string; candidateId: string; generation: number; gameId: string; playerId: string };
-type Resource = StreamGrant & { kind: ResourceKind; url: string; usedAt: number };
-type Registry = { byToken: Map<string, Resource>; byResource: Map<string, string>; controllers: Map<string, AbortController>; controllerUsedAt: Map<string, number>; revoked: Map<string, number>; timer?: ReturnType<typeof setInterval> };
-declare global { var sundayRoomStreamRegistry: Registry | undefined; }
-const registry: Registry = globalThis.sundayRoomStreamRegistry ??= { byToken: new Map(), byResource: new Map(), controllers: new Map(), controllerUsedAt: new Map(), revoked: new Map() };
-registry.controllers ??= new Map();
-registry.controllerUsedAt ??= new Map();
-registry.revoked ??= new Map();
-const IDLE_MS = 5 * 60 * 1000;
-const MAX_RESOURCES = 4096;
-const VARIANT_HOSTS = new Set(['red.redirector1.space', 'pl.kamfir5.space', 'pl.goozekhar2.space', 'pl.playlist3.space', 'pl.playlist4.space', 'pl.playlist5.space', 'pl.playlist6.space']);
-export const providerHeaders = { 'User-Agent': 'Mozilla/5.0', Referer: 'https://gooz.aapmains.net/', Origin: 'https://gooz.aapmains.net' };
-export function validByteRange(value: string): boolean {
-  const start = /^bytes=(\d+)-(\d*)$/.exec(value);
-  if (start) return !start[2] || BigInt(start[1]) <= BigInt(start[2]);
-  const suffix = /^bytes=-(\d+)$/.exec(value);
-  return !!suffix && BigInt(suffix[1]) > BigInt(0);
+export type StreamGrant = {sessionId:string; candidateId:string; generation:number; gameId:string};
+type Resource = StreamGrant & {kind:ResourceKind; resource:ProviderResource; usedAt:number};
+type PlaybackState = {locator:CandidateLocator; opening?:Promise<ProviderPlayback>; openingController?:AbortController;
+  waiters:number; playback?:ProviderPlayback};
+type Registry = {
+  byToken:Map<string,Resource>; byResource:Map<string,string>;
+  controllers:Map<string,AbortController>; controllerUsedAt:Map<string,number>;
+  playbacks:Map<string,PlaybackState>; revoked:Map<string,number>; timer?:ReturnType<typeof setInterval>;
+};
+declare global {var sundayRoomStreamRegistry:Registry | undefined;}
+const registry:Registry=globalThis.sundayRoomStreamRegistry ??= {
+  byToken:new Map(),byResource:new Map(),controllers:new Map(),controllerUsedAt:new Map(),playbacks:new Map(),revoked:new Map(),
+};
+const IDLE_MS=5*60_000;
+const MAX_RESOURCES=4096;
+const grantKey=(grant:Pick<StreamGrant,'sessionId'|'generation'>)=>`${grant.sessionId}:${grant.generation}`;
+
+export function validByteRange(value:string):boolean {
+  const start=/^bytes=(\d+)-(\d*)$/.exec(value);
+  if (start) return !start[2] || BigInt(start[1])<=BigInt(start[2]);
+  const suffix=/^bytes=-(\d+)$/.exec(value);
+  return !!suffix && BigInt(suffix[1])>BigInt(0);
 }
 
-export function validResourceUrl(value: string, playerId: string, kind: ResourceKind): boolean {
-  try {
-    const authority = /^https:\/\/([^/?#]+)/.exec(value)?.[1];
-    if (!authority || authority.includes(':') || authority.includes('@')) return false;
-    const url = new URL(value);
-    if (url.protocol !== 'https:' || url.hash || url.username || url.password || url.port || url.hostname !== authority) return false;
-    if (kind === 'playlist') {
-      if (url.search) return false;
-      if (url.hostname === 'chatgpt.hereisman.net') return url.pathname === `/playlist/${playerId}/load-playlist`;
-      if (!VARIANT_HOSTS.has(url.hostname)) return false;
-      const match = /^\/playlist\/\d{1,20}\/([a-z0-9]{1,32})\/caxi$/.exec(url.pathname);
-      return !!match && url.pathname === `/playlist/${playerId}/${match[1]}/caxi`;
-    }
-    if (!/^[a-z0-9]{1,32}\.[a-f0-9]{32}(?:\.(?:us|eu|fedramp))?\.r2\.cloudflarestorage\.com$/.test(url.hostname)) return false;
-    const match = /^\/scripts\/([^/]+)\/([A-Za-z0-9._-]+)$/.exec(url.pathname);
-    if (!match || match[1] !== encodeURIComponent(Buffer.from(playerId, 'utf8').toString('base64'))) return false;
-    const signatures = url.searchParams.getAll('X-Amz-Signature');
-    return signatures.length === 1 && /^[a-f0-9]{64}$/i.test(signatures[0]);
-  } catch { return false; }
+function key(record:Pick<Resource,keyof StreamGrant|'kind'|'resource'>):string {
+  return `${grantKey(record)}\n${record.candidateId}\n${record.gameId}\n${record.kind}\n${record.resource.identity}`;
 }
-
-export function sourceFromEmbed(html: string, playerId: string): string | null {
-  const direct = /\b(?:const|let|var)\s+source\s*=\s*['"]([^'"]+)['"]/.exec(html)?.[1];
-  const encoded = /\batobClappr\s*\(\s*['"]([A-Za-z0-9+/=]+)['"]\s*\)/.exec(html)?.[1];
-  const url = direct || (encoded ? Buffer.from(encoded, 'base64').toString('utf8') : null);
-  return url && validResourceUrl(url, playerId, 'playlist') ? url : null;
-}
-
-function key(resource: Pick<Resource, keyof StreamGrant | 'kind' | 'url'>): string {
-  const address = new URL(resource.url);
-  if (resource.kind === 'media') {
-    for (const name of [...address.searchParams.keys()]) if (/^X-Amz-(?:Signature|Date|Expires|Credential|Security-Token|Algorithm|SignedHeaders)$/i.test(name)) address.searchParams.delete(name);
-  }
-  return `${resource.sessionId}\n${resource.candidateId}\n${resource.generation}\n${resource.gameId}\n${resource.playerId}\n${resource.kind}\n${address.href}`;
-}
-function remove(token: string, resource: Resource): void {
+function remove(token:string,resource:Resource):void {
   registry.byToken.delete(token);
-  const resourceKey = key(resource);
-  if (registry.byResource.get(resourceKey) === token) registry.byResource.delete(resourceKey);
+  const resourceKey=key(resource);
+  if (registry.byResource.get(resourceKey)===token) registry.byResource.delete(resourceKey);
 }
-const grantKey = (grant: Pick<StreamGrant, 'sessionId' | 'generation'>) => `${grant.sessionId}:${grant.generation}`;
-export function streamSignal(grant: StreamGrant): AbortSignal {
-  const key = grantKey(grant);
-  const now = Date.now();
-  for (const [revokedKey, at] of registry.revoked) if (now - at > 10 * 60_000) registry.revoked.delete(revokedKey);
-  if (registry.revoked.has(key) || registry.revoked.has(grant.sessionId)) return AbortSignal.abort();
-  let controller = registry.controllers.get(key);
-  if (!controller) { controller = new AbortController(); registry.controllers.set(key, controller); }
-  registry.controllerUsedAt.set(key, now);
+function closePlayback(id:string):void {
+  const state=registry.playbacks.get(id);
+  registry.playbacks.delete(id);
+  state?.openingController?.abort();
+  state?.playback?.close();
+}
+
+export function streamSignal(grant:StreamGrant):AbortSignal {
+  const id=grantKey(grant);
+  const now=Date.now();
+  for (const [revoked,at] of registry.revoked) if (now-at>10*60_000) registry.revoked.delete(revoked);
+  if (registry.revoked.has(id) || registry.revoked.has(grant.sessionId)) return AbortSignal.abort();
+  let controller=registry.controllers.get(id);
+  if (!controller) {controller=new AbortController();registry.controllers.set(id,controller);}
+  registry.controllerUsedAt.set(id,now);
   return controller.signal;
 }
-export function touchStreamSession(sessionId: string, generation: number, now = Date.now()): void {
-  const key=`${sessionId}:${generation}`;
-  if (registry.controllers.has(key)) registry.controllerUsedAt.set(key,now);
-}
-export function revokeGeneration(sessionId: string, keepGeneration: number): void {
-  for (const key of registry.controllers.keys()) {
-    if (key.startsWith(`${sessionId}:`) && key !== `${sessionId}:${keepGeneration}`) revokeStreamGeneration(sessionId, Number(key.slice(sessionId.length + 1)));
+
+export async function openGeneration(grant:StreamGrant,locator:CandidateLocator,requestSignal:AbortSignal,
+  opener:typeof openProvider=openProvider):Promise<ProviderPlayback> {
+  const id=grantKey(grant);
+  const generationSignal=streamSignal(grant);
+  if (generationSignal.aborted || requestSignal.aborted) throw new Error('Stream generation ended');
+  let state=registry.playbacks.get(id);
+  if (state && JSON.stringify(state.locator)!==JSON.stringify(locator)) throw new Error('Stream candidate changed');
+  if (state?.playback) return state.playback;
+  if (!state) {state={locator,waiters:0};registry.playbacks.set(id,state);}
+  if (!state.opening) {
+    const owned=state;
+    owned.openingController=new AbortController();
+    const signal=AbortSignal.any([generationSignal,owned.openingController.signal]);
+    owned.opening=Promise.resolve().then(()=>opener(locator,signal)).then(playback=>{
+      if (signal.aborted || registry.playbacks.get(id)!==owned) {playback.close();throw new Error('Stream generation ended');}
+      owned.playback=playback;
+      owned.opening=undefined;
+      return playback;
+    }).catch(error=>{
+      if (registry.playbacks.get(id)===owned) registry.playbacks.delete(id);
+      owned.opening=undefined;
+      throw error;
+    });
   }
-  for (const resource of registry.byToken.values()) if (resource.sessionId === sessionId && resource.generation !== keepGeneration) revokeStreamGeneration(sessionId, resource.generation);
-}
-export function revokeStreamGeneration(sessionId: string, generation: number): void {
-  const key = `${sessionId}:${generation}`;
-  const controller = registry.controllers.get(key);
-  controller?.abort();
-  registry.controllers.delete(key);
-  registry.controllerUsedAt.delete(key);
-  registry.revoked.set(key, Date.now());
-  for (const [token, resource] of registry.byToken) if (resource.sessionId === sessionId && resource.generation === generation) remove(token, resource);
-}
-export function revokeSession(sessionId: string): void {
-  registry.revoked.set(sessionId, Date.now());
-  for (const [key, controller] of registry.controllers) {
-    if (key.startsWith(`${sessionId}:`)) { controller.abort(); registry.controllers.delete(key); registry.controllerUsedAt.delete(key); }
+  if (!state.opening) throw new Error('Provider opening ended');
+  state.waiters++;
+  const owned=state;
+  const opening=state.opening;
+  let onAbort:()=>void=()=>{};
+  const cancelled=new Promise<never>((_resolve,reject)=>{
+    onAbort=()=>reject(new Error('Stream request ended'));
+    requestSignal.addEventListener('abort',onAbort,{once:true});
+  });
+  try {return await Promise.race([opening,cancelled]);}
+  finally {
+    requestSignal.removeEventListener('abort',onAbort);
+    owned.waiters--;
+    if (owned.waiters===0 && owned.opening && registry.playbacks.get(id)===owned) {
+      registry.playbacks.delete(id);
+      owned.openingController?.abort();
+    }
   }
-  for (const [token, resource] of registry.byToken) if (resource.sessionId === sessionId) remove(token, resource);
-}
-export function resourceCount(): number { return registry.byToken.size; }
-export function expireIdleStreams(now = Date.now()): void {
-  for (const [key, usedAt] of registry.controllerUsedAt) {
-    if (now - usedAt <= SESSION_LEASE_MS + 30_000) continue;
-    const split = key.lastIndexOf(':');
-    revokeStreamGeneration(key.slice(0, split), Number(key.slice(split + 1)));
-  }
-  for (const [token, resource] of registry.byToken) if (now - resource.usedAt > IDLE_MS) remove(token, resource);
-  for (const [key, at] of registry.revoked) if (now - at > 10 * 60_000) registry.revoked.delete(key);
-}
-registry.timer ??= setInterval(() => expireIdleStreams(),15_000);
-registry.timer.unref();
-function prune(): void {
-  expireIdleStreams();
-  while (registry.byToken.size >= MAX_RESOURCES) {
-    const oldest = [...registry.byToken].reduce((a, b) => a[1].usedAt <= b[1].usedAt ? a : b);
-    remove(oldest[0], oldest[1]);
-  }
-}
-export function registerResource(grant: StreamGrant, url: string, kind: ResourceKind): string {
-  if (streamSignal(grant).aborted) throw new Error('Stream generation ended');
-  if (!validResourceUrl(url, grant.playerId, kind)) {
-    console.warn('Unsupported stream resource:', kind);
-    throw new Error('Unsupported stream resource');
-  }
-  prune();
-  const resource = { ...grant, kind, url };
-  const existing = registry.byResource.get(key(resource));
-  if (existing) { const saved = registry.byToken.get(existing); if (saved) { saved.url = url; saved.usedAt = Date.now(); return existing; } }
-  const token = randomBytes(24).toString('hex');
-  registry.byToken.set(token, { ...resource, usedAt: Date.now() });
-  registry.byResource.set(key(resource), token);
-  return token;
-}
-export function registeredResource(token: string): Resource | null {
-  if (!/^[a-f0-9]{48}$/.test(token)) return null;
-  const resource = registry.byToken.get(token);
-  if (!resource) return null;
-  if (Date.now() - resource.usedAt > IDLE_MS) { remove(token, resource); return null; }
-  resource.usedAt = Date.now();
-  return resource;
 }
 
-export function rewritePlaylist(body: string, base: string, grant: StreamGrant): string {
+export function touchStreamSession(sessionId:string,generation:number,now=Date.now()):void {
+  const id=`${sessionId}:${generation}`;
+  if (registry.controllers.has(id)) registry.controllerUsedAt.set(id,now);
+}
+export function revokeGeneration(sessionId:string,keepGeneration:number):void {
+  for (const id of registry.controllers.keys()) if (id.startsWith(`${sessionId}:`) && id!==`${sessionId}:${keepGeneration}`)
+    revokeStreamGeneration(sessionId,Number(id.slice(sessionId.length+1)));
+  for (const resource of registry.byToken.values()) if (resource.sessionId===sessionId && resource.generation!==keepGeneration)
+    revokeStreamGeneration(sessionId,resource.generation);
+}
+export function revokeStreamGeneration(sessionId:string,generation:number):void {
+  const id=`${sessionId}:${generation}`;
+  registry.controllers.get(id)?.abort();
+  registry.controllers.delete(id);
+  registry.controllerUsedAt.delete(id);
+  registry.revoked.set(id,Date.now());
+  closePlayback(id);
+  for (const [token,resource] of registry.byToken) if (resource.sessionId===sessionId && resource.generation===generation) remove(token,resource);
+}
+export function revokeSession(sessionId:string):void {
+  registry.revoked.set(sessionId,Date.now());
+  for (const id of registry.controllers.keys()) if (id.startsWith(`${sessionId}:`)) {
+    registry.controllers.get(id)?.abort();
+    registry.controllers.delete(id);
+    registry.controllerUsedAt.delete(id);
+    closePlayback(id);
+  }
+  for (const [token,resource] of registry.byToken) if (resource.sessionId===sessionId) remove(token,resource);
+}
+export function resourceCount():number {return registry.byToken.size;}
+export function expireIdleStreams(now=Date.now()):void {
+  for (const [id,usedAt] of registry.controllerUsedAt) if (now-usedAt>SESSION_LEASE_MS+30_000) {
+    const split=id.lastIndexOf(':');
+    revokeStreamGeneration(id.slice(0,split),Number(id.slice(split+1)));
+  }
+  for (const [token,resource] of registry.byToken) if (now-resource.usedAt>IDLE_MS) remove(token,resource);
+  for (const [id,at] of registry.revoked) if (now-at>10*60_000) registry.revoked.delete(id);
+}
+registry.timer ??=setInterval(()=>expireIdleStreams(),15_000);
+registry.timer.unref();
+function prune():void {
+  expireIdleStreams();
+  while (registry.byToken.size>=MAX_RESOURCES) {
+    const oldest=[...registry.byToken].reduce((a,b)=>a[1].usedAt<=b[1].usedAt?a:b);
+    remove(oldest[0],oldest[1]);
+  }
+}
+
+export function registerResource(grant:StreamGrant,resource:ProviderResource):string {
+  if (streamSignal(grant).aborted) throw new Error('Stream generation ended');
+  prune();
+  const record={...grant,kind:resource.kind,resource};
+  const previous=registry.byResource.get(key(record));
+  if (previous) {
+    const saved=registry.byToken.get(previous);
+    if (saved) {saved.resource=resource;saved.usedAt=Date.now();return previous;}
+  }
+  const token=randomBytes(24).toString('hex');
+  registry.byToken.set(token,{...record,usedAt:Date.now()});
+  registry.byResource.set(key(record),token);
+  return token;
+}
+export function registeredResource(token:string):Resource | null {
+  if (!/^[a-f0-9]{48}$/.test(token)) return null;
+  const record=registry.byToken.get(token);
+  if (!record) return null;
+  if (Date.now()-record.usedAt>IDLE_MS) {remove(token,record);return null;}
+  record.usedAt=Date.now();
+  return record;
+}
+
+export function rewritePlaylist(body:string,source:ProviderResource,grant:StreamGrant):string {
   if (!body.startsWith('#EXTM3U')) throw new Error('Invalid HLS playlist');
-  let nextIsPlaylist = false;
-  return body.split(/\r?\n/).map(line => {
+  let nextIsPlaylist=false;
+  return body.split(/\r?\n/).map(line=>{
     if (line.startsWith('#')) {
-      if (line.startsWith('#EXT-X-STREAM-INF:')) nextIsPlaylist = true;
-      return line.replace(/URI="([^"]+)"/g, (_attribute, value: string) => {
-        const kind: ResourceKind = /^(#EXT-X-MEDIA|#EXT-X-I-FRAME-STREAM-INF|#EXT-X-RENDITION-REPORT)/.test(line) ? 'playlist' : 'media';
-        const token = registerResource(grant, new URL(value, base).href, kind);
-        return `URI="/api/stream/media/${token}"`;
+      if (line.startsWith('#EXT-X-STREAM-INF:')) nextIsPlaylist=true;
+      return line.replace(/URI="([^"]+)"/g,(_attribute,value:string)=>{
+        const kind:ResourceKind=/^(#EXT-X-MEDIA|#EXT-X-I-FRAME-STREAM-INF|#EXT-X-RENDITION-REPORT)/.test(line)?'playlist':'media';
+        const child=source.resolve(value,kind);
+        if (!child) throw new Error('Unsupported stream resource');
+        return `URI="/api/stream/media/${registerResource(grant,child)}"`;
       });
     }
     if (!line.trim()) return line;
-    const kind: ResourceKind = nextIsPlaylist ? 'playlist' : 'media';
-    nextIsPlaylist = false;
-    const token = registerResource(grant, new URL(line.trim(), base).href, kind);
-    return `/api/stream/media/${token}`;
+    const kind:ResourceKind=nextIsPlaylist?'playlist':'media';
+    nextIsPlaylist=false;
+    const child=source.resolve(line.trim(),kind);
+    if (!child) throw new Error('Unsupported stream resource');
+    return `/api/stream/media/${registerResource(grant,child)}`;
   }).join('\n');
-}
-
-export async function limitedText(response: Response, limit = 1024 * 1024): Promise<string> {
-  const length = Number(response.headers.get('content-length'));
-  if (length > limit) throw new Error('Manifest is too large');
-  if (!response.body) throw new Error('Manifest is empty');
-  const reader = response.body.getReader();
-  const parts: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > limit) throw new Error('Manifest is too large');
-      parts.push(value);
-    }
-  } catch (error) { await reader.cancel(); throw error; }
-  return Buffer.concat(parts).toString('utf8');
 }
