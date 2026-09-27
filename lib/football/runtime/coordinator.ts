@@ -300,13 +300,13 @@ export class FootballCoordinator {
       if(event.detail.kind!=='collected'||now-event.detail.at>=30*60000)continue;
       const previous=this.candidates.get(game.id)||[];
       const selected=new Set([...this.sessions.values()].filter(owned=>owned.value.gameId===game.id).map(owned=>owned.value.candidateId));
-      const retained=previous.filter(candidate=>candidate.locator.provider!=='streameast'||selected.has(candidate.id));
+      const retained=previous.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id));
       this.candidates.set(game.id,[...new Map([...retained,...streameastCandidates(event,game.id)]
         .map(candidate=>[candidate.id,candidate] as const)).values()]);
     }
     if(current?.state.kind==='complete')for(const [gameId,prior] of this.candidates)if(!currentListed.has(gameId)) {
       const selected=new Set([...this.sessions.values()].filter(owned=>owned.value.gameId===gameId).map(owned=>owned.value.candidateId));
-      this.candidates.set(gameId,prior.filter(candidate=>candidate.locator.provider!=='streameast'||selected.has(candidate.id)));
+      this.candidates.set(gameId,prior.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id)));
     }
   }
   private sourcesSnapshot(): SourcesSnapshot {

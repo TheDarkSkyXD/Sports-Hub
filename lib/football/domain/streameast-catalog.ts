@@ -1,5 +1,5 @@
 import { createObservationMatcher } from './matching.ts';
-import type { Candidate,Game,Match,Observation,SourceMatchReason,StreameastCatalog,StreameastCatalogView,StoredStreameastCatalog } from '../shared.ts';
+import type { Candidate,CandidateLocator,Game,Match,Observation,SourceMatchReason,StreameastCatalog,StreameastCatalogView,StoredStreameastCatalog } from '../shared.ts';
 
 const EVENT_PATH=/^\/(cfb|nfl)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/;
 
@@ -66,11 +66,19 @@ export function streameastCandidates(event:StreameastCatalog['events'][number],g
   if(detail.kind!=='collected')return [];
   const seen=new Set<string>();
   return detail.servers.flatMap(server=>{
-    if(server.availability.kind!=='free-channel'||seen.has(server.availability.channelId))return [];
-    const channelId=server.availability.channelId;
-    seen.add(channelId);
-    return [{id:`streameast:${channelId}`,gameId,label:`StreamEast · ${server.label}`,sourceIds:['streameast'],
-      observedAt:detail.at,locator:{provider:'streameast' as const,channelId}}];
+    const availability=server.availability;
+    let locator:CandidateLocator;
+    let id:string;
+    if(availability.kind==='free-channel') {
+      locator={provider:'streameast',channelId:availability.channelId};
+      id=`streameast:${availability.channelId}`;
+    } else if(availability.kind==='free-wikisport') {
+      locator={provider:'wikisport',section:availability.section,playerId:availability.playerId};
+      id=`wikisport:${availability.section}:${availability.playerId}`;
+    } else return [];
+    if(seen.has(id))return [];
+    seen.add(id);
+    return [{id,gameId,label:`StreamEast · ${server.label}`,sourceIds:['streameast'],observedAt:detail.at,locator}];
   });
 }
 
