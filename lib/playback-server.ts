@@ -1,30 +1,41 @@
-import { getFootballBoard } from './sunday-server';
-import { parsePlayers, SourcePlayer, validGameId, validSourcePage } from './sunday';
+import { command } from './football/runtime/client';
+import type { Playback } from './football/shared';
+import { validGameId } from './sunday';
+import { revokeGeneration, revokeSession, touchStreamSession } from './stream-relay';
 
-export type Playback = { gameId: string; sourceUrl: string; players: SourcePlayer[] };
-export type PlaybackResult = { status: 200; value: Playback } | { status: 400 | 404 | 502; error: string; sourceUrl?: string };
-const cache = new Map<string, { expires: number; value: Playback }>();
+export type PlaybackResult<T> = { status: 200; value: T } | { status: number; error: string; retryAfter?: number };
+const validSessionId = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value);
 
-export async function resolvePlayback(game: unknown): Promise<PlaybackResult> {
-  if (!validGameId(game)) return { status: 400, error: 'Choose a valid game.' };
-  const existing = cache.get(game);
-  if (existing && existing.expires > Date.now()) return { status: 200, value: existing.value };
-  const board = await getFootballBoard();
-  const sourceUrl = game === 'redzone' ? 'https://isportsurge.ws/event/nfl/nfl-redzone-live-streaming-links' : board.games.find(item => item.id === game)?.sourceUrl;
-  if (!sourceUrl || !validSourcePage(sourceUrl)) return { status: 404, error: 'No source player is listed for this game yet.' };
-  try {
-    const read = () => fetch(sourceUrl, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'SundayRoom/1.0', Accept: 'text/html' } });
-    let response = await read();
-    if (response.status >= 500) response = await read();
-    if (!response.ok) throw new Error(`Provider response ${response.status}`);
-    const players = parsePlayers(await response.text());
-    if (!players.length) return { status: 502, error: 'The provider has not published a compatible player for this game.', sourceUrl };
-    const value = { gameId: game, sourceUrl, players };
-    if (cache.size > 64) cache.clear();
-    cache.set(game, { expires: Date.now() + 90000, value });
-    return { status: 200, value };
-  } catch (error) {
-    console.warn('Provider lookup failed:', error instanceof Error ? error.message : 'Unknown error');
-    return { status: 502, error: 'The game provider is temporarily unavailable. Try again shortly.', sourceUrl };
+export async function resolvePlayback(gameId: unknown, manual = false, requestId: unknown): Promise<PlaybackResult<Playback>> {
+  if (!validGameId(gameId)) return { status: 400, error: 'Choose a valid game.' };
+  if (typeof requestId !== 'string' || !/^[0-9a-f-]{36}$/i.test(requestId)) return { status: 400, error: 'Invalid playback request.' };
+  const reply = await command({ kind: 'open', gameId, manual, requestId });
+  if (reply.kind === 'error') return { status: reply.status, error: reply.message };
+  if (reply.kind !== 'playback') return { status: 502, error: 'Unexpected playback response.' };
+  return { status: 200, value: reply.playback };
+}
+
+export async function updatePlayback(sessionId: unknown, generation: unknown, candidateId: unknown, failure: unknown, retry: unknown): Promise<PlaybackResult<Playback>> {
+  if (!validSessionId(sessionId) || typeof generation !== 'number' || !Number.isSafeInteger(generation) || generation < 0 || (candidateId !== undefined && typeof candidateId !== 'string') || (failure !== undefined && typeof failure !== 'boolean') || (retry !== undefined && typeof retry !== 'boolean')) {
+    return { status: 400, error: 'Invalid playback request.' };
   }
+  const reply = await command({ kind: 'session', sessionId, generation, candidateId, failure: failure === true, retry: retry === true });
+  if (reply.kind === 'error') {
+    if (reply.status === 410) revokeSession(sessionId);
+    return { status: reply.status, error: reply.message, retryAfter: 'retryAfter' in reply && typeof reply.retryAfter === 'number' ? reply.retryAfter : undefined };
+  }
+  if (reply.kind !== 'session') return { status: 502, error: 'Unexpected playback response.' };
+  if (reply.session.generation !== generation) revokeGeneration(sessionId, reply.session.generation);
+  if (reply.session.state === 'closed') revokeSession(sessionId);
+  else touchStreamSession(sessionId,reply.session.generation);
+  return { status: 200, value: {session:reply.session,candidates:reply.candidates} };
+}
+
+export async function closePlayback(sessionId: unknown): Promise<PlaybackResult<null>> {
+  if (!validSessionId(sessionId)) return { status: 400, error: 'Invalid playback session.' };
+  revokeSession(sessionId);
+  const reply = await command({ kind: 'close', sessionId });
+  if (reply.kind === 'error') return { status: reply.status, error: reply.message };
+  if (reply.kind !== 'ok') return { status: 502, error: 'Unexpected playback response.' };
+  return { status: 200, value: null };
 }

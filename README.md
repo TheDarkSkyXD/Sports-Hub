@@ -47,7 +47,7 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 
 ### Requirements
 
-- **Node.js 22.13 or newer**, with npm.
+- **Node.js 24 or newer**, with npm. The pipeline uses Node's SQLite and TypeScript runtime support.
 - **Git** to clone the repository.
 - An internet connection for game data, provider pages, and video.
 - **Windows** for the included double-click launcher. The desktop workflow has been verified on Windows; other operating systems have not been validated.
@@ -133,33 +133,37 @@ Shortcuts apply while the room interface has keyboard focus. They are suspended 
 ```mermaid
 flowchart TD
     UI["Sunday Room · React interface"] --> Games["GET /api/games"]
-    Games --> Scores["ESPN NFL and college football scoreboards"]
-    Games --> Directory["Sportsurge NFL and CFB directories"]
+    Games --> Pipeline["App-owned football worker and SQLite"]
+    Pipeline --> Scores["ESPN NFL, FBS, and FCS schedules"]
+    Pipeline --> Directory["17 registered discovery sources"]
     UI --> Resolve["GET /api/playback?game=ID"]
-    Resolve --> Page["Known game source page"]
-    Page --> Links["Validated player addresses"]
+    Resolve --> Session["Independent playback session"]
+    Session --> Pipeline
+    Session --> Links["Matched compatible stream candidates"]
     Links --> Player["Browser and desktop: validated HLS relay and in-tile video"]
     UI --> Direct["Direct feeds: video / hls.js"]
 ```
 
 ### Data and source resolution
 
-- **Scores and game state:** ESPN's public NFL scoreboard and FBS college football scoreboard.
-- **Game links:** the [Sportsurge NFL directory](https://isportsurge.ws/nfl/livestreams3) and [CFB directory](https://isportsurge.ws/cfb/livestreams2). Team pairs are matched within each league without assuming the directory's home/away order. Listings absent from ESPN's scoreboard still appear in the game center.
-- **Refresh:** the visible room polls every 30 seconds. The server caches game data for 25 seconds and retains previous data with stale-data messages when an upstream fails.
-- **Player lookup:** known game IDs resolve through validated source pages. Supported player addresses are cached for 90 seconds, with up to six distinct listed servers.
-- **Browser stream:** the local server rewrites supported HLS playlists to opaque, short-lived media paths and streams player-specific media from validated Cloudflare R2 addresses published by trusted playlists. It refreshes an expired source up to twice per minute per server before trying the next listed server. Stream availability depends on the provider publishing a compatible player and HLS source.
-- **Separation:** provider links never supply or overwrite scoreboard scores. No fabricated scores or prerecorded demo broadcasts are presented as live games.
+- ESPN supplies NFL, FBS, and FCS schedules. The pipeline merges overlapping college events by ESPN ID and records season-specific team membership separately.
+- The [source registry](lib/football/adapters/sources.ts) accounts for 17 discovery URLs. Automatic matching requires both teams and compatible kickoff evidence. Ambiguous, stale, and unmatched listings stay in internal diagnostics.
+- The worker refreshes schedules independently of the visible room. On an outage, it keeps bounded last-good data with a stale warning and prevents unsafe new associations.
+- Playback uses stable candidate and session IDs. Supported media plays through the existing custom player. A fetched listing is not evidence of playable video, and sources without a compatible resolver remain unavailable.
+- The local relay validates provider addresses and scopes media access to the selected session and stream generation. Recovery first refreshes a locator, then tries another eligible candidate within a bounded budget.
+- ESPN alone supplies scores and final-game state. Provider failures never mark a game finished.
 
 ### Desktop isolation
 
-The room renderer uses sandboxing, context isolation, and browser security with no Node.js access. Its preload bridge exposes a limited set of operations. The main process validates IPC senders and game identifiers. HLS playback uses the same validated local stream routes as the browser app.
+The room renderer uses sandboxing, context isolation, and browser security with no Node.js access. HLS playback uses the same validated local stream routes as the browser app. The desktop process supervises the local server, and a worker owns the pipeline database and collection jobs.
 
 ### Storage and network behavior
 
-Preferences and manually entered feed URLs use local browser storage under `sunday-room:v1`. Browser and desktop sessions have separate storage. Selected live games automatically reconnect when the room opens or their source becomes available. Pause and Stop choices survive score refreshes during the session; reopening the room restores default live playback. A stream already playing stays open when the scoreboard marks the game final.
+Preferences and manually entered feed URLs use local browser storage under `sunday-room:v1`. Browser and desktop sessions have separate storage. Selected live games reconnect when the room opens or a compatible source becomes available. Legacy source IDs migrate only after a confident match. Saved feed URLs remain preferences when their active playback ends.
 
-There is no account service, database, or cloud preference sync. Local servers bind to `127.0.0.1`. Scoreboard, image, and player requests still contact their respective providers, whose own network behavior and tracking are outside this application's control. Saved feed URLs are not encrypted.
+When ESPN confirms a final, the game leaves live discovery immediately. Existing playback has five minutes to finish. The persisted deadline does not reset on another poll or restart. The same rule applies to manual game feeds.
+
+The pipeline stores bounded observations, diagnostics, identity mappings, and final deadlines in local SQLite. Desktop data lives in Electron's user-data directory. Browser development defaults to `.desktop-runtime/`. Collection runs while the desktop app is open, including when minimized, and stops with its owned server. There is no cloud collector or preference sync. Local servers bind to `127.0.0.1`; provider requests still use the internet. Saved feed URLs are not encrypted.
 
 ## Development
 
@@ -207,34 +211,36 @@ The `Electron release` workflow builds and tests the Windows installer on pull r
 | `npm run desktop:package` | Build the Windows x64 NSIS installer from the compiled app |
 | `npm run desktop:smoke` | Check the packaged Windows executable |
 | `npm run typecheck` | Check TypeScript without emitting files |
-| `npm test` | Run parser and desktop boundary tests |
+| `npm test` | Run matching, lifecycle, storage, relay, and desktop tests |
+| `npm run lint` | Check code and module boundaries |
+| `npm run diagnostics:football` | Print bounded local source and matching diagnostics |
 
-No environment variables or API keys are required. Optional `SUNDAY_ROOM_DIAGNOSTICS=1` enables local desktop player diagnostics and captures under the ignored `.desktop-runtime/` directory.
+No API key is required. Set `SUNDAY_ROOM_DATA_DIR` when inspecting a database outside the browser development directory. Run `npm run diagnostics:football -- --listings` to include up to 25 parsed listings and their matching reasons. Internal diagnostics do not appear in the viewing UI.
 
 ### Project structure
 
 ```text
 Sports-Hub/
 ├── app/
-│   ├── api/games/route.ts       # Scoreboard and directory aggregation
-│   ├── api/playback/route.ts    # Player lookup for known games
+│   ├── api/games/route.ts       # Validated viewer snapshot
+│   ├── api/playback/route.ts    # Playback sessions
 │   ├── api/stream/              # Validated browser HLS playlists and media
-│   ├── play/[gameId]/route.ts   # Browser redirect to a player
+│   ├── play/[gameId]/route.ts   # Deep link into the room
 │   ├── page.tsx                # Room, schedule, and preferences
 │   └── globals.css             # Theme and responsive layouts
 ├── components/
 │   ├── game-player.tsx         # Direct video and HLS
-│   ├── browser-provider-player.tsx # Browser provider controls
-│   ├── provider-player.tsx     # Desktop player state and positioning
+│   ├── browser-provider-player.tsx # Session lifecycle and recovery
 │   └── ui/                     # Shared UI primitives
 ├── desktop/
-│   ├── main.cjs                # Local server and player views
-│   ├── preload.cjs             # Narrow desktop bridge
-│   └── security.cjs            # Address, game ID, and bounds checks
+│   ├── main.cjs                # Desktop window and owned local server
+│   ├── server-supervisor.cjs   # Stop the Next process tree with Electron
+│   └── preload.cjs             # Desktop identification
 ├── docs/
 │   ├── assets/                 # Generated README artwork
 │   └── visuals.md              # Artwork provenance and prompts
-├── lib/sunday.ts               # Models, parsers, matching, ranking
+├── lib/football/               # Contracts, matching, adapters, and worker
+├── lib/sunday.ts               # Score parsing and shared display helpers
 ├── tests/                      # Node test runner suites
 ├── vendor/                     # Vendored styles and their license
 └── Start Sunday Room.cmd       # Windows launcher
@@ -247,10 +253,11 @@ Sports-Hub/
 ```sh
 npm test
 npm run typecheck
+npm run lint
 npm run build
 ```
 
-The automated tests cover NFL and NCAA directory extraction, scoreboard parsing, home/away matching, unmatched source listings, missing scores, red-zone ranking, feed validation, player ordering, source restrictions, and native view bounds.
+The automated tests cover source extraction, dated matching, ambiguous listings, overlapping college schedules, season membership, persisted final deadlines, session isolation, relay restrictions, and worker ownership.
 
 To verify the custom browser player, start the app in one terminal and run the browser checks in another:
 

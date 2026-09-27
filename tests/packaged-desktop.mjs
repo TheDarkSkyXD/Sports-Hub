@@ -28,7 +28,7 @@ try {
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\/$/);
   await page.getByRole('button', { name: 'Watch room' }).waitFor();
   assert.match(await page.title(), /Sunday Room/);
-  assert.equal(await page.evaluate(() => typeof window.sundayDesktop?.openGame), 'function');
+  assert.equal(await page.evaluate(() => typeof window.sundayDesktop), 'object');
   const runtime = await desktop.evaluate(({ app }) => ({ packaged: app.isPackaged, resourcesPath: process.resourcesPath }));
   assert.equal(runtime.packaged, true);
   assert.equal(path.normalize(runtime.resourcesPath), path.normalize(path.join(path.dirname(executablePath), 'resources')));
@@ -41,9 +41,11 @@ try {
   const faviconResponse = await page.request.get(`${origin}/favicon.svg`);
   assert.equal(faviconResponse.status(), 200);
 
-  const apiResponse = await page.request.get(`${origin}/api/playback?game=invalid`);
+  const gamesResponse = await page.request.get(`${origin}/api/games`);
+  assert.equal(gamesResponse.status(), 200);
+  const apiResponse = await page.request.post(`${origin}/api/playback`, { data: { kind: 'open', gameId: '' } });
   assert.equal(apiResponse.status(), 400);
-  assert.deepEqual(await apiResponse.json(), { error: 'Choose a valid game.' });
+  assert.deepEqual(await apiResponse.json(), { error: 'Invalid playback request.' });
   await mkdir(path.resolve('work/electron-release'), { recursive: true });
   await page.screenshot({ path: path.resolve('work/electron-release/packaged-smoke.png') });
   console.log(`Packaged app served its window, preload, static asset, and API from ${origin}`);

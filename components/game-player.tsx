@@ -20,6 +20,8 @@ type Props = {
   onAudibleChange: (audible: boolean) => void;
   onVolumeChange: (volume: number) => void;
   onFatal?: () => void;
+  onEnded?: () => void;
+  onRetry?: () => void;
   errorHint?: string;
 };
 
@@ -29,7 +31,7 @@ function time(seconds: number) {
   return `${Math.floor(whole / 3600) ? `${Math.floor(whole / 3600)}:` : ''}${Math.floor(whole % 3600 / 60).toString().padStart(whole >= 3600 ? 2 : 1, '0')}:${(whole % 60).toString().padStart(2, '0')}`;
 }
 
-export function GamePlayer({ feed, focused, audible, volume, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, errorHint }: Props) {
+export function GamePlayer({ feed, focused, audible, volume, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onEnded, onRetry, errorHint }: Props) {
   const shell = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -40,12 +42,13 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
   const liveRef = useRef(false);
   const previousDelay = useRef(delay);
   const playingRef = useRef(playing);
-  playingRef.current = playing;
   const [status, setStatus] = useState<Status>('loading');
   const [retry, setRetry] = useState(0);
   const [qualities, setQualities] = useState<Quality[]>([]);
   const [quality, setQuality] = useState(-1);
   const [nativeHls, setNativeHls] = useState(false);
+  const [usesHls, setUsesHls] = useState(false);
+  const [syncPosition, setSyncPosition] = useState<number | null>(null);
   const [settings, setSettings] = useState(false);
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [pip, setPip] = useState(false);
@@ -54,8 +57,9 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
   const [canPip, setCanPip] = useState(false);
   const [notice, setNotice] = useState('');
   const [pointerActive, setPointerActive] = useState(false);
-  const callbacks = useRef({ onFatal, onPlayingChange, onAudibleChange, onVolumeChange });
-  callbacks.current = { onFatal, onPlayingChange, onAudibleChange, onVolumeChange };
+  const callbacks = useRef({ onFatal, onEnded, onPlayingChange, onAudibleChange, onVolumeChange });
+  useEffect(() => { playingRef.current = playing; }, [playing]);
+  useEffect(() => { callbacks.current = { onFatal, onEnded, onPlayingChange, onAudibleChange, onVolumeChange }; }, [onFatal, onEnded, onPlayingChange, onAudibleChange, onVolumeChange]);
 
   const updateTimeline = useCallback(() => {
     const video = ref.current;
@@ -74,13 +78,28 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
     sourceGeneration.current += 1;
     let failed = false;
     let hasLoaded = false;
+    let deferredFailure = false;
+    let startupElapsed = 0;
+    let lastTick = performance.now();
     needsGesture.current = false;
     liveRef.current = false;
-    setStatus('loading'); setSettings(false); setQualities([]); setQuality(-1); setTimeline(null); setNativeHls(false); setNotice('');
+    const native = /\.m3u8(?:\?|$)/i.test(feed.url) && !Hls.isSupported();
+    const reset = window.setTimeout(() => { setStatus('loading'); setSettings(false); setQualities([]); setQuality(-1); setTimeline(null); setNativeHls(native); setUsesHls(false); setSyncPosition(null); setNotice(''); }, 0);
     const ready = () => { if (active) { hasLoaded = true; setStatus(needsGesture.current ? 'audio-gesture' : 'ready'); updateTimeline(); } };
     const loaded = () => { if (!active) return; hasLoaded = true; if (!playingRef.current) setStatus('ready'); updateTimeline(); };
-    const error = () => { if (!active || failed) return; failed = true; setStatus('error'); callbacks.current.onFatal?.(); };
-    const ended = () => { if (active) setStatus('ended'); };
+    const canRecover = () => playingRef.current && navigator.onLine && !document.hidden;
+    const error = () => {
+      if (!active || failed) return;
+      if (!canRecover() || (hasLoaded && video.paused) || performance.now() - lastTick > 6000) {
+        deferredFailure = true;
+        if (playingRef.current) setStatus('buffering');
+        return;
+      }
+      failed = true;
+      setStatus('error');
+      callbacks.current.onFatal?.();
+    };
+    const ended = () => { if (active) { setStatus('ended'); callbacks.current.onEnded?.(); } };
     const waiting = () => { if (active) setStatus(current => current === 'ready' ? 'buffering' : current); };
     const paused = () => { if (active && !playingRef.current) setStatus(current => current === 'buffering' ? 'ready' : current); };
     const enterPip = () => { if (active) setPip(true); };
@@ -100,6 +119,27 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
     video.addEventListener('timeupdate', updateTimeline);
     video.addEventListener('durationchange', updateTimeline);
     video.addEventListener('progress', updateTimeline);
+    let lastPosition = video.currentTime;
+    let lastProgress = performance.now();
+    const stallCheck = window.setInterval(() => {
+      const now = performance.now();
+      const elapsed = now - lastTick;
+      const slept = elapsed > 6000;
+      lastTick = now;
+      const position = video.currentTime;
+      if (deferredFailure && !slept && canRecover()) { deferredFailure = false; setRetry(value => value + 1); return; }
+      if (!hasLoaded && !slept && canRecover()) {
+        startupElapsed += elapsed;
+        if (startupElapsed >= 20000 && video.readyState < 2) error();
+      }
+      if (slept || !hasLoaded || !canRecover() || video.paused || video.ended) {
+        lastPosition = position;
+        lastProgress = now;
+        return;
+      }
+      if (Math.abs(position - lastPosition) >= 0.25) { lastPosition = position; lastProgress = now; }
+      else if (now - lastProgress >= 15000) error();
+    }, 2000);
     let hls: Hls | null = null;
     if (/\.m3u8(?:\?|$)/i.test(feed.url) && Hls.isSupported()) {
       hls = new Hls({ maxBufferLength: 45, backBufferLength: 90, liveSyncDurationCount: 3 });
@@ -108,21 +148,21 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
         if (!active || !hls) return;
         const levels = hls.levels.map((level, index) => ({ index, label: level.height ? `${level.height}p${level.bitrate ? ` · ${Math.round(level.bitrate / 1000)} kbps` : ''}` : `${Math.round(level.bitrate / 1000)} kbps` }));
         setQualities(levels);
+        setUsesHls(true);
       });
-      hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => { if (active) { liveRef.current = data.details.live; updateTimeline(); } });
-      hls.on(Hls.Events.LEVEL_UPDATED, (_event, data) => { if (active) { liveRef.current = data.details.live; updateTimeline(); } });
+      hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => { if (active) { liveRef.current = data.details.live; setSyncPosition(hls?.liveSyncPosition ?? null); updateTimeline(); } });
+      hls.on(Hls.Events.LEVEL_UPDATED, (_event, data) => { if (active) { liveRef.current = data.details.live; setSyncPosition(hls?.liveSyncPosition ?? null); updateTimeline(); } });
       hls.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) error(); });
       hls.loadSource(feed.url);
       hls.attachMedia(video);
     } else {
-      setNativeHls(/\.m3u8(?:\?|$)/i.test(feed.url));
       video.src = feed.url;
     }
-    const timer = window.setTimeout(() => { if (!failed && !hasLoaded && video.readyState < 2) error(); }, 20000);
     return () => {
       active = false;
       sourceGeneration.current += 1;
-      window.clearTimeout(timer);
+      window.clearInterval(stallCheck);
+      window.clearTimeout(reset);
       hls?.destroy();
       if (hlsRef.current === hls) hlsRef.current = null;
       video.pause();
@@ -221,7 +261,7 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
   };
 
   useEffect(() => {
-    if (!focused) setSettings(false);
+    if (!focused) queueMicrotask(() => setSettings(false));
     if (!focused && document.fullscreenElement === shell.current) {
       void document.exitFullscreen().catch(() => setNotice('Press Esc to leave this stream fullscreen.'));
     }
@@ -269,7 +309,6 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
     video.muted = false;
     void video.play().then(() => { if (sourceGeneration.current === generation) { needsGesture.current = false; setStatus('ready'); } }).catch(() => { if (sourceGeneration.current === generation) { video.muted = true; setStatus('audio-gesture'); } });
   };
-  const syncPosition = hlsRef.current?.liveSyncPosition;
   const safeLivePosition = timeline && syncPosition != null && Number.isFinite(syncPosition) ? syncPosition : timeline ? timeline.end - 3 : 0;
   const behindLive = timeline?.live && timeline.current < Math.max(timeline.start, safeLivePosition - 2);
 
@@ -281,7 +320,7 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
     {status === 'gesture' && playing && <button className="player-message gesture" onClick={enablePlayback}><Play/><span>{audible ? 'Click to enable audio' : 'Click to start playback'}</span></button>}
     {status === 'audio-gesture' && audible && playing && <button className="feed-audio-prompt" onClick={enableAudio}>Enable audio</button>}
     {status === 'ended' && playing && <button className="player-message gesture" onClick={() => { if (ref.current) { ref.current.currentTime = 0; enablePlayback(); } }}><RotateCcw/><span>Replay video</span></button>}
-    {status === 'error' && <div className="player-message"><AlertCircle/><strong>Feed couldn't play</strong><p>{errorHint || 'Check the URL, availability, and whether the provider allows playback here.'}</p><button className="button" onClick={() => setRetry(value => value + 1)}>Try again</button></div>}
+    {status === 'error' && <div className="player-message"><AlertCircle/><strong>Feed couldn&apos;t play</strong><p>{errorHint || 'Check the URL, availability, and whether the provider allows playback here.'}</p><button className="button" onClick={() => onRetry ? onRetry() : setRetry(value => value + 1)}>Try again</button></div>}
     {status === 'ready' && !focused && <span className="feed-label"><Radio size={12}/>{feed.label}</span>}
     {focused && status !== 'error' && <div className="player-controls" role="group" aria-label="Focused stream controls">
       {timeline && <div className="player-timeline"><input type="range" min="0" max="1000" step="1" value={Math.round((timeline.current - timeline.start) / (timeline.end - timeline.start) * 1000)} aria-label={`Seek ${feed.label}`} onChange={event => seek(Number(event.target.value))}/><span>{timeline.live ? behindLive ? `-${time(timeline.end - timeline.current)}` : 'LIVE' : time(timeline.current - timeline.start)}</span>{timeline.live ? <button className={behindLive ? 'go-live' : 'at-live'} onClick={live} disabled={!behindLive}>● LIVE</button> : <span>{time(timeline.end - timeline.start)}</span>}</div>}
@@ -297,7 +336,7 @@ export function GamePlayer({ feed, focused, audible, volume, playing, delay, onP
             <Popover.Content className="player-settings" side="top" align="end" sideOffset={6} collisionPadding={8} aria-label="Playback quality">
               <strong>Quality</strong>
               <div className="player-settings-options" role="group" aria-label="Playback quality options">
-                {hlsRef.current ? <><button className={quality === -1 ? 'selected' : ''} onClick={() => chooseQuality(-1)}>Auto {quality === -1 ? '✓' : ''}</button>{qualities.map(level => <button key={level.index} className={quality === level.index ? 'selected' : ''} onClick={() => chooseQuality(level.index)}>{level.label} {quality === level.index ? '✓' : ''}</button>)}</> : <span>{nativeHls ? 'Managed by your browser' : 'This feed has one quality'}</span>}
+                {usesHls ? <><button className={quality === -1 ? 'selected' : ''} onClick={() => chooseQuality(-1)}>Auto {quality === -1 ? '✓' : ''}</button>{qualities.map(level => <button key={level.index} className={quality === level.index ? 'selected' : ''} onClick={() => chooseQuality(level.index)}>{level.label} {quality === level.index ? '✓' : ''}</button>)}</> : <span>{nativeHls ? 'Managed by your browser' : 'This feed has one quality'}</span>}
               </div>
             </Popover.Content>
           </Popover.Portal>
