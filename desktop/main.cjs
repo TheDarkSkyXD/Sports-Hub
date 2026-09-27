@@ -5,6 +5,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { localServerPort } = require('./port.cjs');
 const { createSportsurgeCollector } = require('./sportsurge-collector.cjs');
+const { createStreameastCollector } = require('./streameast-collector.cjs');
 
 app.setName('Sunday Room');
 const root = app.isPackaged ? path.join(process.resourcesPath,'server') : path.resolve(__dirname,'..');
@@ -13,6 +14,7 @@ let win;
 let serverProcess;
 let origin;
 let sportsurgeCollector;
+let streameastCollector;
 const controlToken = randomUUID();
 let shuttingDown = false;
 const singleInstance = app.requestSingleInstanceLock();
@@ -52,6 +54,8 @@ app.whenReady().then(async () => {
   await startServer();
   sportsurgeCollector=createSportsurgeCollector({origin,controlToken});
   sportsurgeCollector.start();
+  streameastCollector=createStreameastCollector({origin,controlToken});
+  streameastCollector.start();
   win = new BrowserWindow({
     title:'Sunday Room',width:1500,height:1060,minWidth:900,minHeight:650,
     backgroundColor:'#101114',autoHideMenuBar:true,
@@ -63,7 +67,7 @@ app.whenReady().then(async () => {
   });
   win.webContents.on('will-navigate',(event,url) => { if (new URL(url).origin !== origin) event.preventDefault(); });
   win.on('closed',() => { win=undefined; app.quit(); });
-  powerMonitor.on('resume',() => { if (origin && !shuttingDown) { void fetch(`${origin}/api/games`).catch(() => {}); sportsurgeCollector?.requestSweep(); } });
+  powerMonitor.on('resume',() => { if (origin && !shuttingDown) { void fetch(`${origin}/api/games`).catch(() => {}); sportsurgeCollector?.requestSweep(); streameastCollector?.requestSweep(); } });
   await win.loadURL(origin);
 }).catch(error => {
   fs.mkdirSync(logDir,{recursive:true});
@@ -92,5 +96,6 @@ app.on('before-quit',event => {
   event.preventDefault();
   shuttingDown=true;
   sportsurgeCollector?.stop();
+  streameastCollector?.stop();
   void stopServer().finally(() => app.quit());
 });

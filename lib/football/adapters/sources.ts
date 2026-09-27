@@ -23,7 +23,9 @@ export const SOURCES = [
   {id:'strikeout-cfb',url:'https://strikeout.im/ncaaf',family:'vipbox'},
   {id:'nflhunter',url:'https://nflhunter.com/home-1/',family:'unknown'},
   {id:'nflstreams',url:'https://nflstreams.org/',family:'unknown'},
-  {id:'streameast',url:'https://v2.streameast.ga/nfl-streams/',family:'unknown'},
+  {id:'streameast',name:'StreamEast',url:'https://v2.streameast.ga/cfb-streams/',family:'streameast',kind:'browser-catalog',publicUrls:[
+    'https://v2.streameast.ga/cfb-streams/','https://v2.streameast.ga/nfl-streams/',
+  ]},
   {id:'buffstream-nfl',url:'https://ms.buffstream.io/nfl-streams-live-31',family:'buffstream'},
   {id:'methstreams',url:'https://methstreams.st/NFL',family:'event'},
   {id:'crackstreams-st',url:'https://crackstreams.st/NFL',family:'event'},

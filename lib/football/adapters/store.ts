@@ -1,8 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema, StoredSportsurgeCatalogSchema } from '../shared.ts';
-import type { Game, Match, Observation, SeasonMembership, SourceAttempt, StoredSportsurgeCatalog } from '../shared.ts';
+import { GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema, StoredSportsurgeCatalogSchema, StoredStreameastCatalogSchema } from '../shared.ts';
+import type { Game, Match, Observation, SeasonMembership, SourceAttempt, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
 import { recordFinal } from '../domain/lifecycle.ts';
 
 const PartitionSchema = z.object({games:z.array(GameSchema),at:z.number(),week:z.number().optional()});
@@ -125,6 +125,35 @@ export class FootballStore {
       for (const {observation,result} of observations) insert.run(observation.id,JSON.stringify(observation),JSON.stringify(result),observation.observedAt);
       this.db.exec('COMMIT');
     } catch(error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+  streameastCatalog(): {current:StoredStreameastCatalog|null;lastComplete:StoredStreameastCatalog|null;previous:StoredStreameastCatalog|null} {
+    const row=this.db.prepare("SELECT current_payload,complete_payload,previous_payload FROM source_catalogs WHERE id='streameast'").get();
+    const parse=(value:unknown):StoredStreameastCatalog|null=>{
+      if(typeof value!=='string')return null;
+      try {const result=StoredStreameastCatalogSchema.safeParse(JSON.parse(value));return result.success?result.data:null;}
+      catch{return null;}
+    };
+    return {current:parse(row?.current_payload),lastComplete:parse(row?.complete_payload),previous:parse(row?.previous_payload)};
+  }
+  saveStreameastCatalog(value:StoredStreameastCatalog,observations:{observation:Observation;result:Match}[]): void {
+    const parsed=StoredStreameastCatalogSchema.parse(value);
+    const payload=JSON.stringify(parsed);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const old=this.db.prepare("SELECT current_payload,complete_payload,previous_payload FROM source_catalogs WHERE id='streameast'").get();
+      const oldCurrent=typeof old?.current_payload==='string'?StoredStreameastCatalogSchema.safeParse(JSON.parse(old.current_payload)):null;
+      const prior=oldCurrent?.success&&oldCurrent.data.catalog.runId!==parsed.catalog.runId&&oldCurrent.data.catalog.state.kind!=='complete'
+        ? old?.current_payload||null:old?.previous_payload||null;
+      this.db.prepare(`INSERT INTO source_catalogs (id,current_payload,complete_payload,previous_payload) VALUES ('streameast',?,?,?)
+        ON CONFLICT(id) DO UPDATE SET current_payload=excluded.current_payload,complete_payload=excluded.complete_payload,previous_payload=excluded.previous_payload`)
+        .run(payload,parsed.catalog.state.kind==='complete'?payload:old?.complete_payload||null,prior);
+      if(observations.length || Object.values(parsed.catalog.categories).some(category=>category.kind!=='pending')) {
+        this.db.exec("DELETE FROM observations WHERE json_extract(payload,'$.sourceId')='streameast'");
+        const insert=this.db.prepare('INSERT INTO observations VALUES (?,?,?,?)');
+        for(const {observation,result} of observations)insert.run(observation.id,JSON.stringify(observation),JSON.stringify(result),observation.observedAt);
+      }
+      this.db.exec('COMMIT');
+    } catch(error) {this.db.exec('ROLLBACK');throw error;}
   }
   membership(season: number): SeasonMembership | undefined {
     const row = this.db.prepare('SELECT payload FROM memberships WHERE season=?').get(season);
