@@ -2,15 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, LoaderCircle, RefreshCw } from 'lucide-react';
-import { PlaybackSchema, type Playback, type Session } from '@/lib/football/shared';
+import { PlaybackSchema, type CandidateSummary, type Playback, type Session } from '@/lib/football/shared';
 import type { QualityPreference } from '@/lib/playback-quality';
 import type { Feed } from '@/lib/sunday';
 import { GamePlayer } from './game-player';
-import { ServerControls, type DiscoveredServer } from './server-controls';
+import { ServerControls } from './server-controls';
 
 type Props = {
   gameId: string;
-  discoveredServers?: DiscoveredServer[];
+  initialCandidateId?: string;
+  availableCandidates?: CandidateSummary[];
   manualFeed?: Feed;
   graceEndsAt?: number;
   focused: boolean;
@@ -47,7 +48,8 @@ function isTransientRequestError(error: unknown): boolean {
   return !(error instanceof PlaybackRequestError) || error.status === 408 || error.status === 429 || error.status >= 500;
 }
 
-type SessionChange = { failure?: boolean; candidateId?: string; retry?: boolean };
+type SessionChange = { failure?: boolean; candidateId?: string; retry?: boolean;
+  origin?:{id:string;candidateId:string;generation:number} };
 type ReconcileIntent = { changes: SessionChange; priorId: string; kind: 'rejected' | 'uncertain' };
 function changePriority(change: SessionChange): number {
   return change.candidateId ? 3 : change.retry ? 2 : change.failure ? 1 : 0;
@@ -56,7 +58,8 @@ function changePriority(change: SessionChange): number {
 async function updateSession(session: Session, changes: SessionChange = {}): Promise<Playback> {
   const response = await fetch('/api/playback', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ kind: 'session', sessionId: session.id, generation: session.generation, ...changes }),
+    body: JSON.stringify({ kind: 'session', sessionId: session.id, generation: session.generation,
+      candidateId:changes.candidateId,failure:changes.failure??false,retry:changes.retry??false }),
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) { const failure = await readError(response); throw new PlaybackRequestError(failure.message, response.status, failure.retryAfter, failure.code); }
@@ -65,12 +68,13 @@ async function updateSession(session: Session, changes: SessionChange = {}): Pro
   return parsed.data;
 }
 
-export function BrowserProviderPlayer({ gameId, discoveredServers = [], manualFeed, graceEndsAt, focused, audible, volume, defaultQuality, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange }: Props) {
+export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCandidates = [], manualFeed, graceEndsAt, focused, audible, volume, defaultQuality, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange }: Props) {
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [message, setMessage] = useState('Finding your game…');
   const [endedReason, setEndedReason] = useState<'final' | 'media' | null>(null);
   const ended = endedReason !== null;
   const [retry, setRetry] = useState(0);
+  const [requestedCandidateId, setRequestedCandidateId] = useState(initialCandidateId);
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const ownedSession = useRef<Session | null>(null);
@@ -79,6 +83,7 @@ export function BrowserProviderPlayer({ gameId, discoveredServers = [], manualFe
   const reconcileIntent = useRef<ReconcileIntent | null>(null);
   const changeRef = useRef<(changes: SessionChange) => Promise<void>>(async () => {});
   const intent = useRef<{ key: string; requestId: string } | null>(null);
+  const rejectedInitialCandidate = useRef(false);
   const ownedKey = useRef<string | null>(null);
   const graceRef = useRef(graceEndsAt);
   const fixedDeadline = useRef<number | null>(graceEndsAt ?? null);
@@ -138,7 +143,8 @@ export function BrowserProviderPlayer({ gameId, discoveredServers = [], manualFe
     const requestId = intent.current.requestId;
     inFlight.current = false;
     pendingChange.current = null;
-    const body = JSON.stringify({ kind: 'open', gameId, manual: !!manualFeed, requestId });
+    const body = JSON.stringify({ kind: 'open', gameId, manual: !!manualFeed, requestId,
+      ...(!manualFeed && requestedCandidateId ? { initialCandidateId: requestedCandidateId } : {}) });
     const open = window.setTimeout(() => {
       const deadline = endingDeadline();
       if (deadline !== null && (deadline <= Date.now() || !ownedSession.current)) { setEndedReason(deadline <= Date.now() ? 'final' : 'media'); return; }
@@ -175,9 +181,9 @@ export function BrowserProviderPlayer({ gameId, discoveredServers = [], manualFe
       const replay = reconcileIntent.current;
       reconcileIntent.current = null;
       if (replay?.changes.candidateId && parsed.data.candidates.some(candidate => candidate.id === replay.changes.candidateId) && replay.changes.candidateId !== parsed.data.session.candidateId) {
-        void changeRef.current({ candidateId: replay.changes.candidateId });
+        void changeRef.current(replay.changes);
       } else if (replay?.priorId === parsed.data.session.id && replay.kind === 'rejected') {
-        if (replay.changes.retry) void changeRef.current({ retry: true });
+        if (replay.changes.retry) void changeRef.current(replay.changes);
       }
     }).catch(error => {
       if (!active) return;
@@ -186,13 +192,19 @@ export function BrowserProviderPlayer({ gameId, discoveredServers = [], manualFe
         setEndedReason(deadline <= Date.now() ? 'final' : 'media');
         return;
       }
+      if (error instanceof PlaybackRequestError && error.status === 404 && requestedCandidateId) {
+        rejectedInitialCandidate.current = true;
+        setMessage(error.message);
+        setPlayback(null);
+        return;
+      }
       reopen(error instanceof PlaybackRequestError && error.status === 404 ? error.message : undefined);
     }); }, 0);
     return () => {
       active = false;
       window.clearTimeout(open);
     };
-  }, [gameId, manualFeed, retry, reopen, endingDeadline]);
+  }, [gameId, requestedCandidateId, manualFeed, retry, reopen, endingDeadline]);
 
   useEffect(() => {
     if (!playback || ended) return;
@@ -218,6 +230,8 @@ export function BrowserProviderPlayer({ gameId, discoveredServers = [], manualFe
 
   const change = useCallback(async (changes: SessionChange) => {
     const session = sessionRef.current;
+    if(changes.origin&&(!session||session.id!==changes.origin.id||session.candidateId!==changes.origin.candidateId||
+      session.generation!==changes.origin.generation))return;
     if (!session) {
       if (changes.candidateId || changes.retry) {
         if (!reconcileIntent.current || changePriority(changes) >= changePriority(reconcileIntent.current.changes)) reconcileIntent.current = { changes, priorId: '', kind: 'rejected' };
@@ -303,18 +317,29 @@ export function BrowserProviderPlayer({ gameId, discoveredServers = [], manualFe
     url: `/api/stream/${encodeURIComponent(gameId)}/index.m3u8?session=${encodeURIComponent(session.id)}&candidate=${encodeURIComponent(candidate.id)}&generation=${session.generation}`,
     label: candidate.label,
   } : null);
+  const currentFeed=(url:string)=>{
+    if(url!==feed?.url)return false;
+    if(manualFeed)return true;
+    const current=sessionRef.current;
+    return !!session&&!!candidate&&current?.id===session.id&&current.candidateId===candidate.id&&current.generation===session.generation;
+  };
+  const mediaChange=(url:string,changes:SessionChange)=>{
+    if(!currentFeed(url)||!session||!candidate)return;
+    void change({...changes,origin:{id:session.id,candidateId:candidate.id,generation:session.generation}});
+  };
 
   return <div className="provider-player">
     <div className="provider-surface">
       {ended ? <div className="player-message"><AlertCircle/><strong>{endedReason === 'final' ? 'Game stream ended' : 'Video ended'}</strong><p>{endedReason === 'final' ? 'Playback ended after the game became final.' : 'This video reached its end.'}</p></div>
-        : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} defaultQuality={defaultQuality} playing={playing} delay={delay} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : () => void change({ failure: true })} onEnded={() => { if (!manualFeed && session?.state === 'active') void change({ failure: true }); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : () => void change({ retry: true })} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
-        : <div className="player-message">{message === 'Finding your game…' || message === 'Reconnecting to your game…' ? <LoaderCircle className="spin"/> : <AlertCircle/>}<strong>{message === 'Finding your game…' ? 'Opening the live player' : message === 'Reconnecting to your game…' ? 'Reconnecting' : 'Player unavailable'}</strong><p>{message}</p>{message !== 'Finding your game…' && <button className="button" onClick={() => { if (openTimer.current !== null) { window.clearTimeout(openTimer.current); openTimer.current = null; } setRetry(value => value + 1); }}><RefreshCw size={14}/>Try again</button>}</div>}
+        : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} defaultQuality={defaultQuality} playing={playing} delay={delay} startupTimeoutMs={candidate?.sourceIds.includes('sportsurge-v2') ? 75000 : undefined} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : url => mediaChange(url,{failure:true})} onEnded={url => { if(!currentFeed(url))return; if (!manualFeed && session?.state === 'active') mediaChange(url,{failure:true}); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : url => mediaChange(url,{retry:true})} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
+        : <div className="player-message">{message === 'Finding your game…' || message === 'Reconnecting to your game…' ? <LoaderCircle className="spin"/> : <AlertCircle/>}<strong>{message === 'Finding your game…' ? 'Opening the live player' : message === 'Reconnecting to your game…' ? 'Reconnecting' : 'Player unavailable'}</strong><p>{message}</p>{message !== 'Finding your game…' && <button className="button" onClick={() => { if (openTimer.current !== null) { window.clearTimeout(openTimer.current); openTimer.current = null; } if (rejectedInitialCandidate.current) { rejectedInitialCandidate.current = false; reconcileIntent.current = null; setRequestedCandidateId(undefined); } setRetry(value => value + 1); }}><RefreshCw size={14}/>Try again</button>}</div>}
     </div>
-    {!manualFeed && <ServerControls candidates={playback?.candidates ?? []} selectedCandidateId={session?.candidateId ?? ''} discovered={discoveredServers} disabled={ended}
-      onSelect={candidateId => void change({ candidateId })} onSwitch={() => {
+    {!manualFeed && <ServerControls candidates={playback?.candidates ?? availableCandidates} selectedCandidateId={session?.candidateId ?? requestedCandidateId ?? ''} disabled={ended}
+      onSelect={candidateId => { if (!sessionRef.current) { rejectedInitialCandidate.current = false; setRequestedCandidateId(candidateId); } void change({ candidateId }); }} onSwitch={() => {
         if (!playback?.candidates.length || !session) return;
-        const index = playback.candidates.findIndex(item => item.id === session.candidateId);
-        const next = playback.candidates[(index + 1) % playback.candidates.length];
+        const playable = playback.candidates.filter(item => item.availability.kind === 'playable');
+        const index = playable.findIndex(item => item.id === session.candidateId);
+        const next = playable[(index + 1) % playable.length];
         if (next && next.id !== session.candidateId) void change({ candidateId: next.id });
       }}/>}
   </div>;

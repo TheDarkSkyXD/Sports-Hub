@@ -11,7 +11,7 @@ mkdirSync(dataDir,{recursive:true});
 const coordinator = createFootballCoordinator(join(dataDir,'football.sqlite'),{
   ownerToken:workerData?.ownerToken,
   reclaimToken:workerData?.reclaimToken,
-  desktop:workerData?.desktop===true,
+  browserCollectorsAvailable:workerData?.browserCollectorsAvailable===true,
 });
 coordinator.start();
 let lastCommand = Date.now();

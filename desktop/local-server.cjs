@@ -4,7 +4,7 @@ const path = require('node:path');
 
 const retryDelays = [1000, 2000, 5000, 10000, 30000];
 
-function createLocalServer({ root, origin, port, userData, controlToken, packaged = false, logDir = path.join(root, '.desktop-runtime'), onReady, onHealthy }) {
+function createLocalServer({ root, origin, port, userData, controlToken, observerOrigin, packaged = false, logDir = path.join(root, '.desktop-runtime'), onReady, onHealthy }) {
   const production = packaged || (process.env.SUNDAY_ROOM_FORCE_DEV !== '1' && fs.existsSync(path.join(root, '.next', 'BUILD_ID')));
   fs.mkdirSync(logDir, { recursive: true });
   const logPath = path.join(logDir, 'server.log');
@@ -123,7 +123,9 @@ function createLocalServer({ root, origin, port, userData, controlToken, package
       packaged ? 'standalone' : production ? 'start' : 'dev', String(port),
     ], {
       cwd: root, windowsHide: true,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', SUNDAY_ROOM_DESKTOP: '1', SUNDAY_ROOM_DATA_DIR: userData, SUNDAY_ROOM_CONTROL_TOKEN: controlToken },
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', SUNDAY_ROOM_DESKTOP: '1', SUNDAY_ROOM_BROWSER_COLLECTORS: '1', SUNDAY_ROOM_DATA_DIR: userData,
+        SUNDAY_ROOM_CONTROL_TOKEN: controlToken,
+        ...(observerOrigin ? { SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN: observerOrigin } : {}) },
       stdio: ['ignore', log, log, 'ipc'],
     });
     fs.closeSync(log);

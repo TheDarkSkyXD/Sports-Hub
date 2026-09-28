@@ -5,7 +5,7 @@ import { openProvider } from './playback/provider-registry.ts';
 import type { ProviderPlayback, ProviderResource, ResourceKind } from './playback/provider.ts';
 
 export type StreamGrant = {sessionId:string; candidateId:string; generation:number; gameId:string};
-type Resource = StreamGrant & {kind:ResourceKind; resource:ProviderResource; usedAt:number};
+type Resource = StreamGrant & {kind:ResourceKind; identity:string; resource:ProviderResource; usedAt:number};
 type PlaybackState = {locator:CandidateLocator; opening?:Promise<ProviderPlayback>; openingController?:AbortController;
   waiters:number; playback?:ProviderPlayback};
 type Registry = {
@@ -28,8 +28,8 @@ export function validByteRange(value:string):boolean {
   return !!suffix && BigInt(suffix[1])>BigInt(0);
 }
 
-function key(record:Pick<Resource,keyof StreamGrant|'kind'|'resource'>):string {
-  return `${grantKey(record)}\n${record.candidateId}\n${record.gameId}\n${record.kind}\n${record.resource.identity}`;
+function key(record:Pick<Resource,keyof StreamGrant|'kind'|'identity'>):string {
+  return `${grantKey(record)}\n${record.candidateId}\n${record.gameId}\n${record.kind}\n${record.identity}`;
 }
 function remove(token:string,resource:Resource):void {
   registry.byToken.delete(token);
@@ -146,10 +146,10 @@ function prune():void {
   }
 }
 
-export function registerResource(grant:StreamGrant,resource:ProviderResource):string {
+export function registerResource(grant:StreamGrant,resource:ProviderResource,identity=resource.identity):string {
   if (streamSignal(grant).aborted) throw new Error('Stream generation ended');
   prune();
-  const record={...grant,kind:resource.kind,resource};
+  const record={...grant,kind:resource.kind,identity,resource};
   const previous=registry.byResource.get(key(record));
   if (previous) {
     const saved=registry.byToken.get(previous);
@@ -172,9 +172,17 @@ export function registeredResource(token:string):Resource | null {
 export function rewritePlaylist(body:string,source:ProviderResource,grant:StreamGrant):string {
   if (!body.startsWith('#EXTM3U')) throw new Error('Invalid HLS playlist');
   let nextIsPlaylist=false;
+  let sequence:bigint | undefined;
+  let byteRange=false;
   return body.split(/\r?\n/).map(line=>{
     if (line.startsWith('#')) {
       if (line.startsWith('#EXT-X-STREAM-INF:')) nextIsPlaylist=true;
+      if (line.startsWith('#EXT-X-BYTERANGE:')) byteRange=true;
+      if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
+        const value=line.slice(line.indexOf(':')+1).trim();
+        if (!/^\d+$/.test(value)) throw new Error('Invalid media sequence');
+        sequence=BigInt(value);
+      }
       return line.replace(/URI="([^"]+)"/g,(_attribute,value:string)=>{
         const kind:ResourceKind=/^(#EXT-X-MEDIA|#EXT-X-I-FRAME-STREAM-INF|#EXT-X-RENDITION-REPORT)/.test(line)?'playlist':'media';
         const child=source.resolve(value,kind);
@@ -187,6 +195,9 @@ export function rewritePlaylist(body:string,source:ProviderResource,grant:Stream
     nextIsPlaylist=false;
     const child=source.resolve(line.trim(),kind);
     if (!child) throw new Error('Unsupported stream resource');
-    return `/api/stream/media/${registerResource(grant,child)}`;
+    const identity=kind==='media' && sequence!==undefined && !byteRange ? JSON.stringify([source.identity,'segment',String(sequence)]) : child.identity;
+    if (kind==='media' && sequence!==undefined) sequence++;
+    byteRange=false;
+    return `/api/stream/media/${registerResource(grant,child,identity)}`;
   }).join('\n');
 }

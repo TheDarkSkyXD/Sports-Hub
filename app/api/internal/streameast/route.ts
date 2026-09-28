@@ -6,7 +6,7 @@ const MAX_BODY_BYTES=8*1024*1024;
 
 export async function POST(request:Request) {
   const secret=process.env.SUNDAY_ROOM_CONTROL_TOKEN;
-  if(process.env.SUNDAY_ROOM_DESKTOP!=='1'||!secret||request.headers.get('x-sunday-control-token')!==secret)
+  if(process.env.SUNDAY_ROOM_BROWSER_COLLECTORS!=='1'||!secret||request.headers.get('x-sunday-control-token')!==secret)
     return new Response(null,{status:404});
   if(request.headers.get('content-type')?.split(';',1)[0].trim().toLowerCase()!=='application/json'||!request.body)
     return new Response(null,{status:415});

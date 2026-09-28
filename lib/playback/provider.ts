@@ -21,7 +21,12 @@ export interface ProviderPlayback {
 }
 export interface PlaybackProvider<L extends CandidateLocator> {
   readonly provider: L['provider'];
-  open(locator: L, signal: AbortSignal): Promise<ProviderPlayback>;
+  open(locator: L, signal: AbortSignal, purpose?: 'playback' | 'probe'): Promise<ProviderPlayback>;
+}
+
+export class ProviderDeferredError extends Error {
+  readonly retryAfterMs: number;
+  constructor(retryAfterMs: number) { super('Provider lookup is temporarily deferred'); this.retryAfterMs=retryAfterMs; }
 }
 
 export function sanitizedRead(response: Response): ProviderReadResult {
@@ -32,7 +37,8 @@ export function sanitizedRead(response: Response): ProviderReadResult {
   return {
     status:response.status,body:response.body,
     contentType:response.headers.get('content-type') || 'application/octet-stream',
-    contentLength:response.headers.get('content-length') || undefined,
+    contentLength:response.headers.get('content-encoding') && response.headers.get('content-encoding') !== 'identity'
+      ? undefined : response.headers.get('content-length') || undefined,
     contentRange:response.headers.get('content-range') || undefined,
     acceptRanges:response.headers.get('accept-ranges') || undefined,
   };

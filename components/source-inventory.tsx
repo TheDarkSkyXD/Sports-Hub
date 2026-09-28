@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { SourcesSnapshotSchema, type SourcesSnapshot, type SportsurgeCatalogView, type StreameastCatalogView } from '@/lib/football/shared';
 
+const sourceOrder=new Map([['sportsurge',0],['sportsurge-v2',1],['streameast',2]]);
+
 const attemptLabel:Record<NonNullable<SourcesSnapshot['sources'][number]['lastAttempt']>['outcome'],string>={
   parsed:'Fetched',empty:'No listings',unsupported:'Unsupported page','parser-changed':'Parser changed',failed:'Last fetch failed',
 };
@@ -37,9 +39,9 @@ function SportsurgeRun({run}:{run:SportsurgeCatalogView}) {
     </ul></details>}
     <div className="source-inventory-list">{run.games.map(game=><details key={game.url} className="source-inventory-item">
       <summary><strong>{game.title}</strong><span>{game.detail.kind==='collected'?`${game.detail.providers.length} provider rows`:game.detail.kind==='failed'?`Detail failed (${game.detail.reason})`:'Detail pending'}</span></summary>
-      <p><a href={game.url} target="_blank" rel="noopener noreferrer">Game listing ↗</a> · {game.gameId?'Matched to ESPN':matchReasonLabel[game.matchReason || 'other']}</p>
+      <p>{game.gameId?'Matched to ESPN':matchReasonLabel[game.matchReason || 'other']}</p>
       {game.detail.kind==='collected'&&<ul>{game.detail.providers.map(provider=><li key={provider.id}>
-        {provider.destination.kind==='link'?<a href={provider.destination.url} target="_blank" rel="noopener noreferrer">{provider.label} ↗</a>:
+        {provider.destination.kind==='link'?<span>{provider.label} · Listed for the custom player</span>:
           <span>{provider.label} · {provider.destination.kind==='malformed'?'Malformed':'Rejected'} ({provider.destination.reason}){provider.destination.kind==='rejected'&&provider.destination.display?` · ${provider.destination.display}`:''}</span>}
       </li>)}</ul>}
     </details>)}</div>
@@ -68,7 +70,7 @@ function StreameastRun({run}:{run:StreameastCatalogView}) {
   </div>;
 }
 
-export function SourceInventory() {
+export function SourceInventory({gameIds}:{gameIds:string[]}) {
   const [snapshot,setSnapshot]=useState<SourcesSnapshot|null>(null);
   const [gameQuery,setGameQuery]=useState('');
   const [gameLimit,setGameLimit]=useState(GAME_PAGE_SIZE);
@@ -103,35 +105,46 @@ export function SourceInventory() {
       if (active.current===controller) {active.current=null;setLoading(false);}
     }
   },[]);
+  const retryChecks=async()=>{
+    const selected=gameIds.slice(0,4);
+    if(!selected.length)return;
+    try{
+      const response=await fetch('/api/sources',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({kind:'check-sources',gameIds:selected,retry:true})});
+      if(!response.ok)throw new Error('Source checks could not restart.');
+      await load();
+    }catch{setError('Source checks could not restart. Try again.');}
+  };
   useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);return()=>{window.clearTimeout(timer);active.current?.abort();active.current=null;};},[load]);
   useEffect(()=>{const timer=window.setInterval(()=>void load(),collecting?3000:15000);
     return()=>window.clearInterval(timer);},[load,collecting]);
   return <section className="source-inventory" aria-label="Source inventory">
-    <div className="source-inventory-heading"><div><h3>Sources</h3><p>Current public listings and dated links retained while a game is live. Compatible feeds are untested.</p></div>
-      <button className="button subtle" type="button" onClick={()=>void load()} disabled={loading}><RefreshCw size={14}/>Reload status</button></div>
+    <div className="source-inventory-heading"><div><h3>Sources</h3><p>Current public listings and dated links retained while a game is live. Playback checks mark listed servers as playable or unavailable.</p></div>
+      <div><button className="button subtle" type="button" onClick={()=>void retryChecks()} disabled={!gameIds.length}>Retry checks</button>
+      <button className="button subtle" type="button" onClick={()=>void load()} disabled={loading}><RefreshCw size={14}/>Reload status</button></div></div>
     {loading&&!snapshot&&<p className="source-inventory-state">Loading source inventory…</p>}
     {error&&<p className="source-inventory-error" role="alert">{error}</p>}
     {snapshot&&<>
       <p className="source-inventory-time">Last scan {snapshot.lastDiscoveryAt ? time(snapshot.lastDiscoveryAt) : 'not yet available'} · Snapshot {time(snapshot.at)}</p>
       <div className="source-inventory-list">
-        {snapshot.sources.map(source=><details key={source.id} className="source-inventory-item">
+        {[...snapshot.sources].sort((left,right)=>(sourceOrder.get(left.id)??3)-(sourceOrder.get(right.id)??3)).map(source=><details key={source.id} className="source-inventory-item">
           <summary><strong>{source.name}</strong><span>{source.id==='streameast'&&snapshot.streameast.current?
             `${snapshot.streameast.current.gameCount} games · ${snapshot.streameast.current.serverRows} server rows · ${collectionLabel(snapshot.streameast.current.state)} · `:
             source.id==='sportsurge-v2'&&snapshot.sportsurgeV2.current?
               `${snapshot.sportsurgeV2.current.gameCount} games · ${snapshot.sportsurgeV2.current.providerRows} provider rows · ${collectionLabel(snapshot.sportsurgeV2.current.state)} · `:
               source.id==='streameast'||source.id==='sportsurge-v2'?
-                `${snapshot.desktopCollectorsAvailable?'Awaiting desktop collection':'Desktop collector unavailable'} · `:''}
-            {source.listingCount} links · {source.matchedGameCount} matched games · {source.compatibleFeedCount} compatible feeds
+                `${snapshot.browserCollectorsAvailable?'Awaiting browser collection':'Browser collector unavailable'} · `:''}
+            {source.listingCount} links · {source.matchedGameCount} matched games · {source.compatibleFeedCount} verified playable feeds
             {source.staleListingCount>0?` · ${source.staleListingCount} retained live`:''}</span></summary>
-          <p>{source.id==='streameast' ? snapshot.streameast.current ? `Last browser checkpoint ${time(snapshot.streameast.current.receivedAt)}`:snapshot.desktopCollectorsAvailable?'Waiting for desktop collection':'Open the desktop app to collect StreamEast':
-            source.id==='sportsurge-v2' ? snapshot.sportsurgeV2.current ? `Last browser checkpoint ${time(snapshot.sportsurgeV2.current.receivedAt)}`:snapshot.desktopCollectorsAvailable?'No browser collection recorded yet':'Open the desktop app to collect Sportsurge v2':
+          <p>{source.id==='streameast' ? snapshot.streameast.current ? `Last browser checkpoint ${time(snapshot.streameast.current.receivedAt)}`:snapshot.browserCollectorsAvailable?'Waiting for browser collection':'Browser collector unavailable':
+            source.id==='sportsurge-v2' ? snapshot.sportsurgeV2.current ? `Last browser checkpoint ${time(snapshot.sportsurgeV2.current.receivedAt)}`:snapshot.browserCollectorsAvailable?'Waiting for browser collection':'Browser collector unavailable':
             source.pending?'Listed for future integration':source.lastAttempt ?
               `${attemptLabel[source.lastAttempt.outcome]} ${time(source.lastAttempt.at)}${source.lastAttempt.outcome==='failed'&&source.lastAttempt.failure?` · ${failureLabel[source.lastAttempt.failure]}`:''}`:
               'No fetch recorded yet'}
           </p>
           <p>{source.collectionMode==='listings-only'?'Listings only':'Compatible feed discovery'}{source.pending?' · Integration pending':''}</p>
-          <div className="source-inventory-public-links"><a href={source.catalogUrl} target="_blank" rel="noopener noreferrer">Listing endpoint ↗</a>
-            {source.publicUrls.filter(url=>url!==source.catalogUrl).map(url=><a key={url} href={url} target="_blank" rel="noopener noreferrer">{publicLinkLabel(url)} ↗</a>)}</div>
+          {source.id!=='sportsurge-v2'&&<div className="source-inventory-public-links"><a href={source.catalogUrl} target="_blank" rel="noopener noreferrer">Listing endpoint ↗</a>
+            {source.publicUrls.filter(url=>url!==source.catalogUrl).map(url=><a key={url} href={url} target="_blank" rel="noopener noreferrer">{publicLinkLabel(url)} ↗</a>)}</div>}
           {source.id==='sportsurge-v2'&&snapshot.sportsurgeV2.current&&<SportsurgeRun run={snapshot.sportsurgeV2.current}/>}
           {source.id==='streameast'&&snapshot.streameast.current&&<StreameastRun run={snapshot.streameast.current}/>}
           {source.id==='streameast'&&snapshot.streameast.lastComplete&&snapshot.streameast.lastComplete.runId!==snapshot.streameast.current?.runId&&
@@ -148,7 +161,7 @@ export function SourceInventory() {
               <SportsurgeRun run={snapshot.sportsurgeV2.previous}/></details>}
           {(source.id==='sportsurge-v2'||source.id==='streameast')&&source.staleListingCount>0&&
             <div className="source-inventory-catalog"><p>Retained live game links</p><ul>{source.links.filter(link=>link.freshness==='stale-live').map(link=><li key={link.url}>
-              <a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a><span>Last seen {time(link.observedAt)}</span>
+              {source.id==='sportsurge-v2'?<span>{link.title}</span>:<a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>}<span>Last seen {time(link.observedAt)}</span>
             </li>)}</ul></div>}
           {source.id!=='sportsurge-v2'&&source.id!=='streameast'&&source.links.length>0&&<ul>{source.links.map(link=><li key={link.url}><a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>
             {link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}</li>)}</ul>}
@@ -170,9 +183,9 @@ export function SourceInventory() {
             if(nearBottom&&visibleGames.length<listedGames.length)
               setGameLimit(limit=>Math.min(limit+GAME_PAGE_SIZE,listedGames.length));
           }}>{visibleGames.map(game=><details key={game.gameId} className="source-inventory-item">
-          <summary><strong>{game.name}</strong><span>{game.sourceCount} sources · {game.uniqueFeedCount} compatible feeds (untested)</span></summary>
+          <summary><strong>{game.name}</strong><span>{game.sourceCount} sources · {game.uniqueFeedCount} verified playable feeds</span></summary>
           <ul>{game.sourceLinks.map(link=><li key={`${link.sourceId}:${link.url}`}><span>{snapshot.sources.find(source=>source.id===link.sourceId)?.name || link.sourceId}</span>
-            <a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>{link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}</li>)}</ul>
+            {link.sourceId==='sportsurge-v2'?<span>{link.title}</span>:<a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>}{link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}</li>)}</ul>
         </details>)}<div className="source-inventory-game-pagination">{visibleGames.length<listedGames.length?
           <button type="button" className="button subtle" onClick={()=>setGameLimit(limit=>Math.min(limit+GAME_PAGE_SIZE,listedGames.length))}>Load more games</button>:
           <span>All {listedGames.length} games shown</span>}</div></div>}

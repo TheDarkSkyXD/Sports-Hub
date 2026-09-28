@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const { localServerPort } = require('./port.cjs');
 const { createLocalServer } = require('./local-server.cjs');
 const { createSportsurgeCollector } = require('./sportsurge-collector.cjs');
+const { createSportsurgeObserver } = require('./sportsurge-observer.cjs');
 const { createStreameastCollector } = require('./streameast-collector.cjs');
 
 app.setName('Sunday Room');
@@ -15,6 +16,7 @@ let win;
 let localServer;
 let origin;
 let sportsurgeCollector;
+let sportsurgeObserver;
 let streameastCollector;
 const controlToken = randomUUID();
 let shuttingDown = false;
@@ -31,11 +33,11 @@ function restoreMainFrame() {
   void win.loadURL(origin).catch(() => { mainFrameFailed = true; }).finally(() => { reloadingMainFrame = false; });
 }
 
-async function startServer() {
+async function startServer(observerOrigin) {
   const port = await localServerPort();
   origin = `http://127.0.0.1:${port}`;
   localServer = createLocalServer({
-    root, origin, port, userData:app.getPath('userData'), controlToken, packaged:app.isPackaged, logDir,
+    root, origin, port, userData:app.getPath('userData'), controlToken, observerOrigin, packaged:app.isPackaged, logDir,
     onReady:() => {
       sportsurgeCollector?.requestSweep();
       streameastCollector?.requestSweep();
@@ -48,7 +50,19 @@ async function startServer() {
 
 app.whenReady().then(async () => {
   if (!singleInstance) return;
-  await startServer();
+  let observerOrigin;
+  try {
+    sportsurgeObserver=createSportsurgeObserver({controlToken});
+    observerOrigin=await sportsurgeObserver.start();
+  } catch (error) {
+    sportsurgeObserver?.stop();
+    sportsurgeObserver=undefined;
+    try {
+      fs.mkdirSync(logDir,{recursive:true});
+      fs.appendFileSync(path.join(logDir,'startup.log'),`Sportsurge observer unavailable: ${error}\n`);
+    } catch {}
+  }
+  await startServer(observerOrigin);
   sportsurgeCollector=createSportsurgeCollector({origin,controlToken});
   sportsurgeCollector.start();
   streameastCollector=createStreameastCollector({origin,controlToken});
@@ -91,6 +105,7 @@ app.on('before-quit',event => {
   shuttingDown=true;
   localServer?.beginStop();
   sportsurgeCollector?.stop();
+  sportsurgeObserver?.stop();
   streameastCollector?.stop();
   void stopServer().finally(() => app.quit());
 });
