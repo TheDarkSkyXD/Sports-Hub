@@ -6,10 +6,12 @@ import { revokeGeneration, revokeSession, touchStreamSession } from './stream-re
 export type PlaybackResult<T> = { status: 200; value: T } | { status: number; error: string; retryAfter?: number; code?: 'drain-exhausted' };
 const validSessionId = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value);
 
-export async function resolvePlayback(gameId: unknown, manual = false, requestId: unknown): Promise<PlaybackResult<Playback>> {
+export async function resolvePlayback(gameId: unknown, manual = false, requestId: unknown, initialCandidateId?: unknown): Promise<PlaybackResult<Playback>> {
   if (!validGameId(gameId)) return { status: 400, error: 'Choose a valid game.' };
   if (typeof requestId !== 'string' || !/^[0-9a-f-]{36}$/i.test(requestId)) return { status: 400, error: 'Invalid playback request.' };
-  const reply = await command({ kind: 'open', gameId, manual, requestId });
+  if (initialCandidateId !== undefined && (typeof initialCandidateId !== 'string' || initialCandidateId.length > 100 || !initialCandidateId.length))
+    return { status: 400, error: 'Invalid playback request.' };
+  const reply = await command({ kind: 'open', gameId, manual, requestId, initialCandidateId });
   if (reply.kind === 'error') return { status: reply.status, error: reply.message };
   if (reply.kind !== 'playback') return { status: 502, error: 'Unexpected playback response.' };
   return { status: 200, value: reply.playback };

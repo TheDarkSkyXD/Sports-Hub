@@ -1,12 +1,14 @@
-import type { Candidate, Game, Match, Observation, SourceAttempt, SourceMatchReason, SourcesSnapshot, StoredSportsurgeCatalog, StoredStreameastCatalog, StreameastCatalog } from '../shared.ts';
+import { candidateSummary, type Candidate, type CandidateAvailability, type Game, type Match, type Observation, type SourceAttempt, type SourceMatchReason, type SourcesSnapshot, type StoredSportsurgeCatalog, type StoredStreameastCatalog, type StreameastCatalog } from '../shared.ts';
+import { compareCandidates } from './lifecycle.ts';
 import type { ListingSource } from './ports.ts';
 import { createObservationMatcher, normalizedName } from './matching.ts';
 import { sportsurgeCatalogView, sportsurgeObservation } from './sportsurge-catalog.ts';
 import { streameastCatalogView, streameastObservation, verifiedStreameastMatch } from './streameast-catalog.ts';
 
 type Input = {
-  at:number; revision:number; lastDiscoveryAt:number|null; desktopCollectorsAvailable:boolean; sources:readonly ListingSource[];
+  at:number; revision:number; lastDiscoveryAt:number|null; browserCollectorsAvailable:boolean; sources:readonly ListingSource[];
   observations:Observation[]; games:Game[]; candidates:ReadonlyMap<string,Candidate[]>;
+  availability?:(candidate:Candidate)=>CandidateAvailability;
   attempts:Record<string,SourceAttempt>;
   sportsurgeCatalog:{current:StoredSportsurgeCatalog|null;lastComplete:StoredSportsurgeCatalog|null;previous:StoredSportsurgeCatalog|null};
   streameastCatalog:{current:StoredStreameastCatalog|null;lastComplete:StoredStreameastCatalog|null;previous:StoredStreameastCatalog|null};
@@ -38,6 +40,7 @@ function sameMatchup(left:Observation,right:Observation):boolean {
 
 export function sourceInventory(input:Input):SourcesSnapshot {
   const {at,sources,games,candidates}=input;
+  const availability=input.availability||(()=>({kind:'unknown' as const}));
   const windowStartAt=at-30*60_000;
   const gameById=new Map(games.map(game=>[game.id,game]));
   const sourceById=new Map(sources.map(source=>[source.id,source]));
@@ -94,27 +97,33 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     const result=event===null?raw:verifiedStreameastMatch(event,raw,gameById.get(raw.kind==='matched'?raw.gameId:''));
     return result.kind==='matched' && gameById.get(result.gameId)?.lifecycle==='live';
   };
-  const sportsurgeRuns=[input.sportsurgeCatalog.current,input.sportsurgeCatalog.previous,input.sportsurgeCatalog.lastComplete];
-  const sportsurgeHistory=sportsurgeRuns.slice(1).map(stored=>new Map(stored?.catalog.events.map(event=>[event.id,event]) || []));
+  const sportsurgeRuns=input.sportsurgeCatalog.current?.catalog.state.kind==='complete'?
+    [input.sportsurgeCatalog.current]:
+    [input.sportsurgeCatalog.current,input.sportsurgeCatalog.previous,input.sportsurgeCatalog.lastComplete];
+  const sportsurgeHistory=sportsurgeRuns.slice(1).map(stored=>new Map(stored?.catalog.events.map(event=>[event.url,event]) || []));
   const sportsurgeSeen=new Set<string>();
   for (const [runIndex,stored] of sportsurgeRuns.entries()) {
     if (!stored) continue;
     for (const event of stored.catalog.events) {
-      if (sportsurgeSeen.has(event.id)) continue;
-      sportsurgeSeen.add(event.id);
       const category=stored.catalog.categories[event.league];
-      const observation=sportsurgeObservation(event,category.kind==='pending'?stored.catalog.startedAt:category.at);
+      if(category.kind!=='collected')continue;
+      if (sportsurgeSeen.has(event.url)) continue;
+      sportsurgeSeen.add(event.url);
+      const observation=sportsurgeObservation(event,category.at);
       if (runIndex===0 && observation.kickoff===null) {
         const historical=sportsurgeHistory.flatMap((events,index)=>{
-          const prior=events.get(event.id);
+          const prior=events.get(event.url);
           const run=sportsurgeRuns[index+1];
           if (!prior || !run) return [];
           const priorCategory=run.catalog.categories[prior.league];
           return [sportsurgeObservation(prior,priorCategory.kind==='pending'?run.catalog.startedAt:priorCategory.at)];
         }).find(prior=>prior.kickoff!==null && sameMatchup(observation,prior));
-        if (historical && datedLive(historical)) {add(historical,true);continue;}
+        if (historical && datedLive(historical)) {
+          add({...observation,kickoff:historical.kickoff,rawTime:historical.rawTime});
+          continue;
+        }
       }
-      add(observation,runIndex>0,null,runIndex===0 && category.kind==='collected' && event.sourceStatus==='live');
+      add(observation,false,null,category.kind==='collected' && event.sourceStatus==='live');
     }
   }
   const streameastRuns=[input.streameastCatalog.current,input.streameastCatalog.previous,input.streameastCatalog.lastComplete];
@@ -148,12 +157,12 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     const matched=new Set(links.flatMap(link=>link.gameId ? [link.gameId] : []));
     const freshGames=new Set(links.flatMap(link=>link.gameId && link.freshness==='fresh' ? [link.gameId] : []));
     const compatibleFeedCount=new Set([...freshGames].flatMap(gameId=>(candidates.get(gameId) || [])
-      .filter(candidate=>candidate.observedAt>=windowStartAt && candidate.observedAt<=at+60_000 && candidate.sourceIds.includes(source.id))
+      .filter(candidate=>candidate.observedAt>=windowStartAt && candidate.observedAt<=at+60_000 && candidate.sourceIds.includes(source.id) && availability(candidate).kind==='playable')
       .map(candidate=>`${gameId}:${candidate.id}`))).size;
     return {
       id:source.id,name:source.name || source.id.replace(/-/g,' '),catalogUrl:source.url,
       publicUrls:[...new Set(source.publicUrls || [source.url])],pending:source.kind==='pending',
-      collectionMode:source.kind==='catalog' || source.kind==='browser-catalog' && source.family==='sportsurge'
+      collectionMode:source.kind==='catalog'
         ? 'listings-only' as const : 'compatible-feed-discovery' as const,
       lastAttempt:input.attempts[source.id] || null,listingCount:links.length,matchedGameCount:matched.size,
       staleListingCount:links.filter(link=>link.freshness==='stale-live').length,compatibleFeedCount,
@@ -164,15 +173,17 @@ export function sourceInventory(input:Input):SourcesSnapshot {
   const gameRows=games.flatMap(game=>{
     if(game.lifecycle!=='scheduled'&&game.lifecycle!=='live')return [];
     const sourceLinks=linksByGame.get(game.id) || [];
-    if (!sourceLinks.length) return [];
+    const selectable=(candidates.get(game.id) || []).filter(candidate=>at-candidate.observedAt<30*60_000)
+      .sort(compareCandidates).map(candidate=>candidateSummary(candidate,availability(candidate)));
+    if (!sourceLinks.length && !selectable.length) return [];
     const sourceCount=new Set(sourceLinks.map(link=>link.sourceId)).size;
     const currentSources=new Set(sourceLinks.filter(link=>link.freshness==='fresh').map(link=>link.sourceId));
     const uniqueFeedCount=new Set((candidates.get(game.id) || []).filter(candidate=>candidate.observedAt>=windowStartAt &&
-      candidate.observedAt<=at+60_000 && candidate.sourceIds.some(sourceId=>currentSources.has(sourceId)))
+      candidate.observedAt<=at+60_000 && candidate.sourceIds.some(sourceId=>currentSources.has(sourceId)) && availability(candidate).kind==='playable')
       .map(candidate=>candidate.id)).size;
-    return [{gameId:game.id,name:game.name,sourceCount,uniqueFeedCount,sourceLinks}];
+    return [{gameId:game.id,name:game.name,sourceCount,uniqueFeedCount,candidates:selectable,sourceLinks}];
   });
-  return {at,revision:input.revision,windowStartAt,lastDiscoveryAt:input.lastDiscoveryAt,desktopCollectorsAvailable:input.desktopCollectorsAvailable,
+  return {at,revision:input.revision,windowStartAt,lastDiscoveryAt:input.lastDiscoveryAt,browserCollectorsAvailable:input.browserCollectorsAvailable,
     sportsurgeV2:{
       current:input.sportsurgeCatalog.current ? sportsurgeCatalogView(input.sportsurgeCatalog.current,games,at) : null,
       lastComplete:input.sportsurgeCatalog.lastComplete ? sportsurgeCatalogView(input.sportsurgeCatalog.lastComplete,games,at) : null,

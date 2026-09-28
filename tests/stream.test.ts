@@ -13,6 +13,37 @@ const root='https://chatgpt.hereisman.net/playlist/57069/load-playlist';
 const variant='https://pl.playlist3.space/playlist/57069/proton1/caxi';
 const media=`https://proton1.2f4049362e3069c1dbb69a47b280e76a.r2.cloudflarestorage.com/scripts/NTcwNjk%3D/segment.txt?X-Amz-Signature=${'a'.repeat(64)}`;
 
+test('live relay keeps segment URLs stable while refreshing upstream signatures',async()=>{
+  const owner=grant('rotating-live-signatures');
+  const resource=(identity:string,kind:'playlist'|'media'='playlist'):ProviderResource=>({
+    identity,kind,
+    async read(){return {status:200,body:new Response(identity).body};},
+    resolve(reference,expected){return resource(new URL(reference,identity).href,expected);},
+  });
+  const playlist=resource('https://provider.test/live.m3u8');
+  const text=(sequence:number,signature:string)=>`#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:${sequence}\n#EXTINF:4,\n${sequence}.ts?sig=${signature}\n#EXTINF:4,\n${sequence+1}.ts?sig=${signature}\n`;
+  const tokens=(body:string)=>[...body.matchAll(/\/api\/stream\/media\/([a-f0-9]{48})/g)].map(match=>match[1]);
+  try {
+    const first=tokens(rewritePlaylist(text(611,'old'),playlist,owner));
+    const next=tokens(rewritePlaylist(text(612,'fresh'),playlist,owner));
+    assert.equal(next[0],first[1]);
+    assert.notEqual(next[1],first[1]);
+    const refreshed=registeredResource(first[1]);
+    assert.ok(refreshed);
+    const read=await refreshed.resource.read({signal:AbortSignal.timeout(1000)});
+    assert.equal(await new Response(read.body).text(),'https://provider.test/612.ts?sig=fresh');
+    const other=tokens(rewritePlaylist(text(612,'fresh'),resource('https://provider.test/other.m3u8'),owner));
+    assert.notEqual(other[0],next[0]);
+    const ranged=tokens(rewritePlaylist('#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:612\n#EXTINF:4,\n#EXT-X-BYTERANGE:100@0\nshared.ts\n#EXTINF:4,\n#EXT-X-BYTERANGE:100\nshared.ts\n',playlist,owner));
+    assert.equal(ranged[0],ranged[1]);
+    const newer=tokens(rewritePlaylist(text(612,'fresh'),playlist,grant(owner.sessionId,1)));
+    assert.notEqual(newer[0],next[0]);
+    revokeGeneration(owner.sessionId,1);
+    assert.equal(registeredResource(next[0]),null);
+    assert.ok(registeredResource(newer[0]));
+  } finally {revokeSession(owner.sessionId);}
+});
+
 test('Gooz provider accepts only its player-bound HLS grammar',()=>{
   assert.equal(goozSourceFromEmbed(`<script>const source = "${root}";</script>`,'57069'),root);
   assert.equal(goozSourceFromEmbed(`atobClappr("${Buffer.from(root).toString('base64')}")`,'57069'),root);
@@ -32,6 +63,27 @@ test('Gooz provider accepts only its player-bound HLS grammar',()=>{
     media.replace('https://','https://user@'),media.replace('r2.cloudflarestorage.com','r2.cloudflarestorage.com:8443'),
     media.replace('NTcwNjk%3D','NTcwNjk%253D'),media.replace('X-Amz-Signature=','X-Amz-Signature=oops&X-Amz-Signature='),
     media.replace('a'.repeat(64),'short')]) assert.equal(validGoozResourceUrl(bad,'57069','media'),false);
+});
+
+test('Gooz relays published quality variants with dotted backend names',()=>{
+  const owner=grant('775e74ac-9bae-4746-b902-43e365db1a41');
+  const resource=goozResource(root,'57069','playlist');
+  assert.ok(resource);
+  const variants=[
+    'https://pl.playlist5.space/playlist/57069/pl.goozekhar1.space/caxi-low',
+    'https://pl.goozekhar2.space/playlist/57069/red.redirector1.space/caxi',
+    'https://pl.playlist6.space/playlist/57069/pl.kamfir3.space/caxi-fhd',
+  ];
+  try {
+    const rewritten=rewritePlaylist(`#EXTM3U\n${variants.map(url=>`#EXT-X-STREAM-INF:BANDWIDTH=4000000\n${url}`).join('\n')}\n`,resource,owner);
+    const tokens=[...rewritten.matchAll(/\/api\/stream\/media\/([a-f0-9]{48})/g)].map(match=>match[1]);
+    assert.equal(tokens.length,3);
+    assert.deepEqual(tokens.map(token=>registeredResource(token)?.resource.identity),variants);
+    for (const bad of [variants[0].replace('/57069/','/57068/'),variants[0].replace('caxi-low','caxi-other'),
+      variants[0].replace('pl.goozekhar1.space','pl..space'),`${variants[0]}?url=https://example.com`,
+      variants[0].replace('https://pl.playlist5.space/','https://attacker.test/')])
+      assert.equal(resource.resolve(bad,'playlist'),null);
+  } finally { revokeSession(owner.sessionId); }
 });
 
 test('relay rewrites only resources resolved by the provider and scopes tokens to generations',()=>{
@@ -66,6 +118,85 @@ test('relay rewrites only resources resolved by the provider and scopes tokens t
   revokeSession(first.sessionId);
   assert.equal(nextSignal.aborted,true);
   assert.equal(registeredResource(newer),null);
+});
+
+test('Gooz resolves published NFL redirect segments without forwarding embed headers',async()=>{
+  const target='https://o300801-mp-lura-live.fsy.nfl.com/live/ephemeral/game/dmla-anvato01/1128k/stream/176176/segment_176176827c.ts?token=sample';
+  const wrapped=`https://pl.goozekhar1.space/redirect/video-1segment_176176827c.txt?path=${encodeURIComponent(target)}`;
+  const requests:{url:string;headers:Headers;redirect:RequestRedirect|undefined}[]=[];
+  const fetcher:typeof fetch=async(input,init)=>{
+    requests.push({url:String(input),headers:new Headers(init?.headers),redirect:init?.redirect});
+    return new Response(new Uint8Array([71,64,17]),{status:200,headers:{'content-type':'video/MP2T'}});
+  };
+  const playlist=goozResource('https://pl.playlist5.space/playlist/57069/pl.goozekhar1.space/caxi-low','57069','playlist',fetcher);
+  assert.ok(playlist);
+  const segment=playlist.resolve(wrapped,'media');
+  assert.ok(segment);
+  const response=await segment.read({signal:new AbortController().signal,range:'bytes=0-2'});
+  assert.deepEqual([...new Uint8Array(await new Response(response.body).arrayBuffer())],[71,64,17]);
+  assert.equal(requests[0].url,target);
+  assert.equal(requests[0].redirect,'manual');
+  assert.equal(requests[0].headers.get('range'),'bytes=0-2');
+  assert.equal(requests[0].headers.get('referer'),null);
+  assert.equal(requests[0].headers.get('origin'),null);
+  assert.equal(segment.identity.includes('token='),false);
+  for(const bad of [wrapped.replace('https://pl.goozekhar1.space/','https://attacker.test/'),
+    wrapped.replace('video-1segment_176176827c','video-1segment_1'),
+    wrapped.replace(encodeURIComponent(target),encodeURIComponent(target.replace('fsy.nfl.com','attacker.test'))),
+    wrapped.replace(encodeURIComponent(target),encodeURIComponent(target.replace('https://','http://'))),
+    wrapped.replace(encodeURIComponent(target),encodeURIComponent(target.replace('/live/ephemeral/','/private/'))),
+    `${wrapped}&path=${encodeURIComponent(target)}`]) assert.equal(playlist.resolve(bad,'media'),null);
+});
+
+test('Gooz resolves Akamai NFL segments for primary and backup quality variants',async()=>{
+  const target='https://o300801-mp-lura-live.akamaized.net/live/ephemeral/game/dmla-anvato12/1128k/stream/174224/segment_174224780c.ts?hdntl=exp%3D1790549999~acl%3D%2F*~hmac%3Dabc';
+  const requests:string[]=[];
+  const fetcher:typeof fetch=async input=>{
+    requests.push(String(input));
+    return new Response(new Uint8Array([71,64,17]),{status:200,headers:{'content-type':'video/MP2T'}});
+  };
+  for(const [playerId,backend,quality] of [
+    ['57314','red.redirector1.space','caxi-low'],
+    ['57315','pl.kamfir4.space','caxi-fhd'],
+  ] as const){
+    const playlist=goozResource(`https://pl.playlist5.space/playlist/${playerId}/${backend}/${quality}`,
+      playerId,'playlist',fetcher);
+    assert.ok(playlist);
+    for(const video of [1,3,5]){
+      const wrapped=`https://${backend}/redirect/video-${video}segment_174224780c.txt?path=${encodeURIComponent(target)}`;
+      const segment=playlist.resolve(wrapped,'media');
+      assert.ok(segment);
+      assert.equal(segment.identity,target.split('?')[0]);
+      await segment.read({signal:new AbortController().signal});
+      for(const bad of [
+        target.replace('akamaized.net','akamaized.net.attacker.test'),
+        target.replace('hdntl=','token='),
+        target.replace('segment_174224780c.ts','segment_174224780d.ts'),
+        target.replace('/live/ephemeral/','/private/'),
+        `${target}&hdntl=duplicate`,
+      ]) assert.equal(playlist.resolve(wrapped.replace(encodeURIComponent(target),encodeURIComponent(bad)),'media'),null);
+    }
+  }
+  assert.equal(requests.length,6);
+  assert.ok(requests.every(url=>url===target));
+});
+
+test('Gooz relays published NFL 720p and 1080p segment wrappers',()=>{
+  const owner=grant('fd51259f-844d-4254-a733-b4ed328762e4');
+  try {
+    for (const [variantName,wrapperNumber,bitrate] of [['caxi','3','5128k'],['caxi-fhd','5','8128k']]) {
+      const playlist=goozResource(`https://pl.playlist3.space/playlist/57069/pl.goozekhar1.space/${variantName}`,'57069','playlist');
+      assert.ok(playlist);
+      const target=`https://o300801-mp-lura-live.fsy.nfl.com/live/ephemeral/game/dmla-anvato01/${bitrate}/stream/176176/segment_176176827c.ts?token=sample`;
+      const wrapped=`https://pl.goozekhar1.space/redirect/video-${wrapperNumber}segment_176176827c.txt?path=${encodeURIComponent(target)}`;
+      const rewritten=rewritePlaylist(`#EXTM3U\n#EXTINF:6,\n${wrapped}\n`,playlist,owner);
+      const token=/\/api\/stream\/media\/([a-f0-9]{48})/.exec(rewritten)?.[1];
+      assert.ok(token);
+      assert.equal(registeredResource(token)?.resource.identity,target.split('?')[0]);
+      assert.equal(playlist.resolve(wrapped.replace(`video-${wrapperNumber}segment_176176827c`,'video-2segment_176176827c'),'media'),null);
+      assert.equal(playlist.resolve(wrapped.replace('segment_176176827c.ts','segment_176176828c.ts'),'media'),null);
+    }
+  } finally { revokeSession(owner.sessionId); }
 });
 
 test('Streamcenter player parser accepts only published exact HLS iframe URLs',()=>{

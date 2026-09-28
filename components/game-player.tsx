@@ -21,10 +21,11 @@ type Props = {
   onPlayingChange: (playing: boolean) => void;
   onAudibleChange: (audible: boolean) => void;
   onVolumeChange: (volume: number) => void;
-  onFatal?: () => void;
-  onEnded?: () => void;
-  onRetry?: () => void;
+  onFatal?: (feedUrl:string) => void;
+  onEnded?: (feedUrl:string) => void;
+  onRetry?: (feedUrl:string) => void;
   errorHint?: string;
+  startupTimeoutMs?: number;
 };
 
 function time(seconds: number) {
@@ -33,7 +34,7 @@ function time(seconds: number) {
   return `${Math.floor(whole / 3600) ? `${Math.floor(whole / 3600)}:` : ''}${Math.floor(whole % 3600 / 60).toString().padStart(whole >= 3600 ? 2 : 1, '0')}:${(whole % 60).toString().padStart(2, '0')}`;
 }
 
-export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onEnded, onRetry, errorHint }: Props) {
+export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onEnded, onRetry, errorHint, startupTimeoutMs = 20000 }: Props) {
   const shell = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -111,9 +112,9 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       }
       failed = true;
       setStatus('error');
-      callbacks.current.onFatal?.();
+      callbacks.current.onFatal?.(feed.url);
     };
-    const ended = () => { if (active) { setStatus('ended'); callbacks.current.onEnded?.(); } };
+    const ended = () => { if (active) { setStatus('ended'); callbacks.current.onEnded?.(feed.url); } };
     const waiting = () => { if (active) setStatus(current => current === 'ready' ? 'buffering' : current); };
     const paused = () => { if (active && !playingRef.current) setStatus(current => current === 'buffering' ? 'ready' : current); };
     const enterPip = () => { if (active) setPip(true); };
@@ -144,7 +145,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       if (deferredFailure && !slept && canRecover()) { deferredFailure = false; setRetry(value => value + 1); return; }
       if (!hasLoaded && !slept && canRecover()) {
         startupElapsed += elapsed;
-        if (startupElapsed >= 20000 && video.readyState < 2) error();
+        if (startupElapsed >= startupTimeoutMs && video.readyState < 2) error();
       }
       if (slept || !hasLoaded || !canRecover() || video.paused || video.ended) {
         lastPosition = position;
@@ -176,7 +177,10 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     video.addEventListener('loadedmetadata', onVideoDimensions);
     video.addEventListener('resize', onVideoDimensions);
     if (/\.m3u8(?:\?|$)/i.test(feed.url) && Hls.isSupported()) {
-      hls = new Hls({ maxBufferLength: 45, backBufferLength: 90, liveSyncDurationCount: 3 });
+      hls = new Hls({ maxBufferLength: 45, backBufferLength: 90, liveSyncDurationCount: 3,
+        ...(startupTimeoutMs > 20000 ? {manifestLoadPolicy:{default:{
+          ...Hls.DefaultConfig.manifestLoadPolicy.default,maxLoadTimeMs:startupTimeoutMs-5000,
+        }}} : {}) });
       hlsRef.current = hls;
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (!active || !hls) return;
@@ -213,7 +217,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       video.removeEventListener('loadedmetadata', onVideoDimensions); video.removeEventListener('resize', onVideoDimensions);
       video.removeAttribute('src'); video.load();
     };
-  }, [feed.url, retry, updateTimeline]);
+  }, [feed.url, retry, startupTimeoutMs, updateTimeline]);
 
   useEffect(() => {
     const video = ref.current;
@@ -358,7 +362,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     {status === 'gesture' && playing && <button className="player-message gesture" onClick={enablePlayback}><Play/><span>{audible ? 'Click to enable audio' : 'Click to start playback'}</span></button>}
     {status === 'audio-gesture' && audible && playing && <button className="feed-audio-prompt" onClick={enableAudio}>Enable audio</button>}
     {status === 'ended' && playing && <button className="player-message gesture" onClick={() => { if (ref.current) { ref.current.currentTime = 0; enablePlayback(); } }}><RotateCcw/><span>Replay video</span></button>}
-    {status === 'error' && <div className="player-message"><AlertCircle/><strong>Feed couldn&apos;t play</strong><p>{errorHint || 'Check the URL, availability, and whether the provider allows playback here.'}</p><button className="button" onClick={() => onRetry ? onRetry() : setRetry(value => value + 1)}>Try again</button></div>}
+    {status === 'error' && <div className="player-message"><AlertCircle/><strong>Feed couldn&apos;t play</strong><p>{errorHint || 'Check the URL, availability, and whether the provider allows playback here.'}</p><button className="button" onClick={() => onRetry ? onRetry(feed.url) : setRetry(value => value + 1)}>Try again</button></div>}
     {status === 'ready' && !focused && <span className="feed-label"><Radio size={12}/>{feed.label}</span>}
     {focused && status !== 'error' && <div className="player-controls" role="group" aria-label="Focused stream controls">
       {timeline && <div className="player-timeline"><input type="range" min="0" max="1000" step="1" value={Math.round((timeline.current - timeline.start) / (timeline.end - timeline.start) * 1000)} aria-label={`Seek ${feed.label}`} onChange={event => seek(Number(event.target.value))}/><span>{timeline.live ? behindLive ? `-${time(timeline.end - timeline.current)}` : 'LIVE' : time(timeline.current - timeline.start)}</span>{timeline.live ? <button className={behindLive ? 'go-live' : 'at-live'} onClick={live} disabled={!behindLive}>● LIVE</button> : <span>{time(timeline.end - timeline.start)}</span>}</div>}

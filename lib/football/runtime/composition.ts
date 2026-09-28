@@ -4,6 +4,7 @@ import { SCHEDULES, readSchedule, readSeasonMembership } from '../adapters/sched
 import { SOURCES, SourceFetchError, compatiblePlayers, enrichObservation, parseListings, readHtml } from '../adapters/sources.ts';
 import type { FootballDependencies } from '../domain/ports.ts';
 import { FootballCoordinator } from './coordinator.ts';
+import { probeCandidate } from '../../playback/probe.ts';
 
 type Overrides = Partial<Omit<FootballDependencies, 'store'>> & { ownerToken?: string; reclaimToken?: string };
 
@@ -12,7 +13,7 @@ export function createFootballCoordinator(path: string, options: Overrides = {})
   try {
     return new FootballCoordinator({
       store,
-      desktop:options.desktop,
+      browserCollectorsAvailable:options.browserCollectorsAvailable,
       schedules:options.schedules ?? SCHEDULES,
       sources:options.sources ?? SOURCES,
       readSchedule:options.readSchedule ?? readSchedule,
@@ -21,6 +22,7 @@ export function createFootballCoordinator(path: string, options: Overrides = {})
       parseListings:options.parseListings ?? parseListings,
       enrichObservation:options.enrichObservation ?? enrichObservation,
       compatiblePlayers:options.compatiblePlayers ?? compatiblePlayers,
+      probeCandidate:options.probeCandidate ?? probeCandidate,
       retryAfterMs:options.retryAfterMs ?? (error => error instanceof SourceFetchError ? error.retryAfterMs || 0 : 0),
       now:options.now ?? Date.now,
       id:options.id ?? randomUUID,

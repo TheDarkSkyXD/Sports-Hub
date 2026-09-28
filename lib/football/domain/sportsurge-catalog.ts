@@ -1,5 +1,6 @@
 import { createObservationMatcher } from './matching.ts';
-import type { Game, Observation, SourceMatchReason, SportsurgeCatalog, SportsurgeCatalogView, SportsurgeProvider, StoredSportsurgeCatalog } from '../shared.ts';
+import { createHash } from 'node:crypto';
+import type { Candidate, Game, Match, Observation, SourceMatchReason, SportsurgeCatalog, SportsurgeCatalogView, SportsurgeProvider, StoredSportsurgeCatalog } from '../shared.ts';
 
 const DETAIL_PATH=/^\/watch-(\d{1,12})-(cfb|nfl)-[a-z0-9]+(?:-[a-z0-9]+)*\/$/;
 const CREDENTIAL_KEY=/^(?:token|access_token|auth|authorization|key|signature|sig|st|e|x-amz-.+)$/i;
@@ -55,6 +56,52 @@ export function sportsurgeObservation(event:SportsurgeCatalog['events'][number],
     teams:event.teams,kickoff:event.kickoff,rawTime:event.kickoff===null?'':new Date(event.kickoff).toISOString(),observedAt:at,parserVersion:1};
 }
 
+function matchedGame(event:SportsurgeCatalog['events'][number],at:number,games:Game[],now:number):Game|undefined {
+  const result:Match=createObservationMatcher(games,'inventory-live')(sportsurgeObservation(event,at),now);
+  const id=result.kind==='matched'?result.gameId:
+    event.sourceStatus==='live' && event.kickoff===null && result.reason==='unverified-kickoff' && result.possibleGameIds.length===1
+      ?result.possibleGameIds[0]:null;
+  const game=games.find(item=>item.id===id);
+  if (!game || game.lifecycle!=='live' && game.lifecycle!=='scheduled' || event.kickoff===null && game.lifecycle!=='live') return undefined;
+  return game;
+}
+
+function rowIdentity(eventUrl:string,providerId:string,destinationUrl:string):string {
+  return createHash('sha256').update(eventUrl).update('\0').update(providerId).update('\0').update(destinationUrl).digest('hex').slice(0,24);
+}
+
+export function sportsurgeCandidates(input:{
+  current:StoredSportsurgeCatalog|null;
+  previous:StoredSportsurgeCatalog|null;
+  lastComplete:StoredSportsurgeCatalog|null;
+  games:Game[];
+  now:number;
+}):Candidate[] {
+  const {current,previous,lastComplete,games,now}=input;
+  const older=current?.catalog.state.kind==='complete'?[]:[previous,lastComplete];
+  const catalogs=[current,...older].filter((stored):stored is StoredSportsurgeCatalog=>stored!==null);
+  const replaced=new Set<string>();
+  const candidates=new Map<string,Candidate>();
+  for(const stored of catalogs) for(const event of stored.catalog.events) {
+    if(replaced.has(event.url))continue;
+    const category=stored.catalog.categories[event.league];
+    if(category.kind!=='collected'||event.detail.kind!=='collected')continue;
+    const detail=event.detail;
+    if(detail.at<category.at||detail.at>now+60_000||now-detail.at>=30*60_000)continue;
+    replaced.add(event.url);
+    const game=matchedGame(event,category.at,games,now);
+    if(!game)continue;
+    for(const provider of detail.providers) {
+      if(provider.destination.kind!=='link'||provider.observedAt!==detail.at)continue;
+      const id=`sportsurge-v2:${rowIdentity(event.url,provider.id,provider.destination.url)}`;
+      candidates.set(id,{id,gameId:game.id,label:`Sportsurge v2 · ${provider.label}`,
+        sourceIds:['sportsurge-v2'],observedAt:detail.at,
+        locator:{provider:'sportsurge-v2',eventId:event.id,providerId:provider.id,url:provider.destination.url}});
+    }
+  }
+  return [...candidates.values()];
+}
+
 function publicReason(value:string):SourceMatchReason {
   switch(value) {
     case 'not-a-matchup': case 'unknown-teams': case 'unverified-kickoff': case 'ambiguous-matchup':
@@ -70,10 +117,14 @@ export function sportsurgeCatalogView(stored:StoredSportsurgeCatalog,games:Game[
     const category=catalog.categories[event.league];
     const observedAt=category.kind==='pending' ? catalog.startedAt : category.at;
     const result=match(sportsurgeObservation(event,observedAt),now);
+    const game=matchedGame(event,observedAt,games,now);
+    const detail=event.detail.kind==='collected'?{...event.detail,providers:event.detail.providers.map(provider=>({
+      ...provider,destination:provider.destination.kind==='link'?{kind:'link' as const}:provider.destination,
+    }))}:event.detail;
     return {id:event.id,title:event.title,url:event.url,league:event.league,
-      gameId:result.kind==='matched' ? result.gameId : null,
-      matchReason:result.kind==='unmatched' ? publicReason(result.reason) : null,
-      sourceStatus:event.sourceStatus,detail:event.detail};
+      gameId:game?.id || null,
+      matchReason:game?null:result.kind==='unmatched' ? publicReason(result.reason) : null,
+      sourceStatus:event.sourceStatus,detail};
   });
   const details=catalog.events.map(event=>event.detail);
   return {runId:catalog.runId,startedAt:catalog.startedAt,receivedAt,interrupted:catalog.state.kind==='collecting' && now-receivedAt>180000,

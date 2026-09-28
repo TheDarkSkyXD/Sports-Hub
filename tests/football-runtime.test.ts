@@ -41,6 +41,7 @@ test('North Dakota historical listing reaches detail but an empty embed creates 
   const coordinator = createFootballCoordinator(path,{
     now:() => at,
     sources:[SOURCES[0]],
+    probeCandidate:async()=>({kind:'playable',proof:'media'}),
     readSchedule:async (partition,time) => ({games:partition.id==='fcs' ? [{...scheduled,partitions:['fcs']}] : [],at:time,league:partition.league}),
     readHtml:async url => {
       visited.push(url);
@@ -65,7 +66,7 @@ test('North Dakota historical listing reaches detail but an empty embed creates 
     } finally { db.close(); }
     if (board.kind==='board') assert.equal(board.board.games.find(game => game.id==='ncaaf-401867858')?.sourceUrl,undefined);
     assert.deepEqual(await coordinator.command({kind:'open',gameId:'ncaaf-401867858',manual:false,requestId:'11111111-1111-4111-8111-111111111111'}),
-      {kind:'error',status:404,message:'No compatible stream is available yet.'});
+      {kind:'error',status:404,message:'No playable server has been verified yet.'});
   } finally {
     await coordinator.stop();
     rmSync(dir,{recursive:true,force:true});
@@ -100,6 +101,7 @@ test('catalog matches are retained without consuming detail slots or minting pla
   const coordinator = createFootballCoordinator(path,{
     now:() => at,
     sources:[tvapp,sportsurge],
+    probeCandidate:async()=>({kind:'playable',proof:'media'}),
     readSchedule:async (partition,time) => ({games:partition.id==='fbs' ? [florida,georgia,late] : [],at:time,league:partition.league}),
     readHtml:async url => { visited.push(url); return url===tvapp.url ? catalog : url===sportsurge.url ? listing :
       '<iframe src="https://gooz.aapmains.net/new-stream-embed/123"></iframe>'; },
@@ -122,6 +124,8 @@ test('catalog matches are retained without consuming detail slots or minting pla
     assert.equal(catalogRows.length,3);
     assert.ok(catalogRows.every(row => JSON.parse(row.result).kind==='matched'));
     const fetched=visited.length;
+    await coordinator.command({kind:'check-sources',gameIds:['ncaaf-1'],retry:false});
+    await new Promise<void>(resolve=>setImmediate(resolve));
     const inventory=await coordinator.command({kind:'sources'});
     assert.equal(inventory.kind,'sources');
     if (inventory.kind==='sources') {
@@ -143,7 +147,7 @@ test('catalog matches are retained without consuming detail slots or minting pla
     assert.equal(opened.kind,'playback');
     if (opened.kind==='playback') assert.deepEqual(opened.playback.candidates.map(candidate => candidate.id),['gooz-123']);
     assert.deepEqual(await coordinator.command({kind:'open',gameId:'ncaaf-2',manual:false}),
-      {kind:'error',status:404,message:'No compatible stream is available yet.'});
+      {kind:'error',status:404,message:'No playable server has been verified yet.'});
   } finally { await coordinator.stop(); rmSync(dir,{recursive:true,force:true}); }
 });
 
@@ -169,6 +173,7 @@ test('a delayed schedule response starts final grace when the coordinator accept
   const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
     now:() => now,
     sources:[],
+    probeCandidate:async()=>({kind:'playable',proof:'media'}),
     readSchedule:async (partition,at) => {
       if (partition.id==='nfl') now += 90000;
       return {games:partition.id==='nfl' ? [final] : [],at,league:partition.league};
@@ -240,6 +245,7 @@ test('active playback rejects stale failures, drains at final, then closes on th
     now:() => now,
     sources:[SOURCES[0]],
     id:() => `00000000-0000-4000-8000-${String(++serial).padStart(12,'0')}`,
+    probeCandidate:async()=>({kind:'playable',proof:'media'}),
     readSchedule:async (partition,at) => ({games:partition.id==='nfl' && includeGame ? [status] : [],at,league:partition.league}),
     readHtml:async url => url===listUrl
       ? listing
@@ -250,6 +256,7 @@ test('active playback rejects stale failures, drains at final, then closes on th
     const requestId = '11111111-1111-4111-8111-111111111111';
     let opened = await coordinator.command({kind:'open',gameId:'100',manual:false,requestId});
     for (let attempt=0;opened.kind==='error' && attempt<30;attempt++) {
+      await coordinator.command({kind:'check-sources',gameIds:['100'],retry:false});
       await new Promise(resolve => setTimeout(resolve,10));
       opened = await coordinator.command({kind:'open',gameId:'100',manual:false,requestId});
     }
@@ -326,6 +333,7 @@ test('automatic failover reaches the fourth source without heartbeats postponing
   const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
     now:() => now,
     sources:[SOURCES[0]],
+    probeCandidate:async()=>({kind:'playable',proof:'media'}),
     readSchedule:async (partition,at) => ({games:partition.id==='nfl' ? [live] : [],at,league:partition.league}),
     readHtml:async url => url===SOURCES[0].url
       ? `<a href="https://isportsurge.ws/watch/nfl/away-home/123" datetime="${new Date(kickoff).toISOString()}"><span class="team-name-event-row"><img alt="Away"></span><span class="team-name-event-row"><img alt="Home"></span></a>`
@@ -335,6 +343,7 @@ test('automatic failover reaches the fourth source without heartbeats postponing
     await coordinator.refresh(true);
     let opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
     for (let attempt=0;opened.kind==='error' && attempt<30;attempt++) {
+      await coordinator.command({kind:'check-sources',gameIds:['100'],retry:false});
       await new Promise(resolve => setTimeout(resolve,10));
       opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
     }
@@ -380,6 +389,7 @@ test('a newly discovered candidate accompanies the session reply that selects it
   const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
     now:() => now,
     sources:[SOURCES[0]],
+    probeCandidate:async()=>({kind:'playable',proof:'media'}),
     readSchedule:async (partition,at) => ({games:partition.id==='nfl' ? [live] : [],at,league:partition.league}),
     readHtml:async url => url===SOURCES[0].url ? listing : detail,
   });
@@ -387,6 +397,7 @@ test('a newly discovered candidate accompanies the session reply that selects it
     await coordinator.refresh(true);
     let opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
     for (let attempt=0;opened.kind==='error' && attempt<30;attempt++) {
+      await coordinator.command({kind:'check-sources',gameIds:['100'],retry:false});
       await new Promise(resolve => setTimeout(resolve,10));
       opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
     }
@@ -399,6 +410,8 @@ test('a newly discovered candidate accompanies the session reply that selects it
     assert.equal((await coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false})).kind,'session');
     now += 60001;
     await coordinator.refresh(true);
+    await coordinator.command({kind:'check-sources',gameIds:['100'],retry:false});
+    await new Promise<void>(resolve=>setImmediate(resolve));
     let discovered = await coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false});
     for (let attempt=0;discovered.kind==='session' && !discovered.candidates.some(candidate=>candidate.id==='gooz-124') && attempt<30;attempt++) {
       await new Promise(resolve => setTimeout(resolve,10));
@@ -426,6 +439,7 @@ test('an exhausted session waits for its fixed deadline before automatically ret
   const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
     now:() => now,
     sources:[SOURCES[0]],
+    probeCandidate:async()=>({kind:'playable',proof:'media'}),
     readSchedule:async (partition,at) => ({games:partition.id==='nfl' ? [live] : [],at,league:partition.league}),
     readHtml:async url => url===SOURCES[0].url ? listing : detail,
   });
@@ -433,6 +447,7 @@ test('an exhausted session waits for its fixed deadline before automatically ret
     await coordinator.refresh(true);
     let opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
     for (let attempt=0;opened.kind==='error' && attempt<30;attempt++) {
+      await coordinator.command({kind:'check-sources',gameIds:['100'],retry:false});
       await new Promise(resolve => setTimeout(resolve,10));
       opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
     }

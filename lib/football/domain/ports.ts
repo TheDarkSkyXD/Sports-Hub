@@ -1,4 +1,9 @@
-import type { Candidate, Game, League, Match, Observation, SeasonMembership, SourceAttempt, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
+import type { Candidate, CandidateLocator, Game, League, Match, Observation, SeasonMembership, SourceAttempt, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
+
+export type CandidateProbeResult =
+  | {kind:'playable';proof:'media'|'decoded'}
+  | {kind:'unavailable';reason:'upstream'|'unsupported'|'invalid-media'|'timeout'}
+  | {kind:'deferred';retryAfterMs:number};
 
 export type ScheduleSource = { id: string; league: League; path: string; group: string | null };
 export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[] };
@@ -27,7 +32,7 @@ export interface FootballRepository {
 }
 
 export type FootballDependencies = {
-  desktop?:boolean;
+  browserCollectorsAvailable?:boolean;
   store: FootballRepository;
   schedules: readonly ScheduleSource[];
   sources: readonly ListingSource[];
@@ -37,6 +42,7 @@ export type FootballDependencies = {
   parseListings: (source: ListingSource, html: string, now: number) => ListingResult;
   enrichObservation: (observation: Observation, html: string) => Observation;
   compatiblePlayers: (gameId: string, observation: Observation, html: string, now: number) => Candidate[];
+  probeCandidate: (locator: CandidateLocator, signal: AbortSignal) => Promise<CandidateProbeResult>;
   retryAfterMs: (error: unknown) => number;
   now: () => number;
   id: () => string;

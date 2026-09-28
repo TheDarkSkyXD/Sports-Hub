@@ -15,8 +15,8 @@ export function validGoozResourceUrl(value: string, playerId: string, kind: Reso
       if (url.search) return false;
       if (url.hostname === 'chatgpt.hereisman.net') return url.pathname === `/playlist/${playerId}/load-playlist`;
       if (!VARIANT_HOSTS.has(url.hostname)) return false;
-      const match = /^\/playlist\/\d{1,20}\/([a-z0-9]{1,32})\/caxi$/.exec(url.pathname);
-      return !!match && url.pathname === `/playlist/${playerId}/${match[1]}/caxi`;
+      const match = /^\/playlist\/\d{1,20}\/([a-z0-9]{1,32}(?:\.[a-z0-9]{1,32}){0,3})\/(caxi(?:-low|-fhd)?)$/.exec(url.pathname);
+      return !!match && url.pathname === `/playlist/${playerId}/${match[1]}/${match[2]}`;
     }
     if (!/^[a-z0-9]{1,32}\.[a-f0-9]{32}(?:\.(?:us|eu|fedramp))?\.r2\.cloudflarestorage\.com$/.test(url.hostname)) return false;
     const match = /^\/scripts\/([^/]+)\/([A-Za-z0-9._-]+)$/.exec(url.pathname);
@@ -40,6 +40,32 @@ function identity(url: string, kind: ResourceKind): string {
   return address.href;
 }
 
+function nflSegment(reference: string, playlist: string, fetcher: typeof fetch): ProviderResource | null {
+  const wrapper=new URL(reference,playlist);
+  const backend=new URL(playlist).pathname.split('/')[3];
+  const segment=/^\/redirect\/video-[135](segment_[a-z0-9]+)\.txt$/.exec(wrapper.pathname);
+  if (!segment || wrapper.origin!==`https://${backend}` || wrapper.username || wrapper.password || wrapper.hash ||
+    [...wrapper.searchParams.keys()].join(',')!=='path') return null;
+  const target=new URL(wrapper.searchParams.get('path') || '');
+  const authority=/^https:\/\/([^/?#]+)/.exec(target.href)?.[1];
+  const credential=/^o\d{6}-mp-lura-live\.fsy\.nfl\.com$/.test(target.hostname) ? 'token' :
+    /^o\d{6}-mp-lura-live\.akamaized\.net$/.test(target.hostname) ? 'hdntl' : null;
+  if (authority!==target.hostname || !credential ||
+    !/^\/live\/ephemeral\/(?:[A-Za-z0-9_-]+\/)+segment_[a-z0-9]+\.ts$/.test(target.pathname) ||
+    !target.pathname.endsWith(`/${segment[1]}.ts`) || target.hash || target.href.length>4096 ||
+    [...target.searchParams.keys()].join(',')!==credential || !target.searchParams.get(credential)) return null;
+  const stable=new URL(target);
+  stable.search='';
+  return {
+    kind:'media',identity:stable.href,
+    async read({signal,range}) {
+      return sanitizedRead(await fetcher(target.href,{cache:'no-store',redirect:'manual',
+        signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:range?{Range:range}:{}}));
+    },
+    resolve() { return null; },
+  };
+}
+
 export function goozResource(url: string, playerId: string, kind: ResourceKind, fetcher: typeof fetch = fetch): ProviderResource | null {
   if (!validGoozResourceUrl(url,playerId,kind)) return null;
   return {
@@ -49,7 +75,10 @@ export function goozResource(url: string, playerId: string, kind: ResourceKind, 
       return sanitizedRead(response);
     },
     resolve(reference,expected) {
-      try { return goozResource(new URL(reference,url).href,playerId,expected,fetcher); } catch { return null; }
+      try {
+        return goozResource(new URL(reference,url).href,playerId,expected,fetcher) ||
+          (kind==='playlist' && expected==='media' ? nflSegment(reference,url,fetcher) : null);
+      } catch { return null; }
     },
   };
 }

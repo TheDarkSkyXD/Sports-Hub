@@ -70,7 +70,7 @@ async function screenshot(page, name, fullPage = false) {
   } else await page.screenshot({ path: target, fullPage });
 }
 
-async function openRoom({ live = false, provider = false, manyQualities = false, mediaPlaylist = false, backupMediaPlaylist = false, mp4 = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false, holdHeartbeat = false } = {}) {
+async function openRoom({ live = false, provider = false, manyQualities = false, mediaPlaylist = false, backupMediaPlaylist = false, mp4 = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false, holdHeartbeat = false, holdSelection = false } = {}) {
   const context = desktopApp ? desktopApp.context() : await browser.newContext({ viewport: { width: 1440, height: 1100 } });
   await context.unrouteAll({ behavior: 'wait' });
   let roomGames = games.map((g, index) => provider ? { ...g, status: waitingForLive && index === 0 ? 'pre' : g.status, sourceUrl: waitingForLive && index === 1 ? undefined : `https://isportsurge.ws/watch/nfl/test-game/${g.id}` } : g);
@@ -83,12 +83,18 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   const heartbeatObserved = new Promise(resolve => { markHeartbeat = resolve; });
   const heartbeatGate = new Promise(resolve => { releaseHeartbeat = resolve; });
   let heartbeatHeld = false;
+  let markSelection;
+  let releaseSelection;
+  const selectionObserved = new Promise(resolve => { markSelection = resolve; });
+  const selectionGate = new Promise(resolve => { releaseSelection = resolve; });
+  let selectionHeld = false;
   let backupAvailable = !delayedBackup;
   let fixtureOffline = offlineStart;
   const candidatesFor = (gameId, manual) => manual ? [] : [0, ...(backupAvailable ? [1] : [])].map(index => ({
     id: `gooz-${gameId}-${index}`, gameId, playerId: String(57000 + index),
     url: `https://gooz.aapmains.net/new-stream-embed/${57000 + index}`,
     label: index ? 'Backup' : 'Primary', sourceIds: ['fixture'], observedAt: Date.now(),
+    availability: { kind: 'playable', proof: 'media', checkedAt: Date.now(), expiresAt: Date.now() + 600000 },
   }));
   const publicSession = session => ({ id: session.id, gameId: session.gameId, candidateId: session.candidateId, generation: session.generation, state: session.state, graceEndsAt: session.graceEndsAt });
   let finishFailures;
@@ -149,12 +155,17 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
       session.failures = (session.failures || 0) + 1;
       if (providerFailure === 'late' && session.failures > 1 && !backupAvailable) {
         session.exhausted = true;
-        return route.fulfill({ status: 503, json: { error: 'Available streams failed. Choose Try again when ready.' } });
+        return route.fulfill({ status: 503, json: { error: 'Available streams failed. Choose Try again when ready.', retryAfter: Date.now() + 60000 } });
       }
-      if (session.failures > 1 && session.candidateId.endsWith('-1')) return route.fulfill({ status: 503, json: { error: 'Available streams are cooling down.' } });
+      if (session.failures > 1 && session.candidateId.endsWith('-1')) return route.fulfill({ status: 503, json: { error: 'Available streams are cooling down.', retryAfter: Date.now() + 60000 } });
       if (session.failures > 1 && backupAvailable) { session.candidateId = `gooz-${session.gameId}-1`; session.failures = 0; }
       session.generation += 1;
     } else if (body.candidateId && body.candidateId !== session.candidateId) { session.candidateId = body.candidateId; session.generation += 1; session.failures = 0; }
+    if (holdSelection && body.candidateId && !selectionHeld) {
+      selectionHeld = true;
+      markSelection();
+      await selectionGate;
+    }
     return route.fulfill({ json: { session: publicSession(session), candidates: candidatesFor(session.gameId, session.candidateId === 'manual') } });
   });
   async function serveMedia(route, file) {
@@ -215,7 +226,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}${mediaPlaylist ? '&mediaPlaylist=1' : ''}${mp4 ? '&mp4Fixture=1' : ''}${offlineStart ? '&offlineFixture=1' : ''}`);
   await page.locator('.game-tile').first().waitFor();
   if (!provider) await page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(v => v.readyState >= 2));
-  return { context, page, pageErrors, manifestRequests, indexRequests, finalFailure, sessionCounts, heartbeatObserved, releaseHeartbeat,
+  return { context, page, pageErrors, manifestRequests, indexRequests, finalFailure, sessionCounts, heartbeatObserved, releaseHeartbeat, selectionObserved, releaseSelection,
     publishBackup: () => { backupAvailable = true; },
     restoreOnline: async () => { fixtureOffline = false; await page.evaluate(() => Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })); },
     publishLiveGames: () => { roomGames = games.map(g => ({ ...g, sourceUrl: `https://isportsurge.ws/watch/nfl/test-game/${g.id}` })); },
@@ -634,6 +645,24 @@ try {
   results.push('Explicit server selection outranks a concurrent media failure during an in-flight heartbeat.');
   if (!desktopApp) await selectionRoom.context.close();
 
+  const staleMediaRoom = await openRoom({ provider: true, holdSelection: true });
+  await staleMediaRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2 && !document.querySelector('video').paused);
+  const staleMediaTile = staleMediaRoom.page.locator('.game-tile').first();
+  await staleMediaTile.getByRole('combobox', { name: 'Choose listed server' }).selectOption(`gooz-${games[0].id}-1`);
+  await Promise.race([
+    staleMediaRoom.selectionObserved,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Provider selection did not reach the server')), 15000)),
+  ]);
+  await staleMediaTile.locator('video').dispatchEvent('error');
+  staleMediaRoom.releaseSelection();
+  await staleMediaRoom.page.waitForFunction(() => document.querySelector('.game-tile video')?.readyState >= 2);
+  await staleMediaRoom.page.waitForTimeout(500);
+  assert.ok([...staleMediaRoom.indexRequests].some(url => new URL(url).searchParams.get('candidate') === `gooz-${games[0].id}-1`));
+  assert.equal(staleMediaRoom.sessionCounts.failures, 0);
+  assert.deepEqual(staleMediaRoom.pageErrors, []);
+  results.push('Old media failure queued during a committed server switch cannot fail the new generation.');
+  if (!desktopApp) await staleMediaRoom.context.close();
+
   const offlineRoom = await openRoom({ provider: true, offlineStart: true });
   await offlineRoom.page.waitForFunction(() => document.querySelector('.game-tile video') !== null);
   await offlineRoom.page.waitForTimeout(22000);
@@ -724,9 +753,15 @@ try {
   const lateRoom = await openRoom({ provider: true, providerFailure: 'late', delayedBackup: true });
   await lateRoom.page.getByText('Available streams failed. Choose Try again when ready.', { exact: true }).waitFor();
   assert.equal(lateRoom.sessionCounts.failures, 2);
+  const lateBackup = lateRoom.page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === `/api/stream/${games[0].id}/index.m3u8` &&
+      url.searchParams.get('candidate') === `gooz-${games[0].id}-1` && response.ok();
+  }, { timeout: 45000 });
   lateRoom.publishBackup();
+  await lateBackup;
   await lateRoom.page.waitForFunction(() => {
-    const video = document.querySelector('video');
+    const video = document.querySelector('.game-tile video');
     return video?.readyState >= 2 && !video.paused && video.currentTime > 0;
   }, null, { timeout: 45000 });
   assert.equal(lateRoom.sessionCounts.lateSwitches, 1);
@@ -738,7 +773,7 @@ try {
   const scheduledRoom = await openRoom({ provider: true, waitingForLive: true });
   await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 2 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2));
   assert.equal(await scheduledRoom.page.locator('.game-tile').nth(0).getByRole('button', { name: 'Play game', exact: true }).count(), 1);
-  assert.equal(await scheduledRoom.page.locator('.game-tile').nth(1).getByRole('button', { name: 'Stream not listed yet', exact: true }).count(), 1);
+  assert.equal(await scheduledRoom.page.locator('.game-tile').nth(1).getByRole('button', { name: 'No verified stream yet', exact: true }).count(), 1);
   await scheduledRoom.page.locator('.audio-focus').nth(2).click();
   await revealControls(scheduledRoom.page);
   await scheduledRoom.page.getByRole('button', { name: 'Pause stream', exact: true }).click();

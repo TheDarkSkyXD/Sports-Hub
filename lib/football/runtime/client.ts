@@ -14,7 +14,8 @@ class WorkerClient {
   constructor(reclaimToken?: string) {
     this.worker = new Worker(join(process.cwd(),'lib','football','runtime','worker.ts'),{
       execArgv:['--experimental-strip-types'],
-      workerData:{dataDir:process.env.SUNDAY_ROOM_DATA_DIR,desktop:process.env.SUNDAY_ROOM_DESKTOP==='1',ownerToken:this.ownerToken,reclaimToken},
+      workerData:{dataDir:process.env.SUNDAY_ROOM_DATA_DIR,desktop:process.env.SUNDAY_ROOM_DESKTOP==='1',
+        browserCollectorsAvailable:process.env.SUNDAY_ROOM_BROWSER_COLLECTORS==='1',ownerToken:this.ownerToken,reclaimToken},
     });
     this.worker.on('message',(input:unknown) => {
       if (!input || typeof input !== 'object' || !('id' in input) || !('reply' in input) || typeof input.id !== 'number') return;

@@ -50,22 +50,30 @@ export const ObservationSchema = z.object({
 });
 export type Observation = z.infer<typeof ObservationSchema>;
 export type Match = { kind: 'matched'; gameId: string } | { kind: 'unmatched'; reason: string; possibleGameIds: string[] };
+export const CandidateAvailabilitySchema = z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('unknown')}),
+  z.object({kind:z.literal('checking')}),
+  z.object({kind:z.literal('playable'),checkedAt:z.number(),expiresAt:z.number(),proof:z.enum(['media','decoded'])}),
+  z.object({kind:z.literal('unavailable'),checkedAt:z.number(),retryAt:z.number(),reason:z.enum(['upstream','unsupported','invalid-media','timeout'])}),
+]);
+export type CandidateAvailability = z.infer<typeof CandidateAvailabilitySchema>;
 export const CandidateSummarySchema = z.object({
-  id: z.string(), gameId: z.string(), label: z.string(), sourceIds: z.array(z.string()), observedAt: z.number(),
+  id: z.string(), gameId: z.string(), label: z.string(), sourceIds: z.array(z.string()), observedAt: z.number(),availability:CandidateAvailabilitySchema,
 });
 export type CandidateSummary = z.infer<typeof CandidateSummarySchema>;
 export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
   z.object({provider:z.literal('gooz'),playerId:z.string().regex(/^\d{1,20}$/)}),
   z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid()}),
   z.object({provider:z.literal('streameast'),channelId:z.string().regex(/^\d{1,4}$/)}),
+  z.object({provider:z.literal('sportsurge-v2'),eventId:z.string().regex(/^(?:ncaaf|nfl):\d{1,12}$/),providerId:z.string().min(1).max(100),url:z.string().url().max(2000)}),
   z.object({provider:z.literal('wikisport'),section:z.enum(['0nhl','strm']),playerId:z.string().regex(/^\d{1,4}$/)}),
 ]);
 export type CandidateLocator = z.infer<typeof CandidateLocatorSchema>;
-export const CandidateSchema = CandidateSummarySchema.extend({locator:CandidateLocatorSchema});
+export const CandidateSchema = CandidateSummarySchema.omit({availability:true}).extend({locator:CandidateLocatorSchema});
 export type Candidate = z.infer<typeof CandidateSchema>;
-export function candidateSummary(candidate: Candidate): CandidateSummary {
+export function candidateSummary(candidate: Candidate, availability:CandidateAvailability={kind:'unknown'}): CandidateSummary {
   const {id,gameId,label,sourceIds,observedAt} = candidate;
-  return {id,gameId,label,sourceIds,observedAt};
+  return {id,gameId,label,sourceIds,observedAt,availability};
 }
 const SessionFields = z.object({
   id: z.string(), gameId: z.string(), candidateId: z.string(), generation: z.number(),
@@ -181,6 +189,16 @@ export const StreameastCatalogViewSchema=z.object({
     matchReason:SourceMatchReasonSchema.nullable(),detail:StreameastDetailSchema})),
 }).strict();
 export type StreameastCatalogView=z.infer<typeof StreameastCatalogViewSchema>;
+const SportsurgePublicProviderSchema=SportsurgeProviderSchema.extend({destination:z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('link')}).strict(),
+  SportsurgeProviderSchema.shape.destination.options[1],
+  SportsurgeProviderSchema.shape.destination.options[2],
+])});
+const SportsurgePublicDetailSchema=z.discriminatedUnion('kind',[
+  SportsurgeDetailSchema.options[0],
+  SportsurgeDetailSchema.options[1].extend({providers:z.array(SportsurgePublicProviderSchema)}),
+  SportsurgeDetailSchema.options[2],
+]);
 export const SportsurgeCatalogViewSchema=z.object({
   runId:z.string().uuid(),startedAt:z.number(),receivedAt:z.number(),interrupted:z.boolean(),state:SportsurgeCatalogSchema.shape.state,
   categories:SportsurgeCatalogSchema.shape.categories,
@@ -192,12 +210,12 @@ export const SportsurgeCatalogViewSchema=z.object({
   games:z.array(z.object({
     id:z.string(),title:z.string(),url:z.string().url(),league:LeagueSchema,gameId:z.string().nullable(),
     matchReason:SourceMatchReasonSchema.nullable(),sourceStatus:z.enum(['live','upcoming','unknown']),
-    detail:SportsurgeDetailSchema,
+    detail:SportsurgePublicDetailSchema,
   })),
 });
 export type SportsurgeCatalogView=z.infer<typeof SportsurgeCatalogViewSchema>;
 export const SourcesSnapshotSchema = z.object({
-  at:z.number(),revision:z.number(),windowStartAt:z.number(),lastDiscoveryAt:z.number().nullable(),desktopCollectorsAvailable:z.boolean(),
+  at:z.number(),revision:z.number(),windowStartAt:z.number(),lastDiscoveryAt:z.number().nullable(),browserCollectorsAvailable:z.boolean(),
   sportsurgeV2:z.object({current:SportsurgeCatalogViewSchema.nullable(),lastComplete:SportsurgeCatalogViewSchema.nullable(),previous:SportsurgeCatalogViewSchema.nullable()}),
   streameast:z.object({current:StreameastCatalogViewSchema.nullable(),lastComplete:StreameastCatalogViewSchema.nullable(),previous:StreameastCatalogViewSchema.nullable()}),
   sources:z.array(z.object({
@@ -213,7 +231,7 @@ export const SourcesSnapshotSchema = z.object({
   })),
   games:z.array(z.object({
     gameId:z.string(),name:z.string(),sourceCount:z.number().int().nonnegative(),
-    uniqueFeedCount:z.number().int().nonnegative(),sourceLinks:z.array(z.object({sourceId:z.string(),title:z.string(),url:z.string().url(),
+    uniqueFeedCount:z.number().int().nonnegative(),candidates:z.array(CandidateSummarySchema),sourceLinks:z.array(z.object({sourceId:z.string(),title:z.string(),url:z.string().url(),
       observedAt:z.number(),freshness:z.enum(['fresh','stale-live'])})),
   })),
 });
@@ -221,7 +239,8 @@ export type SourcesSnapshot = z.infer<typeof SourcesSnapshotSchema>;
 export const CommandSchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('board')}),
   z.object({kind:z.literal('sources')}),
-  z.object({kind:z.literal('open'),gameId:z.string().min(1).max(100),manual:z.boolean().default(false),requestId:z.string().uuid().optional()}),
+  z.object({kind:z.literal('check-sources'),gameIds:z.array(z.string().min(1).max(100)).min(1).max(4),retry:z.boolean().default(false)}),
+  z.object({kind:z.literal('open'),gameId:z.string().min(1).max(100),manual:z.boolean().default(false),requestId:z.string().uuid().optional(),initialCandidateId:z.string().min(1).max(100).optional()}),
   z.object({kind:z.literal('session'),sessionId:z.string().uuid(),generation:z.number().int().nonnegative(),candidateId:z.string().max(100).optional(),failure:z.boolean().default(false),retry:z.boolean().default(false)}),
   z.object({kind:z.literal('close'),sessionId:z.string().uuid()}),
   z.object({kind:z.literal('authorize'),sessionId:z.string().uuid(),candidateId:z.string().min(1).max(100),generation:z.number().int().nonnegative()}),

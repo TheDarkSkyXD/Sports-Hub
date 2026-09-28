@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   try { input = await request.json(); } catch { return Response.json({ error: 'Invalid playback request.' }, { status: 400 }); }
   const parsed = CommandSchema.safeParse(input);
   if (!parsed.success || parsed.data.kind !== 'open') return Response.json({ error: 'Invalid playback request.' }, { status: 400 });
-  const result = await resolvePlayback(parsed.data.gameId, parsed.data.manual, parsed.data.requestId);
+  const result = await resolvePlayback(parsed.data.gameId, parsed.data.manual, parsed.data.requestId, parsed.data.initialCandidateId);
   if ('error' in result) return Response.json({ error: result.error }, { status: result.status, headers: { 'Cache-Control': 'no-store' } });
   return Response.json(result.value, { headers: { 'Cache-Control': 'no-store' } });
 }
