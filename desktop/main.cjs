@@ -7,7 +7,7 @@ const { createLocalServer } = require('./local-server.cjs');
 const { createSportsurgeCollector } = require('./sportsurge-collector.cjs');
 const { createSportsurgeObserver } = require('./sportsurge-observer.cjs');
 const { createStreameastCollector } = require('./streameast-collector.cjs');
-const { CH, createUpdateService } = require('./update.cjs');
+const { CH, createUpdateService, defaultUpdateFeedUrl } = require('./update.cjs');
 const { NsisUpdater } = require('electron-updater');
 
 app.setName('Sunday Room');
@@ -21,27 +21,13 @@ function packagedVersion() {
   catch { return '0.0.0'; }
 }
 
-// electron-updater skips every check when the app is not packaged, unless
-// `forceDevUpdateConfig` is set, and then it reads `dev-app-update.yml` from the app
-// directory instead of the `app-update.yml` that electron-builder bakes into a build.
-// Writing that file is therefore the supported way to exercise the real updater in
-// development, and the only place a development build can be pointed at a fork.
-function configureDevelopmentFeed(updater) {
+// electron-updater skips every check when the app is not packaged unless
+// `forceDevUpdateConfig` is set. Setting it and then pointing the feed at the same URL is
+// what lets a development build exercise the real updater; without it every check silently
+// returns without a request, which looks like "up to date" rather than an error.
+function configureDevelopmentUpdater(updater, feedUrl) {
   updater.forceDevUpdateConfig=true;
-  const override=process.env.SUNDAY_ROOM_UPDATE_SOURCE;
-  const [owner,name]=typeof override==='string'?override.split('/'):[];
-  const feed={
-    provider:'github',
-    owner:owner||'TheDarkSkyXD',
-    repo:name||'Sports-Hub',
-    releaseType:'release',
-    updaterCacheDirName:'sunday-room-updater',
-  };
-  try {
-    fs.writeFileSync(path.join(__dirname,'..','dev-app-update.yml'),Object.entries(feed).map(([k,v])=>`${k}: ${v}`).join('\n')+'\n');
-  } catch (error) {
-    fs.appendFileSync(path.join(root,'.desktop-runtime','updates.log'),`update: could not write the development feed: ${String(error)}\n`);
-  }
+  updater.setFeedURL({ provider:'generic', url:feedUrl });
 }
 const root = app.isPackaged ? path.join(process.resourcesPath,'server') : path.resolve(__dirname,'..');
 const logDir = app.isPackaged ? path.join(app.getPath('userData'),'logs') : path.join(root,'.desktop-runtime');
@@ -136,7 +122,13 @@ app.whenReady().then(async () => {
   // without `/D=`, and `desktop/installer.nsh` cannot restore the install directory, so
   // the next launch looks like a fresh install.
   updater.installDirectory=path.dirname(process.execPath);
-  if (!app.isPackaged) configureDevelopmentFeed(updater);
+  // The feed is a plain HTTPS URL rather than a `github` provider with owner and repo baked
+  // in, so the same wiring serves an installed build and a development one, and the address
+  // can be changed without repackaging. `releases/latest/download` is the GitHub path that
+  // resolves to the newest published release's assets.
+  const feedUrl=process.env.SUNDAY_ROOM_UPDATE_SOURCE||defaultUpdateFeedUrl;
+  if (!app.isPackaged) configureDevelopmentUpdater(updater,feedUrl);
+  else updater.setFeedURL({ provider:'generic', url:feedUrl });
   update=createUpdateService({
     currentVersion:app.isPackaged?app.getVersion():packagedVersion(),userDataDir:app.getPath('userData'),
     isPackaged:app.isPackaged,platform:process.platform,updater,trusted,
@@ -147,6 +139,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(CH.check,update.invoke('check'));
   ipcMain.handle(CH.download,update.invoke('download'));
   ipcMain.handle(CH.install,update.invoke('install'));
+  ipcMain.handle(CH.setSource,update.invoke('setSource'));
   update.start();
   await win.loadURL(origin).catch(() => { mainFrameFailed = true; });
 }).catch(error => {

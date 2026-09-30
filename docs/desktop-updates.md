@@ -10,39 +10,57 @@ The app is built on `electron-updater`. `desktop/main.cjs` constructs an `NsisUp
 `desktop/update.cjs` wires its events to the state machine the UI already speaks, so the
 library owns the transfer and the checksum while this repo owns the vocabulary.
 
-Two consequences worth knowing:
+The feed is a **plain URL**, not a provider:
 
-- **The feed is baked into the build.** electron-builder writes `resources/app-update.yml`
-  from the `publish:` block in `electron-builder.yml`, and the library reads that. There is
-  no runtime setting to change it.
-- **A release must publish `latest.yml` and the blockmap.** Without them the library
-  cannot resolve an update at all, and every installed copy stays where it is. The workflow
-  uploads all three.
+```
+https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download
+```
+
+`desktop/main.cjs` hands it to `autoUpdater.setFeedURL` as a generic provider, which
+resolves `latest.yml` against that base. `releases/latest/download` is the GitHub path
+that always resolves to the newest published release's assets.
+
+Being a URL rather than a baked `owner`/`repo` pair is what lets one wiring serve an
+installed build and a development one, and what lets the address be shown and, in
+development, changed. It also means nothing needs `resources/app-update.yml`;
+electron-builder infers a `github` config from the git remote and writes one anyway, but
+`setFeedURL` replaces the provider, so it is inert. The packaged app was verified starting
+with that file renamed away.
+
+**A release must publish `latest.yml` and the blockmap.** Without them the library cannot
+resolve an update at all, and every installed copy stays where it is. The workflow uploads
+all three. A release published before this has none, so it is invisible until the next one.
 
 A downloaded installer is checked against the `sha512` in `latest.yml`. That proves the
 bytes are the bytes the record names. It proves nothing about whether the release itself
 was legitimate, because the binary is still unsigned.
 
-## An installed app takes updates from one repository
+## An installed app takes updates from one address
 
-The feed in `app-update.yml` is the only source an installed build will use. Nothing at
-runtime can move it.
+The feed is fixed in an installed build. The settings field shows it read-only.
 
 This is deliberate and it is the sharpest edge in the feature. The feed decides which
 installer the app downloads and runs, and until the binary is signed there is no signature
-to check that installer against. So anything that could rewrite that file would otherwise
-choose what code this app runs next. That is worse than having no updater at all.
+to check that installer against. The generic provider will resolve `latest.yml` against
+whatever base it is given, so a rewritable feed in a shipped app would let anything that
+can write as the user choose what code this app runs next. That is worse than having no
+updater at all.
 
-A development build *is* rewritable: `SUNDAY_ROOM_UPDATE_SOURCE` writes a `dev-app-update.yml`
-on each launch, which is how the flow gets exercised against a fork before packaging. It
-also means the library has to be told to run at all, which is what `forceDevUpdateConfig`
-does — `isUpdaterActive` is false for an unpackaged app otherwise.
+Only `https://github.com/<owner>/<name>/releases/latest/download` is accepted, and only
+where the development build can set it — anything with credentials, a port, a query, a
+fragment, or a path that walks to another repository is refused.
+
+A development build *is* rewritable, through `SUNDAY_ROOM_UPDATE_SOURCE` or the settings
+field, which is how the flow gets exercised against a fork before packaging.
 
 ## Development builds never install
 
-`electron-updater` works in a development build, so the settings panel and the popup are
-fully exercisable before packaging. Download and install are still refused in
-`desktop/update.cjs`, because those write to the machine and run an unsigned binary.
+`electron-updater` skips every check when the app is not packaged unless
+`forceDevUpdateConfig` is set. `desktop/main.cjs` sets it and points the feed at the same
+URL, so a development build exercises the real updater — a supported path, not a bypass.
+
+Download and install are still refused in `desktop/update.cjs`, because those write to the
+machine and run an unsigned binary.
 
 ## The installer and its install directory
 

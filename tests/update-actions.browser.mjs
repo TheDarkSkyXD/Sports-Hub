@@ -11,9 +11,9 @@ const release = (version) => ({
   notes: 'A long changelog that must never appear in the popup.', publishedAt: 1767000000,
   installer: { name: `Sunday-Room-${version}-Setup-x64.exe`, url: 'https://example.test/a.exe', bytes: 119067581, sha256: null },
 });
-const statusFor = (state, commands = ['download']) => ({
+const statusFor = (state, commands = ['download'], editable = false) => ({
   currentVersion: '1.0.2',
-  source: { repo: 'TheDarkSkyXD/Sports-Hub', origin: 'packaged' },
+  source: { url: 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download', editable },
   state, commands,
 });
 
@@ -22,6 +22,7 @@ const install = (page, status) => page.addInitScript((s) => {
   window.sundayDesktop = {
     get: async () => copy(), check: async () => copy(), download: async () => copy(),
     install: async () => copy(),
+    setSource: async () => copy(),
     subscribe: () => () => {},
   };
 }, status);
@@ -71,14 +72,46 @@ await settings.waitForTimeout(2000);
 await settings.getByRole('button', { name: /Room settings/i }).first().click();
 await settings.locator('.update-panel').waitFor({ state: 'visible', timeout: 20000 });
 const feed = settings.locator('.update-panel-source .update-panel-link');
-assert.match(await feed.innerText(), /https:\/\/github\.com\/TheDarkSkyXD\/Sports-Hub\/releases/,
-  'the panel names the address it checks');
+assert.match(await feed.innerText(), /https:\/\/github\.com\/TheDarkSkyXD\/Sports-Hub\/releases$/,
+  'the panel names the releases page a person can open, not the raw download path');
 assert.match(await feed.getAttribute('href'), /^https:\/\/github\.com\/TheDarkSkyXD\/Sports-Hub\/releases$/);
-assert.equal(await settings.locator('#update-source-repo').count(), 0, 'and there is no field to edit');
+// An installed app keeps its feed, so the field is shown read-only with nothing to save.
+const field = settings.locator('#update-source-url');
+assert.equal(await field.inputValue(), 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download',
+  'the field holds the feed URL, which is the address the updater actually polls');
+assert.equal(await field.isEditable(), false, 'and an installed build cannot change it');
 assert.equal(await settings.getByRole('button', { name: /Save source/i }).count(), 0, 'so nothing to save');
+assert.match(await settings.locator('.update-panel-source').innerText(), /not signed/i,
+  'and it says why, rather than looking broken');
 assert.match(await settings.locator('.update-panel-source').innerText(), /checksum the published record carries/i,
   'and it says what the download check is actually worth');
-console.log('the panel shows where updates come from, and cannot be pointed elsewhere');
+console.log('the panel shows the feed it polls, and an installed build cannot change it');
+
+// A development build may point at a fork, because it never installs anything. The stub
+// reports itself editable, which is how the main process describes a packaged=false build.
+const dev = await context.newPage();
+await install(dev, statusFor({ kind: 'current', lastCheckedAt: 4 }, ['check'], true));
+await dev.goto(base, { waitUntil: 'domcontentloaded' });
+await dev.waitForTimeout(2000);
+await dev.getByRole('button', { name: /Room settings/i }).first().click();
+await dev.locator('.update-panel').waitFor({ state: 'visible', timeout: 20000 });
+const devField = dev.locator('#update-source-url');
+assert.equal(await devField.isEditable(), true, 'a development build can be pointed at a fork');
+for (const [value, why] of [
+  ['https://evil.test/owner/name/releases/latest/download', 'another host'],
+  ['http://github.com/o/n/releases/latest/download', 'not https'],
+  ['https://github.com/o/n/releases/latest', 'not the download path'],
+  ['not a url at all', 'plain text'],
+]) {
+  await devField.fill(value);
+  await dev.getByRole('button', { name: /Save source/i }).click();
+  await dev.waitForTimeout(200);
+  assert.match(await dev.locator('.update-panel-error').innerText(), /releases address/i,
+    `${why} must be refused: ${value}`);
+  assert.equal(await devField.inputValue(), value, 'the refused value stays put so it can be corrected');
+}
+await dev.close();
+console.log('a development build can be pointed at a fork, and only at a GitHub releases URL');
 
 // The panel keeps the same one-click path to the changelog, and never prints it inline.
 assert.equal(await settings.locator('.update-panel-notes').count(), 0, 'the panel must not print the changelog either');

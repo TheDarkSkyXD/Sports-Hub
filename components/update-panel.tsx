@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Check, Download, RefreshCw, RotateCw } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
-import { describeStatus, releaseFeedUrl, updateCommands, type DesktopUpdateBridge, type UpdateCommand, type UpdateStatus } from '@/lib/desktop-update';
+import { describeStatus, parseUpdateFeedUrl, releasesPageUrl, updateCommands, type DesktopUpdateBridge, type UpdateCommand, type UpdateStatus } from '@/lib/desktop-update';
 
 const commandLabel:Record<UpdateCommand,{text:string;icon:typeof RefreshCw;primary:boolean}> = {
   check: {text:'Check for updates',icon:RefreshCw,primary:false},
@@ -15,16 +15,21 @@ const commandLabel:Record<UpdateCommand,{text:string;icon:typeof RefreshCw;prima
  * Settings view of the update. It reads the same bridge as the popup, so the two can never
  * disagree about what the updater is doing.
  *
- * There is no source field to edit. The feed is baked into the build by electron-builder,
- * and the binary is unsigned, so an app that could be pointed at another repository would
- * run whatever that repository published. The address is shown instead, so it is visible
- * and checkable without being a lever.
+ * The update source is a plain URL, which is what lets one wiring serve a packaged build
+ * and a development one. It is editable in development and read-only in an installed build:
+ * the feed decides which installer this app will run, and until the binary is signed there
+ * is no signature on that installer to check, so a rewritable feed in a shipped app would
+ * hand a code-execution primitive to anything that can write as the user.
  */
 export function UpdatePanel() {
   const [status,setStatus] = useState<UpdateStatus|null>(null);
   const [absent,setAbsent] = useState(false);
   const [error,setError] = useState('');
+  const [feed,setFeed] = useState('');
+  const [feedError,setFeedError] = useState('');
+  const [notice,setNotice] = useState('');
   const api = useRef<DesktopUpdateBridge|null>(null);
+  const edited = useRef(false);
 
   useEffect(()=>{
     // Read directly rather than from a prop: `app/page.tsx` sets its `desktop` flag in a
@@ -41,8 +46,11 @@ export function UpdatePanel() {
     // `get` exists so the panel has content on the first paint rather than waiting for the
     // main process to push a status at subscribe time.
     const timer = window.setTimeout(() => {
-      bridge.get().then(next => { if (bridge === window.sundayDesktop) setStatus(next); })
-        .catch(() => setError('Sunday Room could not read its update status.'));
+      bridge.get().then(next => {
+        if (bridge !== window.sundayDesktop) return;
+        setStatus(next);
+        if (!edited.current) setFeed(next.source.url);
+      }).catch(() => setError('Sunday Room could not read its update status.'));
     },0);
     return () => { window.clearTimeout(timer); off(); };
   },[]);
@@ -56,6 +64,31 @@ export function UpdatePanel() {
     void bridge[command]().then(setStatus)
       .catch(() => setError('Sunday Room could not complete that request.'));
   },[]);
+
+  // The installed app keeps its feed, so this only takes effect in development, where the
+  // field is editable. Anything that is not a GitHub releases URL is refused, because the
+  // generic provider resolves `latest.yml` against whatever base it is given.
+  const saveFeed = useCallback((event:React.FormEvent) => {
+    event.preventDefault();
+    const bridge = api.current;
+    if (!bridge) return;
+    const parsed = parseUpdateFeedUrl(feed);
+    if (!parsed) {
+      // Clear a stale success first, or a "Now checking X" would sit beside the error and
+      // read as though this value had been accepted.
+      setNotice('');
+      setFeedError('Use a GitHub releases address, for example https://github.com/owner/name/releases/latest/download.');
+      return;
+    }
+    setFeedError('');
+    setNotice('');
+    void bridge.setSource(parsed).then(next => {
+      if (!next) return;
+      setStatus(next);
+      setFeed(next.source.url);
+      setNotice(`Now checking ${next.source.url}.`);
+    }).catch(() => setNotice('Sunday Room could not save that update source.'));
+  },[feed]);
 
   if (absent) return null;
   if (!status) return <section className="update-panel" aria-label="Software update"><h3>Software update</h3>
@@ -81,9 +114,19 @@ export function UpdatePanel() {
     <p className="update-panel-versions">Installed {status.currentVersion} · Latest {release ? release.version : status.currentVersion}</p>
     {download}
     {release && <p><a className="update-panel-link" href={release.pageUrl} target="_blank" rel="noopener noreferrer">What changed in {release.version} <ArrowUpRight size={13}/></a></p>}
-    <div className="update-panel-source">
-      <p className="update-panel-note">Sunday Room checks for updates at <a className="update-panel-link" href={releaseFeedUrl(status.source.repo)} target="_blank" rel="noopener noreferrer">{releaseFeedUrl(status.source.repo)} <ArrowUpRight size={12}/></a>, using the updater built into this install. Downloads are checked against the checksum the published record carries; that proves the bytes came from the release, not that the release itself was legitimate.</p>
+    <form className="update-panel-source" onSubmit={saveFeed}>
+      <p className="update-panel-note">Sunday Room checks for updates at <a className="update-panel-link" href={releasesPageUrl(status.source.url)} target="_blank" rel="noopener noreferrer">{releasesPageUrl(status.source.url)} <ArrowUpRight size={12}/></a>. Downloads are checked against the checksum the published record carries; that proves the bytes came from the release, not that the release itself was legitimate.</p>
+      <label htmlFor="update-source-url">Update source</label>
+      <div className="update-panel-source-row">
+        <input id="update-source-url" value={feed} readOnly={status.source.editable !== true}
+          onChange={event => { edited.current = true; setFeed(event.target.value); setFeedError(''); }}
+          placeholder="https://github.com/owner/name/releases/latest/download" spellCheck={false} autoComplete="off" disabled={busy}/>
+        {status.source.editable === true && <button className="button primary" type="submit" disabled={busy}>Save source</button>}
+      </div>
+      {status.source.editable !== true && <p className="update-panel-note">The installed app checks this address only. The binary is not signed, so an app that could be pointed at another source would run whatever that source published.</p>}
+      {feedError && <p className="update-panel-error" role="alert">{feedError}</p>}
+      {notice && <p className="update-panel-notice" role="status">{notice}</p>}
       {error && <p className="update-panel-error" role="alert">{error}</p>}
-    </div>
+    </form>
   </section>;
 }

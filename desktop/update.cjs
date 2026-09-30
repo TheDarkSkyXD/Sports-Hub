@@ -10,6 +10,7 @@ const CH = Object.freeze({
   check: 'sunday-update:check',
   download: 'sunday-update:download',
   install: 'sunday-update:install',
+  setSource: 'sunday-update:set-source',
 });
 
 const AUTOMATIC_CHECK_GAP_MS = 6 * 60 * 60 * 1000;
@@ -21,12 +22,21 @@ const AUTOMATIC_CHECK_GAP_MS = 6 * 60 * 60 * 1000;
 const updateCommands = Object.freeze(['check', 'download', 'install']);
 const failureReasons = Object.freeze(['offline', 'rate-limited', 'unavailable', 'malformed', 'checksum', 'download', 'install']);
 
-const defaultReleaseRepo = 'TheDarkSkyXD/Sports-Hub';
-const releaseRepoPattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+// A plain URL, not a `github` provider with owner and repo baked in. The generic provider
+// resolves `latest.yml` against this base, and `releases/latest/download` is the GitHub
+// path that always points at the newest published release's assets. Being a URL is what
+// lets the same wiring serve an installed build and a development one.
+const defaultUpdateFeedUrl = 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download';
+const feedUrlPattern = /^https:\/\/github\.com\/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38})\/[A-Za-z0-9._-]{1,100}\/releases\/latest\/download$/;
 const retryEntry = Object.freeze({ check: 'idle', download: 'available', install: 'ready' });
 
-function releasePageUrl(repo) {
-  return `https://github.com/${repo}/releases`;
+// The releases page a reader can open for this feed, and for a given tag.
+function releasesPageUrl(feed) {
+  return String(feed).replace(/\/releases\/latest\/download$/, '/releases');
+}
+
+function releasePageUrl(feed, version) {
+  return version ? `${releasesPageUrl(feed)}/tag/${encodeURIComponent(`v${version}`)}` : releasesPageUrl(feed);
 }
 
 function describe(error) {
@@ -181,15 +191,15 @@ function readPersisted(file) {
 function createUpdateService(deps) {
   const {
     updater, currentVersion, userDataDir, isPackaged, platform,
-    repo = defaultReleaseRepo, origin = 'packaged', trusted = () => false,
+    feedUrl = defaultUpdateFeedUrl, trusted = () => false,
     now = () => Date.now(), log = () => {}, broadcast = () => {},
   } = deps;
 
   const file = path.join(userDataDir, 'update.json');
   const persisted = readPersisted(file);
-  const source = { repo, origin };
   let state = null;
   let stopped = false;
+  let currentFeed = feedUrl;
 
   // The source decides which installer this app will run, and the binary is unsigned, so
   // there is no signature to check that installer against. An installed build therefore
@@ -217,7 +227,7 @@ function createUpdateService(deps) {
   function snapshot() {
     return Object.freeze({
       currentVersion,
-      source: Object.freeze({ repo: source.repo, origin: source.origin }),
+      source: Object.freeze({ url: currentFeed, editable: !isPackaged }),
       state,
       commands: Object.freeze(commandsFor(state, allowedCommand)),
     });
@@ -254,7 +264,7 @@ function createUpdateService(deps) {
       : typeof info.releaseName === 'string' ? info.releaseName : '';
     return Object.freeze({
       version,
-      pageUrl: `${releasePageUrl(source.repo)}/tag/${encodeURIComponent(`v${version}`)}`,
+      pageUrl: releasePageUrl(currentFeed, version),
       notes,
       publishedAt: Number.isFinite(published) && published >= 0 ? Math.floor(published) : null,
     });
@@ -334,6 +344,23 @@ function createUpdateService(deps) {
     // A check with no argument is a manual check. The bridge is allowed to omit it, so
     // refusing an absent flag would make the button fail for a reason the user cannot see.
     if (command === 'check') return value === undefined || typeof value === 'boolean';
+    if (command === 'setSource') return typeof value === 'string' && feedUrlPattern.test(value.trim());
+    return true;
+  }
+
+  // Pointing the feed somewhere else is refused in a packaged build, because the feed
+  // decides which installer this app will run and the binary is unsigned: there is no
+  // signature on that installer to check, so a rewritable feed would hand a code-execution
+  // primitive to anything that can write as the user. A development build may move it,
+  // because it never downloads or installs anything.
+  function setSource(value) {
+    if (isPackaged) return false;
+    const url = String(value ?? '').trim();
+    if (!feedUrlPattern.test(url)) return false;
+    currentFeed = url;
+    updater.setFeedURL({ provider: 'generic', url });
+    persisted.lastCheckedAt = null;
+    writePersisted();
     return true;
   }
 
@@ -343,11 +370,15 @@ function createUpdateService(deps) {
       // The table already refuses these, but the download and install paths are the ones
       // that write to the machine and run a binary, so they are checked again here. A
       // development build must never reach them, whatever the state says.
-      if (command !== 'get' && allowedCommand && !allowedCommand(command)) {
+      if (command !== 'get' && command !== 'setSource' && allowedCommand && !allowedCommand(command)) {
         return refuse('unavailable', 'Installing an update runs only in the installed Windows app.');
       }
       if (command !== 'get' && !validArgument(command, value)) {
         return refuse('invalid-argument', 'That update request was not understood.');
+      }
+      if (command === 'setSource') {
+        if (!setSource(value)) return refuse('unavailable', 'The update source is fixed in the installed app.');
+        return snapshot();
       }
       if (command === 'check') beginCheck();
       else if (command === 'download') beginDownload();
@@ -391,8 +422,9 @@ module.exports = {
   createUpdateService,
   updateCommands,
   failureReasons,
-  defaultReleaseRepo,
-  releaseRepoPattern,
+  defaultUpdateFeedUrl,
+  feedUrlPattern,
+  releasesPageUrl,
   reduce,
   commandsFor,
 };

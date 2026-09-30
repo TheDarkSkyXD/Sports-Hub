@@ -324,7 +324,9 @@ The updater is [`electron-updater`](https://github.com/electron-userland/electro
 
 **A release must publish `latest.yml` and the blockmap** alongside the installer. Without them the updater cannot resolve an update at all and every installed copy stays where it is. The workflow uploads all three, and a release published before this change has none, so it is invisible to the app until the next one.
 
-**An installed app takes updates from one repository only.** The feed is baked into the build by electron-builder, from the `publish:` block in [`electron-builder.yml`](electron-builder.yml), and nothing at runtime can move it. That is deliberate: the feed decides which installer the app will run, and until the binary is signed there is no signature to check it against. A development build *is* rewritable, through `SUNDAY_ROOM_UPDATE_SOURCE`, which is how the flow gets exercised against a fork before packaging. The reasoning is in [`docs/desktop-updates.md`](docs/desktop-updates.md).
+**The feed is a plain URL**, `https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download`, handed to the updater at runtime rather than baked in. The updater resolves `latest.yml` against that base, and that path is the GitHub one that always points at the newest published release's assets.
+
+**An installed app takes updates from one address only.** The feed is fixed, because it decides which installer the app will run and until the binary is signed there is no signature to check it against; the generic provider resolves against whatever base it is given. A development build *is* rewritable, through `SUNDAY_ROOM_UPDATE_SOURCE` or the settings field, which is how the flow gets exercised against a fork before packaging. The reasoning is in [`docs/desktop-updates.md`](docs/desktop-updates.md).
 
 To sign the installer, set `CSC_LINK` and `CSC_KEY_PASSWORD` in the repository secrets. The workflow then fails if a certificate is configured but the installer comes out unsigned, so signing cannot stop working unnoticed. Today neither is set, and the workflow says so in its summary.
 

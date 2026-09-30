@@ -102,7 +102,10 @@ assert.ok(updaterLoads.ok, `the packaged app cannot load electron-updater: ${upd
 assert.ok(updaterLoads.hasNsisUpdater,
   'electron-updater must export NsisUpdater, which is what main.cjs constructs');
   assert.equal(typeof updateStatus.currentVersion, 'string');
-  assert.equal(typeof updateStatus.source.repo, 'string');
+  assert.match(updateStatus.source.url, /^https:\/\/github\.com\/[^/]+\/[^/]+\/releases\/latest\/download$/,
+  'the packaged app must report the feed URL it checks');
+assert.equal(updateStatus.source.editable, false,
+  'an installed app keeps its feed, so nothing can point it at another repository');
   const runtime = await desktop.evaluate(({ app }) => ({ packaged: app.isPackaged, resourcesPath: process.resourcesPath }));
   assert.equal(runtime.packaged, true);
   assert.equal(path.normalize(runtime.resourcesPath), path.normalize(path.join(path.dirname(executablePath), 'resources')));

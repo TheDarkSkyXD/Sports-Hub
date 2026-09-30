@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import {
-  FailureReasonSchema, ReleaseRepoSchema, UpdateStateSchema, UpdateStatusSchema, updateCommands,
+  FailureReasonSchema, UpdateFeedUrlSchema, UpdateStateSchema, UpdateStatusSchema, updateCommands,
   type UpdateStatus,
 } from '../lib/desktop-update.ts';
 
@@ -18,7 +18,7 @@ const require = createRequire(import.meta.url);
 const updateModule = require('../desktop/update.cjs');
 const { reduce, commandsFor, updateCommands: engineCommands, failureReasons } = updateModule;
 
-const REPO = 'TheDarkSkyXD/Sports-Hub';
+const DEFAULT_FEED = 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download';
 const at = Date.UTC(2026, 8, 30, 12, 0, 0);
 
 function event(type: string, extra: Record<string, unknown> = {}) {
@@ -37,6 +37,7 @@ class FakeUpdater extends EventEmitter {
   checks = 0;
   downloads = 0;
   installs: { isSilent: boolean; isForceRunAfter: boolean }[] = [];
+  feeds: (string | null)[] = [];
   checkResult: 'available' | 'none' | 'error' | 'pending' = 'available';
   checkError: Error | null = null;
   checkInfo: Record<string, unknown> | null = null;
@@ -76,6 +77,10 @@ class FakeUpdater extends EventEmitter {
 
   quitAndInstall(isSilent = false, isForceRunAfter = false) {
     this.installs.push({ isSilent, isForceRunAfter });
+  }
+
+  setFeedURL(options: { provider?: string; url?: string }) {
+    this.feeds.push(options?.url ?? null);
   }
 
   // Test helpers that mirror exactly what electron-updater emits.
@@ -139,7 +144,7 @@ test('the command set and the failure vocabulary agree across the boundary', () 
     assert.ok(failureReasons.includes(reason), `${reason} must exist in the engine`);
   }
   assert.equal(channels.cancel, undefined, 'electron-updater cannot cancel, so no cancel channel exists');
-  assert.equal(channels.setSource, undefined, 'the feed is baked in, so there is nothing to set');
+  assert.match(channels.setSource as string, /^sunday-update:/, 'the feed can be moved in development');
 });
 
 test('a supported build checks once on start and reports a newer release', async () => {
@@ -150,14 +155,14 @@ test('a supported build checks once on start and reports a newer release', async
     assert.equal(room.updater.checks, 1, 'one check at launch');
     const status = room.service.snapshot();
     assert.equal(status.currentVersion, '1.0.2');
-    assert.equal(ReleaseRepoSchema.safeParse(status.source.repo).success, true);
-    assert.equal(status.source.origin, 'packaged');
+    assert.equal(UpdateFeedUrlSchema.safeParse(status.source.url).success, true);
+    assert.equal(status.source.editable, false, 'an installed build keeps its feed');
     assert.equal(UpdateStatusSchema.safeParse(status).success, true);
     assert.deepEqual(status.commands, ['check', 'download']);
     assert.equal(status.state.kind, 'available');
     const release = (status.state as { release: { version: string; pageUrl: string; notes: string } }).release;
     assert.equal(release.version, '1.0.3');
-    assert.equal(release.pageUrl, `https://github.com/${REPO}/releases/tag/v1.0.3`,
+    assert.equal(release.pageUrl, 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/tag/v1.0.3',
       'the feed reports the version without a v, and the tag carries one');
     assert.match(release.notes, /Sportsurge/, 'the notes come from the feed');
     assert.equal(room.read().lastCheckedAt, at, 'a check that found something records its time too');
@@ -384,17 +389,76 @@ test('a re-check never costs the user the update they were about to install', as
 });
 
 test('a development build can read another feed, and exercises the whole flow', async () => {
-  const room = harness({ isPackaged: false, repo: 'Someone/Fork', origin: 'environment' });
+  const updater = new FakeUpdater();
+  const room = harness({ isPackaged: false, updater });
   try {
     await room.service.start();
     await room.settle();
     const status = room.service.snapshot();
-    assert.equal(status.source.repo, 'Someone/Fork', 'a development build may read another feed');
-    assert.equal(status.source.origin, 'environment');
+    assert.equal(status.source.editable, true, 'a development build may move its feed');
     assert.equal(status.state.kind, 'available', 'so the whole flow can be exercised before packaging');
     // The whole point of the panel is to be exercised before packaging, so a development
     // build gets the read-only surface and nothing that writes to the machine.
     assert.deepEqual(status.commands, ['check']);
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('the feed is a plain URL the updater is handed, and only development can move it', async () => {
+  const fork = 'https://github.com/Someone/Fork/releases/latest/download';
+
+  const installed = harness();
+  try {
+    await assert.rejects(() => installed.service.invoke('setSource')(event('set-source'), fork),
+      (error: Error) => error.name === 'unavailable', 'an installed build refuses outright');
+    assert.equal(installed.service.snapshot().source.url, DEFAULT_FEED,
+      'an installed build cannot be pointed elsewhere');
+    assert.equal(installed.service.snapshot().source.editable, false);
+    assert.deepEqual(installed.updater.feeds, [], 'and nothing reaches the library');
+  } finally { rmSync(installed.userDataDir, { recursive: true, force: true }); }
+
+  const dev = await started({ isPackaged: false });
+  try {
+    await dev.service.invoke('setSource')(event('set-source'), fork);
+    assert.equal(dev.service.snapshot().source.url, fork, 'a development build may read another feed');
+    assert.equal(dev.service.snapshot().source.editable, true);
+    assert.deepEqual(dev.updater.feeds, [fork], 'and the library is told, not just the record');
+  } finally { rmSync(dev.userDataDir, { recursive: true, force: true }); }
+});
+
+test('a feed that is not a GitHub releases address is refused', async () => {
+  const room = await started({ isPackaged: false });
+  try {
+    for (const bad of [
+      'https://evil.test/a/b/releases/latest/download',  // another host
+      'http://github.com/a/b/releases/latest/download',  // not https
+      'https://user:pass@github.com/a/b/releases/latest/download',  // credentials
+      'https://github.com:8443/a/b/releases/latest/download',  // a port
+      'https://github.com/a/b/releases/latest/download?x=1',  // a query
+      'https://github.com/a/b/releases/latest/download#f',  // a fragment
+      'https://github.com//b/releases/latest/download',  // an empty owner
+      'https://github.com/a/b/releases/latest',  // not the download path
+      'github.com/a/b/releases/latest/download',  // no scheme
+      'not a url',
+      '',
+    ]) {
+      await assert.rejects(() => room.service.invoke('setSource')(event('set-source'), bad),
+        (error: Error) => error.name === 'invalid-argument', bad);
+      assert.equal(room.service.snapshot().source.url, DEFAULT_FEED, `${bad} must not be accepted`);
+    }
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('a feed that walks the path to another repository is refused', async () => {
+  const room = await started({ isPackaged: false });
+  try {
+    for (const traversal of [
+      'https://github.com/a/b/releases/latest/download/../../elsewhere',
+      'https://github.com/a/b/releases/latest/download/%2e%2e/elsewhere',
+      'https://github.com/a/b/releases/latest/download/..',
+    ]) {
+      await assert.rejects(() => room.service.invoke('setSource')(event('set-source'), traversal),
+        (error: Error) => error.name === 'invalid-argument', traversal);
+    }
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
@@ -490,15 +554,15 @@ test('stopping unsubscribes, so a stopped service cannot publish', async () => {
 // `tests/packaged-desktop.mjs` calls the bridge end to end against the packaged app.
 const channels = {
   cancel: (updateModule.CH as Record<string, unknown>).cancel,
-  setSource: (updateModule.CH as Record<string, unknown>).setSource,
+  setSource: updateModule.CH.setSource as string | undefined,
 };
 
 test('the preload carries exactly the channels the engine defines', () => {
   const preload = readFileSync(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
-  for (const key of ['status', 'get', 'check', 'download', 'install'] as const) {
+  for (const key of ['status', 'get', 'check', 'download', 'install', 'setSource'] as const) {
     assert.ok(preload.includes(`'${updateModule.CH[key]}'`), `preload.cjs must carry ${key}: ${updateModule.CH[key]}`);
   }
-  assert.ok(!/CH\.cancel|CH\.setSource/.test(preload), 'the preload must not offer a channel the engine dropped');
+  assert.ok(!/CH\.cancel/.test(preload), 'the preload must not offer a channel the engine dropped');
 });
 
 // The pure table, kept honest on its own. These do not need a service, so a change to the

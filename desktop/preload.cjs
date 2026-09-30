@@ -9,6 +9,7 @@ const CH = Object.freeze({
   check: 'sunday-update:check',
   download: 'sunday-update:download',
   install: 'sunday-update:install',
+  setSource: 'sunday-update:set-source',
 });
 
 // The renderer never sees an Electron object, an IpcRendererEvent, or a Node error.
@@ -19,6 +20,7 @@ const CH = Object.freeze({
 // unsubscribe closure and never holds the wrapper it is paired with.
 contextBridge.exposeInMainWorld('sundayDesktop', Object.freeze({
   get: () => ipcRenderer.invoke(CH.get),
+  setSource: (url) => ipcRenderer.invoke(CH.setSource, String(url ?? '')),
   // `true` marks a manual check, which the main process rate-limits separately from the
   // automatic one. Omitting it made every manual check fail argument validation.
   check: (manual = true) => ipcRenderer.invoke(CH.check, manual === true),

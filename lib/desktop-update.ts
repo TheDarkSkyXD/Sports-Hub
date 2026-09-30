@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
-// A maintainer changes the channel by editing this one constant. Nothing else in the
-// app carries a repository name, and `SUNDAY_ROOM_UPDATE_SOURCE` only wins when the
-// app is not packaged, so a stray variable cannot redirect the feed in a shipped build.
+// A maintainer changes the feed by editing this one constant, which `desktop/update.cjs`
+// duplicates. `SUNDAY_ROOM_UPDATE_SOURCE` only wins when the app is not packaged, so a
+// stray variable cannot redirect a shipped build.
 export const defaultReleaseRepo = 'TheDarkSkyXD/Sports-Hub';
 
 // electron-updater has no cancel: it owns the transfer and exposes no way to abort it,
@@ -20,12 +20,44 @@ export type FailureReason = z.infer<typeof FailureReasonSchema>;
 export const RetrySchema = z.enum(['check', 'download', 'install']).nullable();
 export type Retry = z.infer<typeof RetrySchema>;
 
-// `owner/name`, never a URL. electron-builder bakes the feed into the build as
-// `app-update.yml`, and the addresses below are derived from the slug for display, so
-// nothing a person can type or paste can point the updater at an arbitrary host.
-export const releaseRepoPattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
-export const ReleaseRepoSchema = z.string().regex(releaseRepoPattern).brand<'ReleaseRepo'>();
-export type ReleaseRepo = z.infer<typeof ReleaseRepoSchema>;
+// A plain HTTPS URL, not a `github` provider with owner and repo compiled in. The app
+// hands it to `autoUpdater.setFeedURL`, and `releases/latest/download` is the GitHub path
+// that resolves to the newest published release's assets. Being a URL is what lets one
+// wiring serve a packaged build and a development one, and what lets the address be shown.
+export const defaultUpdateFeedUrl = 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download';
+export const updateFeedUrlPattern = /^https:\/\/github\.com\/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38})\/[A-Za-z0-9._-]{1,100}\/releases\/latest\/download$/;
+export const UpdateFeedUrlSchema = z.string().regex(updateFeedUrlPattern).brand<'UpdateFeedUrl'>();
+export type UpdateFeedUrl = z.infer<typeof UpdateFeedUrlSchema>;
+
+/**
+ * Accepts the feed address a person pastes, and returns the canonical form.
+ *
+ * A URL is required. Only `github.com` and only the `releases/latest/download` shape is
+ * honoured, because the generic provider resolves `latest.yml` against whatever base it is
+ * given, and a base that points anywhere else would fetch and run whatever it found there.
+ * The trailing slash is normalised so `/releases/latest/download` and `.../download/` are
+ * the same feed rather than two.
+ */
+export function parseUpdateFeedUrl(input: string): UpdateFeedUrl | null {
+  let url: URL;
+  try { url = new URL(input.trim()); } catch { return null; }
+  if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'github.com') return null;
+  if (url.username || url.password || url.port || url.search || url.hash) return null;
+  // `URL` collapses `..` while parsing, so a traversal is already applied to `pathname` by
+  // the time it is readable. A real GitHub owner or name is never `.` or `..`, so the raw
+  // text is the only place the attempt is still visible.
+  const raw = input.trim();
+  if (/(?:^|\/)\.\.?(?:\/|$)/.test(raw) || /%2e/i.test(raw) || raw.includes('\\')) return null;
+  // An empty segment is refused rather than dropped: dropping `//name/...` would read
+  // `name` as the owner, which is a different repository than the one pasted.
+  const segments = url.pathname.split('/').slice(1);
+  if (segments.some(segment => segment === '')) return null;
+  const parts = segments.filter(Boolean);
+  if (parts.length !== 4) return null;
+  if (parts[2] !== 'releases' || parts[3] !== 'download') return null;
+  const canonical = `https://github.com/${parts[0]}/${parts[1]}/releases/latest/download`;
+  return updateFeedUrlPattern.test(canonical) ? canonical as UpdateFeedUrl : null;
+}
 
 export const ReleaseInfoSchema = z.object({
   version: z.string(),
@@ -59,8 +91,10 @@ export type UpdateState = z.infer<typeof UpdateStateSchema>;
 export const UpdateStatusSchema = z.object({
   currentVersion: z.string(),
   source: z.object({
-    repo: ReleaseRepoSchema,
-    origin: z.enum(['packaged', 'file', 'environment']),
+    url: UpdateFeedUrlSchema,
+    // A packaged build keeps its feed: the feed decides which installer this app will run,
+    // and the binary is unsigned. A development build may point elsewhere.
+    editable: z.boolean(),
   }).readonly(),
   state: UpdateStateSchema,
   commands: z.array(UpdateCommandSchema).readonly(),
@@ -72,6 +106,8 @@ export type DesktopUpdateBridge = Readonly<{
   check(): Promise<UpdateStatus>;
   download(): Promise<UpdateStatus>;
   install(): Promise<UpdateStatus>;
+  /** Refused in an installed build, which keeps its feed fixed. */
+  setSource(url: string): Promise<UpdateStatus>;
   subscribe(listener: (status: UpdateStatus) => void): () => void;
 }>;
 
@@ -87,17 +123,15 @@ const failureLine: Record<FailureReason, string> = {
   install: 'The installer could not be started.',
 };
 
-// The updater's own config, not a field a person can edit. `parseReleaseSource` still
-// accepts what someone might paste, because the address is worth showing and worth
-// checking, but the feed itself is fixed when the build is packaged.
-export function releaseFeedUrl(repo: string): string {
-  // The releases page rather than the raw API document: this address is shown to a person,
-  // and it is what the settings panel links to.
-  return `https://github.com/${repo}/releases`;
+// The releases page a reader can open for a feed address. Shown and linked in settings,
+// because the address the app polls is not something a person should have to read as a
+// raw `/releases/latest/download` path.
+export function releasesPageUrl(feed: string): string {
+  return String(feed).replace(/\/releases\/latest\/download\/?$/, '/releases');
 }
 
-export function releasePageUrl(repo: string): string {
-  return `https://github.com/${repo}/releases`;
+export function releaseTagUrl(feed: string, version: string): string {
+  return `${releasesPageUrl(feed)}/tag/${encodeURIComponent(`v${version}`)}`;
 }
 
 export function describeStatus(status: UpdateStatus): string {

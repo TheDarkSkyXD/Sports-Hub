@@ -12,7 +12,7 @@ const release = (version) => ({
 });
 const statusFor = (state, commands = ['download']) => ({
   currentVersion: '1.0.2',
-  source: { repo: 'TheDarkSkyXD/Sports-Hub', origin: 'packaged' },
+  source: { url: 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download', editable: false },
   state,
   commands,
 });
@@ -89,9 +89,9 @@ await settings.waitForTimeout(2000);
 await settings.getByRole('button', { name: /Room settings/i }).first().click();
 await settings.locator('.update-panel').waitFor({ state: 'visible', timeout: 20000 });
 assert.match(await settings.locator('.update-panel-current').innerText(), /latest version/i, 'settings says you are up to date');
-const source = settings.locator('.update-panel-source .update-panel-link');
-assert.match(await source.innerText(), /https:\/\/github\.com\/TheDarkSkyXD\/Sports-Hub\/releases/,
-  'settings names the releases page it reads');
+const source = settings.locator('#update-source-url');
+assert.equal(await source.inputValue(), 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download',
+  'settings names the feed it polls');
 console.log('settings shows the up-to-date note and the release source address');
 
 assert.deepEqual(errors, [], `page errors: ${errors.join('; ')}`);
