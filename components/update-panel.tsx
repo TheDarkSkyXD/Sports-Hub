@@ -3,86 +3,71 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Check, Download, RefreshCw, RotateCw } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
-import { describeStatus, parseReleaseSource, releasePageUrl, updateCommands, type DesktopUpdateBridge, type UpdateCommand, type UpdateStatus } from '@/lib/desktop-update';
+import { describeStatus, releaseFeedUrl, updateCommands, type DesktopUpdateBridge, type UpdateCommand, type UpdateStatus } from '@/lib/desktop-update';
 
 const commandLabel:Record<UpdateCommand,{text:string;icon:typeof RefreshCw;primary:boolean}> = {
   check: {text:'Check for updates',icon:RefreshCw,primary:false},
   download: {text:'Download update',icon:Download,primary:true},
-  cancel: {text:'Cancel',icon:RotateCw,primary:false},
-  install: {text:'Install and restart',icon:Download,primary:true},
+  install: {text:'Install and restart',icon:RotateCw,primary:true},
 };
 
-const megabytes = (bytes:number) => `${(bytes / 1048576).toFixed(1)} MB`;
-
+/**
+ * Settings view of the update. It reads the same bridge as the popup, so the two can never
+ * disagree about what the updater is doing.
+ *
+ * There is no source field to edit. The feed is baked into the build by electron-builder,
+ * and the binary is unsigned, so an app that could be pointed at another repository would
+ * run whatever that repository published. The address is shown instead, so it is visible
+ * and checkable without being a lever.
+ */
 export function UpdatePanel() {
   const [status,setStatus] = useState<UpdateStatus|null>(null);
   const [absent,setAbsent] = useState(false);
-  const [repo,setRepo] = useState('');
-  const [repoError,setRepoError] = useState('');
-  const [notice,setNotice] = useState('');
+  const [error,setError] = useState('');
   const api = useRef<DesktopUpdateBridge|null>(null);
-  const edited = useRef(false);
 
   useEffect(()=>{
     // Read directly rather than from a prop: `app/page.tsx` sets its `desktop` flag in a
     // `window.setTimeout(..., 0)` effect, so a prop would flash "browser" for one frame.
     const bridge = typeof window === 'undefined' ? undefined : window.sundayDesktop;
-    api.current = bridge ?? null;
-    let live = true;
-    const off = bridge ? bridge.subscribe(next => { if (live) setStatus(next); }) : () => {};
+    if (!bridge) {
+      // Nothing to subscribe to, and no need to ask. Deciding inside a timeout keeps this
+      // out of the effect body, so the first paint is not a second render.
+      const timer = window.setTimeout(() => setAbsent(true), 0);
+      return () => window.clearTimeout(timer);
+    }
+    api.current = bridge;
+    const off = bridge.subscribe(next => { if (bridge === window.sundayDesktop) setStatus(next); });
+    // `get` exists so the panel has content on the first paint rather than waiting for the
+    // main process to push a status at subscribe time.
     const timer = window.setTimeout(() => {
-      if (!bridge) { if (live) setAbsent(true); return; }
-      // `get` exists so the panel has a state on the first paint instead of waiting for
-      // the main process to push one at subscribe time.
-      bridge.get().then(next => {
-        if (!live) return;
-        setStatus(next);
-        if (!edited.current) setRepo(releasePageUrl(next.source.repo));
-      }).catch(() => { if (live) setNotice('Sunday Room could not read its update status.'); });
+      bridge.get().then(next => { if (bridge === window.sundayDesktop) setStatus(next); })
+        .catch(() => setError('Sunday Room could not read its update status.'));
     },0);
-    return () => { live=false; window.clearTimeout(timer); off(); };
+    return () => { window.clearTimeout(timer); off(); };
   },[]);
 
   const run = useCallback((command:UpdateCommand) => {
     const bridge = api.current;
     if (!bridge) return;
-    setNotice('');
+    setError('');
     // Commands resolve with the resulting status, so the push channel is a progress
     // detail and the reply is the authoritative answer.
-    void bridge[command]().then(setStatus).catch(() => setNotice('Sunday Room could not complete that request.'));
+    void bridge[command]().then(setStatus)
+      .catch(() => setError('Sunday Room could not complete that request.'));
   },[]);
 
-  const saveSource = useCallback((event:React.FormEvent) => {
-    event.preventDefault();
-    const bridge = api.current;
-    if (!bridge) return;
-      const parsed = parseReleaseSource(repo);
-      if (!parsed) {
-        // Clear the last success notice first, or a stale "Now checking X" would sit
-        // beside the error and read as if this value had been accepted.
-        setNotice('');
-        setRepoError('That is not a GitHub releases address. Use https://github.com/owner/name/releases.');
-        return;
-      }
-      setRepoError('');
-      setNotice('');
-      void bridge.setSource(parsed).then(next => {
-        setStatus(next);
-        setRepo(releasePageUrl(next.source.repo));
-        setNotice(`Now checking ${next.source.repo}.`);
-      }).catch(() => setNotice('Sunday Room could not save that update source.'));
-  },[repo]);
-
-  if (absent) return <section className="update-panel" aria-label="Software update"><p className="update-panel-state" role="status">Automatic updates run in the installed Windows app.</p></section>;
-  if (!status) return <section className="update-panel" aria-label="Software update"><p className="update-panel-state">Reading the update status…</p></section>;
+  if (absent) return null;
+  if (!status) return <section className="update-panel" aria-label="Software update"><h3>Software update</h3>
+    <p className="update-panel-note">Reading the update status…</p></section>;
 
   const state = status.state;
   const release = 'release' in state ? state.release : null;
-  const busy = state.kind === 'checking' || state.kind === 'downloading' || state.kind === 'installing';
+  const busy = state.kind === 'checking' || state.kind === 'installing' || state.kind === 'downloading';
   const upToDate = state.kind === 'current';
   const download = state.kind === 'downloading'
-    ? <div className="update-panel-progress"><Progress value={Math.round((state.received / state.total) * 100)} max={100} aria-label="Update download progress"/>
-      <span>{megabytes(state.received)} of {megabytes(state.total)}</span></div>
+    ? <div className="update-panel-progress"><Progress value={state.percent} max={100} aria-label="Update download progress"/>
+      <span>{state.percent}%</span></div>
     : null;
 
   return <section className="update-panel" aria-label="Software update">
@@ -92,25 +77,13 @@ export function UpdatePanel() {
         const {text,icon:Icon,primary} = commandLabel[command];
         return <button key={command} className={primary?'button primary':'button subtle'} type="button" disabled={busy} onClick={()=>run(command)}><Icon size={14}/>{text}</button>;
       })}</div></div>
-      {upToDate&&<p className="update-panel-current" role="status"><Check size={14}/>You are on the latest version. Nothing to install.</p>}
-      <p className="update-panel-versions">Installed {status.currentVersion} · Latest {release ? release.version : status.currentVersion}</p>
-      {download}
-      {release && <p><a className="update-panel-link" href={release.pageUrl} target="_blank" rel="noopener noreferrer">What changed in {release.version} <ArrowUpRight size={13}/></a></p>}
-    <form className="update-panel-source" onSubmit={saveSource}>
-        <label htmlFor="update-source-repo">Update source</label>
-        <div className="update-panel-source-row">
-          {/* The field holds the releases URL, because that is the address a person can
-              find and paste. A packaged build fixes its source, since the binary is
-              unsigned and the source decides which installer it will run. */}
-          <input id="update-source-repo" value={repo} onChange={event => { edited.current = true; setRepo(event.target.value); setRepoError(''); }}
-            placeholder="https://github.com/owner/name/releases" spellCheck={false} autoComplete="off" readOnly={!status.source.editable}
-            disabled={busy || !status.source.editable}/>
-          {status.source.editable && <button className="button primary" type="submit" disabled={busy}>Save source</button>}
-        </div>
-      {repoError && <p className="update-panel-error" role="alert">{repoError}</p>}
-      {notice && <p className="update-panel-notice" role="status">{notice}</p>}
-      <p className="update-panel-note">Sunday Room looks for releases on GitHub, at <a className="update-panel-link" href={releasePageUrl(status.source.repo)} target="_blank" rel="noopener noreferrer">{releasePageUrl(status.source.repo)} <ArrowUpRight size={12}/></a>. Downloads are checked against the size and sha256 the release publishes; that proves the bytes came from GitHub, not that the release itself was legitimate.</p>
-      {!status.source.editable && <p className="update-panel-note">The installed app checks this address only, because an unsigned app that could be pointed at another repository would run whatever that repository published. A development build can be pointed elsewhere, and never installs anything.</p>}
-    </form>
+    {upToDate&&<p className="update-panel-current" role="status"><Check size={14}/>You are on the latest version. Nothing to install.</p>}
+    <p className="update-panel-versions">Installed {status.currentVersion} · Latest {release ? release.version : status.currentVersion}</p>
+    {download}
+    {release && <p><a className="update-panel-link" href={release.pageUrl} target="_blank" rel="noopener noreferrer">What changed in {release.version} <ArrowUpRight size={13}/></a></p>}
+    <div className="update-panel-source">
+      <p className="update-panel-note">Sunday Room checks for updates at <a className="update-panel-link" href={releaseFeedUrl(status.source.repo)} target="_blank" rel="noopener noreferrer">{releaseFeedUrl(status.source.repo)} <ArrowUpRight size={12}/></a>, using the updater built into this install. Downloads are checked against the checksum the published record carries; that proves the bytes came from the release, not that the release itself was legitimate.</p>
+      {error && <p className="update-panel-error" role="alert">{error}</p>}
+    </div>
   </section>;
 }

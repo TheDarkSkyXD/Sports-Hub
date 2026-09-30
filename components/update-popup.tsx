@@ -8,7 +8,6 @@ import { type DesktopUpdateBridge, type UpdateCommand, type UpdateStatus } from 
 const commandLabel:Record<UpdateCommand,{text:string;icon:typeof RefreshCw;primary:boolean}> = {
   check: {text:'Check for updates',icon:RefreshCw,primary:false},
   download: {text:'Download update',icon:Download,primary:true},
-  cancel: {text:'Cancel',icon:RotateCw,primary:false},
   install: {text:'Install and restart',icon:RotateCw,primary:true},
 };
 
@@ -19,14 +18,12 @@ const commandLabel:Record<UpdateCommand,{text:string;icon:typeof RefreshCw;prima
 const advanceCommand = (state:UpdateStatus['state']):UpdateCommand => {
   if (state.kind === 'available') return 'download';
   if (state.kind === 'ready') return 'install';
-  if (state.kind === 'downloading') return 'cancel';
   // A failure already names the step worth retrying, so the same button stays the retry.
   if (state.kind === 'failed' && state.retry) return state.retry;
   return 'check';
 };
 
 const DISMISSED = 'sunday-room:dismissed-update';
-const megabytes = (bytes:number) => `${(bytes / 1048576).toFixed(1)} MB`;
 
 // Reads the same dismiss record the browser-side toast uses so dismissing in the
 // installed app and dismissing in a browser tab cannot disagree within a session.
@@ -95,14 +92,17 @@ export function UpdatePopup() {
     && state.kind !== 'installing' && state.kind !== 'current' && state.kind !== 'unsupported';
   const show = showable && release !== null && dismissed !== release.version;
 
-  if (!show || !status || !release || !state || !advance) return null;
+  if (!show || !status || !release || !state) return null;
 
-  const {text,icon:Icon} = commandLabel[advance];
+  const label = advance ? commandLabel[advance] : null;
+  const {text,icon:Icon} = label ?? { text: '', icon: RefreshCw };
   const downloading = state.kind === 'downloading';
   const failed = state.kind === 'failed';
-  const advanceText = downloading ? 'Cancel download'
-    : failed && advance === 'download' ? 'Retry download'
+  // electron-updater cannot abort a transfer, so a download in flight offers no action at
+  // all. The popup stays up showing progress rather than disappearing mid-transfer.
+  const advanceText = failed && advance === 'download' ? 'Retry download'
     : failed && advance === 'install' ? 'Retry install'
+    : downloading ? 'Downloading'
     : text;
 
   return <aside className="update-popup" aria-label="Software update">
@@ -110,15 +110,15 @@ export function UpdatePopup() {
       <X size={15}/>
     </button>
     <div className="update-popup-heading">
-      <p className="update-popup-eyebrow">{state.kind === 'checking' ? 'Checking GitHub' : 'Update available'}</p>
+      <p className="update-popup-eyebrow">{state.kind === 'checking' ? 'Checking for updates' : 'Update available'}</p>
       <h2>Sunday Room {release.version}</h2>
       <p className="update-popup-versions">You have {status.currentVersion}</p>
     </div>
-    {state.kind === 'downloading' && <div className="update-popup-progress"><Progress value={Math.round((state.received / state.total) * 100)} max={100} aria-label="Update download progress"/>
-      <span>{megabytes(state.received)} of {megabytes(state.total)}</span></div>}
+    {state.kind === 'downloading' && <div className="update-popup-progress"><Progress value={state.percent} max={100} aria-label="Update download progress"/>
+      <span>{state.percent}%</span></div>}
     {failed && state.kind === 'failed' && state.detail && <p className="update-popup-error" role="alert">{state.detail}</p>}
     <div className="update-popup-actions">
-      <button className="button primary" type="button" disabled={busy} onClick={()=>run(advance)}><Icon size={14}/>{advanceText}</button>
+      {advance && <button className="button primary" type="button" disabled={busy || downloading} onClick={()=>run(advance)}><Icon size={14}/>{advanceText}</button>}
       {/* The changelog lives on the release page. A popup that opens on every launch is the
           wrong place for a wall of text, and this keeps it one click away, not zero. */}
       <button className="button subtle" type="button" onClick={()=>window.open(release.pageUrl,'_blank','noopener,noreferrer')}>

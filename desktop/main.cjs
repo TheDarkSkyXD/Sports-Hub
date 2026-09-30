@@ -1,5 +1,4 @@
 const { app, BrowserWindow, ipcMain, shell, powerMonitor } = require('electron');
-const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -9,6 +8,7 @@ const { createSportsurgeCollector } = require('./sportsurge-collector.cjs');
 const { createSportsurgeObserver } = require('./sportsurge-observer.cjs');
 const { createStreameastCollector } = require('./streameast-collector.cjs');
 const { CH, createUpdateService } = require('./update.cjs');
+const { NsisUpdater } = require('electron-updater');
 
 app.setName('Sunday Room');
 if (process.platform === 'win32') app.setAppUserModelId('com.sundayroom.desktop');
@@ -19,6 +19,29 @@ if (process.platform === 'win32') app.setAppUserModelId('com.sundayroom.desktop'
 function packagedVersion() {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version; }
   catch { return '0.0.0'; }
+}
+
+// electron-updater skips every check when the app is not packaged, unless
+// `forceDevUpdateConfig` is set, and then it reads `dev-app-update.yml` from the app
+// directory instead of the `app-update.yml` that electron-builder bakes into a build.
+// Writing that file is therefore the supported way to exercise the real updater in
+// development, and the only place a development build can be pointed at a fork.
+function configureDevelopmentFeed(updater) {
+  updater.forceDevUpdateConfig=true;
+  const override=process.env.SUNDAY_ROOM_UPDATE_SOURCE;
+  const [owner,name]=typeof override==='string'?override.split('/'):[];
+  const feed={
+    provider:'github',
+    owner:owner||'TheDarkSkyXD',
+    repo:name||'Sports-Hub',
+    releaseType:'release',
+    updaterCacheDirName:'sunday-room-updater',
+  };
+  try {
+    fs.writeFileSync(path.join(__dirname,'..','dev-app-update.yml'),Object.entries(feed).map(([k,v])=>`${k}: ${v}`).join('\n')+'\n');
+  } catch (error) {
+    fs.appendFileSync(path.join(root,'.desktop-runtime','updates.log'),`update: could not write the development feed: ${String(error)}\n`);
+  }
 }
 const root = app.isPackaged ? path.join(process.resourcesPath,'server') : path.resolve(__dirname,'..');
 const logDir = app.isPackaged ? path.join(app.getPath('userData'),'logs') : path.join(root,'.desktop-runtime');
@@ -101,21 +124,29 @@ app.whenReady().then(async () => {
   });
   win.on('closed',() => { win=undefined; app.quit(); });
   powerMonitor.on('resume',() => { if (!teardown) { void localServer?.checkNow(); sportsurgeCollector?.requestSweep(); streameastCollector?.requestSweep(); } });
+  const updater=new NsisUpdater();
+  // Nothing downloads until a person asks. `autoDownload=false` is what keeps a check from
+  // pulling 120 MB the moment the app opens.
+  updater.autoDownload=false;
+  // A downloaded update installs on quit, so closing the app after a download still lands
+  // it. The explicit Install button is not the only path.
+  updater.autoInstallOnAppQuit=true;
+  updater.logger={...console,info:()=>{},debug:()=>{}};
+  // electron-updater declares this but never sets it. Without it the installer runs
+  // without `/D=`, and `desktop/installer.nsh` cannot restore the install directory, so
+  // the next launch looks like a fresh install.
+  updater.installDirectory=path.dirname(process.execPath);
+  if (!app.isPackaged) configureDevelopmentFeed(updater);
   update=createUpdateService({
-    // `app.getVersion()` reports Electron's own version on an unpackaged run, which would
-    // show a build number in the update panel instead of the app's. Read the manifest so a
-    // development build shows the same version a packaged one would.
-    currentVersion:app.isPackaged?app.getVersion():packagedVersion(),userDataDir:app.getPath('userData'),isPackaged:app.isPackaged,platform:process.platform,
-    execPath:process.execPath,fetch:(...args)=>globalThis.fetch(...args),spawn,
-    trusted,beginShutdown,exit:code=>app.exit(code),broadcast:status=>{ if (win && !win.isDestroyed()) win.webContents.send(CH.status,status); },
+    currentVersion:app.isPackaged?app.getVersion():packagedVersion(),userDataDir:app.getPath('userData'),
+    isPackaged:app.isPackaged,platform:process.platform,updater,trusted,
+    broadcast:status=>{ if (win && !win.isDestroyed()) win.webContents.send(CH.status,status); },
     log:message=>{ try { fs.mkdirSync(logDir,{recursive:true}); fs.appendFileSync(path.join(logDir,'updates.log'),`${message}\n`); } catch {} },
   });
   ipcMain.handle(CH.get,update.invoke('get'));
   ipcMain.handle(CH.check,update.invoke('check'));
   ipcMain.handle(CH.download,update.invoke('download'));
-  ipcMain.handle(CH.cancel,update.invoke('cancel'));
   ipcMain.handle(CH.install,update.invoke('install'));
-  ipcMain.handle(CH.setSource,update.invoke('setSource'));
   update.start();
   await win.loadURL(origin).catch(() => { mainFrameFailed = true; });
 }).catch(error => {

@@ -1,877 +1,555 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { EventEmitter } from 'node:events';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { FailureReasonSchema, ReleaseRepoSchema, UpdateStateSchema, UpdateStatusSchema, parseReleaseSource, updateCommands, type UpdateStatus } from '../lib/desktop-update.ts';
+import {
+  FailureReasonSchema, ReleaseRepoSchema, UpdateStateSchema, UpdateStatusSchema, updateCommands,
+  type UpdateStatus,
+} from '../lib/desktop-update.ts';
 
+// The state machine and the failure vocabulary are duplicated in `desktop/update.cjs`,
+// because `eslint.config.mjs` forbids `desktop/**/*.cjs` from importing `lib/`. If the two
+// ever disagree the app accepts a command the panel cannot offer, or hides a reason it
+// cannot render, so both are asserted from here.
 const require = createRequire(import.meta.url);
-const { CH, commandsFor, createUpdateService, failureReasons, installerArgs, isNewer, parseRelease, reduce, updateCommands: desktopCommands } = require('../desktop/update.cjs');
+const updateModule = require('../desktop/update.cjs');
+const { reduce, commandsFor, updateCommands: engineCommands, failureReasons } = updateModule;
 
-const GIB = 1024 * 1024 * 1024;
 const REPO = 'TheDarkSkyXD/Sports-Hub';
-const DIGEST = '0c3e8f0349e70aa99648e34844a94eab8bab96297a10a4c022ad66758a76af91';
+const at = Date.UTC(2026, 8, 30, 12, 0, 0);
 
-const asset = (overrides: Record<string, unknown> = {}) => ({
-  name: 'Sunday-Room-1.0.3-Setup-x64.exe',
-  size: 119053612,
-  browser_download_url: `https://github.com/${REPO}/releases/download/v1.0.3/Sunday-Room-1.0.3-Setup-x64.exe`,
-  digest: `sha256:${DIGEST}`,
-  ...overrides,
-});
+function event(type: string, extra: Record<string, unknown> = {}) {
+  return { type, at, release: null, ...extra };
+}
 
-const releaseJson = (overrides: Record<string, unknown> = {}) => ({
-  tag_name: 'v1.0.3',
-  html_url: `https://github.com/${REPO}/releases/tag/v1.0.3`,
-  draft: false,
-  prerelease: false,
-  published_at: '2026-09-20T18:04:11Z',
-  body: 'Full field of games.',
-  assets: [asset()],
-  ...overrides,
-});
+/**
+ * A stand-in for `NsisUpdater`.
+ *
+ * The engine is driven entirely through this object's methods and events, so every path
+ * through the machine can be exercised without a network, a disk, or an installer. The
+ * fake reports through the same events the real one does, which is the whole contract: a
+ * fake that only returned values would not exercise the path the engine depends on.
+ */
+class FakeUpdater extends EventEmitter {
+  checks = 0;
+  downloads = 0;
+  installs: { isSilent: boolean; isForceRunAfter: boolean }[] = [];
+  checkResult: 'available' | 'none' | 'error' | 'pending' = 'available';
+  checkError: Error | null = null;
+  checkInfo: Record<string, unknown> | null = null;
+  throwOnCheck = false;
+  throwOnDownload = false;
 
-const release = parseRelease(releaseJson(), REPO);
-assert.ok(release && !release.reason, 'the fixture release must parse');
-
-const at = 1_780_000_000_000;
-const states = {
-  unsupported: { kind: 'unsupported', reason: 'platform' },
-  idle: { kind: 'idle', lastCheckedAt: null },
-  checking: { kind: 'checking' },
-  current: { kind: 'current', lastCheckedAt: at },
-  available: { kind: 'available', release, lastCheckedAt: at },
-  downloading: { kind: 'downloading', release, received: 0, total: release.installer.bytes },
-  ready: { kind: 'ready', release, bytes: release.installer.bytes, verifiedAt: at },
-  installing: { kind: 'installing', release },
-  failed: { kind: 'failed', reason: 'offline', detail: 'no route', retry: 'check', release },
-} as const;
-
-const event = (type: string, at2 = at) => ({ type, at: at2, release, received: 0, bytes: release.installer.bytes });
-
-test('the command table answers the nine rows and refuses everything else', () => {
-  assert.deepEqual(reduce(states.idle, event('check')), states.checking);
-  assert.deepEqual(reduce(states.current, event('check')), states.checking);
-
-    assert.equal(reduce(states.unsupported, event('check')), null, 'unsupported absorbs every command');
-    assert.equal(reduce(states.checking, event('check')), null, 'checking accepts nothing');
-    assert.equal(reduce(states.checking, event('download')), null);
-    // Re-checking from available is how a user hears about a newer release, and it keeps
-    // the known release so a failure cannot take it away.
-    assert.deepEqual(reduce(states.available, event('check')),
-      { kind: 'checking', release: states.available.release });
-    assert.deepEqual(reduce(states.available, event('download')), states.downloading);
-  assert.equal(reduce(states.downloading, event('download')), null, 'a second download is a no-op, not a second socket');
-  assert.deepEqual(reduce(states.downloading, event('cancel')), states.available, 'cancel keeps the release and re-offers download');
-
-  assert.deepEqual(reduce(states.ready, event('install')), states.installing);
-  assert.equal(reduce(states.ready, event('download')), null, 'verified bytes are already on disk');
-  assert.equal(reduce(states.ready, event('cancel')), null);
-  assert.equal(reduce(states.installing, event('install')), null, 'installing is absorbing');
-  assert.equal(reduce(states.installing, event('cancel')), null);
-
-  assert.deepEqual(reduce(states.failed, event('check')), states.checking, 'retry names that command entry row');
-  assert.equal(reduce(states.failed, event('download')), null, 'retry is check, so download is refused');
-  assert.equal(reduce(states.failed, event('cancel')), null);
-  const terminal = { kind: 'failed', reason: 'rate-limited', detail: 'spent', retry: null, release };
-  for (const command of desktopCommands) assert.equal(reduce(terminal, event(command)), null, `${command} must be refused`);
-});
-
-test('commandsFor is a projection of the same rows, including their guards', () => {
-  assert.deepEqual(commandsFor(states.unsupported), []);
-  assert.deepEqual(commandsFor(states.idle), ['check']);
-  assert.deepEqual(commandsFor(states.current), ['check']);
-  assert.deepEqual(commandsFor(states.checking), []);
-  assert.deepEqual(commandsFor(states.available), ['check', 'download']);
-  assert.deepEqual(commandsFor(states.downloading), ['cancel']);
-  assert.deepEqual(commandsFor(states.ready), ['install']);
-  assert.deepEqual(commandsFor(states.installing), []);
-  assert.deepEqual(commandsFor(states.failed), ['check']);
-
-  const retryDownload = { kind: 'failed', reason: 'download', detail: 'cut', retry: 'download', release };
-  assert.deepEqual(commandsFor(retryDownload), ['download']);
-  assert.deepEqual(reduce(retryDownload, event('download')), states.downloading, 'a retry re-enters the download row');
-  const terminal = { kind: 'failed', reason: 'rate-limited', detail: 'spent', retry: null, release };
-  assert.deepEqual(commandsFor(terminal), []);
-  assert.deepEqual(commandsFor({ ...retryDownload, release: null }), [], 'a retry with nothing to retry offers nothing');
-  const huge = { kind: 'available', release: { ...release, installer: { ...release.installer, bytes: GIB + 1 } }, lastCheckedAt: at };
-  assert.equal(commandsFor(huge).includes('download'), false, 'over a gigabyte offers no download button');
-  assert.equal(reduce(huge, event('download')), null, 'and the button and the command still agree');
-});
-
-test('commandsFor and reduce agree for every state the machine can reach', () => {
-  const reachable = [
-    ...Object.values(states),
-    { kind: 'failed', reason: 'download', detail: 'cut', retry: 'download', release },
-    { kind: 'failed', reason: 'install', detail: 'blocked', retry: 'install', release },
-    { kind: 'failed', reason: 'offline', detail: 'no route', retry: 'check', release: null },
-    { kind: 'failed', reason: 'rate-limited', detail: 'spent', retry: null, release },
-    { kind: 'failed', reason: 'download', detail: 'gone', retry: 'download', release: null },
-    { kind: 'failed', reason: 'install', detail: 'gone', retry: 'install', release: null },
-    { kind: 'available', release: { ...release, installer: { ...release.installer, url: 'http://evil.test/a.exe' } }, lastCheckedAt: at },
-    { kind: 'available', release: { ...release, installer: { ...release.installer, bytes: GIB + 1 } }, lastCheckedAt: at },
-  ];
-  for (const state of reachable) {
-    assert.equal(UpdateStateSchema.safeParse(state).success, true, `${(state as { kind: string }).kind} must parse`);
-    const offered = commandsFor(state);
-    for (const command of desktopCommands) {
-      const accepted = reduce(state, event(command)) !== null;
-      assert.equal(offered.includes(command), accepted, `${(state as { kind: string }).kind} ${command}`);
-    }
+  info(version = '1.0.3', extra: Record<string, unknown> = {}) {
+    return {
+      version,
+      releaseDate: '2026-09-30T11:00:00.000Z',
+      releaseNotes: 'Restore the Sportsurge collection.',
+      releaseName: `Sunday Room ${version}`,
+      ...extra,
+    };
   }
-});
 
-test('parseRelease normalizes a GitHub releases/latest payload', () => {
-  assert.equal(release.version, '1.0.3', 'the leading v is stripped');
-  assert.equal(release.pageUrl, `https://github.com/${REPO}/releases/tag/v1.0.3`);
-  assert.equal(release.notes, 'Full field of games.');
-  assert.equal(release.publishedAt, Date.parse('2026-09-20T18:04:11Z'));
-  assert.equal(release.installer.name, 'Sunday-Room-1.0.3-Setup-x64.exe');
-  assert.equal(release.installer.bytes, 119053612);
-  assert.equal(release.installer.sha256, DIGEST, 'sha256 is read out of assets[].digest');
-  assert.equal(parseRelease(releaseJson({ assets: [asset({ digest: undefined })] }), REPO).installer.sha256, null);
-  assert.equal(parseRelease(releaseJson({ tag_name: '1.0.3' }), REPO).pageUrl, `https://github.com/${REPO}/releases/tag/1.0.3`);
-  assert.equal(parseRelease(releaseJson({ body: null, published_at: null }), REPO).publishedAt, null);
-});
+  checkForUpdates() {
+    this.checks += 1;
+    if (this.throwOnCheck) throw new Error('check exploded');
+    if (this.checkResult === 'error') return Promise.reject(this.checkError ?? new Error('no feed'));
+    // A check that never answers, so a second press can be tested against a check that is
+    // genuinely still running.
+    if (this.checkResult === 'pending') return new Promise(() => {});
+    queueMicrotask(() => {
+      this.emitChecking();
+      if (this.checkResult === 'none') this.emitNone();
+      else this.emitAvailable();
+    });
+    return Promise.resolve(true);
+  }
 
-test('parseRelease selects the installer by artifactName and prefers the host arch', () => {
-  const arm = { ...asset(), name: 'Sunday-Room-1.0.3-Setup-arm64.exe', browser_download_url: `https://github.com/${REPO}/releases/download/v1.0.3/Sunday-Room-1.0.3-Setup-arm64.exe` };
-  assert.equal(parseRelease(releaseJson({ assets: [arm, asset()] }), REPO, 'x64').installer.name, 'Sunday-Room-1.0.3-Setup-x64.exe');
-  assert.equal(parseRelease(releaseJson({ assets: [arm, asset()] }), REPO, 'arm64').installer.name, 'Sunday-Room-1.0.3-Setup-arm64.exe');
-  assert.equal(parseRelease(releaseJson({ assets: [arm] }), REPO, 'x64').installer.name, 'Sunday-Room-1.0.3-Setup-arm64.exe');
-  assert.deepEqual(parseRelease(releaseJson({ assets: [{ name: 'Sunday-Room-1.0.3.dmg', size: 5, browser_download_url: 'https://github.com/x' }] }), REPO), { reason: 'malformed' });
-});
+  downloadUpdate() {
+    this.downloads += 1;
+    if (this.throwOnDownload) throw new Error('download exploded');
+    return Promise.resolve(['C:\\cache\\Sunday-Room-1.0.3-Setup-x64.exe']);
+  }
 
-test('parseRelease rejects a draft, a prerelease, a bad tag, and a non-GitHub asset url', () => {
-  assert.deepEqual(parseRelease(releaseJson({ draft: true }), REPO), { reason: 'malformed' });
-  assert.deepEqual(parseRelease(releaseJson({ prerelease: true }), REPO), { reason: 'malformed' });
-  assert.deepEqual(parseRelease(releaseJson({ tag_name: 'v1.0.3-beta.1' }), REPO), { reason: 'malformed' });
-  assert.deepEqual(parseRelease(releaseJson({ tag_name: 'latest' }), REPO), { reason: 'malformed' });
-  assert.deepEqual(parseRelease(releaseJson({ assets: [] }), REPO), { reason: 'malformed' });
-  assert.deepEqual(parseRelease(releaseJson({ assets: [asset({ size: 0 })] }), REPO), { reason: 'malformed' });
-  assert.deepEqual(parseRelease(releaseJson({ assets: [asset({ browser_download_url: 'http://github.com/a.exe' })] }), REPO), { reason: 'malformed' });
-  assert.deepEqual(parseRelease(releaseJson({ assets: [asset({ browser_download_url: 'https://user:pass@github.com/a.exe' })] }), REPO), { reason: 'malformed' });
-  assert.deepEqual(parseRelease(releaseJson({ assets: [asset({ browser_download_url: 'https://evil.test/a.exe' })] }), REPO), { reason: 'malformed' });
-  assert.deepEqual(parseRelease(null, REPO), { reason: 'malformed' });
-  assert.deepEqual(parseRelease(releaseJson(), 'not-a-slug'), { reason: 'malformed' });
-});
+  quitAndInstall(isSilent = false, isForceRunAfter = false) {
+    this.installs.push({ isSilent, isForceRunAfter });
+  }
 
-test('version comparison is numeric, so 1.10.0 outranks 1.9.0', () => {
-  assert.equal(isNewer('1.10.0', '1.9.0'), true);
-  assert.equal(isNewer('1.9.0', '1.10.0'), false);
-  assert.equal(isNewer('1.0.3', '1.0.3'), false);
-  assert.equal(isNewer('2.0.0', '1.99.99'), true);
-  assert.equal(isNewer('1.0', '1.0.0'), false);
-  assert.equal(parseRelease(releaseJson({ tag_name: 'v1.10.0' }), REPO).version, '1.10.0');
-});
-
-test('installerArgs is the verified NSIS list with an unquoted trailing /D=', () => {
-  const installDir = 'C:\\Users\\Player\\AppData\\Local\\Programs\\Sunday Room';
-  assert.deepEqual(installerArgs(installDir), ['/S', '/updated', '/force-run', `/D=${installDir}`]);
-  assert.equal(installerArgs(installDir).at(-1), `/D=${installDir}`);
-  assert.equal(installerArgs(installDir).some(arg => arg.includes('"')), false, 'NSIS mangles a quoted /D= path');
-  assert.equal(installerArgs(path.dirname('C:\\Program Files\\Sunday Room\\Sunday Room.exe')).at(-1), '/D=C:\\Program Files\\Sunday Room');
-});
-
-function jsonResponse(payload: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
-  const status = init.status ?? 200;
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: { get: (name: string) => init.headers?.[name.toLowerCase()] ?? null },
-    json: async () => payload,
-    body: null,
-  };
+  // Test helpers that mirror exactly what electron-updater emits.
+  emitChecking() { this.emit('checking-for-update'); }
+  emitAvailable(info = this.checkInfo ?? this.info()) { this.emit('update-available', info); }
+  emitNone() { this.emit('update-not-available', { version: '1.0.2' }); }
+  emitProgress(percent: number) {
+    this.emit('download-progress', { percent, total: 119067581, transferred: Math.round(119067581 * percent / 100) });
+  }
+  emitDownloaded() { this.emit('update-downloaded', this.info()); }
+  emitError(error: Error) { this.emit('error', error); }
 }
 
-function streamResponse(chunks: Buffer[], headers: Record<string, string> = {}) {
-  return {
-    ok: true,
-    status: 200,
-    headers: { get: (name: string) => headers[name.toLowerCase()] ?? null },
-    json: async () => ({}),
-    body: (async function* () { for (const chunk of chunks) yield chunk; })(),
-  };
+// The common case at launch: the feed answers, and there is nothing newer.
+function noneYet() {
+  const updater = new FakeUpdater();
+  updater.checkResult = 'none';
+  return updater;
 }
 
-function harness(options: Record<string, unknown> = {}, seed?: Record<string, unknown> | ((userDataDir: string) => Record<string, unknown>)) {
+function harness(options: Record<string, unknown> = {}, seed?: Record<string, unknown>) {
   const userDataDir = mkdtempSync(path.join(tmpdir(), 'sunday-update-'));
-  if (typeof seed === 'function') writeFileSync(path.join(userDataDir, 'update.json'), JSON.stringify(seed(userDataDir)));
-  else if (seed) writeFileSync(path.join(userDataDir, 'update.json'), JSON.stringify(seed));
-  const requests: string[] = [];
+  if (seed) writeFileSync(path.join(userDataDir, 'update.json'), JSON.stringify(seed));
   const broadcasts: UpdateStatus[] = [];
-  const spawned: { file: string; args: string[]; options: Record<string, unknown> }[] = [];
-  const exited: number[] = [];
   let clock = at;
-  const service = createUpdateService({
+  const updater = (options.updater as FakeUpdater | undefined) ?? new FakeUpdater();
+  const service = updateModule.createUpdateService({
     currentVersion: '1.0.2',
     userDataDir,
     isPackaged: true,
     platform: 'win32',
-    execPath: path.join('C:\\Program Files\\Sunday Room', 'Sunday Room.exe'),
+    updater,
     now: () => clock,
-    fetch: async (url: string) => { requests.push(String(url)); return jsonResponse(releaseJson()); },
-    spawn: (file: string, args: string[], options: Record<string, unknown>) => {
-      spawned.push({ file, args, options });
-      return { unref: () => {}, kill: () => {} };
-    },
     trusted: () => true,
-    beginShutdown: async () => {},
-    exit: (code: number) => { exited.push(code); },
     broadcast: (status: UpdateStatus) => broadcasts.push(status),
-    listProcesses: async () => [],
     log: () => {},
     ...options,
   });
   const settle = async () => {
-    // Real I/O and real timers: the transfers below use the filesystem, so draining
-    // microtasks is not enough to see them finish.
-    for (let index = 0; index < 15; index += 1) await new Promise(resolve => setTimeout(resolve, 10));
-  };
-  const until = async (predicate: () => boolean, label: string) => {
-    for (let index = 0; index < 200; index += 1) {
-      if (predicate()) return;
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
-    assert.fail(`timed out waiting for ${label}`);
+    for (let index = 0; index < 15; index += 1) await new Promise(resolve => setTimeout(resolve, 5));
   };
   return {
-    service, userDataDir, requests, broadcasts, spawned, exited, settle, until,
+    service, userDataDir, updater, broadcasts, settle,
     setClock: (value: number) => { clock = value; },
     read: () => JSON.parse(readFileSync(path.join(userDataDir, 'update.json'), 'utf8')),
   };
 }
+
+// Start and let the automatic check land, which is what a real launch does.
+async function started(options: Record<string, unknown> = {}, seed?: Record<string, unknown>) {
+  const room = harness(options, seed);
+  await room.service.start();
+  await room.settle();
+  return room;
+}
+
+test('the command set and the failure vocabulary agree across the boundary', () => {
+  assert.deepEqual([...engineCommands], [...updateCommands], 'the engine and the panel must offer the same commands');
+  assert.equal(FailureReasonSchema.options.length, failureReasons.length, 'one reason per declared failure');
+  for (const reason of FailureReasonSchema.options) {
+    assert.ok(failureReasons.includes(reason), `${reason} must exist in the engine`);
+  }
+  assert.equal(channels.cancel, undefined, 'electron-updater cannot cancel, so no cancel channel exists');
+  assert.equal(channels.setSource, undefined, 'the feed is baked in, so there is nothing to set');
+});
 
 test('a supported build checks once on start and reports a newer release', async () => {
   const room = harness();
   try {
     await room.service.start();
     await room.settle();
+    assert.equal(room.updater.checks, 1, 'one check at launch');
     const status = room.service.snapshot();
-    assert.equal(status.state.kind, 'available');
-    assert.deepEqual(room.requests, [`https://api.github.com/repos/${REPO}/releases/latest`]);
     assert.equal(status.currentVersion, '1.0.2');
     assert.equal(ReleaseRepoSchema.safeParse(status.source.repo).success, true);
     assert.equal(status.source.origin, 'packaged');
     assert.equal(UpdateStatusSchema.safeParse(status).success, true);
     assert.deepEqual(status.commands, ['check', 'download']);
-    assert.equal(room.read().lastCheckedAt, at, 'the check time is persisted so a relaunch does not re-spend a request');
-    assert.equal(room.read().source, REPO);
-
-    const relaunched = harness({}, room.read());
-    try {
-      await relaunched.service.start();
-      await relaunched.settle();
-      assert.equal(relaunched.requests.length, 0, 'a launch inside six hours spends no request');
-      assert.equal(relaunched.service.snapshot().state.kind, 'idle');
-    } finally { rmSync(relaunched.userDataDir, { recursive: true, force: true }); }
+    assert.equal(status.state.kind, 'available');
+    const release = (status.state as { release: { version: string; pageUrl: string; notes: string } }).release;
+    assert.equal(release.version, '1.0.3');
+    assert.equal(release.pageUrl, `https://github.com/${REPO}/releases/tag/v1.0.3`,
+      'the feed reports the version without a v, and the tag carries one');
+    assert.match(release.notes, /Sportsurge/, 'the notes come from the feed');
+    assert.equal(room.read().lastCheckedAt, at, 'a check that found something records its time too');
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('an unpublished source is one truthful unavailable reason, not three invented ones', async () => {
-  const room = harness({ fetch: async () => jsonResponse({}, { status: 404 }) });
+test('a launch inside the six hour gap does not check again', async () => {
+  const room = await started({}, { lastCheckedAt: at - 60_000 });
   try {
-    await room.service.start();
-    await room.settle();
+    assert.equal(room.updater.checks, 0, 'a minute since the last check is not a gap');
+    assert.equal(room.service.snapshot().state.kind, 'idle');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+
+  const stale = await started({}, { lastCheckedAt: at - (6 * 60 * 60 * 1000) - 1 });
+  try {
+    assert.equal(stale.updater.checks, 1, 'past the gap it checks again');
+  } finally { rmSync(stale.userDataDir, { recursive: true, force: true }); }
+});
+
+test('no newer release settles on current and records the time', async () => {
+  const room = await started({ updater: noneYet() });
+  try {
     const status = room.service.snapshot();
-    assert.equal(status.state.kind, 'failed');
-    assert.equal((status.state as { reason: string }).reason, 'unavailable');
-    assert.equal((status.state as { retry: string }).retry, 'check');
+    assert.equal(status.state.kind, 'current');
     assert.deepEqual(status.commands, ['check']);
-    assert.equal(UpdateStatusSchema.safeParse(status).success, true);
+    assert.equal(room.read().lastCheckedAt, at);
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('a source document this build cannot read is malformed and is never retried on a timer', async () => {
-  const room = harness({ fetch: async () => jsonResponse(releaseJson({ draft: true })) });
+test('a press always asks the feed, with nothing throttling it', async () => {
+  const room = await started();
   try {
-    await room.service.start();
-    await room.settle();
-    const status = room.service.snapshot();
-    assert.equal((status.state as { reason: string }).reason, 'malformed');
-    assert.deepEqual(status.commands, []);
+    assert.equal(room.updater.checks, 1);
+    // electron-updater has no cooldown of its own, and this service adds none. A person
+    // pressing the button always gets an answer.
+    const reply = await room.service.invoke('check')(event('check'));
+    assert.equal(reply.state.kind, 'checking', 'the reply is the state as the check starts');
+    assert.equal(room.updater.checks, 2, 'a press reaches the feed');
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('an unreachable source is offline, and the network refusal carries the release it had', async () => {
-  const room = harness({ fetch: async (url: string) => {
-    if (String(url).includes('api.github.com')) return jsonResponse(releaseJson());
-    throw new Error('socket hang up');
-  } });
+test('a check with no argument is a manual check, because that is what the bridge sends', async () => {
+  const room = await started();
   try {
-    await room.service.start();
-    await room.settle();
+    // desktop/preload.cjs may call `ipcRenderer.invoke(CH.check)`, so the handler receives
+    // `undefined`. Treating that as a refusal broke the button in the app.
+    const status = await room.service.invoke('check')(event('check'), undefined);
+    assert.equal(status.state.kind, 'checking', 'an omitted flag must still start a check');
+    assert.equal(room.updater.checks, 2);
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('a press while a check is still running spends no second request', async () => {
+  const updater = new FakeUpdater();
+  updater.checkResult = 'pending';
+  const room = await started({ updater });
+  try {
+    assert.equal(room.service.snapshot().state.kind, 'checking');
+    assert.equal(room.updater.checks, 1);
+    await room.service.invoke('check')(event('check'));
+    assert.equal(room.updater.checks, 1, 'a press while one is already running is free');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('a release is downloaded, reports progress, and becomes ready to install', async () => {
+  const room = await started();
+  try {
     await room.service.invoke('download')(event('download'));
+    assert.equal(room.service.snapshot().state.kind, 'downloading');
+    assert.equal(room.updater.downloads, 1);
+    room.updater.emitProgress(41);
+    await room.settle();
+    assert.equal((room.service.snapshot().state as { percent: number }).percent, 41);
+    room.updater.emitDownloaded();
     await room.settle();
     const status = room.service.snapshot();
-    assert.equal((status.state as { reason: string }).reason, 'download');
-    assert.deepEqual((status.state as { release: unknown }).release, release, 'the failed state still names the release');
+    assert.equal(status.state.kind, 'ready');
+    assert.deepEqual(status.commands, ['install']);
+    // The library keeps the file, its checksum, and its cache. There is no second record
+    // here to keep in step with it.
+    assert.equal(room.read().verified, undefined);
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('a development build can check and read every screen, but never installs', async () => {
-  const room = harness({ isPackaged: false });
+test('installing is silent and relaunches', async () => {
+  const room = await started();
   try {
-    await room.service.start();
+    await room.service.invoke('download')(event('download'));
+    room.updater.emitDownloaded();
     await room.settle();
-    // The whole point of the panel is to be exercised before packaging, so a development
-    // build gets the read-only surface: it asks GitHub and reports a real release.
+    await room.service.invoke('install')(event('install'));
+    assert.equal(room.service.snapshot().state.kind, 'installing');
+    assert.deepEqual(room.updater.installs, [{ isSilent: true, isForceRunAfter: true }],
+      'an in-app update installs quietly and comes back up');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('install is refused until the bytes are verified', async () => {
+  const room = await started();
+  try {
+    await room.service.invoke('install')(event('install'));
+    assert.equal(room.updater.installs.length, 0, 'nothing runs before a download completes');
     assert.equal(room.service.snapshot().state.kind, 'available');
-    assert.match(room.requests[0], /^https:\/\/api\.github\.com\//, 'a development build still checks GitHub');
-    assert.deepEqual(room.service.snapshot().commands, ['check'], 'and offers nothing that writes to the machine');
-
-    const changed = await room.service.invoke('setSource')(event('set-source'), 'Someone/Fork');
-    assert.equal(changed.source.repo, 'Someone/Fork');
-    assert.equal(changed.source.origin, 'file');
-    // Clearing `lastCheckedAt` sends the new source straight back to GitHub, which is the
-    // only way to learn whether the fork has anything newer.
-    await room.until(() => room.service.snapshot().state.kind === 'checking', 'the new source to be checked');
-    assert.equal(room.read().source, 'Someone/Fork');
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('a development build refuses download and install instead of running an unsigned binary', async () => {
-  const room = harness({ isPackaged: false });
-  try {
-    await room.service.start();
-    await room.settle();
-    for (const command of ['download', 'install', 'cancel'] as const) {
-      await assert.rejects(() => room.service.invoke(command)(event(command)),
-        (error: Error) => error.name === 'unavailable', command);
-    }
-    assert.equal(room.service.snapshot().state.kind, 'available', 'a refusal leaves the machine untouched');
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-});
-
-test('a development build accepts a releases address and stores only the slug', async () => {
-  // Someone reading this in a browser has a releases URL in front of them, so every one of
-  // these has to work. All of them name the same repository.
-  for (const input of [
-    'https://github.com/TheDarkSkyXD/Sports-Hub/releases',
-    'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest',
-    'https://github.com/TheDarkSkyXD/Sports-Hub/releases/tag/v1.0.2',
-    'https://github.com/TheDarkSkyXD/Sports-Hub',
-    '  https://github.com/TheDarkSkyXD/Sports-Hub/releases  ',
-    'https://GITHUB.COM/TheDarkSkyXD/Sports-Hub/releases',
+test('a source with no published release is unavailable, not broken', async () => {
+  for (const code of [
+    'ERR_UPDATER_LATEST_VERSION_NOT_FOUND',
+    'ERR_UPDATER_NO_PUBLISHED_VERSIONS',
+    'ERR_UPDATER_CHANNEL_DOES_NOT_EXIST',
   ]) {
-    const room = harness({ isPackaged: false });
+    const room = await started();
     try {
-      const parsed = parseReleaseSource(input);
-      assert.equal(parsed, 'TheDarkSkyXD/Sports-Hub', `${input} must resolve to the slug`);
-      // And the same string through the real bridge lands on disk as the slug alone.
-      const changed = await room.service.invoke('setSource')(event('set-source'), parsed);
-      assert.equal(changed.source.repo, 'TheDarkSkyXD/Sports-Hub');
-      assert.equal(room.read().source, 'TheDarkSkyXD/Sports-Hub');
+      room.updater.emitError(Object.assign(new Error('boom'), { code }));
+      await room.settle();
+      const state = room.service.snapshot().state as { kind: string; reason: string; detail: string; retry: unknown };
+      assert.equal(state.kind, 'failed');
+      assert.equal(state.reason, 'unavailable', `${code} is not an outage`);
+      assert.match(state.detail, /no published release/i);
+      assert.equal(state.retry, 'check', 'and the user can ask again');
     } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
   }
 });
 
-test('an installed app takes updates from one repository and nothing else', async () => {
-  // The binary is unsigned, so the source decides what code this app will run. Anything
-  // running as the user can write `update.json` or press the field, so an installed app
-  // honours neither. This is the one hole that turns a self-updater into a remote shell.
-  const hostile = harness({}, { source: 'attacker/evil-app' });
-  try {
-    assert.equal(hostile.service.snapshot().source.repo, REPO, 'a source planted in update.json is ignored');
-    assert.equal(hostile.service.snapshot().source.origin, 'packaged');
-    assert.equal(hostile.service.snapshot().source.editable, false, 'and the field is not editable');
-
-    const planted = await hostile.service.invoke('setSource')(event('set-source'), 'attacker/evil-app');
-    assert.equal(planted.source.repo, REPO, 'setSource cannot move an installed app');
-    assert.equal(planted.source.origin, 'packaged');
-
-    await hostile.service.start();
-    await hostile.settle();
-    for (const url of hostile.requests) {
-      assert.match(url, /api\.github\.com\/repos\/TheDarkSkyXD\/Sports-Hub\//,
-        `every request must name the compiled-in repository, saw ${url}`);
-    }
-  } finally { rmSync(hostile.userDataDir, { recursive: true, force: true }); }
+test('a published record that cannot be read is malformed and not retryable', async () => {
+  for (const code of ['ERR_UPDATER_INVALID_UPDATE_INFO', 'ERR_UPDATER_UPDATE_INFO_NOT_FOUND']) {
+    const room = await started();
+    try {
+      room.updater.emitError(Object.assign(new Error('boom'), { code }));
+      await room.settle();
+      const state = room.service.snapshot().state as { reason: string; retry: unknown };
+      assert.equal(state.reason, 'malformed', `${code} means the record itself is wrong`);
+      assert.equal(state.retry, null, 'pressing again would read the same record');
+    } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+  }
 });
 
-test('a development build can be pointed at another repository, and says so', async () => {
-  const room = harness({ isPackaged: false });
+test('a download that fails mid-transfer is retryable as a download', async () => {
+  const room = await started();
   try {
-    assert.equal(room.service.snapshot().source.editable, true, 'the field is editable where nothing can be installed');
-    const changed = await room.service.invoke('setSource')(event('set-source'), 'Someone/Fork');
-    assert.equal(changed.source.repo, 'Someone/Fork');
-    assert.equal(changed.source.origin, 'file');
+    await room.service.invoke('download')(event('download'));
+    await room.settle();
+    room.updater.emitError(Object.assign(new Error('write failed'), { code: 'ERR_UPDATER_DOWNLOAD_FAILURE' }));
+    await room.settle();
+    const status = room.service.snapshot();
+    const state = status.state as { kind: string; reason: string; retry: string; release: { version: string } };
+    assert.equal(state.kind, 'failed');
+    assert.equal(state.reason, 'download');
+    assert.equal(state.retry, 'download', 'the same button retries the transfer');
+    assert.equal(state.release.version, '1.0.3', 'and the release it was for is kept');
+    assert.deepEqual(status.commands, ['download']);
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('a source with no releases address to direct to is refused', async () => {
-  // Without an address there is nothing to send a reader to, so guessing is worse than
-  // reporting the mistake.
-  for (const unusable of [
-    'TheDarkSkyXD/Sports-Hub',      // a bare slug names no page
-    'not a url',
-    '',
-    'github.com/TheDarkSkyXD/Sports-Hub/releases',  // no scheme
-    '//github.com/TheDarkSkyXD/Sports-Hub/releases',  // protocol relative
-    'https://github.com/owner',    // no repository
-  ]) {
-    assert.equal(parseReleaseSource(unusable), null, `${JSON.stringify(unusable)} must be refused`);
-  }
+test('a download that throws is contained, not crashed through', async () => {
+  const room = await started();
+  try {
+    room.updater.throwOnDownload = true;
+    await room.service.invoke('download')(event('download'));
+    await room.settle();
+    assert.equal(room.service.snapshot().state.kind, 'failed', 'the machine survives a synchronous throw');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
 
-  // And a page that is not a releases page is refused, so the field cannot be pointed at
-  // a repository page that will never carry an installer.
-  for (const wrongPage of [
-    'https://github.com/owner/name/tree/main',
-    'https://github.com/owner/name/issues',
-  ]) {
-    assert.equal(parseReleaseSource(wrongPage), null, `${wrongPage} is not a releases address`);
+test('being unable to reach the feed is reported as offline', async () => {
+  for (const message of ['getaddrinfo ENOTFOUND api.github.com', 'socket hang up', 'read ECONNRESET']) {
+    const room = await started();
+    try {
+      room.updater.emitError(new Error(message));
+      await room.settle();
+      const state = room.service.snapshot().state as { reason: string };
+      assert.equal(state.reason, 'offline', `${message} is a network failure`);
+    } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
   }
 });
 
-test('a URL cannot walk the path to a different owner', async () => {
-  // `URL` collapses `..` while parsing, so by the time `pathname` is readable
-  // `/a/b/releases/../../evil` already reads as `/a/evil`. The attempt is only still
-  // visible in the raw text, so that is what has to be refused.
-  for (const traversal of [
-    'https://github.com/a/b/releases/../../evil',
-    'https://github.com/a/b/releases/%2e%2e/evil',
-    'https://github.com/a/b/releases/..',
-    'https://github.com/a/b/releases/./x',
-    'https://github.com/a/b/releases\\..\\evil',
-  ]) {
-    assert.equal(parseReleaseSource(traversal), null, `${traversal} must be refused`);
-  }
+test('a check that rejects without emitting is still contained', async () => {
+  const room = harness();
+  try {
+    room.updater.checkResult = 'error';
+    room.updater.checkError = new Error('getaddrinfo ENOTFOUND api.github.com');
+    await room.service.start();
+    await room.settle();
+    const state = room.service.snapshot().state as { kind: string; reason: string };
+    assert.equal(state.kind, 'failed');
+    assert.equal(state.reason, 'offline', 'a rejection that never became an event is not swallowed');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
 
-  // The rest of the trust boundary: only plain https github.com repository addresses.
-  for (const hostile of [
-    'https://evil.test/owner/name/releases',
-    'http://github.com/owner/name/releases',
-    'ftp://github.com/owner/name/releases',
-    'file:///c:/x',
-    'javascript:alert(1)',
-    'https://github.com.evil.test/owner/name/releases',
-    'https://user:pass@github.com/owner/name/releases',
-    'https://github.com:8443/owner/name/releases',
-    'https://github.com/owner/name/releases?next=evil',
-    'https://github.com/owner/name/releases#frag',
-    'https://github.com//name/releases',
-    'https://github.com/owner/name%2Freleases',
-  ]) {
-    assert.equal(parseReleaseSource(hostile), null, `${hostile} must not be accepted`);
+test('a check that throws synchronously is contained', async () => {
+  const room = harness();
+  try {
+    room.updater.throwOnCheck = true;
+    await room.service.start();
+    await room.settle();
+    assert.equal(room.service.snapshot().state.kind, 'failed');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('a release whose version cannot be read is refused rather than rendered', async () => {
+  for (const info of [{ version: '' }, { version: 'nightly' }, {}]) {
+    const room = await started();
+    try {
+      room.updater.emitAvailable(info as never);
+      await room.settle();
+      const state = room.service.snapshot().state as { kind: string; reason: string };
+      assert.equal(state.kind, 'failed', `${JSON.stringify(info)} is not a version`);
+      assert.equal(state.reason, 'malformed');
+    } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
   }
+});
+
+test('a re-check never costs the user the update they were about to install', async () => {
+  const room = await started();
+  try {
+    await room.service.invoke('check')(event('check'));
+    room.updater.emitNone();
+    await room.settle();
+    const state = room.service.snapshot().state as { kind: string; release: { version: string } };
+    assert.equal(state.kind, 'available', 'finding nothing newer must not lose the release');
+    assert.equal(state.release.version, '1.0.3');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('a development build can read another feed, and exercises the whole flow', async () => {
+  const room = harness({ isPackaged: false, repo: 'Someone/Fork', origin: 'environment' });
+  try {
+    await room.service.start();
+    await room.settle();
+    const status = room.service.snapshot();
+    assert.equal(status.source.repo, 'Someone/Fork', 'a development build may read another feed');
+    assert.equal(status.source.origin, 'environment');
+    assert.equal(status.state.kind, 'available', 'so the whole flow can be exercised before packaging');
+    // The whole point of the panel is to be exercised before packaging, so a development
+    // build gets the read-only surface and nothing that writes to the machine.
+    assert.deepEqual(status.commands, ['check']);
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('a development build refuses download and install instead of running an unsigned binary', async () => {
+  const room = await started({ isPackaged: false });
+  try {
+    for (const command of ['download', 'install'] as const) {
+      await assert.rejects(() => room.service.invoke(command)(event(command)),
+        (error: Error) => error.name === 'unavailable', command);
+    }
+    assert.equal(room.updater.downloads, 0, 'nothing was fetched');
+    assert.equal(room.service.snapshot().state.kind, 'available', 'a refusal leaves the machine untouched');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('an untrusted sender is refused and spends no request', async () => {
+  const closed = harness({ trusted: () => false });
+  try {
+    for (const command of ['get', 'check', 'download', 'install'] as const) {
+      await assert.rejects(() => closed.service.invoke(command)(event(command)),
+        (error: Error) => error.name === 'untrusted-sender', command);
+    }
+    assert.equal(closed.updater.checks, 0);
+  } finally { rmSync(closed.userDataDir, { recursive: true, force: true }); }
+});
+
+test('a bad argument is refused and changes nothing', async () => {
+  const open = await started();
+  try {
+    await assert.rejects(() => open.service.invoke('check')(event('check'), 'yes'),
+      (error: Error) => error.name === 'invalid-argument');
+    assert.equal(open.updater.checks, 1, 'a refusal spends no request');
+    assert.equal(UpdateStatusSchema.safeParse(open.service.snapshot()).success, true);
+  } finally { rmSync(open.userDataDir, { recursive: true, force: true }); }
 });
 
 test('a non-Windows build is unsupported for its own reason', async () => {
   const room = harness({ platform: 'darwin' });
-  try { assert.deepEqual(room.service.snapshot().state, { kind: 'unsupported', reason: 'platform' }); }
-  finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+  try {
+    await room.service.start();
+    await room.settle();
+    assert.deepEqual(room.service.snapshot().state, { kind: 'unsupported', reason: 'platform' });
+    assert.deepEqual(room.service.snapshot().commands, []);
+    assert.equal(room.updater.checks, 0, 'and it never spends a request');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('the environment override only wins when the app is not packaged', async () => {
-  const previous = process.env.SUNDAY_ROOM_UPDATE_SOURCE;
-  process.env.SUNDAY_ROOM_UPDATE_SOURCE = 'Dev/Fork';
+test('every state the engine broadcasts satisfies the renderer schema', async () => {
+  const room = await started();
   try {
-    const dev = harness({ isPackaged: false });
-    const shipped = harness({ isPackaged: true });
-    try {
-      assert.equal(dev.service.snapshot().source.repo, 'Dev/Fork');
-      assert.equal(dev.service.snapshot().source.origin, 'environment');
-      assert.equal(shipped.service.snapshot().source.repo, REPO);
-      assert.equal(shipped.service.snapshot().source.origin, 'packaged');
-    } finally { rmSync(dev.userDataDir, { recursive: true, force: true }); rmSync(shipped.userDataDir, { recursive: true, force: true }); }
-  } finally {
-    if (previous === undefined) delete process.env.SUNDAY_ROOM_UPDATE_SOURCE;
-    else process.env.SUNDAY_ROOM_UPDATE_SOURCE = previous;
-  }
-});
-
-test('an untrusted sender and a bad argument are the only two rejections', async () => {
-  const closed = harness({ trusted: () => false });
-  try {
-    for (const command of ['get', 'check', 'download', 'cancel', 'install'] as const) {
-      await assert.rejects(() => closed.service.invoke(command)(event(command)), (error: Error) => error.name === 'untrusted-sender', command);
+    assert.ok(room.broadcasts.length > 1, 'the launch actually broadcast something');
+    for (const status of room.broadcasts) {
+      assert.equal(UpdateStatusSchema.safeParse(status).success, true,
+        `a broadcast state did not match the schema: ${JSON.stringify(status.state)}`);
     }
-    assert.deepEqual(closed.service.snapshot().state, { kind: 'idle', lastCheckedAt: null }, 'a refusal leaves the machine untouched');
-  } finally { rmSync(closed.userDataDir, { recursive: true, force: true }); }
-
-  const open = harness();
-  try {
-    await assert.rejects(() => open.service.invoke('setSource')(event('set-source'), 'https://evil.test/x'),
-      (error: Error) => error.name === 'invalid-argument');
-    await assert.rejects(() => open.service.invoke('check')(event('check'), 'yes'),
-      (error: Error) => error.name === 'invalid-argument');
-    const status = await open.service.invoke('get')(event('get'));
-    assert.equal(UpdateStatusSchema.safeParse(status).success, true);
-    assert.deepEqual(status.commands, ['check']);
-  } finally { rmSync(open.userDataDir, { recursive: true, force: true }); }
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('a check with no argument is a manual check, because that is what the bridge sends', async () => {
+test('the persisted file holds only what this app owns', async () => {
+  const room = await started({ updater: noneYet() });
+  try {
+    assert.deepEqual(Object.keys(room.read()).sort(), ['lastCheckedAt', 'schema'],
+      'the download, its checksum, and its cache belong to electron-updater');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('a corrupt persisted file is ignored rather than fatal', async () => {
   const room = harness();
   try {
-    // desktop/preload.cjs may call `ipcRenderer.invoke(CH.check)`, so the handler
-    // receives `undefined`. Treating that as a refusal broke the button in the app.
-    const status = await room.service.invoke('check')(event('check'), undefined);
-    assert.equal(status.state.kind, 'checking', 'an omitted flag must still start a manual check');
-    const throttled = await room.service.invoke('check')(event('check'), undefined);
-    assert.equal(throttled.state.kind, 'checking', 'a repeat press is throttled, not refused');
-    assert.ok(room.requests.length <= 1, `a manual check spends at most one request, saw ${room.requests.length}`);
+    writeFileSync(path.join(room.userDataDir, 'update.json'), '{ not json');
+    const second = updateModule.createUpdateService({
+      currentVersion: '1.0.2', userDataDir: room.userDataDir, isPackaged: true, platform: 'win32',
+      updater: new FakeUpdater(), trusted: () => true, now: () => at, log: () => {},
+    });
+    second.start();
+    assert.equal(second.snapshot().state.kind, 'idle', 'an unreadable file is a first launch');
+    second.stop();
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('a manual check asks GitHub every time it is pressed, and a spent budget is terminal', async () => {
-  const room = harness();
+test('stopping unsubscribes, so a stopped service cannot publish', async () => {
+  const room = await started();
   try {
-    await room.service.start();
-    await room.settle();
-    assert.equal(room.requests.length, 1, 'the startup check asks GitHub once');
-    // A cooldown used to swallow this press, so the button looked dead. The state machine
-    // is what bounds repeats, not a timer.
-    // The reply is the snapshot taken as the check starts, so it reads `checking`; the
-    // second request is the proof that the press was not swallowed.
-    const pressed = await room.service.invoke('check')(event('check'), true);
-    assert.equal(pressed.state.kind, 'checking');
-    await room.settle();
-    assert.equal(room.service.snapshot().state.kind, 'available');
-    assert.equal(room.requests.length, 2, 'a press always reaches GitHub, even right after a check');
-    assert.match(room.requests[1], /^https:\/\/api\.github\.com\/repos\/TheDarkSkyXD\/Sports-Hub\/releases\/latest$/);
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-
-  // Presses landing while a check is already running must not become extra GitHub requests.
-  const overlappingSeen: string[] = [];
-  const overlapping = harness({ fetch: (url: string) => {
-    overlappingSeen.push(String(url));
-    return new Promise((resolve) => { setTimeout(() => resolve(jsonResponse(releaseJson())), 40); });
-  } });
-  try {
-    await Promise.all([
-      overlapping.service.invoke('check')(event('check'), true),
-      overlapping.service.invoke('check')(event('check'), true),
-      overlapping.service.invoke('check')(event('check'), true),
-    ]);
-    assert.equal(overlappingSeen.length, 1, 'only the first press reaches GitHub while one is running');
-  } finally { rmSync(overlapping.userDataDir, { recursive: true, force: true }); }
-
-  const spentRequests: string[] = [];
-  const spent = harness({ fetch: async (url: string) => {
-    spentRequests.push(String(url));
-    return jsonResponse(releaseJson(), { headers: { 'x-ratelimit-remaining': '2' } });
-  } });
-  try {
-    await spent.service.start();
-    await spent.settle();
-    assert.equal(spentRequests.length, 1);
-    spent.setClock(at + 11 * 60_000);
-    await spent.service.invoke('check')(event('check'), true);
-    const status = spent.service.snapshot();
-    assert.equal(status.state.kind, 'failed');
-    assert.equal((status.state as { reason: string }).reason, 'rate-limited');
-    assert.equal((status.state as { retry: unknown }).retry, null);
-    assert.deepEqual(status.commands, []);
-    assert.equal(spentRequests.length, 1, 'the floor is read from the last answer, so no request is wasted');
-  } finally { rmSync(spent.userDataDir, { recursive: true, force: true }); }
-});
-
-test('a response without a rate-limit header does not invent an exhausted budget', async () => {
-  const same = releaseJson({ tag_name: 'v1.0.2', assets: [asset({ name: 'Sunday-Room-1.0.2-Setup-x64.exe' })] });
-  const fetches: string[] = [];
-  const room = harness({ fetch: async (url: string) => { fetches.push(String(url)); return jsonResponse(same); } },
-    { schema: 1, source: REPO, lastCheckedAt: null, verified: null, pendingInstall: null });
-  try {
-    await room.service.start();
-    await room.until(() => room.service.snapshot().state.kind === 'current', 'the launch check');
-    room.setClock(at + 11 * 60_000);
-    const again = await room.service.invoke('check')(event('check'), true);
-    assert.equal(again.state.kind, 'checking', 'a second manual check still runs');
-    await room.until(() => room.service.snapshot().state.kind === 'current', 'the second check');
-    assert.equal(fetches.length, 2);
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-});
-
-test('a download that already verified on disk reaches ready with no network call', async () => {
-  const bytes = Buffer.alloc(4096, 7);
-  const digest = createHash('sha256').update(bytes).digest('hex');
-  const json = releaseJson({ assets: [asset({ size: bytes.length, digest: `sha256:${digest}` })] });
-  let orphan = '';
-  const fetches: string[] = [];
-  // A kill between download and install leaves exactly this: a verified file and its record.
-  const room = harness({ fetch: async (url: string) => { fetches.push(String(url)); return jsonResponse(json); } }, userDataDir => {
-    const dir = path.join(userDataDir, 'updates', '1.0.3');
-    mkdirSync(path.join(userDataDir, 'updates', '1.0.4'), { recursive: true });
-    mkdirSync(dir, { recursive: true });
-    const verifiedPath = path.join(dir, 'Sunday-Room-1.0.3-Setup-x64.exe');
-    writeFileSync(verifiedPath, bytes);
-    orphan = path.join(userDataDir, 'updates', '1.0.4', 'Sunday-Room-1.0.4-Setup-x64.exe.part');
-    writeFileSync(orphan, bytes);
-    return { schema: 1, source: REPO, lastCheckedAt: null,
-      verified: { version: '1.0.3', path: verifiedPath, bytes: bytes.length, verifiedAt: at }, pendingInstall: null };
-  });
-  try {
-    await room.service.start();
-    await room.settle();
-    assert.equal(room.service.snapshot().state.kind, 'available');
-    await room.service.invoke('download')(event('download'));
-    await room.settle();
-    assert.equal(room.service.snapshot().state.kind, 'ready');
-    assert.equal(fetches.length, 1, 'the disk answered, so no installer bytes were re-fetched');
-    assert.equal(fetches[0].includes('api.github.com'), true, 'only the release check went to the network');
-    assert.equal(room.read().verified.version, '1.0.3');
-    assert.equal(existsSync(orphan), false, 'an orphan is swept at start');
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-});
-
-test('start sweeps every partial and every installer that is not the current target', async () => {
-  const target = path.join('C:\\Users\\Player\\AppData\\Roaming\\Sunday Room', 'updates', '1.0.3', 'Sunday-Room-1.0.3-Setup-x64.exe');
-  const room = harness({ fetch: async () => jsonResponse(releaseJson()) }, {
-    schema: 1, source: REPO, lastCheckedAt: at - 60_000,
-    verified: { version: '1.0.3', path: target, bytes: 11, verifiedAt: at - 60_000 }, pendingInstall: null,
-  });
-  try {
-    const updates = path.join(room.userDataDir, 'updates');
-    mkdirSync(path.join(updates, '1.0.3'), { recursive: true });
-    mkdirSync(path.join(updates, '1.0.4'), { recursive: true });
-    writeFileSync(path.join(updates, '1.0.3', 'Sunday-Room-1.0.3-Setup-x64.exe.part'), Buffer.alloc(8));
-    writeFileSync(path.join(updates, '1.0.4', 'Sunday-Room-1.0.4-Setup-x64.exe.part'), Buffer.alloc(8));
-    writeFileSync(path.join(updates, '1.0.4', 'Sunday-Room-1.0.4-Setup-x64.exe'), Buffer.alloc(8));
-    writeFileSync(path.join(updates, '1.0.3', 'Sunday-Room-1.0.3-Setup-x64.exe'), Buffer.alloc(11));
-    await room.service.start();
-    await room.settle();
-    assert.equal(existsSync(path.join(updates, '1.0.3', 'Sunday-Room-1.0.3-Setup-x64.exe.part')), false);
-    assert.equal(existsSync(path.join(updates, '1.0.4', 'Sunday-Room-1.0.4-Setup-x64.exe.part')), false);
-    assert.equal(existsSync(path.join(updates, '1.0.4', 'Sunday-Room-1.0.4-Setup-x64.exe')), false, 'an older version is not the target');
-    assert.equal(existsSync(path.join(updates, '1.0.3', 'Sunday-Room-1.0.3-Setup-x64.exe')), true, 'the target is left for the download short circuit');
+    const before = room.broadcasts.length;
     room.service.stop();
+    room.updater.emitAvailable();
+    await room.settle();
+    assert.equal(room.broadcasts.length, before, 'a stopped service is silent');
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('download streams to a .part, verifies size and sha256, then renames atomically', async () => {
-  const bytes = Buffer.alloc(256 * 1024, 3);
-  const digest = createHash('sha256').update(bytes).digest('hex');
-  const chunks = [bytes.subarray(0, 100_000), bytes.subarray(100_000, 180_000), bytes.subarray(180_000)];
-  const room = harness({ fetch: async (url: string) => String(url).includes('api.github.com')
-    ? jsonResponse(releaseJson({ assets: [asset({ size: bytes.length, digest: `sha256:${digest}` })] }))
-    : streamResponse(chunks, { 'content-length': String(bytes.length) }) });
-  try {
-    await room.service.start();
-    await room.settle();
-    await room.service.invoke('download')(event('download'));
-    await room.settle();
-    assert.equal(room.service.snapshot().state.kind, 'ready');
-    const dir = path.join(room.userDataDir, 'updates', '1.0.3');
-    assert.equal(existsSync(path.join(dir, 'Sunday-Room-1.0.3-Setup-x64.exe')), true, 'the .part was renamed');
-    assert.equal(existsSync(path.join(dir, 'Sunday-Room-1.0.3-Setup-x64.exe.part')), false);
-    assert.equal(createHash('sha256').update(await readFile(path.join(dir, 'Sunday-Room-1.0.3-Setup-x64.exe'))).digest('hex'), digest);
-    const progress = room.broadcasts.filter(status => status.state.kind === 'downloading');
-    assert.equal(progress.some(status => (status.state as { received: number }).received > 0), true, 'progress is pushed');
-    assert.ok(progress.length <= 6, `progress is throttled, not one message per chunk (${progress.length} pushes)`);
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-});
+// The channel literals the preload duplicates. A mismatch cannot ship, because
+// `tests/packaged-desktop.mjs` calls the bridge end to end against the packaged app.
+const channels = {
+  cancel: (updateModule.CH as Record<string, unknown>).cancel,
+  setSource: (updateModule.CH as Record<string, unknown>).setSource,
+};
 
-test('a checksum mismatch unlinks the .part and offers a retry', async () => {
-  const bytes = Buffer.alloc(4096, 5);
-  const room = harness({ fetch: async (url: string) => String(url).includes('api.github.com')
-    ? jsonResponse(releaseJson({ assets: [asset({ size: bytes.length, digest: `sha256:${DIGEST}` })] }))
-    : streamResponse([bytes]) });
-  try {
-    await room.service.start();
-    await room.settle();
-    await room.service.invoke('download')(event('download'));
-    await room.settle();
-    const status = room.service.snapshot();
-    assert.equal(status.state.kind, 'failed');
-    assert.equal((status.state as { reason: string }).reason, 'checksum');
-    assert.deepEqual(status.commands, ['download']);
-    assert.equal(existsSync(path.join(room.userDataDir, 'updates', '1.0.3', 'Sunday-Room-1.0.3-Setup-x64.exe.part')), false);
-    assert.equal(existsSync(path.join(room.userDataDir, 'updates', '1.0.3', 'Sunday-Room-1.0.3-Setup-x64.exe')), false, 'a .part is never renamed');
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-});
-
-test('an installer above a gigabyte is refused before a socket is opened', async () => {
-  let assetRequests = 0;
-  const room = harness({ fetch: async (url: string) => {
-    if (!String(url).includes('api.github.com')) { assetRequests += 1; return streamResponse([Buffer.alloc(16, 9)]); }
-    return jsonResponse(releaseJson({ assets: [asset({ size: GIB + 1, digest: null })] }));
-  } });
-  try {
-    await room.service.start();
-    await room.settle();
-    // Re-checking is still offered, but there is no download button, so no socket opens.
-    assert.equal(room.service.snapshot().commands.includes('download'), false, 'no button, so no request');
-    await room.service.invoke('download')(event('download'));
-    await room.settle();
-    assert.equal(assetRequests, 0);
-    assert.equal(room.service.snapshot().state.kind, 'available');
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-});
-
-test('cancel aborts the transfer and returns to available without a second fetch', async () => {
-  const bytes = Buffer.alloc(8 * 65536, 4);
-  let assetRequests = 0;
-  const room = harness({ fetch: async (url: string) => {
-    if (!String(url).includes('api.github.com')) {
-      assetRequests += 1;
-      return {
-        ok: true, status: 200, headers: { get: () => String(bytes.length) }, json: async () => ({}),
-        body: (async function* () {
-          for (let index = 0; index < 8; index += 1) { await new Promise(resolve => setTimeout(resolve, 5)); yield bytes.subarray(0, 65536); }
-        })(),
-      };
-    }
-    return jsonResponse(releaseJson({ assets: [asset({ size: bytes.length, digest: null })] }));
-  } });
-  try {
-    await room.service.start();
-    await room.settle();
-    const started = room.service.invoke('download')(event('download'));
-    await new Promise(resolve => setTimeout(resolve, 30));
-    const cancelled = await room.service.invoke('cancel')(event('cancel'));
-    assert.equal(cancelled.state.kind, 'available');
-    assert.deepEqual(cancelled.commands, ['check', 'download']);
-    await started;
-    await room.settle();
-    assert.equal(assetRequests, 1, 'cancel unlinks the .part instead of re-fetching');
-    assert.equal(existsSync(path.join(room.userDataDir, 'updates', '1.0.3', 'Sunday-Room-1.0.3-Setup-x64.exe.part')), false);
-    assert.equal(room.service.snapshot().state.kind, 'available', 'an aborted transfer is not a failure');
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-});
-
-test('install teardown, spawns detached, and exits only after the tree is down', async () => {
-  const bytes = Buffer.alloc(2048, 6);
-  const appDir = mkdtempSync(path.join(tmpdir(), 'sunday-room-install-'));
-  const order: string[] = [];
-  const room: ReturnType<typeof harness> = harness({
-    execPath: path.join(appDir, 'Sunday Room.exe'),
-    fetch: async (url: string) => String(url).includes('api.github.com')
-      ? jsonResponse(releaseJson({ assets: [asset({ size: bytes.length, digest: null })] }))
-      : streamResponse([bytes]),
-    beginShutdown: async () => { order.push('shutdown'); },
-    spawn: (file: string, args: string[], options: Record<string, unknown>) => {
-      order.push('spawn');
-      room.spawned.push({ file, args, options });
-      return { unref: () => order.push('unref'), kill: () => {} };
-    },
-    exit: (code: number) => { order.push(`exit:${code}`); room.exited.push(code); },
-  });
-  try {
-    await room.service.start();
-    await room.settle();
-    await room.service.invoke('download')(event('download'));
-    await room.settle();
-    assert.equal(room.service.snapshot().state.kind, 'ready');
-
-    const installing = await room.service.invoke('install')(event('install'));
-    assert.equal(installing.state.kind, 'installing');
-    assert.deepEqual(installing.commands, []);
-    await room.settle();
-    assert.deepEqual(order, ['shutdown', 'spawn', 'unref', 'exit:0'], 'the order is the point');
-    assert.deepEqual(room.spawned[0].args, ['/S', '/updated', '/force-run', `/D=${appDir}`]);
-    assert.equal(room.spawned[0].file.endsWith('Sunday-Room-1.0.3-Setup-x64.exe'), true);
-    assert.deepEqual(room.spawned[0].options, { detached: true, stdio: 'ignore', windowsHide: true });
-    assert.equal(room.read().pendingInstall.version, '1.0.3');
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); rmSync(appDir, { recursive: true, force: true }); }
-});
-
-test('an install directory this process cannot write drops /S so the installer can elevate', async () => {
-  const bytes = Buffer.alloc(2048, 6);
-  const room = harness({
-    execPath: 'C:\\Program Files\\Sunday Room\\Sunday Room.exe',
-    fetch: async (url: string) => String(url).includes('api.github.com')
-      ? jsonResponse(releaseJson({ assets: [asset({ size: bytes.length, digest: null })] }))
-      : streamResponse([bytes]),
-  });
-  try {
-    await room.service.start();
-    await room.settle();
-    await room.service.invoke('download')(event('download'));
-    await room.settle();
-    await room.service.invoke('install')(event('install'));
-    await room.settle();
-    assert.deepEqual(room.spawned[0].args, ['/updated', '/force-run', '/D=C:\\Program Files\\Sunday Room'],
-      'a silent no-op is the worst failure mode, so the assisted installer shows its own UI');
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-});
-
-test('an installer already running refuses the transition instead of a silent no-op', async () => {
-  const bytes = Buffer.alloc(2048, 6);
-  const room = harness({
-    fetch: async (url: string) => String(url).includes('api.github.com')
-      ? jsonResponse(releaseJson({ assets: [asset({ size: bytes.length, digest: null })] }))
-      : streamResponse([bytes]),
-    listProcesses: async () => ['explorer.exe', 'Sunday-Room-1.0.4-Setup-x64.exe'],
-  });
-  try {
-    await room.service.start();
-    await room.settle();
-    await room.service.invoke('download')(event('download'));
-    await room.settle();
-    const status = await room.service.invoke('install')(event('install'));
-    assert.equal(status.state.kind, 'failed');
-    assert.equal((status.state as { reason: string }).reason, 'install');
-    assert.deepEqual(status.commands, ['install']);
-    assert.equal(room.spawned.length, 0);
-    assert.equal(room.exited.length, 0);
-    assert.equal(room.read().pendingInstall, null, 'no marker, so the next launch does not claim an install began');
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-});
-
-test('a marker whose version is not ours reopens as a recoverable install failure', async () => {
-  const room = harness({}, { schema: 1, source: REPO, lastCheckedAt: at - 60_000, verified: null, pendingInstall: { version: '1.0.3', startedAt: at - 30_000 } });
-  try {
-    await room.service.start();
-    await room.settle();
-    const status = room.service.snapshot();
-    assert.equal(status.state.kind, 'failed');
-    assert.equal((status.state as { reason: string }).reason, 'install');
-    assert.deepEqual(status.commands, ['check']);
-    assert.equal((status.state as { release: unknown }).release, null, 'the file records no release to name the bytes by');
-    assert.equal(room.read().pendingInstall, null, 'the marker is cleared either way');
-    assert.equal(room.requests.length, 0, 'a check inside six hours costs nothing');
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-});
-
-test('a marker whose version is ours means the install landed', async () => {
-  const room = harness({ currentVersion: '1.0.3' }, { schema: 1, source: REPO, lastCheckedAt: at - 60_000, verified: null, pendingInstall: { version: '1.0.3', startedAt: at - 30_000 } });
-  try {
-    await room.service.start();
-    await room.settle();
-    assert.equal(room.service.snapshot().state.kind, 'idle');
-    assert.equal(room.read().pendingInstall, null);
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
-});
-
-test('every state the desktop module can produce satisfies the renderer schema', () => {
-  assert.deepEqual([...failureReasons], [...FailureReasonSchema.options], 'the duplicated failure vocabulary must agree');
-  assert.deepEqual([...desktopCommands], [...updateCommands], 'the duplicated command list must agree');
-  const chain = reduce(states.idle, event('check'));
-  const produced: unknown[] = [
-    states.unsupported, states.checking, states.current, states.available, states.downloading, states.ready, states.installing, states.failed,
-    chain, reduce(chain, event(':checked')), reduce(chain, { type: ':checked', at, release: null }),
-    reduce(states.downloading, event(':progress')), reduce(states.downloading, event(':verified')),
-    reduce(states.downloading, event('cancel')), reduce(states.ready, event('install')),
-    reduce({ kind: 'failed', reason: 'offline', detail: 'x', retry: 'check', release: null }, event('check')),
-  ];
-  for (const reason of FailureReasonSchema.options) {
-    produced.push(reduce(states.checking, { type: ':failed', reason, detail: 'x', retry: null, at }));
-    produced.push(reduce(states.available, { type: ':failed', reason, detail: 'x', retry: 'download', at }));
-    produced.push(reduce(states.installing, { type: ':failed', reason, detail: 'x', retry: 'install', at }));
+test('the preload carries exactly the channels the engine defines', () => {
+  const preload = readFileSync(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
+  for (const key of ['status', 'get', 'check', 'download', 'install'] as const) {
+    assert.ok(preload.includes(`'${updateModule.CH[key]}'`), `preload.cjs must carry ${key}: ${updateModule.CH[key]}`);
   }
-  for (const state of produced) {
-    if (state === null) continue;
-    assert.equal(UpdateStateSchema.safeParse(state).success, true, JSON.stringify(state).slice(0, 160));
-  }
-  assert.equal(produced.filter(state => state !== null).length >= 30, true, 'the table was not fully exercised');
+  assert.ok(!/CH\.cancel|CH\.setSource/.test(preload), 'the preload must not offer a channel the engine dropped');
 });
 
-test('the channel literals and the persisted file are the documented shape', async () => {
-  assert.deepEqual(CH, {
-    status: 'sunday-update:status', get: 'sunday-update:get', check: 'sunday-update:check',
-    download: 'sunday-update:download', cancel: 'sunday-update:cancel', install: 'sunday-update:install',
-    setSource: 'sunday-update:set-source',
-  });
-  const room = harness();
-  try {
-    await room.service.start();
-    await room.settle();
-    assert.deepEqual(Object.keys(room.read()).sort(), ['lastCheckedAt', 'pendingInstall', 'schema', 'source', 'verified']);
-    assert.equal(room.read().schema, 1);
-    assert.equal(existsSync(path.join(room.userDataDir, 'update.json.tmp')), false, 'the write is atomic');
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+// The pure table, kept honest on its own. These do not need a service, so a change to the
+// machine is caught even if every integration test above is skipped.
+test('the transition table is the only thing that knows what is legal', () => {
+  const release = { version: '1.0.3', pageUrl: 'https://example.test', notes: '', publishedAt: 0 };
+  const states = {
+    unsupported: { kind: 'unsupported', reason: 'platform' },
+    idle: { kind: 'idle', lastCheckedAt: null },
+    checking: { kind: 'checking' },
+    current: { kind: 'current', lastCheckedAt: at },
+    available: { kind: 'available', release, lastCheckedAt: at },
+    downloading: { kind: 'downloading', release, percent: 10 },
+    ready: { kind: 'ready', release, verifiedAt: at },
+    installing: { kind: 'installing', release },
+    failed: { kind: 'failed', reason: 'download', detail: 'x', retry: 'download', release },
+  };
+  for (const [name, state] of Object.entries(states)) {
+    assert.equal(UpdateStateSchema.safeParse(state).success, true, `${name} must match the schema`);
+  }
+
+  assert.deepEqual(reduce(states.idle, event('check')), states.checking);
+  assert.deepEqual(reduce(states.current, event('check')), states.checking);
+  assert.equal(reduce(states.unsupported, event('check')), null, 'unsupported absorbs every command');
+  assert.equal(reduce(states.checking, event('check')), null, 'checking accepts nothing');
+  assert.deepEqual(reduce(states.available, event('check')), { kind: 'checking', release });
+  assert.deepEqual(reduce(states.available, event('download')), { kind: 'downloading', release, percent: 0 });
+  assert.equal(reduce(states.downloading, event('download')), null, 'a second download is a no-op, not a second socket');
+  assert.deepEqual(reduce(states.ready, event('install')), states.installing);
+  assert.equal(reduce(states.installing, event('install')), null);
+
+  assert.deepEqual(commandsFor(states.unsupported), []);
+  assert.deepEqual(commandsFor(states.idle), ['check']);
+  assert.deepEqual(commandsFor(states.current), ['check']);
+  assert.deepEqual(commandsFor(states.checking), []);
+  assert.deepEqual(commandsFor(states.available), ['check', 'download']);
+  // No cancel: the library cannot abort a transfer, so the machine must not pretend.
+  assert.deepEqual(commandsFor(states.downloading), []);
+  assert.deepEqual(commandsFor(states.ready), ['install']);
+  assert.deepEqual(commandsFor(states.installing), []);
+  assert.deepEqual(commandsFor(states.failed), ['download']);
+});
+
+test('a development build is offered only what cannot touch the machine', () => {
+  const release = { version: '1.0.3', pageUrl: 'https://example.test', notes: '', publishedAt: 0 };
+  const allow = (command: string) => command === 'check';
+  const available = { kind: 'available', release, lastCheckedAt: at };
+  const ready = { kind: 'ready', release, verifiedAt: at };
+  assert.deepEqual(commandsFor(available, allow), ['check']);
+  // A development build can never reach `ready`, because it may not download, so the
+  // install row is unreachable there rather than merely filtered.
+  assert.deepEqual(commandsFor(ready, allow), []);
+  assert.deepEqual(commandsFor({ kind: 'idle', lastCheckedAt: null }, allow), ['check']);
 });

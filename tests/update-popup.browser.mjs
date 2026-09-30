@@ -8,13 +8,11 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 900 
 const release = (version) => ({
   version,
   pageUrl: `https://github.com/TheDarkSkyXD/Sports-Hub/releases/tag/v${version}`,
-  notes: 'Fixes the installer.',
-  publishedAt: 1767000000,
-  installer: { name: `Sunday-Room-${version}-Setup-x64.exe`, url: 'https://example.test/a.exe', bytes: 119067581, sha256: null },
+  notes: 'Fixes the installer.', publishedAt: 1767000000,
 });
 const statusFor = (state, commands = ['download']) => ({
   currentVersion: '1.0.2',
-  source: { repo: 'TheDarkSkyXD/Sports-Hub', origin: 'packaged', editable: false },
+  source: { repo: 'TheDarkSkyXD/Sports-Hub', origin: 'packaged' },
   state,
   commands,
 });
@@ -25,7 +23,7 @@ const install = (page, status) => page.addInitScript((s) => {
   const copy = () => JSON.parse(JSON.stringify(s));
   window.sundayDesktop = {
     get: async () => copy(), check: async () => copy(), download: async () => copy(),
-    cancel: async () => copy(), install: async () => copy(), setSource: async () => copy(),
+    install: async () => copy(),
     subscribe: () => () => {},
   };
 }, status);
@@ -91,9 +89,9 @@ await settings.waitForTimeout(2000);
 await settings.getByRole('button', { name: /Room settings/i }).first().click();
 await settings.locator('.update-panel').waitFor({ state: 'visible', timeout: 20000 });
 assert.match(await settings.locator('.update-panel-current').innerText(), /latest version/i, 'settings says you are up to date');
-const source = settings.locator('#update-source-repo');
-assert.equal(await source.inputValue(), 'https://github.com/TheDarkSkyXD/Sports-Hub/releases',
-  'settings names the releases page it reads, in the field itself');
+const source = settings.locator('.update-panel-source .update-panel-link');
+assert.match(await source.innerText(), /https:\/\/github\.com\/TheDarkSkyXD\/Sports-Hub\/releases/,
+  'settings names the releases page it reads');
 console.log('settings shows the up-to-date note and the release source address');
 
 assert.deepEqual(errors, [], `page errors: ${errors.join('; ')}`);

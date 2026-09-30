@@ -5,7 +5,11 @@ import { z } from 'zod';
 // app is not packaged, so a stray variable cannot redirect the feed in a shipped build.
 export const defaultReleaseRepo = 'TheDarkSkyXD/Sports-Hub';
 
-export const updateCommands = ['check', 'download', 'cancel', 'install'] as const;
+// electron-updater has no cancel: it owns the transfer and exposes no way to abort it,
+// so offering one would be a control that silently does nothing. While a download runs
+// the primary action is disabled and shows progress instead, which is what the T3 Code
+// desktop app does.
+export const updateCommands = ['check', 'download', 'install'] as const;
 export const UpdateCommandSchema = z.enum(updateCommands);
 export type UpdateCommand = (typeof updateCommands)[number];
 
@@ -16,55 +20,18 @@ export type FailureReason = z.infer<typeof FailureReasonSchema>;
 export const RetrySchema = z.enum(['check', 'download', 'install']).nullable();
 export type Retry = z.infer<typeof RetrySchema>;
 
-// `owner/name`, never a URL. The feed address and the release page address are both
-// derived from the slug, so a source cannot point the updater at an arbitrary host.
+// `owner/name`, never a URL. electron-builder bakes the feed into the build as
+// `app-update.yml`, and the addresses below are derived from the slug for display, so
+// nothing a person can type or paste can point the updater at an arbitrary host.
 export const releaseRepoPattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
 export const ReleaseRepoSchema = z.string().regex(releaseRepoPattern).brand<'ReleaseRepo'>();
 export type ReleaseRepo = z.infer<typeof ReleaseRepoSchema>;
-
-/**
- * Accepts the releases URL a person pastes, and returns the slug the updater stores.
- *
- * A URL is required, not a bare `owner/name`: without an address there is nothing to
- * direct the reader to, so an unresolvable source is a mistake worth reporting rather
- * than guessing at. Only `https://github.com` is honoured and only its `/owner/name`
- * shape is kept, so a stored source still cannot point the updater at an arbitrary host.
- */
-export function parseReleaseSource(input: string): ReleaseRepo | null {
-  const trimmed = input.trim();
-  let url: URL;
-  try { url = new URL(trimmed); } catch { return null; }
-  if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'github.com') return null;
-  if (url.username || url.password || url.port || url.search || url.hash) return null;
-  // `URL` resolves `..` and decodes `%2e` while parsing, so a traversal like
-  // `/owner/name/releases/../../elsewhere` is already collapsed to `/owner/elsewhere` by
-  // the time `pathname` is readable. A legitimate GitHub owner or name can never be `.`
-  // or `..`, so the raw text is the only place the attempt is still visible.
-  if (/(?:^|\/)\.\.?(?:\/|$)/.test(trimmed) || /%2e/i.test(trimmed) || trimmed.includes('\\')) return null;
-  // An empty segment is refused rather than dropped: dropping `//name/releases` would
-  // read `name` as the owner, which is a different repository than the one pasted.
-  const segments = url.pathname.split('/').slice(1);
-  if (segments.some(segment => segment === '')) return null;
-  const parts = segments.filter(Boolean);
-  // The releases page, any page under it (`/releases/latest`, `/releases/tag/v1.0.2`), or
-  // the repo root. Each is a page a person could paste from a browser, and all three name
-  // the same slug. `/tree/main` or `/issues` is some other page, not an update source.
-  if (parts.length < 2 || (parts[2] !== undefined && parts[2] !== 'releases')) return null;
-  const slug = `${parts[0]}/${parts[1]}`;
-  return releaseRepoPattern.test(slug) ? slug as ReleaseRepo : null;
-}
 
 export const ReleaseInfoSchema = z.object({
   version: z.string(),
   pageUrl: z.string().url(),
   notes: z.string(),
   publishedAt: z.number().int().nonnegative().nullable(),
-  installer: z.object({
-    name: z.string(),
-    url: z.string().url(),
-    bytes: z.number().int().positive(),
-    sha256: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
-  }),
 }).readonly();
 export type ReleaseInfo = z.infer<typeof ReleaseInfoSchema>;
 
@@ -80,8 +47,10 @@ export const UpdateStateSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('checking'), release: ReleaseInfoSchema.optional() }),
   z.object({ kind: z.literal('current'), lastCheckedAt: z.number().int().nonnegative() }),
   z.object({ kind: z.literal('available'), release: ReleaseInfoSchema, lastCheckedAt: z.number().int().nonnegative() }),
-  z.object({ kind: z.literal('downloading'), release: ReleaseInfoSchema, received: z.number().int().nonnegative(), total: z.number().int().positive() }),
-  z.object({ kind: z.literal('ready'), release: ReleaseInfoSchema, bytes: z.number().int().positive(), verifiedAt: z.number().int().nonnegative() }),
+  // electron-updater reports a percentage, not a byte count, and exposes no total, so the
+  // progress bar is driven by the percentage alone.
+  z.object({ kind: z.literal('downloading'), release: ReleaseInfoSchema, percent: z.number().int().nonnegative() }),
+  z.object({ kind: z.literal('ready'), release: ReleaseInfoSchema, verifiedAt: z.number().int().nonnegative() }),
   z.object({ kind: z.literal('installing'), release: ReleaseInfoSchema }),
   z.object({ kind: z.literal('failed'), reason: FailureReasonSchema, detail: z.string(), retry: RetrySchema, release: ReleaseInfoSchema.nullable() }),
 ]).readonly();
@@ -92,9 +61,6 @@ export const UpdateStatusSchema = z.object({
   source: z.object({
     repo: ReleaseRepoSchema,
     origin: z.enum(['packaged', 'file', 'environment']),
-    // A packaged build fixes its source, because the binary is unsigned and the source
-    // decides which installer it will run. The settings field follows this.
-    editable: z.boolean(),
   }).readonly(),
   state: UpdateStateSchema,
   commands: z.array(UpdateCommandSchema).readonly(),
@@ -105,9 +71,7 @@ export type DesktopUpdateBridge = Readonly<{
   get(): Promise<UpdateStatus>;
   check(): Promise<UpdateStatus>;
   download(): Promise<UpdateStatus>;
-  cancel(): Promise<UpdateStatus>;
   install(): Promise<UpdateStatus>;
-  setSource(repo: string): Promise<UpdateStatus>;
   subscribe(listener: (status: UpdateStatus) => void): () => void;
 }>;
 
@@ -123,13 +87,13 @@ const failureLine: Record<FailureReason, string> = {
   install: 'The installer could not be started.',
 };
 
-const megabytes = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MB`;
-
-// The source is stored as a slug so it can never point the updater at an arbitrary host.
-// The addresses below are derived from that slug, so showing a link cannot widen the
-// trust boundary the schema sets.
+// The updater's own config, not a field a person can edit. `parseReleaseSource` still
+// accepts what someone might paste, because the address is worth showing and worth
+// checking, but the feed itself is fixed when the build is packaged.
 export function releaseFeedUrl(repo: string): string {
-  return `https://api.github.com/repos/${repo}/releases/latest`;
+  // The releases page rather than the raw API document: this address is shown to a person,
+  // and it is what the settings panel links to.
+  return `https://github.com/${repo}/releases`;
 }
 
 export function releasePageUrl(repo: string): string {
@@ -150,7 +114,7 @@ export function describeStatus(status: UpdateStatus): string {
     case 'available':
       return `Sunday Room ${state.release.version} is available.`;
     case 'downloading':
-      return `Downloading Sunday Room ${state.release.version}: ${megabytes(state.received)} of ${megabytes(state.total)}.`;
+      return `Downloading Sunday Room ${state.release.version}: ${state.percent}%.`;
     case 'ready':
       return `Sunday Room ${state.release.version} is downloaded. Installing restarts Sunday Room.`;
     case 'installing':

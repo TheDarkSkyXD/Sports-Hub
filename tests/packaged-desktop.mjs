@@ -4,6 +4,7 @@ import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright';
+import { listPackage } from '@electron/asar';
 
 const unpackedPath = path.resolve('dist-electron/win-unpacked');
 assert.ok(existsSync(path.join(unpackedPath, 'Sunday Room.exe')), `Missing packaged app: ${unpackedPath}`);
@@ -21,6 +22,36 @@ try {
     'Packaged server resources must not embed a previous build output');
   assert.ok(!existsSync(path.join(appPath, 'resources/server/work')),
     'Packaged server resources must not embed local verification scratch');
+
+  // electron-updater is a runtime dependency loaded at startup. A build that packaged
+  // without it opened a window titled "Error" and served nothing, which the assertions
+  // below could only report as a bare timeout. Checking the asar first turns that into a
+  // message naming the module that is missing.
+  const packaged = new Set(
+    listPackage(path.join(unpackedPath, 'resources', 'app.asar'))
+      .map(entry => String(entry).replace(/\\/g, '/').replace(/^\//, '')),
+  );
+  for (const dependency of [
+    'electron-updater/out/main.js',
+    'builder-util-runtime/out/httpExecutor.js',
+    'builder-util-runtime/out/xml.js',
+    'fs-extra/lib/index.js',
+    'graceful-fs/graceful-fs.js',
+    'jsonfile/index.js',
+    'universalify/index.js',
+    'lodash.escaperegexp/index.js',
+    'js-yaml/index.js',
+    'lazy-val/out/main.js',
+    'lodash.isequal/index.js',
+    'semver/functions/lt.js',
+    'debug/src/index.js',
+    'ms/index.js',
+    'sax/lib/sax.js',
+  ]) {
+    assert.ok(packaged.has(`node_modules/${dependency}`),
+      `${dependency} is loaded at startup and must be packaged. electron-updater walks its own dependency graph from a production dependency, so do not hand-list these in electron-builder.yml.`);
+  }
+
   desktop = await electron.launch({
     executablePath,
     args: [`--user-data-dir=${path.join(scratch, 'profile')}`],
@@ -46,7 +77,30 @@ try {
   assert.ok(['unsupported', 'idle', 'checking', 'current', 'available', 'downloading', 'ready', 'installing', 'failed']
     .includes(updateStatus.state.kind), `Unexpected update state: ${updateStatus.state.kind}`);
   assert.ok(Array.isArray(updateStatus.commands), 'commands must be an array');
-  assert.ok(updateStatus.commands.every(command => ['check', 'download', 'cancel', 'install'].includes(command)));
+  assert.ok(updateStatus.commands.every(command => ['check', 'download', 'install'].includes(command)),
+  'the packaged app must not offer a cancel it cannot honour');
+
+// electron-updater is a runtime dependency loaded at startup, and a build that packaged
+// without it produced an app that opened a window titled "Error" and served nothing.
+// `files` in electron-builder.yml lists its load graph by hand, so this requires it from
+// inside the packaged main process, which is the only place the failure shows up.
+// electron-updater is a runtime dependency loaded at startup, and a build that packaged
+// without it produced an app that opened a window titled "Error" and served nothing. The
+// evaluated main-process scope has `process` but no `require`, so the lookup goes through
+// `process.mainModule`, which is `main.cjs` itself and resolves from the asar.
+const updaterLoads = await desktop.evaluate(() => {
+  const resolveFrom = process.mainModule?.require?.bind(process.mainModule) ?? null;
+  if (!resolveFrom) return { ok: false, message: 'the main module exposes no require' };
+  try {
+    const loaded = resolveFrom('electron-updater');
+    return { ok: true, hasNsisUpdater: typeof loaded.NsisUpdater === 'function' };
+  } catch (error) {
+    return { ok: false, message: String(error.message).slice(0, 200) };
+  }
+});
+assert.ok(updaterLoads.ok, `the packaged app cannot load electron-updater: ${updaterLoads.message}`);
+assert.ok(updaterLoads.hasNsisUpdater,
+  'electron-updater must export NsisUpdater, which is what main.cjs constructs');
   assert.equal(typeof updateStatus.currentVersion, 'string');
   assert.equal(typeof updateStatus.source.repo, 'string');
   const runtime = await desktop.evaluate(({ app }) => ({ packaged: app.isPackaged, resourcesPath: process.resourcesPath }));

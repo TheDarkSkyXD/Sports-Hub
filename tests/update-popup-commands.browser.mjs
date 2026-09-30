@@ -8,7 +8,6 @@ const release = (version) => ({
   version,
   pageUrl: `https://github.com/TheDarkSkyXD/Sports-Hub/releases/tag/v${version}`,
   notes: 'Fixes the installer.', publishedAt: 1767000000,
-  installer: { name: `Sunday-Room-${version}-Setup-x64.exe`, url: 'https://example.test/a.exe', bytes: 119067581, sha256: null },
 });
 const available = (version) => ({
   currentVersion: '1.0.2', source: { repo: 'TheDarkSkyXD/Sports-Hub', origin: 'packaged' },
@@ -25,7 +24,7 @@ const install = (page, status) => page.addInitScript((s) => {
   const wrap = (name) => async () => { window.__called.push(name); return copy(); };
   window.sundayDesktop = {
     get: wrap('get'), check: wrap('check'), download: wrap('download'),
-    cancel: wrap('cancel'), install: wrap('install'), setSource: wrap('setSource'),
+    install: wrap('install'),
     subscribe: () => () => {},
   };
 }, status);

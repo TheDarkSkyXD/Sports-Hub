@@ -1,9 +1,5 @@
-const { execFile } = require('node:child_process');
-const { createHash } = require('node:crypto');
 const fs = require('node:fs');
-const fsp = require('node:fs/promises');
 const path = require('node:path');
-const { finished } = require('node:stream/promises');
 
 // These literals are duplicated in `preload.cjs` because a sandboxed preload cannot
 // require a sibling module. A typo cannot ship: `tests/packaged-desktop.mjs` calls the
@@ -13,101 +9,58 @@ const CH = Object.freeze({
   get: 'sunday-update:get',
   check: 'sunday-update:check',
   download: 'sunday-update:download',
-  cancel: 'sunday-update:cancel',
   install: 'sunday-update:install',
-  setSource: 'sunday-update:set-source',
 });
 
-const GIB = 1024 * 1024 * 1024;
 const AUTOMATIC_CHECK_GAP_MS = 6 * 60 * 60 * 1000;
-const RATE_LIMIT_FLOOR = 5;
-const CHECK_TIMEOUT_MS = 20000;
-const PROGRESS_INTERVAL_MS = 250;
-const PROGRESS_QUANTUM = 64 * 1024;
-const PROGRESS_FRACTION = 0.01;
 
 // The update union lives in `lib/desktop-update.ts` and again here, because
 // `eslint.config.mjs` forbids `desktop/**/*.cjs` from importing `lib/`. The failure
 // vocabulary is the part that has to agree, so it is exported and asserted by
 // `tests/desktop-update.test.ts`.
-const updateCommands = Object.freeze(['check', 'download', 'cancel', 'install']);
+const updateCommands = Object.freeze(['check', 'download', 'install']);
 const failureReasons = Object.freeze(['offline', 'rate-limited', 'unavailable', 'malformed', 'checksum', 'download', 'install']);
 
 const defaultReleaseRepo = 'TheDarkSkyXD/Sports-Hub';
 const releaseRepoPattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
-const tagPattern = /^v?(\d+)\.(\d+)\.(\d+)$/;
-const installerPattern = /^Sunday-Room-(\d+\.\d+\.\d+)-Setup-(x64|ia32|arm64)\.exe$/;
-const digestPattern = /^sha256:([0-9a-f]{64})$/;
-const imageInstallerPattern = /^(?:Sunday-Room-[\d.]+-Setup-(?:x64|ia32|arm64)\.exe|Sunday Room Installer\.exe)$/i;
 const retryEntry = Object.freeze({ check: 'idle', download: 'available', install: 'ready' });
 
-const MALFORMED = Object.freeze({ reason: 'malformed' });
-
-function assetUrl(value) {
-  if (typeof value !== 'string') return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'https:' || url.username || url.password) return null;
-    const host = url.hostname.toLowerCase();
-    if (host !== 'github.com' && !host.endsWith('.githubusercontent.com')) return null;
-    return url.href;
-  } catch { return null; }
+function releasePageUrl(repo) {
+  return `https://github.com/${repo}/releases`;
 }
 
-function versionParts(value) {
-  const match = tagPattern.exec(String(value ?? ''));
-  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+function describe(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
-function isNewer(version, other) {
-  const left = versionParts(version);
-  const right = versionParts(other);
-  if (!left || !right) return false;
-  for (let index = 0; index < 3; index += 1) {
-    if (left[index] !== right[index]) return left[index] > right[index];
+// electron-updater reports failures as coded errors. The UI has its own vocabulary, and
+// the two are kept apart on purpose: these strings are the library's, and a version bump
+// can change them, so nothing user-facing is built out of them.
+function classify(error) {
+  const code = typeof error?.code === 'string' ? error.code : '';
+  const message = describe(error);
+  if (/ERR_UPDATER_LATEST_VERSION_NOT_FOUND|ERR_UPDATER_NO_PUBLISHED_VERSIONS|ERR_UPDATER_CHANNEL_DOES_NOT_EXIST/.test(code)) {
+    return { reason: 'unavailable', detail: 'This source has no published release to install yet.', retry: undefined };
   }
-  return false;
-}
-
-// Keys off the shape of the response, not off the host it came from, so a mirror of
-// the same document needs no protocol picker.
-function parseRelease(json, repo, arch = process.arch) {
-  if (!json || typeof json !== 'object' || json.draft === true || json.prerelease === true) return MALFORMED;
-  const tag = typeof json.tag_name === 'string' ? json.tag_name : '';
-  const parts = versionParts(tag);
-  if (!parts || typeof repo !== 'string' || !releaseRepoPattern.test(repo)) return MALFORMED;
-  const assets = Array.isArray(json.assets) ? json.assets.filter(item => item && typeof item === 'object') : [];
-  const installers = assets.filter(item => typeof item.name === 'string' && installerPattern.test(item.name));
-  const asset = installers.find(item => installerPattern.exec(item.name)[2] === arch) || installers[0];
-  if (!asset) return MALFORMED;
-  const bytes = Number(asset.size);
-  const url = assetUrl(asset.browser_download_url);
-  if (!Number.isInteger(bytes) || bytes <= 0 || !url) return MALFORMED;
-  const digest = typeof asset.digest === 'string' ? digestPattern.exec(asset.digest) : null;
-  const published = typeof json.published_at === 'string' ? Date.parse(json.published_at) : Number.NaN;
-  return Object.freeze({
-    version: `${parts[0]}.${parts[1]}.${parts[2]}`,
-    pageUrl: `https://github.com/${repo}/releases/tag/${encodeURIComponent(tag)}`,
-    notes: typeof json.body === 'string' ? json.body : '',
-    publishedAt: Number.isFinite(published) && published >= 0 ? Math.floor(published) : null,
-    installer: Object.freeze({ name: asset.name, url, bytes, sha256: digest ? digest[1] : null }),
-  });
-}
-
-// electron-builder registers `updated` and `force-run` as real flags
-// (`NsisTarget.js:579`), and the assisted installer relaunches the app only under
-// `${isForceRun}` and `${Silent}` (`installSection.nsh:104-110`). `/D=` must be last
-// and unquoted: `multiUser.nsh:102-104` states it, and `GetDParameter` hand-parses the
-// raw command line because NSIS's own `/D` handling mangles a quoted path.
-function installerArgs(installDir) {
-  return ['/S', '/updated', '/force-run', `/D=${installDir}`];
-}
-
-function downloadable(release) {
-  const installer = release && typeof release === 'object' ? release.installer : null;
-  if (!installer || typeof installer !== 'object') return false;
-  if (!Number.isInteger(installer.bytes) || installer.bytes <= 0 || installer.bytes > GIB) return false;
-  return assetUrl(installer.url) !== null;
+  if (/ERR_UPDATER_INVALID_UPDATE_INFO|ERR_UPDATER_UPDATE_INFO_NOT_FOUND|ERR_UPDATER_BAD_CODE/.test(code)) {
+    return { reason: 'malformed', detail: 'The published update record could not be read.', retry: null };
+  }
+  if (/ERR_UPDATER_SHA512|ERR_UPDATER_CHECKSUM|checksum/i.test(code) || /checksum/i.test(message)) {
+    return { reason: 'checksum', detail: 'The download did not match the published checksum, so it was discarded.', retry: undefined };
+  }
+  if (/rate limit|429|secondary rate/i.test(message)) {
+    return { reason: 'rate-limited', detail: 'GitHub reports almost no request budget left for this address. Try again later.', retry: undefined };
+  }
+  if (/ERR_UPDATER_DOWNLOAD|ERR_UPDATER_TEMP_DIR|ENOENT|ENOSPC|EACCES/i.test(code)) {
+    return { reason: 'download', detail: 'The update could not be downloaded to this machine.', retry: undefined };
+  }
+  if (/ERR_UPDATER_LAUNCH_ERROR|ERR_UPDATER_INSTALL|install/i.test(code)) {
+    return { reason: 'install', detail: 'The installer could not be started.', retry: undefined };
+  }
+  if (/ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|EPIPE|ENETUNREACH|socket hang up|Certificate/i.test(message)) {
+    return { reason: 'offline', detail: 'Sunday Room could not reach the release source.', retry: undefined };
+  }
+  return { reason: 'offline', detail: message, retry: undefined };
 }
 
 // A row reads its release off the state it is leaving, never off the event, so a caller
@@ -119,52 +72,43 @@ function probeEvent(state, command) {
   return event;
 }
 
-// The nine-row transition table, and the only place that knows what is legal.
-// `commandsFor` is a projection of these same rows, so the buttons a user can press and
-// the commands the system accepts cannot drift apart.
+// The transition table, and the only place that knows what is legal. `commandsFor` is a
+// projection of these same rows, so the buttons a user can press and the commands the
+// system accepts cannot drift apart.
 const commandRows = {
   unsupported: {},
   idle: { check: () => ({ kind: 'checking' }) },
   current: { check: () => ({ kind: 'checking' }) },
   checking: {},
-    available: {
-      // Re-checking is how a user finds out whether a newer release landed, so it has to
-      // reach GitHub. The known release rides along so a failure cannot lose it.
-      check: state => ({ kind: 'checking', release: state.release }),
-      download: state => downloadable(state.release)
-        ? { kind: 'downloading', release: state.release, received: 0, total: state.release.installer.bytes }
-        : null,
-    },
-  downloading: {
-    cancel: (state, event) => state.release && event.at >= 0
-      ? { kind: 'available', release: state.release, lastCheckedAt: event.at }
-      : null,
+  available: {
+    // Re-checking is how a user finds out whether a newer release landed, so it has to
+    // reach the feed. The known release rides along so a failure cannot lose it.
+    check: state => ({ kind: 'checking', release: state.release }),
+    download: state => ({ kind: 'downloading', release: state.release, percent: 0 }),
   },
-  ready: {
-    install: state => state.release ? { kind: 'installing', release: state.release } : null,
-  },
+  downloading: {},
+  ready: { install: state => (state.release ? { kind: 'installing', release: state.release } : null) },
   installing: {},
   failed: {},
 };
 
 // `:` events are the asynchronous outcomes. They cannot collide with a command name.
 const outcomeRows = {
-    checking: {
-      // Asking again must never cost the user the update they were about to install, so a
-      // re-check that finds nothing newer falls back to the release it already had.
-      ':checked': (state, event) => {
-        const release = event.release ?? state.release ?? null;
-        return release
-          ? { kind: 'available', release, lastCheckedAt: event.at }
-          : { kind: 'current', lastCheckedAt: event.at };
-      },
+  checking: {
+    // Asking again must never cost the user the update they were about to install, so a
+    // re-check that finds nothing newer falls back to the release it already had.
+    ':checked': (state, event) => {
+      const release = event.release ?? state.release ?? null;
+      return release
+        ? { kind: 'available', release, lastCheckedAt: event.at }
+        : { kind: 'current', lastCheckedAt: event.at };
     },
+  },
   downloading: {
-    ':progress': (state, event) => ({
-      kind: 'downloading', release: state.release,
-      received: Math.min(state.total, Math.max(0, Math.floor(Number(event.received) || 0))), total: state.total,
-    }),
-    ':verified': (state, event) => ({ kind: 'ready', release: state.release, bytes: event.bytes, verifiedAt: event.at }),
+    // electron-updater reports a percentage rather than bytes, and the total it knows is
+    // the file size from the published record. The progress bar is the whole story here.
+    ':progress': (state, event) => ({ ...state, percent: Math.min(100, Math.max(0, Number(event.percent) || 0)) }),
+    ':downloaded': (state, event) => ({ kind: 'ready', release: state.release, verifiedAt: event.at }),
   },
 };
 
@@ -194,7 +138,7 @@ function commandsFor(state, allow) {
 }
 
 function reduce(state, event, allow) {
-    if (!state || typeof state.kind !== 'string' || !event || typeof event.type !== 'string') return null;
+  if (!state || typeof state.kind !== 'string' || !event || typeof event.type !== 'string') return null;
   if (event.type.startsWith(':')) {
     if (event.type === ':failed') {
       if (!failureSources.has(state.kind)) return null;
@@ -211,134 +155,61 @@ function reduce(state, event, allow) {
 }
 
 function defaultPersisted() {
-  return { schema: 1, source: defaultReleaseRepo, lastCheckedAt: null, verified: null, pendingInstall: null };
+  return { schema: 1, lastCheckedAt: null };
 }
 
+// Only the check time is ours now. electron-updater owns the downloaded file, its
+// checksum, and its own cache, so there is no second record to keep in step with it.
 function readPersisted(file) {
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (!parsed || typeof parsed !== 'object') return defaultPersisted();
     const value = defaultPersisted();
-    if (typeof parsed.source === 'string' && releaseRepoPattern.test(parsed.source)) value.source = parsed.source;
     if (Number.isInteger(parsed.lastCheckedAt) && parsed.lastCheckedAt >= 0) value.lastCheckedAt = parsed.lastCheckedAt;
-    if (parsed.verified && typeof parsed.verified === 'object' && typeof parsed.verified.version === 'string' &&
-      typeof parsed.verified.path === 'string' && Number.isInteger(parsed.verified.bytes) && parsed.verified.bytes > 0 &&
-      Number.isInteger(parsed.verified.verifiedAt)) value.verified = parsed.verified;
-    if (parsed.pendingInstall && typeof parsed.pendingInstall === 'object' &&
-      typeof parsed.pendingInstall.version === 'string' && Number.isInteger(parsed.pendingInstall.startedAt)) {
-      value.pendingInstall = parsed.pendingInstall;
-    }
     return value;
   } catch { return defaultPersisted(); }
 }
 
-function writableDir(dir) {
-  try { fs.accessSync(dir, fs.constants.W_OK); return true; } catch { return false; }
-}
-
-function defaultListProcesses() {
-  return new Promise(resolve => {
-    execFile('tasklist.exe', ['/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 5000 }, (error, stdout) => {
-      if (error) return resolve([]);
-      resolve(String(stdout).split(/\r?\n/).flatMap(line => /^"([^"]+)"/.exec(line)?.slice(1) ?? []));
-    });
-  });
-}
-
-function describe(error) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-// A missing header is `null`, not zero. Reading it as zero would record an exhausted
-// budget the server never reported and refuse every later manual check.
-function headerNumber(response, name) {
-  const raw = response && response.headers && typeof response.headers.get === 'function' ? response.headers.get(name) : null;
-  if (raw === null || raw === undefined || raw === '') return null;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : null;
-}
-
-async function* bodyChunks(response) {
-  if (!response.body) return;
-  for await (const chunk of response.body) yield typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
-}
-
-function checkFailure(status) {
-  if (status === 403 || status === 429) return {
-    reason: 'rate-limited', retry: null,
-    detail: 'GitHub refused the request because the unauthenticated budget for this address is spent.',
-  };
-  if (status === 404) return {
-    reason: 'unavailable', retry: 'check',
-    detail: 'The source published no release. It may be private, renamed, or not published yet.',
-  };
-  return { reason: 'unavailable', retry: 'check', detail: `The release source answered ${status}.` };
-}
-
+/**
+ * Wires `electron-updater` to the state machine the UI already speaks.
+ *
+ * `updater` is injected so the machine can be tested without a network, a disk, or an
+ * installer. It must expose `checkForUpdates`, `downloadUpdate`, `quitAndInstall`, and
+ * the `checking-for-update`, `update-available`, `update-not-available`,
+ * `download-progress`, `update-downloaded` and `error` events.
+ */
 function createUpdateService(deps) {
   const {
-    currentVersion, userDataDir, isPackaged, platform, execPath, fetch: request, spawn, trusted,
-    beginShutdown, exit, now = () => Date.now(), log = () => {}, broadcast = () => {},
-    listProcesses = defaultListProcesses,
+    updater, currentVersion, userDataDir, isPackaged, platform,
+    repo = defaultReleaseRepo, origin = 'packaged', trusted = () => false,
+    now = () => Date.now(), log = () => {}, broadcast = () => {},
   } = deps;
 
   const file = path.join(userDataDir, 'update.json');
-  const updatesDir = path.join(userDataDir, 'updates');
   const persisted = readPersisted(file);
-  const source = resolveSource();
-  let state = initialState();
-  let rateLimitRemaining = null;
-  let inflight = null;
+  const source = { repo, origin };
+  let state = null;
   let stopped = false;
 
-  // The source decides which installer this app will download and run, and the binary is
-  // unsigned, so a packaged build trusts exactly one answer: the repository compiled into
-  // it. Both the settings panel and `update.json` on disk are writable by anything running
-  // as the user, so honouring either one would hand a code-execution primitive to any
-  // process on the machine. A development build is free to point elsewhere, because it
-  // refuses to install anything at all.
-  const sourceEditable = !isPackaged;
-
-  function resolveSource() {
-    if (!isPackaged) {
-      const override = process.env.SUNDAY_ROOM_UPDATE_SOURCE;
-      // Development only. A packaged build never reads this, so a stray variable cannot
-      // redirect the feed of a real install.
-      if (typeof override === 'string' && releaseRepoPattern.test(override)) return { repo: override, origin: 'environment' };
-      if (persisted.source !== defaultReleaseRepo) return { repo: persisted.source, origin: 'file' };
-    }
-    return { repo: defaultReleaseRepo, origin: 'packaged' };
-  }
-
-  // A development build gets the whole read-only surface: it can check GitHub, show a
-  // release, and read every screen the way a person does. It never downloads or installs,
-  // because those two write to the machine and run an unsigned binary. Platform is still
-  // terminal, since the installer is Windows-only on any build.
+  // The source decides which installer this app will run, and the binary is unsigned, so
+  // there is no signature to check that installer against. An installed build therefore
+  // reads the feed electron-builder baked into it and nothing else: neither a stray
+  // variable nor a rewritten `update.json` can move it. A development build may point
+  // elsewhere, because it refuses to download and install anything.
   const allowedCommand = isPackaged && platform === 'win32'
     ? null
     : (command) => command === 'check';
 
   function initialState() {
     if (platform !== 'win32') return { kind: 'unsupported', reason: 'platform' };
-    const marker = persisted.pendingInstall;
-    if (!marker) return { kind: 'idle', lastCheckedAt: persisted.lastCheckedAt };
-    persisted.pendingInstall = null;
-    writePersisted();
-    // A marker whose version is not ours means the install died mid-flight. The bytes
-    // are still on disk, but the file records no release to name them by, so the only
-    // honest way back is a fresh check; `download` then short-circuits to `ready`.
-    if (marker.version === currentVersion) return { kind: 'idle', lastCheckedAt: persisted.lastCheckedAt };
-    return {
-      kind: 'failed', reason: 'install', retry: 'check', release: null,
-      detail: `Version ${marker.version} was never installed. Its installer is still on disk; check for the release again to install it.`,
-    };
+    return { kind: 'idle', lastCheckedAt: persisted.lastCheckedAt };
   }
 
   function writePersisted() {
     const temp = `${file}.tmp`;
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(temp, JSON.stringify({ ...persisted, source: source.repo }));
+      fs.writeFileSync(temp, JSON.stringify(persisted));
       fs.renameSync(temp, file);
     } catch (error) { log(`update: could not write ${file}: ${describe(error)}`); }
   }
@@ -346,7 +217,7 @@ function createUpdateService(deps) {
   function snapshot() {
     return Object.freeze({
       currentVersion,
-      source: Object.freeze({ repo: source.repo, origin: source.origin, editable: sourceEditable }),
+      source: Object.freeze({ repo: source.repo, origin: source.origin }),
       state,
       commands: Object.freeze(commandsFor(state, allowedCommand)),
     });
@@ -364,346 +235,164 @@ function createUpdateService(deps) {
     return true;
   }
 
-  function inFlight(kind) {
-    return !stopped && state.kind === kind;
-  }
-
-  function beginCheck(manual) {
-    const at = now();
-    if (manual) {
-      // A press is a deliberate request for the truth, so it always asks GitHub again.
-      // There is no time window on it: a ten minute cooldown made the button look dead
-      // right after the startup check, which is exactly when a user presses it. Hammering
-      // is bounded instead by the state machine, which refuses a check while one is
-      // running, and by the budget floor below.
-      if (rateLimitRemaining !== null && rateLimitRemaining < RATE_LIMIT_FLOOR) {
-        apply({
-          type: ':failed', reason: 'rate-limited', retry: null,
-          detail: 'GitHub reports almost no unauthenticated requests left for this address. Try again later.',
-        });
-        return;
-      }
-    }
-    if (apply({ type: 'check', at })) void runCheck();
-  }
-
-  async function runCheck() {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
-    inflight = controller;
-    let response;
-    try {
-      response = await request(`https://api.github.com/repos/${source.repo}/releases/latest`, {
-        headers: {
-          accept: 'application/vnd.github+json',
-          'x-github-api-version': '2022-11-28',
-          'user-agent': `SundayRoom/${currentVersion}`,
-        },
-        signal: controller.signal,
-      });
-    } catch (error) {
-      if (!inFlight('checking')) return;
-      return apply({ type: ':failed', reason: 'offline', retry: 'check', detail: describe(error) });
-    } finally { clearTimeout(timer); if (inflight === controller) inflight = null; }
-    if (!inFlight('checking')) return;
-    const remaining = headerNumber(response, 'x-ratelimit-remaining');
-    if (remaining !== null) rateLimitRemaining = remaining;
-    if (!response.ok) return apply({ type: ':failed', ...checkFailure(response.status) });
-    let payload;
-    try { payload = await response.json(); } catch { payload = null; }
-    if (!inFlight('checking')) return;
-    const release = payload && typeof payload === 'object' ? parseRelease(payload, source.repo) : MALFORMED;
-    if (release === MALFORMED || !release || release.reason === 'malformed') {
-      return apply({
-        type: ':failed', reason: 'malformed', retry: null,
-        detail: 'That release carries no Sunday Room installer this build can use.',
-      });
-    }
-    persisted.lastCheckedAt = now();
-    writePersisted();
-    apply({
-      type: ':checked', at: persisted.lastCheckedAt,
-      release: isNewer(release.version, currentVersion) ? release : null,
-    });
-  }
-
-  async function verifiedBytes(target, release) {
-    let size;
-    try { size = (await fsp.stat(target)).size; } catch { return null; }
-    if (size !== release.installer.bytes) return null;
-    if (!release.installer.sha256) return size;
-    const digest = createHash('sha256').update(await fsp.readFile(target)).digest('hex');
-    return digest === release.installer.sha256 ? size : null;
-  }
-
-  async function streamToDisk(release, dir, final, part, controller) {
-    let response;
-    try {
-      await fsp.mkdir(dir, { recursive: true });
-      await fsp.rm(part, { force: true });
-      response = await request(release.installer.url, { signal: controller.signal });
-    } catch (error) {
-      if (!inFlight('downloading')) return;
-      return apply({ type: ':failed', reason: 'download', retry: 'download', detail: `The download could not start. ${describe(error)}` });
-    }
-    if (!inFlight('downloading')) return;
-    if (!response.ok) {
-      return apply({ type: ':failed', reason: 'download', retry: 'download', detail: `The release host answered ${response.status}.` });
-    }
-    const declared = headerNumber(response, 'content-length');
-    if (declared !== null && declared > GIB) {
-      return apply({
-        type: ':failed', reason: 'download', retry: null,
-        detail: 'That installer is larger than the one gigabyte this updater will download.',
-      });
-    }
-
-    const hash = createHash('sha256');
-    const writer = fs.createWriteStream(part);
-    let received = 0;
-    let sent = 0;
-    let sentAt = 0;
-    try {
-      for await (const chunk of bodyChunks(response)) {
-        if (!writer.write(chunk)) await new Promise(resolve => writer.once('drain', resolve));
-        hash.update(chunk);
-        received += chunk.length;
-        // A 119 MB download is roughly forty thousand chunks. Emitting each one would
-        // mean forty thousand IPC messages and forty thousand React renders.
-        const rounded = Math.floor(received / PROGRESS_QUANTUM) * PROGRESS_QUANTUM;
-        const at = now();
-        if (rounded > sent && (at - sentAt >= PROGRESS_INTERVAL_MS || received - sent >= release.installer.bytes * PROGRESS_FRACTION)) {
-          sent = rounded;
-          sentAt = at;
-          apply({ type: ':progress', received: rounded });
-        }
-      }
-      writer.end();
-      await finished(writer);
-    } catch (error) {
-      writer.destroy();
-      await fsp.rm(part, { force: true }).catch(() => {});
-      if (!inFlight('downloading')) return;
-      return apply({ type: ':failed', reason: 'download', retry: 'download', detail: `The download stopped before it finished. ${describe(error)}` });
-    }
-    if (!inFlight('downloading')) { await fsp.rm(part, { force: true }).catch(() => {}); return; }
-
-    const digest = hash.digest('hex');
-    if (received !== release.installer.bytes) {
-      await fsp.rm(part, { force: true }).catch(() => {});
-      return apply({
-        type: ':failed', reason: 'checksum', retry: 'download',
-        detail: `The download was ${received} bytes; the release publishes ${release.installer.bytes}.`,
-      });
-    }
-    if (release.installer.sha256 && digest !== release.installer.sha256) {
-      await fsp.rm(part, { force: true }).catch(() => {});
-      return apply({
-        type: ':failed', reason: 'checksum', retry: 'download',
-        detail: 'The downloaded installer did not match the sha256 the release publishes.',
-      });
-    }
-    // Atomic on NTFS, and a `.part` is never executable and never renamed.
-    await fsp.rename(part, final);
-    persisted.verified = { version: release.version, path: final, bytes: received, verifiedAt: now() };
-    writePersisted();
-    apply({ type: ':verified', bytes: received });
-  }
-
-  async function runDownload() {
-    if (state.kind !== 'downloading') return;
-    const release = state.release;
-    const dir = path.join(updatesDir, release.version);
-    const final = path.join(dir, release.installer.name);
-
-    // Idempotence lives on the filesystem, not in a flag: the filename is the proof.
-    if (persisted.verified && (persisted.verified.version !== release.version || persisted.verified.path !== final)) {
-      persisted.verified = null;
-      writePersisted();
-    }
-    const onDisk = await verifiedBytes(final, release).catch(() => null);
-    if (!inFlight('downloading')) return;
-    if (onDisk) {
-      persisted.verified = { version: release.version, path: final, bytes: onDisk, verifiedAt: now() };
-      writePersisted();
-      return apply({ type: ':verified', bytes: onDisk });
-    }
-    const controller = new AbortController();
-    inflight = controller;
-    // `inflight` stays set for the whole transfer, so `cancel` can still abort a body
-    // that has already been handed over by `fetch`.
-    try { await streamToDisk(release, dir, final, `${final}.part`, controller); }
-    finally { if (inflight === controller) inflight = null; }
-  }
-
-  function beginDownload() {
-    const release = state.release ?? null;
-    if (apply({ type: 'download', release })) void runDownload();
-  }
-
-  function cancelDownload() {
-    const release = state.release ?? null;
-    if (!apply({ type: 'cancel', release })) return;
-    const pending = inflight;
-    inflight = null;
-    pending?.abort();
-    if (release) void fsp.rm(partFor(release), { force: true }).catch(() => {});
-  }
-
-  function partFor(release) {
-    return path.join(updatesDir, release.version, `${release.installer.name}.part`);
-  }
-
-  async function installerObstacle() {
-    if (!isPackaged || platform !== 'win32') return null;
-    let images;
-    try { images = await listProcesses(); } catch { return null; }
-    if (!images.some(image => imageInstallerPattern.test(String(image)))) return null;
-    return 'Another Sunday Room installer is already running. Close it and try again.';
-  }
-
-  async function requestInstall() {
-    if (state.kind !== 'ready') return snapshot();
-    const obstacle = await installerObstacle();
-    if (obstacle) {
-      apply({ type: ':failed', reason: 'install', retry: 'install', detail: obstacle });
-      return snapshot();
-    }
-    const release = state.release;
-    const installer = path.join(updatesDir, release.version, release.installer.name);
-    if (!fs.existsSync(installer)) {
-      apply({
-        type: ':failed', reason: 'install', retry: 'download',
-        detail: 'The downloaded installer is no longer on disk. Download it again.',
-      });
-      return snapshot();
-    }
-    if (!apply({ type: 'install', release })) return snapshot();
-    persisted.pendingInstall = { version: release.version, startedAt: now() };
-    writePersisted();
-    void (async () => {
-      const appDir = path.dirname(execPath);
-      const args = installerArgs(appDir);
-      // An ACL heuristic, not a guarantee: `W_OK` is this process's view of the
-      // directory, which an elevated installer can still write through. When it is not
-      // writable, drop `/S` so the assisted installer shows its own UI and elevates
-      // rather than exiting silently having installed nothing.
-      const command = writableDir(appDir) ? args : args.filter(arg => arg !== '/S');
-      try {
-        // Teardown first: the Next child process must be provably dead before NSIS
-        // looks for it, or `allowOnlyOneInstallerInstance.nsh` force-kills mid-shutdown.
-        await beginShutdown();
-        const child = spawn(installer, command, { detached: true, stdio: 'ignore', windowsHide: true });
-        child.unref();
-        // `app.exit` does not fire `before-quit`, so there is no second `app.quit()`
-        // to interleave. It is only correct after the teardown above.
-        exit(0);
-      } catch (error) {
-        apply({ type: ':failed', reason: 'install', retry: 'install', detail: `The installer could not be started. ${describe(error)}` });
-      }
-    })();
-    return snapshot();
-  }
-
-  function setSource(value) {
-    if (!sourceEditable) return false;
-    const repo = String(value ?? '').trim();
-    if (!releaseRepoPattern.test(repo)) return false;
-    source.repo = repo;
-    source.origin = repo === defaultReleaseRepo ? 'packaged' : 'file';
-    persisted.source = repo;
-    persisted.lastCheckedAt = null;
-    persisted.verified = null;
-    persisted.pendingInstall = null;
-    writePersisted();
-    state = state.kind === 'unsupported' ? state : { kind: 'idle', lastCheckedAt: null };
-    publish();
-    if (state.kind === 'idle') beginCheck(false);
-    return true;
-  }
-
-  async function sweep() {
-    let entries;
-    try { entries = await fsp.readdir(updatesDir, { withFileTypes: true }); } catch { return; }
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const target = persisted.verified && persisted.verified.version === entry.name;
-      const files = await fsp.readdir(path.join(updatesDir, entry.name)).catch(() => []);
-      for (const name of files) {
-        const full = path.join(updatesDir, entry.name, name);
-        if (name.endsWith('.part')) await fsp.rm(full, { force: true }).catch(() => {});
-        else if (!target && name.toLowerCase().endsWith('.exe')) await fsp.rm(full, { force: true }).catch(() => {});
-      }
-    }
-  }
-
-function validArgument(command, value) {
-      // A check with no argument is a manual check. The bridge is allowed to omit it, so
-      // refusing an absent flag would make the button fail for a reason the user cannot see.
-      if (command === 'check') return value === undefined || typeof value === 'boolean';
-      if (command === 'setSource') return typeof value === 'string' && releaseRepoPattern.test(value.trim());
-      return true;
-    }
-
   function refuse(name, message) {
     const error = new Error(message);
     error.name = name;
     throw error;
   }
 
+  // electron-updater's UpdateInfo carries a version, a date, and release notes. The page
+  // address is derived from the pinned repository rather than trusted from the response.
+  // The workflow requires a tag of `v$version`, so the tag is rebuilt from the version
+  // rather than taken from the feed, which reports the version without the prefix.
+  function toRelease(info) {
+    if (!info || typeof info !== 'object' || typeof info.version !== 'string') return null;
+    const version = info.version.trim().replace(/^v/, '');
+    if (!/^\d+\.\d+\.\d+/.test(version)) return null;
+    const published = Date.parse(info.releaseDate ?? '');
+    const notes = typeof info.releaseNotes === 'string' ? info.releaseNotes
+      : typeof info.releaseName === 'string' ? info.releaseName : '';
+    return Object.freeze({
+      version,
+      pageUrl: `${releasePageUrl(source.repo)}/tag/${encodeURIComponent(`v${version}`)}`,
+      notes,
+      publishedAt: Number.isFinite(published) && published >= 0 ? Math.floor(published) : null,
+    });
+  }
+
+  function fail(error, retry) {
+    const classified = classify(error);
+    // A record that cannot be read is not an outage: pressing again would read the same
+    // record, so there is nothing to retry.
+    const choice = classified.retry === null ? null : retry;
+    log(`update: ${describe(error)}`);
+    apply({ type: ':failed', reason: classified.reason, retry: choice, detail: classified.detail });
+  }
+
+  function beginCheck() {
+    // No in-flight flag: the table already refuses a check from `checking`, so a second
+    // press while one is running is free without a second source of truth.
+    if (!apply({ type: 'check' })) return;
+    let result = null;
+    try {
+      result = updater.checkForUpdates();
+    } catch (error) {
+      fail(error, 'check');
+      return;
+    }
+    // The events own the outcome. This only stops an unhandled rejection when the library
+    // reports through `error` instead of rejecting.
+    Promise.resolve(result).catch(error => {
+      if (state?.kind === 'checking') fail(error, 'check');
+    });
+  }
+
+  function beginDownload() {
+    if (!apply({ type: 'download' })) return;
+    let result = null;
+    try {
+      result = updater.downloadUpdate();
+    } catch (error) {
+      fail(error, 'download');
+      return;
+    }
+    Promise.resolve(result).catch(error => {
+      if (state?.kind === 'downloading') fail(error, 'download');
+    });
+  }
+
+  function listen() {
+    const on = (event, handler) => { updater.on(event, handler); return () => updater.removeListener(event, handler); };
+    const offs = [
+      on('checking-for-update', () => { if (state?.kind !== 'checking') apply({ type: 'check' }); }),
+      on('update-available', info => {
+        const release = toRelease(info);
+        if (!release) { apply({ type: ':failed', reason: 'malformed', retry: null, detail: 'The published release could not be read.' }); return; }
+        // A check that succeeded records its time whether or not it found something, or
+        // a pending update would make every launch ask again.
+        persisted.lastCheckedAt = now();
+        writePersisted();
+        apply({ type: ':checked', release });
+      }),
+      on('update-not-available', () => {
+        persisted.lastCheckedAt = now();
+        writePersisted();
+        apply({ type: ':checked', release: null });
+      }),
+      on('download-progress', progress => apply({ type: ':progress', percent: progress?.percent })),
+      on('update-downloaded', () => apply({ type: ':downloaded' })),
+      on('error', error => {
+        // A failure during a download is retryable as a download; during a check, as a check.
+        const retry = state?.kind === 'downloading' ? 'download' : 'check';
+        fail(error, retry);
+      }),
+    ];
+    return () => { for (const off of offs) off(); };
+  }
+
+  function validArgument(command, value) {
+    // A check with no argument is a manual check. The bridge is allowed to omit it, so
+    // refusing an absent flag would make the button fail for a reason the user cannot see.
+    if (command === 'check') return value === undefined || typeof value === 'boolean';
+    return true;
+  }
+
   function invoke(command) {
     return async (event, value) => {
       if (!trusted(event)) return refuse('untrusted-sender', 'Sunday Room desktop bridge is unavailable.');
-      // Belt and braces with `allowedCommand`: the table already refuses these, and this
-      // stops the download and install paths from being reached at all on a dev build.
-      if (command !== 'get' && command !== 'setSource' && allowedCommand && !allowedCommand(command)) {
+      // The table already refuses these, but the download and install paths are the ones
+      // that write to the machine and run a binary, so they are checked again here. A
+      // development build must never reach them, whatever the state says.
+      if (command !== 'get' && allowedCommand && !allowedCommand(command)) {
         return refuse('unavailable', 'Installing an update runs only in the installed Windows app.');
       }
       if (command !== 'get' && !validArgument(command, value)) {
         return refuse('invalid-argument', 'That update request was not understood.');
       }
-      if (command === 'setSource') { setSource(value); return snapshot(); }
-      if (command === 'check') beginCheck(value !== false);
+      if (command === 'check') beginCheck();
       else if (command === 'download') beginDownload();
-      else if (command === 'cancel') cancelDownload();
-      else if (command === 'install') await requestInstall();
+      else if (command === 'install') {
+        if (state?.kind !== 'ready') return snapshot();
+        // Silent with a forced relaunch, which is what an in-app update means. The library
+        // passes `/D=` last and unquoted, which is what `desktop/installer.nsh` needs to
+        // restore the install directory.
+        if (apply({ type: 'install' })) updater.quitAndInstall(true, true);
+      }
       return snapshot();
     };
   }
 
   return {
+    get currentVersion() { return currentVersion; },
+    snapshot,
+    invoke,
     start() {
       stopped = false;
-      // Resolves once the stale-file sweep is done, so a caller can wait for the disk to
-      // be clean before the first check spends a request.
-      return sweep().then(() => {
-        const at = now();
-        if (persisted.lastCheckedAt === null || at - persisted.lastCheckedAt >= AUTOMATIC_CHECK_GAP_MS) beginCheck(false);
+      state = initialState();
+      stopListening = listen();
+      publish();
+      // electron-updater has no "check at most every N hours" of its own, so the gap stays
+      // here. It is only ever crossed once per launch, so it costs nothing to be simple.
+      return Promise.resolve().then(() => {
+        if (persisted.lastCheckedAt === null || now() - persisted.lastCheckedAt >= AUTOMATIC_CHECK_GAP_MS) beginCheck();
       });
     },
     stop() {
       stopped = true;
-      const pending = inflight;
-      inflight = null;
-      pending?.abort();
-      if (state.kind === 'downloading' && state.release) {
-        void fsp.rm(partFor(state.release), { force: true }).catch(() => {});
-      }
+      stopListening?.();
+      stopListening = null;
+      state = null;
     },
-    snapshot,
-    invoke,
-    requestInstall,
   };
 }
 
 module.exports = {
   CH,
   createUpdateService,
-  commandsFor,
-  failureReasons,
-  installerArgs,
-  isNewer,
-  parseRelease,
-  reduce,
   updateCommands,
+  failureReasons,
+  defaultReleaseRepo,
+  releaseRepoPattern,
+  reduce,
+  commandsFor,
 };

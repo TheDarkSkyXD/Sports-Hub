@@ -7,7 +7,29 @@ directories:
 files:
   - package.json
   - desktop/**
+  # `!node_modules/**` keeps the dev tree out, which a blanket `node_modules/**` does not:
+  # that ships all 29,000 dev packages. These are electron-updater's transitive graph,
+  # listed explicitly because this app has no other production dependency and there is no
+  # pattern that admits one subtree without naming it.
+  # Verified rather than assumed: `tests/packaged-desktop.mjs` reads the packaged asar and
+  # requires electron-updater from inside the running main process. An earlier revision of
+  # this file omitted three of these and shipped an app that opened a window titled
+  # "Error", which the smoke test could only report as a bare timeout.
   - '!node_modules/**'
+  - node_modules/electron-updater/**
+  - node_modules/builder-util-runtime/**
+  - node_modules/fs-extra/**
+  - node_modules/graceful-fs/**
+  - node_modules/jsonfile/**
+  - node_modules/universalify/**
+  - node_modules/js-yaml/**
+  - node_modules/lazy-val/**
+  - node_modules/lodash.isequal/**
+  - node_modules/lodash.escaperegexp/**
+  - node_modules/semver/**
+  - node_modules/debug/**
+  - node_modules/ms/**
+  - node_modules/sax/**
 extraResources:
   - from: .next/standalone
     to: server
@@ -36,3 +58,11 @@ nsis:
   allowToChangeInstallationDirectory: true
   include: desktop/installer.nsh
 artifactName: Sunday-Room-${version}-Setup-${arch}.${ext}
+# The publish provider is what makes electron-builder emit `latest.yml` and a
+# blockmap, and it is also baked into `resources/app-update.yml` so the installed app
+# knows which feed to read. electron-updater cannot work without both.
+publish:
+  provider: github
+  owner: TheDarkSkyXD
+  repo: Sports-Hub
+  releaseType: release

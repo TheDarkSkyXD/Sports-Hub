@@ -8,9 +8,7 @@ const CH = Object.freeze({
   get: 'sunday-update:get',
   check: 'sunday-update:check',
   download: 'sunday-update:download',
-  cancel: 'sunday-update:cancel',
   install: 'sunday-update:install',
-  setSource: 'sunday-update:set-source',
 });
 
 // The renderer never sees an Electron object, an IpcRendererEvent, or a Node error.
@@ -25,9 +23,7 @@ contextBridge.exposeInMainWorld('sundayDesktop', Object.freeze({
   // automatic one. Omitting it made every manual check fail argument validation.
   check: (manual = true) => ipcRenderer.invoke(CH.check, manual === true),
   download: () => ipcRenderer.invoke(CH.download),
-  cancel: () => ipcRenderer.invoke(CH.cancel),
   install: () => ipcRenderer.invoke(CH.install),
-  setSource: (repo) => ipcRenderer.invoke(CH.setSource, String(repo ?? '')),
   subscribe: (listener) => {
     if (typeof listener !== 'function') return () => {};
     const wrapped = (_event, status) => {

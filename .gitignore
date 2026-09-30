@@ -51,4 +51,7 @@ next-env.d.ts
 /source-inspection.html
 /event-inspection.html
 *.tsbuildinfo
-/.desktop-runtime/
+  /.desktop-runtime/
+# Written by `desktop/main.cjs` on every development launch so electron-updater has a feed
+# to read while the app is unpackaged. It is machine state, not a build input.
+dev-app-update.yml
