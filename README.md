@@ -35,6 +35,7 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 | **NFL and NCAA games** | Filter the score strip, game center, and schedule by league. Your room can hold games from both leagues. |
 | **Spoiler-free mode** | Hide numeric scores and latest-play updates in the room. Broadcast video and provider overlays remain visible. |
 | **Remember your room** | Save selected games, favorites, layout, volume, spoiler preference, and direct feed URLs on this device. |
+| **In-app update** | The installed Windows app checks GitHub Releases for a newer build and offers one button that downloads it, then installs and relaunches. |
 | **Direct-feed support** | Connect compatible HLS or video URLs, with delay adjustment inside the available video buffer. |
 
 <p align="center">
@@ -198,7 +199,7 @@ npm run desktop:smoke
 
 The installer is `dist-electron/Sunday-Room-<version>-Setup-x64.exe`. The smoke check launches the unpacked executable and checks the local page, preload bridge, static files, and an API route. The installed app runs its bundled Next.js server without a separate Node.js installation. Its logs are in the `logs` folder under the Electron user data directory.
 
-The `Electron release` workflow builds and tests the Windows installer on pull requests to `main`, manual runs, and `v*` tags. Manual runs store an Actions artifact. A tag must match the version in `package.json`, such as `v1.0.0`; after the packaged app passes its smoke check, the workflow creates a draft GitHub release with the installer. Review and publish that draft in GitHub when ready. The installer is unsigned and has no automatic updater.
+The `Electron release` workflow builds and tests the Windows installer on pull requests to `main`, manual runs, and `v*` tags. Manual runs store an Actions artifact. A tag must match the version in `package.json`, such as `v1.0.0`; after the packaged app passes its smoke check, the workflow creates a draft GitHub release with the installer. Review and publish that draft in GitHub when ready. A draft is invisible to the updater, so a release that is never published is never offered. The installer is unsigned.
 
 ### Commands
 
@@ -311,7 +312,17 @@ Sunday Room is an independent personal viewer, not an official NFL or NFL RedZon
 
 The ESPN endpoint is public and unversioned. Source pages, player URLs, access requirements, and stream availability can change. Player extraction supports the provider format implemented in `lib/sunday.ts`; it is not a universal streaming-site integration.
 
-There is no automatic updater or hosted service in this repository. Windows is the verified desktop platform.
+There is no hosted service in this repository. Windows is the verified desktop platform.
+
+### Updates
+
+The installed Windows app looks for a newer release in **Room settings**. It checks once at launch when the last check is more than six hours old, and on every **Check for updates** press. A newer version shows in a top-right popup and in settings, and one button walks the whole chain: it downloads the release, then installs and relaunches. Release notes stay on the release page rather than in the popup, and **Dismiss** keeps the popup closed for that version until something newer appears.
+
+A development build reaches GitHub and shows every one of those screens, so the update flow can be exercised before packaging. It refuses to download or install, because those write to the machine and run an unsigned binary.
+
+The update source is a `github.com` releases address, such as `https://github.com/owner/name/releases`, and it is stored in `update.json` under the Electron user data directory as the `owner/name` it names, alongside the last check time and the record of the verified installer. Anything without a releases address to direct to is refused. Edit it from the settings panel, or change `defaultReleaseRepo` in [`lib/desktop-update.ts`](lib/desktop-update.ts) to move the shipped default. `SUNDAY_ROOM_UPDATE_SOURCE` overrides it **only when the app is not packaged**, so a stray variable on a user's machine cannot redirect the feed.
+
+A downloaded installer is checked against the byte count and the `sha256` the release publishes before it is renamed into place and run. That proves the bytes are the bytes GitHub published. It proves nothing about whether the release itself was legitimate, because the installer is still unsigned. Signing the Windows binary is the follow-up this makes more urgent.
 
 ## Artwork and third-party notices
 
