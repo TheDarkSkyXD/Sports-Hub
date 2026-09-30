@@ -89,7 +89,13 @@ export type UpdateState = z.infer<typeof UpdateStateSchema>;
 
 export const UpdateStatusSchema = z.object({
   currentVersion: z.string(),
-  source: z.object({ repo: ReleaseRepoSchema, origin: z.enum(['packaged', 'file', 'environment']) }).readonly(),
+  source: z.object({
+    repo: ReleaseRepoSchema,
+    origin: z.enum(['packaged', 'file', 'environment']),
+    // A packaged build fixes its source, because the binary is unsigned and the source
+    // decides which installer it will run. The settings field follows this.
+    editable: z.boolean(),
+  }).readonly(),
   state: UpdateStateSchema,
   commands: z.array(UpdateCommandSchema).readonly(),
 }).readonly();

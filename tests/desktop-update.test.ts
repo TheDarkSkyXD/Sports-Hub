@@ -346,7 +346,7 @@ test('a development build refuses download and install instead of running an uns
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('the source field accepts a releases address and still stores only the slug', async () => {
+test('a development build accepts a releases address and stores only the slug', async () => {
   // Someone reading this in a browser has a releases URL in front of them, so every one of
   // these has to work. All of them name the same repository.
   for (const input of [
@@ -357,7 +357,7 @@ test('the source field accepts a releases address and still stores only the slug
     '  https://github.com/TheDarkSkyXD/Sports-Hub/releases  ',
     'https://GITHUB.COM/TheDarkSkyXD/Sports-Hub/releases',
   ]) {
-    const room = harness();
+    const room = harness({ isPackaged: false });
     try {
       const parsed = parseReleaseSource(input);
       assert.equal(parsed, 'TheDarkSkyXD/Sports-Hub', `${input} must resolve to the slug`);
@@ -367,6 +367,39 @@ test('the source field accepts a releases address and still stores only the slug
       assert.equal(room.read().source, 'TheDarkSkyXD/Sports-Hub');
     } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
   }
+});
+
+test('an installed app takes updates from one repository and nothing else', async () => {
+  // The binary is unsigned, so the source decides what code this app will run. Anything
+  // running as the user can write `update.json` or press the field, so an installed app
+  // honours neither. This is the one hole that turns a self-updater into a remote shell.
+  const hostile = harness({}, { source: 'attacker/evil-app' });
+  try {
+    assert.equal(hostile.service.snapshot().source.repo, REPO, 'a source planted in update.json is ignored');
+    assert.equal(hostile.service.snapshot().source.origin, 'packaged');
+    assert.equal(hostile.service.snapshot().source.editable, false, 'and the field is not editable');
+
+    const planted = await hostile.service.invoke('setSource')(event('set-source'), 'attacker/evil-app');
+    assert.equal(planted.source.repo, REPO, 'setSource cannot move an installed app');
+    assert.equal(planted.source.origin, 'packaged');
+
+    await hostile.service.start();
+    await hostile.settle();
+    for (const url of hostile.requests) {
+      assert.match(url, /api\.github\.com\/repos\/TheDarkSkyXD\/Sports-Hub\//,
+        `every request must name the compiled-in repository, saw ${url}`);
+    }
+  } finally { rmSync(hostile.userDataDir, { recursive: true, force: true }); }
+});
+
+test('a development build can be pointed at another repository, and says so', async () => {
+  const room = harness({ isPackaged: false });
+  try {
+    assert.equal(room.service.snapshot().source.editable, true, 'the field is editable where nothing can be installed');
+    const changed = await room.service.invoke('setSource')(event('set-source'), 'Someone/Fork');
+    assert.equal(changed.source.repo, 'Someone/Fork');
+    assert.equal(changed.source.origin, 'file');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
 test('a source with no releases address to direct to is refused', async () => {

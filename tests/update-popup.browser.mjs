@@ -14,7 +14,7 @@ const release = (version) => ({
 });
 const statusFor = (state, commands = ['download']) => ({
   currentVersion: '1.0.2',
-  source: { repo: 'TheDarkSkyXD/Sports-Hub', origin: 'packaged' },
+  source: { repo: 'TheDarkSkyXD/Sports-Hub', origin: 'packaged', editable: false },
   state,
   commands,
 });

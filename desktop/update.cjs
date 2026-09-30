@@ -291,14 +291,22 @@ function createUpdateService(deps) {
   let inflight = null;
   let stopped = false;
 
+  // The source decides which installer this app will download and run, and the binary is
+  // unsigned, so a packaged build trusts exactly one answer: the repository compiled into
+  // it. Both the settings panel and `update.json` on disk are writable by anything running
+  // as the user, so honouring either one would hand a code-execution primitive to any
+  // process on the machine. A development build is free to point elsewhere, because it
+  // refuses to install anything at all.
+  const sourceEditable = !isPackaged;
+
   function resolveSource() {
     if (!isPackaged) {
       const override = process.env.SUNDAY_ROOM_UPDATE_SOURCE;
-      // Development only. The app is unsigned, so a stray variable that redirects the
-      // feed is a code-execution vector for anyone who can set env vars on the machine.
+      // Development only. A packaged build never reads this, so a stray variable cannot
+      // redirect the feed of a real install.
       if (typeof override === 'string' && releaseRepoPattern.test(override)) return { repo: override, origin: 'environment' };
+      if (persisted.source !== defaultReleaseRepo) return { repo: persisted.source, origin: 'file' };
     }
-    if (persisted.source !== defaultReleaseRepo) return { repo: persisted.source, origin: 'file' };
     return { repo: defaultReleaseRepo, origin: 'packaged' };
   }
 
@@ -338,7 +346,7 @@ function createUpdateService(deps) {
   function snapshot() {
     return Object.freeze({
       currentVersion,
-      source: Object.freeze({ repo: source.repo, origin: source.origin }),
+      source: Object.freeze({ repo: source.repo, origin: source.origin, editable: sourceEditable }),
       state,
       commands: Object.freeze(commandsFor(state, allowedCommand)),
     });
@@ -598,6 +606,7 @@ function createUpdateService(deps) {
   }
 
   function setSource(value) {
+    if (!sourceEditable) return false;
     const repo = String(value ?? '').trim();
     if (!releaseRepoPattern.test(repo)) return false;
     source.repo = repo;

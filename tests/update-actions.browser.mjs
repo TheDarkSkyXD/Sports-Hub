@@ -11,8 +11,10 @@ const release = (version) => ({
   notes: 'A long changelog that must never appear in the popup.', publishedAt: 1767000000,
   installer: { name: `Sunday-Room-${version}-Setup-x64.exe`, url: 'https://example.test/a.exe', bytes: 119067581, sha256: null },
 });
-const statusFor = (state, commands = ['download']) => ({
-  currentVersion: '1.0.2', source: { repo: 'TheDarkSkyXD/Sports-Hub', origin: 'packaged' }, state, commands,
+const statusFor = (state, commands = ['download'], editable = true) => ({
+  currentVersion: '1.0.2',
+  source: { repo: 'TheDarkSkyXD/Sports-Hub', origin: 'packaged', editable },
+  state, commands,
 });
 
 const install = (page, status) => page.addInitScript((s) => {
@@ -57,7 +59,7 @@ await settings.locator('.update-panel').waitFor({ state: 'visible', timeout: 200
 assert.equal(await settings.locator('.update-panel-source-link').count(), 0, 'no second link below the field');
 assert.equal(await settings.locator('#update-source-repo').inputValue(),
   'https://github.com/TheDarkSkyXD/Sports-Hub/releases',
-  'the editable field holds the releases URL a person can find and paste');
+  'the field holds the releases URL a person can find and paste');
 // Saving a pasted releases URL must store the slug and clear the field to the canonical URL.
 await settings.locator('#update-source-repo').fill('https://github.com/TheDarkSkyXD/Sports-Hub/releases/tag/v9.9.9');
 await settings.getByRole('button', { name: /Save source/i }).click();
@@ -96,7 +98,26 @@ const save = settings.getByRole('button', { name: /Save source/i });
 const background = await save.evaluate((node) => getComputedStyle(node).backgroundColor);
 assert.notEqual(background, 'rgba(0, 0, 0, 0)', 'the save button must not be transparent');
 assert.match(await save.getAttribute('class'), /\bprimary\b/, 'and it is the primary button');
-console.log('no duplicate link sits below the update source field');
+console.log('the source field round-trips a URL, refuses one that is not, and saves in colour');
+
+// An installed app is pinned: the address is shown, but it cannot be changed, and there
+// is no control that could try.
+const installed = await context.newPage();
+await install(installed, statusFor({ kind: 'current', lastCheckedAt: 4 }, ['check'], false));
+await installed.goto(base, { waitUntil: 'domcontentloaded' });
+await installed.waitForTimeout(2000);
+await installed.getByRole('button', { name: /Room settings/i }).first().click();
+await installed.locator('.update-panel').waitFor({ state: 'visible', timeout: 20000 });
+const pinned = installed.locator('#update-source-repo');
+assert.equal(await pinned.inputValue(), 'https://github.com/TheDarkSkyXD/Sports-Hub/releases',
+  'an installed app still shows the address it uses');
+assert.equal(await pinned.isEditable(), false, 'but it cannot be edited');
+assert.equal(await installed.getByRole('button', { name: /Save source/i }).count(), 0,
+  'and there is no control that could try');
+assert.match(await installed.locator('.update-panel-source').innerText(), /installed app checks this address only/i,
+  'and it says why, rather than looking broken');
+await installed.close();
+console.log('an installed app shows its source but cannot change it, and says why');
 // The panel keeps the same one-click path to the changelog.
 assert.equal(await settings.locator('.update-panel-notes').count(), 0, 'the panel must not print the changelog either');
 

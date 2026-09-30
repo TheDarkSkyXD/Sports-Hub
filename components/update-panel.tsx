@@ -12,7 +12,6 @@ const commandLabel:Record<UpdateCommand,{text:string;icon:typeof RefreshCw;prima
   install: {text:'Install and restart',icon:Download,primary:true},
 };
 
-const originLabel = { packaged:'the default release source', file:'a custom release source', environment:'a development override' } as const;
 const megabytes = (bytes:number) => `${(bytes / 1048576).toFixed(1)} MB`;
 
 export function UpdatePanel() {
@@ -101,14 +100,17 @@ export function UpdatePanel() {
         <label htmlFor="update-source-repo">Update source</label>
         <div className="update-panel-source-row">
           {/* The field holds the releases URL, because that is the address a person can
-              find and paste. The app stores the `owner/name` it names and derives the feed. */}
+              find and paste. A packaged build fixes its source, since the binary is
+              unsigned and the source decides which installer it will run. */}
           <input id="update-source-repo" value={repo} onChange={event => { edited.current = true; setRepo(event.target.value); setRepoError(''); }}
-            placeholder="https://github.com/owner/name/releases" spellCheck={false} autoComplete="off" disabled={busy}/>
-          <button className="button primary" type="submit" disabled={busy}>Save source</button>
+            placeholder="https://github.com/owner/name/releases" spellCheck={false} autoComplete="off" readOnly={!status.source.editable}
+            disabled={busy || !status.source.editable}/>
+          {status.source.editable && <button className="button primary" type="submit" disabled={busy}>Save source</button>}
         </div>
       {repoError && <p className="update-panel-error" role="alert">{repoError}</p>}
       {notice && <p className="update-panel-notice" role="status">{notice}</p>}
-      <p className="update-panel-note">Sunday Room looks for releases on GitHub. This build reads {originLabel[status.source.origin]}, <strong>{status.source.repo}</strong>. Downloads are checked against the size and sha256 the release publishes; that proves the bytes came from GitHub, not that the release itself was legitimate.</p>
+      <p className="update-panel-note">Sunday Room looks for releases on GitHub, at <a className="update-panel-link" href={releasePageUrl(status.source.repo)} target="_blank" rel="noopener noreferrer">{releasePageUrl(status.source.repo)} <ArrowUpRight size={12}/></a>. Downloads are checked against the size and sha256 the release publishes; that proves the bytes came from GitHub, not that the release itself was legitimate.</p>
+      {!status.source.editable && <p className="update-panel-note">The installed app checks this address only, because an unsigned app that could be pointed at another repository would run whatever that repository published. A development build can be pointed elsewhere, and never installs anything.</p>}
     </form>
   </section>;
 }
