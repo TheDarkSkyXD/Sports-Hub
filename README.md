@@ -316,7 +316,9 @@ There is no hosted service in this repository. Windows is the verified desktop p
 
 ### Updates
 
-The installed Windows app looks for a newer release in **Room settings**. It checks once at launch when the last check is more than six hours old, and on every **Check for updates** press. A newer version shows in a top-right popup and in settings, and one button walks the whole chain: it downloads the release, then installs and relaunches. Release notes stay on the release page rather than in the popup, and **Dismiss** keeps the popup closed for that version until something newer appears.
+The installed Windows app looks for a newer release on its own, so publishing a release is enough to tell people about it. It checks at launch and then keeps looking in the background — daily by default, hourly or weekly if you prefer, or off — and raises a system notification when it finds one, so it reaches you even when Sunday Room is behind another window. **Check for updates** always asks immediately.
+
+A newer version shows in a top-right popup and in **Room settings**, and one button walks the whole chain: it downloads the release, then installs and relaunches. Release notes stay on the release page rather than in the popup, and **Dismiss** keeps the popup closed for that version until something newer appears.
 
 A development build reaches GitHub and shows every one of those screens, so the update flow can be exercised before packaging. It refuses to download and install, because those write to the machine and run an unsigned binary.
 

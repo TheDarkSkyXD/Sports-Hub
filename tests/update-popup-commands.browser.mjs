@@ -12,6 +12,7 @@ const release = (version) => ({
 const available = (version) => ({
   currentVersion: '1.0.2',
   source: { url: 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download', editable: false },
+  preferences: { autoCheckEnabled: true, checkFrequency: 'daily' },
   state: { kind: 'available', release: release(version), lastCheckedAt: 1 }, commands: ['check', 'download'],
 });
 // The popup presents one chained action, so a check rides the same button. Install is

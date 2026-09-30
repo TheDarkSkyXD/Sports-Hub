@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Check, Download, RefreshCw, RotateCw } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
-import { describeStatus, parseUpdateFeedUrl, releasesPageUrl, updateCommands, type DesktopUpdateBridge, type UpdateCommand, type UpdateStatus } from '@/lib/desktop-update';
+import { CheckFrequencySchema, describeStatus, parseUpdateFeedUrl, releasesPageUrl, updateCommands, type CheckFrequency, type DesktopUpdateBridge, type UpdateCommand, type UpdateStatus } from '@/lib/desktop-update';
+
+const frequencyLabel:Record<CheckFrequency,string>={hourly:'Every hour',daily:'Daily',weekly:'Weekly'};
 
 const commandLabel:Record<UpdateCommand,{text:string;icon:typeof RefreshCw;primary:boolean}> = {
   check: {text:'Check for updates',icon:RefreshCw,primary:false},
@@ -90,6 +92,17 @@ export function UpdatePanel() {
     }).catch(() => setNotice('Sunday Room could not save that update source.'));
   },[feed]);
 
+  // The schedule is a preference rather than a state transition, so it changes the record
+  // and not the machine. A person turning it off expects it to stay off across restarts,
+  // which is why it is written rather than applied for this session only.
+  const savePreferences = useCallback((next:{autoCheckEnabled?:boolean;checkFrequency?:CheckFrequency}) => {
+    const bridge = api.current;
+    if (!bridge) return;
+    setError('');
+    void bridge.setPreferences(next).then(setStatus)
+      .catch(() => setError('Sunday Room could not save that preference.'));
+  },[]);
+
   if (absent) return null;
   if (!status) return <section className="update-panel" aria-label="Software update"><h3>Software update</h3>
     <p className="update-panel-note">Reading the update status…</p></section>;
@@ -124,6 +137,18 @@ export function UpdatePanel() {
         {status.source.editable === true && <button className="button primary" type="submit" disabled={busy}>Save source</button>}
       </div>
       {status.source.editable !== true && <p className="update-panel-note">The installed app checks this address only. The binary is not signed, so an app that could be pointed at another source would run whatever that source published.</p>}
+      {status.preferences.autoCheckEnabled && <div className="update-panel-schedule">
+        <label htmlFor="update-frequency">Check for updates</label>
+        <select id="update-frequency" value={status.preferences.checkFrequency} disabled={busy}
+          onChange={event => { const parsed = CheckFrequencySchema.safeParse(event.target.value); if (parsed.success) savePreferences({ checkFrequency: parsed.data }); }}>
+          {(['hourly','daily','weekly'] as const).map(option => <option key={option} value={option}>{frequencyLabel[option]}</option>)}
+        </select>
+      </div>}
+      <label className="update-panel-toggle">
+        <input type="checkbox" checked={status.preferences.autoCheckEnabled} disabled={busy}
+          onChange={event => savePreferences({ autoCheckEnabled: event.target.checked })}/>
+        <span>Tell me when a new release is out</span>
+      </label>
       {feedError && <p className="update-panel-error" role="alert">{feedError}</p>}
       {notice && <p className="update-panel-notice" role="status">{notice}</p>}
       {error && <p className="update-panel-error" role="alert">{error}</p>}

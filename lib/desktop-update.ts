@@ -96,10 +96,23 @@ export const UpdateStatusSchema = z.object({
     // and the binary is unsigned. A development build may point elsewhere.
     editable: z.boolean(),
   }).readonly(),
+  preferences: z.object({
+    // On by default: an updater nobody hears from is not one.
+    autoCheckEnabled: z.boolean(),
+    checkFrequency: z.enum(['hourly', 'daily', 'weekly']),
+  }).readonly(),
   state: UpdateStateSchema,
   commands: z.array(UpdateCommandSchema).readonly(),
 }).readonly();
 export type UpdateStatus = z.infer<typeof UpdateStatusSchema>;
+
+/**
+ * How often the background scheduler may ask GitHub. A preset rather than a free-form
+ * number, so a tampered value cannot drive it to something sub-minimum.
+ */
+export const checkFrequencies = ['hourly', 'daily', 'weekly'] as const;
+export const CheckFrequencySchema = z.enum(checkFrequencies);
+export type CheckFrequency = z.infer<typeof CheckFrequencySchema>;
 
 export type DesktopUpdateBridge = Readonly<{
   get(): Promise<UpdateStatus>;
@@ -108,6 +121,7 @@ export type DesktopUpdateBridge = Readonly<{
   install(): Promise<UpdateStatus>;
   /** Refused in an installed build, which keeps its feed fixed. */
   setSource(url: string): Promise<UpdateStatus>;
+  setPreferences(value: { autoCheckEnabled?: boolean; checkFrequency?: CheckFrequency }): Promise<UpdateStatus>;
   subscribe(listener: (status: UpdateStatus) => void): () => void;
 }>;
 

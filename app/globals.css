@@ -138,6 +138,11 @@ main{padding:32px 36px 0;max-width:1920px;margin:auto}.eyebrow{font-size:10px;le
 .update-panel-source-row{display:flex;flex-wrap:wrap;gap:8px}
 .update-panel-source-row input{flex:1 1 240px;min-width:0;background:#111319;border:1px solid #3b404b;border-radius:6px;padding:11px 12px;font-size:14px;color:#eef0f5}
 .update-panel-source-row .button{flex-shrink:0}
+.update-panel-schedule{display:flex;align-items:center;gap:10px}
+.update-panel-schedule label{font-size:12px;color:#a2aab8}
+.update-panel-schedule select{flex:1;min-width:0;background:#111319;border:1px solid #3b404b;border-radius:6px;padding:9px 11px;font-size:13px;color:#eef0f5}
+.update-panel-toggle{display:flex;align-items:center;gap:9px;font-size:12px;color:#a2aab8;cursor:pointer}
+.update-panel-toggle input{width:15px;height:15px;accent-color:#ff624b}
 .update-panel-error{font-size:12px;line-height:1.5;color:#ff9b89;margin:0}
 .update-panel-notice{font-size:12px;line-height:1.5;color:#a2aab8;margin:0}
 .update-panel-note{font-size:11px;line-height:1.6;color:#8b93a3;margin:0}

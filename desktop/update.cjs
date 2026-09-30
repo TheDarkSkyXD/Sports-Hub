@@ -11,9 +11,8 @@ const CH = Object.freeze({
   download: 'sunday-update:download',
   install: 'sunday-update:install',
   setSource: 'sunday-update:set-source',
+  setPreferences: 'sunday-update:set-preferences',
 });
-
-const AUTOMATIC_CHECK_GAP_MS = 6 * 60 * 60 * 1000;
 
 // The update union lives in `lib/desktop-update.ts` and again here, because
 // `eslint.config.mjs` forbids `desktop/**/*.cjs` from importing `lib/`. The failure
@@ -164,18 +163,39 @@ function reduce(state, event, allow) {
   return row ? row(state, event) : null;
 }
 
-function defaultPersisted() {
-  return { schema: 1, lastCheckedAt: null };
+const CHECK_FREQUENCY_INTERVAL_MS = Object.freeze({
+  hourly: 60 * 60 * 1000,
+  daily: 24 * 60 * 60 * 1000,
+  weekly: 7 * 24 * 60 * 60 * 1000,
+});
+// A floor on the effective interval, and also how often the scheduler wakes. Anything
+// smaller spends GitHub's unauthenticated budget on a background timer.
+const MIN_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const SCHEDULER_TICK_MS = 15 * 60 * 1000;
+
+function effectiveIntervalMs(frequency) {
+  const raw = CHECK_FREQUENCY_INTERVAL_MS[frequency] ?? CHECK_FREQUENCY_INTERVAL_MS.hourly;
+  return Math.max(raw, MIN_CHECK_INTERVAL_MS);
 }
 
-// Only the check time is ours now. electron-updater owns the downloaded file, its
-// checksum, and its own cache, so there is no second record to keep in step with it.
+function defaultPersisted() {
+  // The scheduler is on by default. An updater nobody hears from is not one, and the
+  // whole point is that a published release reaches people who already have the app open.
+  return { schema: 1, lastCheckedAt: null, autoCheckEnabled: true, checkFrequency: 'daily' };
+}
+
+// Only the check time and the schedule are ours. electron-updater owns the downloaded
+// file, its checksum, and its own cache, so there is no second record to keep in step.
 function readPersisted(file) {
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (!parsed || typeof parsed !== 'object') return defaultPersisted();
     const value = defaultPersisted();
     if (Number.isInteger(parsed.lastCheckedAt) && parsed.lastCheckedAt >= 0) value.lastCheckedAt = parsed.lastCheckedAt;
+    if (typeof parsed.autoCheckEnabled === 'boolean') value.autoCheckEnabled = parsed.autoCheckEnabled;
+    if (typeof parsed.checkFrequency === 'string' && Object.hasOwn(CHECK_FREQUENCY_INTERVAL_MS, parsed.checkFrequency)) {
+      value.checkFrequency = parsed.checkFrequency;
+    }
     return value;
   } catch { return defaultPersisted(); }
 }
@@ -200,6 +220,7 @@ function createUpdateService(deps) {
   let state = null;
   let stopped = false;
   let currentFeed = feedUrl;
+  let scheduler = null;
 
   // The source decides which installer this app will run, and the binary is unsigned, so
   // there is no signature to check that installer against. An installed build therefore
@@ -228,6 +249,10 @@ function createUpdateService(deps) {
     return Object.freeze({
       currentVersion,
       source: Object.freeze({ url: currentFeed, editable: !isPackaged }),
+      preferences: Object.freeze({
+        autoCheckEnabled: persisted.autoCheckEnabled,
+        checkFrequency: persisted.checkFrequency,
+      }),
       state,
       commands: Object.freeze(commandsFor(state, allowedCommand)),
     });
@@ -279,22 +304,51 @@ function createUpdateService(deps) {
     apply({ type: ':failed', reason: classified.reason, retry: choice, detail: classified.detail });
   }
 
-  function beginCheck() {
+  function beginCheck(automatic = false) {
+    // An automatic check claims the interval slot before awaiting so two ticks cannot both
+    // fire, and restores the previous timestamp if it fails. A failed check that kept its
+    // new timestamp would block retries for a whole interval, turning one bad network
+    // moment into a silent day. A manual check claims nothing: the press already is the
+    // intent, and throttling it is what made the button look dead.
+    const previous = persisted.lastCheckedAt;
+    if (automatic) {
+      persisted.lastCheckedAt = now();
+      writePersisted();
+    }
+    const restoreTimestamp = () => {
+      if (!automatic) return;
+      persisted.lastCheckedAt = previous;
+      writePersisted();
+    };
     // No in-flight flag: the table already refuses a check from `checking`, so a second
     // press while one is running is free without a second source of truth.
-    if (!apply({ type: 'check' })) return;
+    if (!apply({ type: 'check' })) { restoreTimestamp(); return; }
     let result = null;
     try {
       result = updater.checkForUpdates();
     } catch (error) {
+      restoreTimestamp();
       fail(error, 'check');
       return;
     }
     // The events own the outcome. This only stops an unhandled rejection when the library
     // reports through `error` instead of rejecting.
     Promise.resolve(result).catch(error => {
-      if (state?.kind === 'checking') fail(error, 'check');
+      if (state?.kind !== 'checking') return;
+      restoreTimestamp();
+      fail(error, 'check');
     });
+  }
+
+  function runAutoCheck() {
+    beginCheck(true);
+  }
+
+  // The scheduler does not decide when to check, only when to look. The interval decides.
+  function schedulerTick() {
+    if (stopped || !persisted.autoCheckEnabled) return;
+    if (now() - persisted.lastCheckedAt < effectiveIntervalMs(persisted.checkFrequency)) return;
+    runAutoCheck();
   }
 
   function beginDownload() {
@@ -345,6 +399,24 @@ function createUpdateService(deps) {
     // refusing an absent flag would make the button fail for a reason the user cannot see.
     if (command === 'check') return value === undefined || typeof value === 'boolean';
     if (command === 'setSource') return typeof value === 'string' && feedUrlPattern.test(value.trim());
+    if (command === 'setPreferences') return isPlainPreferences(value);
+    return true;
+  }
+
+  function isPlainPreferences(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    if ('autoCheckEnabled' in value && typeof value.autoCheckEnabled !== 'boolean') return false;
+    if ('checkFrequency' in value && !Object.hasOwn(CHECK_FREQUENCY_INTERVAL_MS, value.checkFrequency)) return false;
+    return 'autoCheckEnabled' in value || 'checkFrequency' in value;
+  }
+
+  function setPreferences(value) {
+    if (typeof value.autoCheckEnabled === 'boolean') persisted.autoCheckEnabled = value.autoCheckEnabled;
+    if (Object.hasOwn(CHECK_FREQUENCY_INTERVAL_MS, value.checkFrequency)) persisted.checkFrequency = value.checkFrequency;
+    writePersisted();
+    // Turning the schedule back on should not wait out the old interval; the timestamp is
+    // still the last real check, so the next tick decides as it would have anyway.
+    publish();
     return true;
   }
 
@@ -380,6 +452,10 @@ function createUpdateService(deps) {
         if (!setSource(value)) return refuse('unavailable', 'The update source is fixed in the installed app.');
         return snapshot();
       }
+      if (command === 'setPreferences') {
+        setPreferences(value);
+        return snapshot();
+      }
       if (command === 'check') beginCheck();
       else if (command === 'download') beginDownload();
       else if (command === 'install') {
@@ -402,14 +478,18 @@ function createUpdateService(deps) {
       state = initialState();
       stopListening = listen();
       publish();
-      // electron-updater has no "check at most every N hours" of its own, so the gap stays
-      // here. It is only ever crossed once per launch, so it costs nothing to be simple.
-      return Promise.resolve().then(() => {
-        if (persisted.lastCheckedAt === null || now() - persisted.lastCheckedAt >= AUTOMATIC_CHECK_GAP_MS) beginCheck();
-      });
+      // Check at launch when the interval has elapsed, then keep looking while the app stays
+      // open. StreamFusion checks once at startup and never polls, which means a user who
+      // leaves the app running all day hears nothing about a release published that morning.
+      schedulerTick();
+      scheduler = setInterval(schedulerTick, SCHEDULER_TICK_MS);
+      if (typeof scheduler?.unref === 'function') scheduler.unref();
+      return Promise.resolve();
     },
     stop() {
       stopped = true;
+      if (scheduler) clearInterval(scheduler);
+      scheduler = null;
       stopListening?.();
       stopListening = null;
       state = null;

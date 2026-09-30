@@ -14,6 +14,7 @@ const release = (version) => ({
 const statusFor = (state, commands = ['download'], editable = false) => ({
   currentVersion: '1.0.2',
   source: { url: 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download', editable },
+  preferences: { autoCheckEnabled: true, checkFrequency: 'daily' },
   state, commands,
 });
 

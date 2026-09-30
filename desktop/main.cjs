@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, powerMonitor, Notification } = require('electron');
 const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -28,6 +28,37 @@ function packagedVersion() {
 function configureDevelopmentUpdater(updater, feedUrl) {
   updater.forceDevUpdateConfig=true;
   updater.setFeedURL({ provider:'generic', url:feedUrl });
+}
+
+// A release found while the app is in the background has to reach the person, not just the
+// window. The in-app popup only helps if they happen to be looking at it, and a window
+// behind something else is not looking, so a system notification carries it. Skipped when
+// the window already has focus, because then the popup is in front of them already.
+let announcedVersion = null;
+function announceUpdate(version) {
+  if (announcedVersion === version || !Notification.isSupported()) return;
+  announcedVersion = version;
+  if (win && !win.isDestroyed() && win.isFocused()) return;
+  try {
+    const notification = new Notification({
+      title: `Sunday Room ${version} is available`,
+      body: 'Open Sunday Room to install it, or check Room settings to see what changed.',
+      silent: true,
+    });
+    notification.on('click', () => {
+      if (!win || win.isDestroyed()) return;
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    });
+    notification.show();
+  } catch (error) {
+    // A notification is a courtesy. Failing to raise one must not take down the updater.
+    try {
+      fs.mkdirSync(logDir,{recursive:true});
+      fs.appendFileSync(path.join(logDir,'updates.log'),`update: could not announce ${version}: ${String(error)}\n`);
+    } catch {}
+  }
 }
 const root = app.isPackaged ? path.join(process.resourcesPath,'server') : path.resolve(__dirname,'..');
 const logDir = app.isPackaged ? path.join(app.getPath('userData'),'logs') : path.join(root,'.desktop-runtime');
@@ -132,7 +163,10 @@ app.whenReady().then(async () => {
   update=createUpdateService({
     currentVersion:app.isPackaged?app.getVersion():packagedVersion(),userDataDir:app.getPath('userData'),
     isPackaged:app.isPackaged,platform:process.platform,updater,trusted,
-    broadcast:status=>{ if (win && !win.isDestroyed()) win.webContents.send(CH.status,status); },
+    broadcast:status=>{
+      if (win && !win.isDestroyed()) win.webContents.send(CH.status,status);
+      if (status.state.kind === 'available' && status.state.release) announceUpdate(status.state.release.version);
+    },
     log:message=>{ try { fs.mkdirSync(logDir,{recursive:true}); fs.appendFileSync(path.join(logDir,'updates.log'),`${message}\n`); } catch {} },
   });
   ipcMain.handle(CH.get,update.invoke('get'));
@@ -140,6 +174,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(CH.download,update.invoke('download'));
   ipcMain.handle(CH.install,update.invoke('install'));
   ipcMain.handle(CH.setSource,update.invoke('setSource'));
+  ipcMain.handle(CH.setPreferences,update.invoke('setPreferences'));
   update.start();
   await win.loadURL(origin).catch(() => { mainFrameFailed = true; });
 }).catch(error => {

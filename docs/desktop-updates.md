@@ -53,6 +53,25 @@ fragment, or a path that walks to another repository is refused.
 A development build *is* rewritable, through `SUNDAY_ROOM_UPDATE_SOURCE` or the settings
 field, which is how the flow gets exercised against a fork before packaging.
 
+## How a release reaches someone
+
+A background scheduler, not a startup-only check. `electron-updater` is asked at launch
+when the interval has elapsed, and then every fifteen minutes to look — the interval
+decides when to ask, the tick only decides when to look. `hourly`, `daily` (the default) or
+`weekly`, with a one-hour floor so nothing can drive it below that.
+
+StreamFusion checks once at startup and never polls. That is right when the app is short-lived
+and wrong for a viewer someone leaves open all day: a release published that morning would
+not be mentioned until the next launch. The schedule is on by default and toggleable in
+settings, because an updater nobody hears from is not one.
+
+A failed automatic check restores the previous timestamp, so one bad network moment does
+not block retries for a whole interval.
+
+When a release is found and the window does not have focus, a **system notification** is
+raised. The in-app popup only helps if the user happens to be looking at it, and a window
+behind something else is not looking. Clicking it restores and focuses the window.
+
 ## Development builds never install
 
 `electron-updater` skips every check when the app is not packaged unless

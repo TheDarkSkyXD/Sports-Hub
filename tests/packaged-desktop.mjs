@@ -106,6 +106,12 @@ assert.ok(updaterLoads.hasNsisUpdater,
   'the packaged app must report the feed URL it checks');
 assert.equal(updateStatus.source.editable, false,
   'an installed app keeps its feed, so nothing can point it at another repository');
+// The schedule is what makes a release reach people who already have the app open, so it
+// ships on rather than opt-in. An updater nobody hears from is not one.
+assert.equal(updateStatus.preferences.autoCheckEnabled, true,
+  'an installed app checks in the background by default');
+assert.ok(['hourly', 'daily', 'weekly'].includes(updateStatus.preferences.checkFrequency),
+  `the schedule must be a preset, got: ${updateStatus.preferences.checkFrequency}`);
   const runtime = await desktop.evaluate(({ app }) => ({ packaged: app.isPackaged, resourcesPath: process.resourcesPath }));
   assert.equal(runtime.packaged, true);
   assert.equal(path.normalize(runtime.resourcesPath), path.normalize(path.join(path.dirname(executablePath), 'resources')));

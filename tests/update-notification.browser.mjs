@@ -8,6 +8,7 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 900 
 const status = (state, commands = ['check']) => ({
   currentVersion: '1.0.2',
   source: { url: 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download', editable: false },
+  preferences: { autoCheckEnabled: true, checkFrequency: 'daily' },
   state,
   commands,
 });

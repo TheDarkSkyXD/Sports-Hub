@@ -169,17 +169,46 @@ test('a supported build checks once on start and reports a newer release', async
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
-test('a launch inside the six hour gap does not check again', async () => {
-  const room = await started({}, { lastCheckedAt: at - 60_000 });
+test('the scheduler waits out its interval, and keeps looking once the app stays open', async () => {
+  const recent = await started({}, { lastCheckedAt: at - 60_000 });
   try {
-    assert.equal(room.updater.checks, 0, 'a minute since the last check is not a gap');
-    assert.equal(room.service.snapshot().state.kind, 'idle');
-  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+    assert.equal(recent.updater.checks, 0, 'a minute since the last check is not a gap');
+    assert.equal(recent.service.snapshot().state.kind, 'idle');
+  } finally { rmSync(recent.userDataDir, { recursive: true, force: true }); }
 
-  const stale = await started({}, { lastCheckedAt: at - (6 * 60 * 60 * 1000) - 1 });
+  const stale = await started({}, { lastCheckedAt: at - (24 * 60 * 60 * 1000) - 1 });
   try {
-    assert.equal(stale.updater.checks, 1, 'past the gap it checks again');
+    assert.equal(stale.updater.checks, 1, 'past the daily interval it checks at launch');
+    assert.equal(stale.service.snapshot().state.kind, 'available');
   } finally { rmSync(stale.userDataDir, { recursive: true, force: true }); }
+});
+
+test('the schedule is a preference, and turning it off stops the looking', async () => {
+  const room = await started();
+  try {
+    assert.deepEqual(room.service.snapshot().preferences,
+      { autoCheckEnabled: true, checkFrequency: 'daily' },
+      'on by default, because an updater nobody hears from is not one');
+
+    await room.service.invoke('setPreferences')(event('set-preferences'), { autoCheckEnabled: false });
+    assert.equal(room.service.snapshot().preferences.autoCheckEnabled, false);
+    assert.equal(room.read().autoCheckEnabled, false, 'and it survives a restart');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('a frequency outside the presets is refused, and a preset is stored', async () => {
+  const room = await started();
+  try {
+    await room.service.invoke('setPreferences')(event('set-preferences'), { checkFrequency: 'weekly' });
+    assert.equal(room.service.snapshot().preferences.checkFrequency, 'weekly');
+    assert.equal(room.read().checkFrequency, 'weekly');
+
+    for (const bad of [{ checkFrequency: 'every-second' }, { checkFrequency: 0 }, { autoCheckEnabled: 'yes' }, {}, 'hourly']) {
+      await assert.rejects(() => room.service.invoke('setPreferences')(event('set-preferences'), bad),
+        (error: Error) => error.name === 'invalid-argument', JSON.stringify(bad));
+    }
+    assert.equal(room.service.snapshot().preferences.checkFrequency, 'weekly', 'nothing moved');
+  } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
 test('no newer release settles on current and records the time', async () => {
@@ -199,7 +228,8 @@ test('a press always asks the feed, with nothing throttling it', async () => {
     // electron-updater has no cooldown of its own, and this service adds none. A person
     // pressing the button always gets an answer.
     const reply = await room.service.invoke('check')(event('check'));
-    assert.equal(reply.state.kind, 'checking', 'the reply is the state as the check starts');
+    assert.equal(reply.state.kind, 'checking',
+      'the reply is the state as the check starts, before the feed has answered');
     assert.equal(room.updater.checks, 2, 'a press reaches the feed');
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
@@ -520,7 +550,8 @@ test('every state the engine broadcasts satisfies the renderer schema', async ()
 test('the persisted file holds only what this app owns', async () => {
   const room = await started({ updater: noneYet() });
   try {
-    assert.deepEqual(Object.keys(room.read()).sort(), ['lastCheckedAt', 'schema'],
+    assert.deepEqual(Object.keys(room.read()).sort(),
+      ['autoCheckEnabled', 'checkFrequency', 'lastCheckedAt', 'schema'],
       'the download, its checksum, and its cache belong to electron-updater');
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
@@ -534,7 +565,9 @@ test('a corrupt persisted file is ignored rather than fatal', async () => {
       updater: new FakeUpdater(), trusted: () => true, now: () => at, log: () => {},
     });
     second.start();
-    assert.equal(second.snapshot().state.kind, 'idle', 'an unreadable file is a first launch');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.notEqual(second.snapshot().state.kind, 'idle',
+      'an unreadable file is treated as a first launch, so the schedule checks');
     second.stop();
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
