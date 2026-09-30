@@ -320,7 +320,13 @@ The installed Windows app looks for a newer release in **Room settings**. It che
 
 A development build reaches GitHub and shows every one of those screens, so the update flow can be exercised before packaging. It refuses to download or install, because those write to the machine and run an unsigned binary.
 
-The update source is a `github.com` releases address, such as `https://github.com/owner/name/releases`, and it is stored in `update.json` under the Electron user data directory as the `owner/name` it names, alongside the last check time and the record of the verified installer. Anything without a releases address to direct to is refused. Edit it from the settings panel, or change `defaultReleaseRepo` in [`lib/desktop-update.ts`](lib/desktop-update.ts) to move the shipped default. `SUNDAY_ROOM_UPDATE_SOURCE` overrides it **only when the app is not packaged**, so a stray variable on a user's machine cannot redirect the feed.
+The update source is a `github.com` releases address, such as `https://github.com/owner/name/releases`, and it is stored in `update.json` under the Electron user data directory as the `owner/name` it names. Anything without a releases address to direct to is refused.
+
+**An installed app takes updates from one repository only.** The settings field shows the address it uses but cannot change it, and the `source` key in `update.json` is ignored, because the source decides which installer the app will run and the binary is not yet signed. A development build can point elsewhere — with `SUNDAY_ROOM_UPDATE_SOURCE` or the settings field — and never installs anything. The reasoning is in [`docs/desktop-updates.md`](docs/desktop-updates.md).
+
+`electron-builder` also writes `latest.yml` and a blockmap, and the release workflow publishes only the installer. Nothing in the app reads the other two; it queries the releases API and pins the asset by name, size, and `sha256`. The reasons are in [`docs/desktop-updates.md`](docs/desktop-updates.md).
+
+To sign the installer, set `CSC_LINK` and `CSC_KEY_PASSWORD` in the repository secrets. The workflow then fails if a certificate is configured but the installer comes out unsigned, so signing cannot stop working unnoticed. Today neither is set, and the workflow says so in its summary.
 
 A downloaded installer is checked against the byte count and the `sha256` the release publishes before it is renamed into place and run. That proves the bytes are the bytes GitHub published. It proves nothing about whether the release itself was legitimate, because the installer is still unsigned. Signing the Windows binary is the follow-up this makes more urgent.
 
