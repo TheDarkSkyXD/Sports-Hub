@@ -318,15 +318,17 @@ There is no hosted service in this repository. Windows is the verified desktop p
 
 The installed Windows app looks for a newer release in **Room settings**. It checks once at launch when the last check is more than six hours old, and on every **Check for updates** press. A newer version shows in a top-right popup and in settings, and one button walks the whole chain: it downloads the release, then installs and relaunches. Release notes stay on the release page rather than in the popup, and **Dismiss** keeps the popup closed for that version until something newer appears.
 
-A development build reaches GitHub and shows every one of those screens, so the update flow can be exercised before packaging. It refuses to download or install, because those write to the machine and run an unsigned binary.
+A development build reaches GitHub and shows every one of those screens, so the update flow can be exercised before packaging. It refuses to download and install, because those write to the machine and run an unsigned binary.
 
-The update source is a `github.com` releases address, such as `https://github.com/owner/name/releases`, and it is stored in `update.json` under the Electron user data directory as the `owner/name` it names. Anything without a releases address to direct to is refused.
+The updater is [`electron-updater`](https://github.com/electron-userland/electron-builder/tree/master/packages/electron-updater). `desktop/main.cjs` constructs it and `desktop/update.cjs` wires its events to the state machine the settings panel and the popup already speak, so the library owns the transfer and the checksum while this repo owns the wording.
 
-**An installed app takes updates from one repository only.** The settings field shows the address it uses but cannot change it, and the `source` key in `update.json` is ignored, because the source decides which installer the app will run and the binary is not yet signed. A development build can point elsewhere — with `SUNDAY_ROOM_UPDATE_SOURCE` or the settings field — and never installs anything. The reasoning is in [`docs/desktop-updates.md`](docs/desktop-updates.md).
+**A release must publish `latest.yml` and the blockmap** alongside the installer. Without them the updater cannot resolve an update at all and every installed copy stays where it is. The workflow uploads all three, and a release published before this change has none, so it is invisible to the app until the next one.
 
-`electron-builder` also writes `latest.yml` and a blockmap, and the release workflow publishes only the installer. Nothing in the app reads the other two; it queries the releases API and pins the asset by name, size, and `sha256`. The reasons are in [`docs/desktop-updates.md`](docs/desktop-updates.md).
+**An installed app takes updates from one repository only.** The feed is baked into the build by electron-builder, from the `publish:` block in [`electron-builder.yml`](electron-builder.yml), and nothing at runtime can move it. That is deliberate: the feed decides which installer the app will run, and until the binary is signed there is no signature to check it against. A development build *is* rewritable, through `SUNDAY_ROOM_UPDATE_SOURCE`, which is how the flow gets exercised against a fork before packaging. The reasoning is in [`docs/desktop-updates.md`](docs/desktop-updates.md).
 
 To sign the installer, set `CSC_LINK` and `CSC_KEY_PASSWORD` in the repository secrets. The workflow then fails if a certificate is configured but the installer comes out unsigned, so signing cannot stop working unnoticed. Today neither is set, and the workflow says so in its summary.
+
+A downloaded installer is checked against the `sha512` the published record names before it is run. That proves the bytes are the bytes the record names. It proves nothing about whether the release itself was legitimate, because the binary is still unsigned. Signing the Windows binary is the follow-up this makes more urgent.
 
 A downloaded installer is checked against the byte count and the `sha256` the release publishes before it is renamed into place and run. That proves the bytes are the bytes GitHub published. It proves nothing about whether the release itself was legitimate, because the installer is still unsigned. Signing the Windows binary is the follow-up this makes more urgent.
 
