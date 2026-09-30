@@ -17,6 +17,10 @@ let passed = false;
 try {
   await cp(unpackedPath, appPath, { recursive: true });
   assert.ok(existsSync(path.join(appPath, 'resources/server/node_modules/next/package.json')), 'Traced Next.js dependency is absent from packaged resources');
+  assert.ok(!existsSync(path.join(appPath, 'resources/server/dist-electron')),
+    'Packaged server resources must not embed a previous build output');
+  assert.ok(!existsSync(path.join(appPath, 'resources/server/work')),
+    'Packaged server resources must not embed local verification scratch');
   desktop = await electron.launch({
     executablePath,
     args: [`--user-data-dir=${path.join(scratch, 'profile')}`],
@@ -34,6 +38,17 @@ try {
   await page.getByRole('button', { name: 'Watch room' }).waitFor();
   assert.match(await page.title(), /Sunday Room/);
   assert.equal(await page.evaluate(() => typeof window.sundayDesktop), 'object');
+  // The bridge handshake. This file is plain node and cannot import the zod schema, so
+  // the assertion is structural: a nine-tag state and a command array.
+  assert.equal(await page.evaluate(() => typeof window.sundayDesktop.subscribe), 'function');
+  const updateStatus = await page.evaluate(() => window.sundayDesktop.get());
+  assert.ok(updateStatus && typeof updateStatus === 'object');
+  assert.ok(['unsupported', 'idle', 'checking', 'current', 'available', 'downloading', 'ready', 'installing', 'failed']
+    .includes(updateStatus.state.kind), `Unexpected update state: ${updateStatus.state.kind}`);
+  assert.ok(Array.isArray(updateStatus.commands), 'commands must be an array');
+  assert.ok(updateStatus.commands.every(command => ['check', 'download', 'cancel', 'install'].includes(command)));
+  assert.equal(typeof updateStatus.currentVersion, 'string');
+  assert.equal(typeof updateStatus.source.repo, 'string');
   const runtime = await desktop.evaluate(({ app }) => ({ packaged: app.isPackaged, resourcesPath: process.resourcesPath }));
   assert.equal(runtime.packaged, true);
   assert.equal(path.normalize(runtime.resourcesPath), path.normalize(path.join(path.dirname(executablePath), 'resources')));

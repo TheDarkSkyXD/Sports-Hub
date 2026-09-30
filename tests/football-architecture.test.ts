@@ -58,3 +58,13 @@ test('desktop and diagnostic scripts have explicit import boundaries', async () 
     ['tests/probe.ts','import "../lib/football/runtime/coordinator.ts";'],
   ]) assert.deepEqual(await boundaryMessages(path,source),[],`${path}: ${source}`);
 });
+
+test('the update contract is written twice and the boundary is what forces it', async () => {
+  // `desktop/update.cjs` holds its own copy of the union because a desktop module may
+  // not import `lib/`. `tests/desktop-update.test.ts` is what keeps that copy true.
+  assert.equal((await boundaryMessages('desktop/probe.cjs','require("../lib/desktop-update.ts");')).length,1);
+  assert.deepEqual(await boundaryMessages('desktop/probe.cjs','require("./update.cjs");'),[]);
+  assert.deepEqual(await boundaryMessages('tests/probe.ts','import "../desktop/update.cjs";'),[]);
+  assert.deepEqual(await boundaryMessages('components/probe.tsx','import "@/lib/desktop-update";'),[]);
+  assert.equal((await boundaryMessages('components/probe.tsx','import "@/lib/football/runtime/client";')).length,1);
+});

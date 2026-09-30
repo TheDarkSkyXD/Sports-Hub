@@ -1,11 +1,21 @@
-!ifndef BUILD_UNINSTALLER
 !include LogicLib.nsh
 
+!ifndef BUILD_UNINSTALLER
 InstallDir "$LOCALAPPDATA\Programs\${APP_FILENAME}"
 
 !macro customPageAfterChangeDir
   !undef MUI_PAGE_CUSTOMFUNCTION_PRE
   !define MUI_PAGE_CUSTOMFUNCTION_PRE ensureInstallDirectoryLeaf
+!macroend
+
+; The uninstaller rebuilds $INSTDIR from HKCU\${INSTALL_REGISTRY_KEY}\InstallLocation
+; and ignores the _?= path the installer passes to it. Without this value the
+; uninstaller falls back to the per-user default, so upgrading an install that
+; lives anywhere else removes nothing and the installer reports the old files
+; as still in place. Record the directory the user actually chose, after the
+; install section has settled $INSTDIR.
+!macro customInstall
+  WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation "$INSTDIR"
 !macroend
 
 !macro customHeader
