@@ -13,6 +13,12 @@ permissions:
 jobs:
   package:
     runs-on: windows-latest
+    env:
+      # A code-signing certificate, when one exists. Absent today; see
+      # docs/desktop-updates.md. Partially configured is an error, and configured but
+      # unsigned output is an error, so signing cannot quietly stop working.
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -31,6 +37,24 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run desktop:package
+      - name: Report the signing state of the installer
+        shell: pwsh
+        run: |
+          $configured = [bool]$env:CSC_LINK
+          if ($configured -ne [bool]$env:CSC_KEY_PASSWORD) {
+            throw 'CSC_LINK and CSC_KEY_PASSWORD must be set together. Neither is expected today; both are needed to sign.'
+          }
+          $installer = Get-ChildItem dist-electron -Filter '*-Setup-x64.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'No installer was produced.' }
+          $status = (Get-AuthenticodeSignature $installer.FullName).Status
+          $summary = "| artifact | signature |`n| --- | --- |`n| $($installer.Name) | $status |"
+          Add-Content $env:GITHUB_STEP_SUMMARY $summary
+          if ($configured -and $status -ne 'Valid') {
+            throw "A certificate is configured but the installer is '$status'. Refusing to publish it unsigned."
+          }
+          if (-not $configured) {
+            Write-Warning "UNSIGNED. The installer is not signed, so Windows will warn and the updater cannot verify it. See docs/desktop-updates.md."
+          }
       - run: node tests/installer-path.mjs
       - run: node tests/installer-instdir.mjs
       - run: npm run desktop:smoke
@@ -51,6 +75,10 @@ jobs:
         with:
           name: sunday-room-windows-installer
           path: installer
+      # Only the installer is published. electron-builder also writes `latest.yml` and a
+      # blockmap into the artifact, and the app deliberately reads neither: it queries the
+      # releases API and pins the asset by name, size, and sha256. Publishing a manifest
+      # nothing consults invites a later change to trust it. See docs/desktop-updates.md.
       - name: Create or update release installer
         env:
           GH_TOKEN: ${{ github.token }}
