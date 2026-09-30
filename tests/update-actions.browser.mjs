@@ -78,10 +78,8 @@ assert.equal(await settings.locator('#update-source-repo').count(), 0, 'and ther
 assert.equal(await settings.getByRole('button', { name: /Save source/i }).count(), 0, 'so nothing to save');
 assert.match(await settings.locator('.update-panel-source').innerText(), /checksum the published record carries/i,
   'and it says what the download check is actually worth');
-console.log('the panel shows the address it checks, and no field to change it');
-console.log('the source field refuses anything with no releases address, and the save button is coloured');
+console.log('the panel shows where updates come from, and cannot be pointed elsewhere');
 
-// The save button has to read as the action it performs.
 // The panel keeps the same one-click path to the changelog, and never prints it inline.
 assert.equal(await settings.locator('.update-panel-notes').count(), 0, 'the panel must not print the changelog either');
 
