@@ -25,6 +25,7 @@ const WorkflowSchema = z.object({
   jobs: z.object({
     package: z.object({ steps: z.array(z.object({
       uses: z.string().optional(),
+      run: z.string().optional(),
       with: z.record(z.unknown()).optional(),
     }).passthrough()) }),
     'prepare-release': z.object({ steps: z.array(z.object({
@@ -50,6 +51,11 @@ test('the release workflow uploads and publishes the installer and update record
     'dist-electron/Sunday-Room-*-Setup-x64.exe.blockmap',
     'dist-electron/latest.yml',
   ]);
+  const packageSteps = workflow.jobs.package.steps;
+  const packageIndex = packageSteps.findIndex(step => step.run === 'npm run desktop:package');
+  const recordCheckIndex = packageSteps.findIndex(step => step.run === 'node --experimental-strip-types --test tests/updater-feed.test.ts');
+  assert.ok(packageIndex >= 0 && recordCheckIndex > packageIndex,
+    'the packaged update record must be checked after packaging');
   const releaseSteps = workflow.jobs['prepare-release'].steps;
   assert.equal(releaseSteps.find(step => step.uses?.startsWith('actions/download-artifact@'))?.with?.name,
     uploadWith.name);
@@ -60,7 +66,7 @@ test('the release workflow uploads and publishes the installer and update record
   }
 });
 
-test('a packaged build produces the update record', { skip: !existsSync(path.join(root, 'dist-electron', 'latest.yml')) && 'run `npm run desktop:package` first' }, () => {
+test('a packaged build produces the update record', { skip: !existsSync(path.join(root, 'dist-electron', 'win-unpacked', 'resources', 'app.asar')) && 'run `npm run desktop:package` first' }, () => {
   const { version } = z.object({ version: z.string() }).parse(
     JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')),
   );

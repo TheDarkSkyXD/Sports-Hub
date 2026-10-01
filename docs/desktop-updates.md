@@ -23,10 +23,10 @@ that always resolves to the newest published release's assets.
 
 Being a URL rather than a baked `owner`/`repo` pair is what lets one wiring serve an
 installed build and a development one, and what lets the address be shown and, in
-development, changed. It also means nothing needs `resources/app-update.yml`;
-electron-builder infers a `github` config from the git remote and writes one anyway, but
-`setFeedURL` replaces the provider, so it is inert. The packaged app was verified starting
-with that file renamed away.
+development, changed. `electron-builder.yml` declares the same generic URL as its publish
+provider so packaging emits `latest.yml` and a blockmap. The runtime `setFeedURL` call
+selects the feed the app reads. `npm run desktop:package` passes `--publish never`, so
+packaging does not upload any assets.
 
 **A release must publish `latest.yml` and the blockmap.** Without `latest.yml`, the library
 cannot resolve an update. The workflow uploads the installer, `latest.yml`, and the blockmap
