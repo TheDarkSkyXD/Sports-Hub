@@ -184,6 +184,5 @@ main{padding:32px 36px 0;max-width:1920px;margin:auto}.eyebrow{font-size:10px;le
 .game-grid.quad>.game-tile{display:flex;flex-direction:column}
 .game-grid.quad>.game-tile>.tile-screen{flex-grow:1}
 .quad-empty{min-height:220px;aspect-ratio:auto;align-self:stretch}
-.drag-instructions{margin:-3px 0 12px;color:#9399a6;font-size:10px;line-height:1.5}
 .game-center.remove-hover{border-color:#ff937d;box-shadow:0 0 0 2px #ff624b66}
 .center-remove-cue{border:1px dashed #ff937d;border-radius:5px;background:#ff624b20;color:#ffc3b7;text-align:center;padding:11px;margin-bottom:12px;font-size:12px;font-weight:600}
