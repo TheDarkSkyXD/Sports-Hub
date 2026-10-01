@@ -57,6 +57,7 @@ win:
       arch:
         - x64
 nsis:
+  differentialPackage: false
   installerIcon: desktop/icons/sunday-room.ico
   uninstallerIcon: desktop/icons/sunday-room.ico
   oneClick: false

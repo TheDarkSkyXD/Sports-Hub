@@ -148,6 +148,7 @@ app.whenReady().then(async () => {
   // Nothing downloads until a person asks. `autoDownload=false` is what keeps a check from
   // pulling 120 MB the moment the app opens.
   updater.autoDownload=false;
+  updater.disableDifferentialDownload=true;
   // A downloaded update installs on quit, so closing the app after a download still lands
   // it. The explicit Install button is not the only path.
   updater.autoInstallOnAppQuit=true;

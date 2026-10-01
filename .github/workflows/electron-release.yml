@@ -62,11 +62,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: sunday-room-windows-installer
-          # `latest.yml` and the blockmap travel with the installer because they are the
-          # update record. A release that omits them leaves every installed copy stuck.
+          # The installer and `latest.yml` are both needed for installed copies to update.
           path: |
             dist-electron/Sunday-Room-*-Setup-x64.exe
-            dist-electron/Sunday-Room-*-Setup-x64.exe.blockmap
             dist-electron/latest.yml
           if-no-files-found: error
 
@@ -81,9 +79,8 @@ jobs:
         with:
           name: sunday-room-windows-installer
           path: installer
-      # `latest.yml` and the blockmap are the update record electron-updater reads, and a
-      # release without them is invisible to the app. The .exe alone would leave every
-      # installed copy stuck on whatever it shipped with.
+      # `latest.yml` names the installer electron-updater downloads. Both assets must be
+      # attached to the release for installed copies to update.
       - name: Create or update release installer
         env:
           GH_TOKEN: ${{ github.token }}
@@ -91,7 +88,7 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" installer/*.exe installer/*.exe.blockmap installer/latest.yml --clobber
+            gh release upload "$TAG_NAME" installer/*.exe installer/latest.yml --clobber
           else
-            gh release create "$TAG_NAME" installer/*.exe installer/*.exe.blockmap installer/latest.yml --draft --verify-tag --title "Sunday Room ${TAG_NAME#v}"
+            gh release create "$TAG_NAME" installer/*.exe installer/latest.yml --draft --verify-tag --title "Sunday Room ${TAG_NAME#v}"
           fi

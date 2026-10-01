@@ -38,6 +38,13 @@ const WorkflowSchema = z.object({
 const UploadWithSchema = z.object({
   name: z.string(), path: z.string(), 'if-no-files-found': z.string(),
 });
+const ReleaseRecordSchema = z.object({
+  version: z.string(),
+  files: z.array(z.object({ url: z.string(), sha512: z.string() })).nonempty(),
+  path: z.string(),
+  sha512: z.string(),
+});
+const releaseDir = process.env.SUNDAY_ROOM_RELEASE_DIR ?? path.join(root, 'dist-electron');
 
 test('the release workflow uploads and publishes the installer and update record', () => {
   const source = readFileSync(path.join(root, '.github', 'workflows', 'electron-release.yml'), 'utf8');
@@ -48,7 +55,6 @@ test('the release workflow uploads and publishes the installer and update record
   assert.equal(uploadWith['if-no-files-found'], 'error');
   assert.deepEqual(uploadWith.path.trim().split(/\s+/), [
     'dist-electron/Sunday-Room-*-Setup-x64.exe',
-    'dist-electron/Sunday-Room-*-Setup-x64.exe.blockmap',
     'dist-electron/latest.yml',
   ]);
   const packageSteps = workflow.jobs.package.steps;
@@ -61,25 +67,20 @@ test('the release workflow uploads and publishes the installer and update record
     uploadWith.name);
   const publish = releaseSteps.find(step => step.run?.includes('gh release create'))?.run;
   assert.ok(publish);
-  for (const asset of ['installer/*.exe', 'installer/*.exe.blockmap', 'installer/latest.yml']) {
+  for (const asset of ['installer/*.exe', 'installer/latest.yml']) {
     assert.ok(publish.includes(asset), `${asset} must be attached to the release`);
   }
+  assert.doesNotMatch(publish, /\.blockmap\b/);
 });
 
-test('a packaged build produces the update record', { skip: !existsSync(path.join(root, 'dist-electron', 'win-unpacked', 'resources', 'app.asar')) && 'run `npm run desktop:package` first' }, () => {
+test('a packaged build produces an update record and installer without a blockmap', { skip: !existsSync(path.join(releaseDir, 'win-unpacked', 'resources', 'app.asar')) && 'run `npm run desktop:package` first' }, () => {
   const { version } = z.object({ version: z.string() }).parse(
     JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')),
   );
-  const record = z.object({
-    version: z.string(),
-    path: z.string(),
-    sha512: z.string(),
-    files: z.array(z.object({ url: z.string(), sha512: z.string(), size: z.number().positive() })).nonempty(),
-  }).parse(yaml.load(readFileSync(path.join(root, 'dist-electron', 'latest.yml'), 'utf8')));
-  const installer = `Sunday-Room-${version}-Setup-x64.exe`;
+  const record = ReleaseRecordSchema.parse(yaml.load(readFileSync(path.join(releaseDir, 'latest.yml'), 'utf8')));
   assert.equal(record.version, version);
-  assert.equal(record.path, installer);
-  assert.ok(record.files.some(file => file.url === installer && file.sha512 === record.sha512));
-  assert.ok(existsSync(path.join(root, 'dist-electron', installer)), 'latest.yml must name the packaged installer');
-  assert.ok(existsSync(path.join(root, 'dist-electron', `${installer}.blockmap`)), 'the installer must have a blockmap');
+  assert.equal(record.path, `Sunday-Room-${version}-Setup-x64.exe`);
+  assert.ok(record.files.some(file => file.url === record.path && file.sha512 === record.sha512));
+  assert.ok(existsSync(path.join(releaseDir, record.path)), `${record.path} must exist`);
+  assert.ok(!existsSync(path.join(releaseDir, `${record.path}.blockmap`)), `${record.path}.blockmap must be absent`);
 });
