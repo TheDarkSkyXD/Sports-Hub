@@ -31,11 +31,13 @@ test('missing requested resolution falls back below, then to the lowest above', 
   assert.equal(chooseDefaultLevel({ preference: '360', levels: [levels[0], levels[2], levels[3]] }), 3);
 });
 
-test('unknown heights are ignored and cannot create a selectable quality', () => {
+test('highest available uses bitrate when every rendition has unknown height', () => {
   const unknown = [{ index: 0, height: 0, bitrate: 10_000_000 }, { index: 1, height: NaN, bitrate: 20_000_000 }];
   assert.equal(chooseDefaultLevel({ preference: 'best', levels: [] }), -1);
-  assert.equal(chooseDefaultLevel({ preference: 'best', levels: unknown }), -1);
+  assert.equal(chooseDefaultLevel({ preference: 'best', levels: unknown }), 1);
   assert.equal(chooseDefaultLevel({ preference: '720', levels: [unknown[0], levels[3]] }), 3);
+  assert.equal(chooseDefaultLevel({ preference: '720', levels: unknown }), -1);
+  assert.equal(chooseDefaultLevel({ preference: 'best', levels: [{ index: 0, height: 0, bitrate: 0 }, { index: 1, height: NaN, bitrate: NaN }] }), -1);
 });
 
 test('same-height variants prefer valid higher bitrate, then original index', () => {
