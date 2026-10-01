@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright';
@@ -10,13 +10,12 @@ const unpackedPath = path.resolve('dist-electron/win-unpacked');
 assert.ok(existsSync(path.join(unpackedPath, 'Sunday Room.exe')), `Missing packaged app: ${unpackedPath}`);
 
 const scratch = await mkdtemp(path.join(tmpdir(), 'sunday-room-packaged-'));
-const appPath = path.join(scratch, 'app');
+const appPath = unpackedPath;
 const executablePath = path.join(appPath, 'Sunday Room.exe');
 let desktop;
 let origin;
 let passed = false;
 try {
-  await cp(unpackedPath, appPath, { recursive: true });
   assert.ok(existsSync(path.join(appPath, 'resources/server/node_modules/next/package.json')), 'Traced Next.js dependency is absent from packaged resources');
   assert.ok(!existsSync(path.join(appPath, 'resources/server/dist-electron')),
     'Packaged server resources must not embed a previous build output');
@@ -112,9 +111,12 @@ assert.equal(updateStatus.preferences.autoCheckEnabled, true,
   'an installed app checks in the background by default');
 assert.ok(['hourly', 'daily', 'weekly'].includes(updateStatus.preferences.checkFrequency),
   `the schedule must be a preset, got: ${updateStatus.preferences.checkFrequency}`);
-  const runtime = await desktop.evaluate(({ app }) => ({ packaged: app.isPackaged, resourcesPath: process.resourcesPath }));
+  const runtime = await desktop.evaluate(({ app }) => ({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, executablePath: process.execPath }));
   assert.equal(runtime.packaged, true);
+  assert.equal(path.normalize(runtime.executablePath), path.join(unpackedPath, 'Sunday Room.exe'),
+    'Packaged verification must reuse the build executable instead of launching a new Temp copy');
   assert.equal(path.normalize(runtime.resourcesPath), path.normalize(path.join(path.dirname(executablePath), 'resources')));
+  console.log(`Packaged verification executable: ${runtime.executablePath}`);
 
   origin = new URL(page.url()).origin;
   const staticAsset = await page.locator('script[src^="/_next/static/"]').first().getAttribute('src');
@@ -144,6 +146,10 @@ assert.ok(['hourly', 'daily', 'weekly'].includes(updateStatus.preferences.checkF
     }
     assert.ok(stopped, 'Local server remained open after the desktop app closed');
   }
-  if (passed) await rm(scratch, { recursive: true, force: true });
+  if (passed) {
+    assert.equal(path.dirname(scratch), path.resolve(tmpdir()));
+    assert.match(path.basename(scratch), /^sunday-room-packaged-/);
+    await rm(scratch, { recursive: true, force: true });
+  }
   else console.error(`Packaged app profile retained at ${scratch}`);
 }
