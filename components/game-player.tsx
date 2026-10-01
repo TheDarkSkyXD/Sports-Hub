@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'rea
 import Hls from 'hls.js';
 import { Popover } from 'radix-ui';
 import { AlertCircle, LoaderCircle, Maximize, Minimize, Pause, PictureInPicture2, Play, Radio, RotateCcw, Settings2, Volume2, VolumeX } from 'lucide-react';
-import { chooseDefaultLevel, type QualityPreference } from '@/lib/playback-quality';
+import { chooseDefaultLevel, type QualityLevel, type QualityPreference } from '@/lib/playback-quality';
 import type { Feed } from '@/lib/sunday';
 
 type Status = 'loading' | 'ready' | 'buffering' | 'error' | 'gesture' | 'audio-gesture' | 'ended';
@@ -39,6 +39,8 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
   const ref = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const preferenceRef = useRef(defaultQuality);
+  const applyDefaultRef = useRef<(() => void) | null>(null);
+  const manualQualityRef = useRef(false);
   const sourceGeneration = useRef(0);
   const needsGesture = useRef(false);
   const pointerTimer = useRef<number | null>(null);
@@ -67,11 +69,8 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
   useEffect(() => { callbacks.current = { onFatal, onEnded, onPlayingChange, onAudibleChange, onVolumeChange }; }, [onFatal, onEnded, onPlayingChange, onAudibleChange, onVolumeChange]);
   useEffect(() => {
     preferenceRef.current = defaultQuality;
-    const hls = hlsRef.current;
-    if (!hls || hls.levels.length === 0) return;
-    const index = chooseDefaultLevel({ preference: defaultQuality, levels: hls.levels.map((level, index) => ({ index, height: level.height, bitrate: level.bitrate })) });
-    hls.nextLevel = index;
-    setQuality(index);
+    manualQualityRef.current = false;
+    applyDefaultRef.current?.();
   }, [defaultQuality]);
 
   const updateTimeline = useCallback(() => {
@@ -157,14 +156,28 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     }, 2000);
     let hls: Hls | null = null;
     let decodedHeight: number | null = null;
+    let qualityLevels: QualityLevel[] = [];
+    manualQualityRef.current = false;
+    const applyDefault = () => {
+      if (!active || !hls || manualQualityRef.current || qualityLevels.length === 0) return;
+      const index = chooseDefaultLevel({ preference: preferenceRef.current, levels: qualityLevels });
+      hls.nextLevel = index;
+      setQuality(index);
+    };
+    applyDefaultRef.current = applyDefault;
     const refreshQualities = () => {
       if (!active || !hls) return;
       const singleLevel = hls.levels.length === 1;
-      setQualities(hls.levels.map((level, index) => {
-        const height = Number.isFinite(level.height) && level.height > 0 ? level.height : singleLevel ? decodedHeight : null;
-        const bitrateKbps = Number.isFinite(level.bitrate) && level.bitrate > 0 ? Math.round(level.bitrate / 1000) : 0;
+      qualityLevels = hls.levels.map((level, index) => ({
+        index,
+        height: Number.isFinite(level.height) && level.height > 0 ? level.height : singleLevel ? decodedHeight ?? 0 : 0,
+        bitrate: Number.isFinite(level.bitrate) && level.bitrate > 0 ? level.bitrate : 0,
+      }));
+      setQualities(qualityLevels.map(level => {
+        const height = level.height;
+        const bitrateKbps = level.bitrate > 0 ? Math.round(level.bitrate / 1000) : 0;
         const label = height ? `${height}p${bitrateKbps > 0 ? ` · ${bitrateKbps} kbps` : ''}` : bitrateKbps > 0 ? `${bitrateKbps} kbps` : 'Quality unavailable';
-        return { index, label };
+        return { index: level.index, label };
       }));
     };
     const onVideoDimensions = () => {
@@ -172,7 +185,9 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       metadataLoaded = true;
       decodedHeight = Number.isFinite(video.videoHeight) && video.videoHeight > 0 ? video.videoHeight : null;
       if (!hls) setNativeHeight(decodedHeight);
+      const previousHeight = qualityLevels[0]?.height;
       refreshQualities();
+      if (manifestParsed && hls?.levels.length === 1 && qualityLevels[0]?.height !== previousHeight) applyDefault();
     };
     video.addEventListener('loadedmetadata', onVideoDimensions);
     video.addEventListener('resize', onVideoDimensions);
@@ -186,9 +201,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
         if (!active || !hls) return;
         manifestParsed = true;
         refreshQualities();
-        const index = chooseDefaultLevel({ preference: preferenceRef.current, levels: hls.levels.map((level, index) => ({ index, height: level.height, bitrate: level.bitrate })) });
-        hls.nextLevel = index;
-        setQuality(index);
+        applyDefault();
         setUsesHls(true);
       });
       hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => { if (active) { liveRef.current = data.details.live; setSyncPosition(hls?.liveSyncPosition ?? null); updateTimeline(); } });
@@ -206,6 +219,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       window.clearTimeout(reset);
       hls?.destroy();
       if (hlsRef.current === hls) hlsRef.current = null;
+      if (applyDefaultRef.current === applyDefault) applyDefaultRef.current = null;
       video.pause();
       video.removeEventListener('playing', ready); video.removeEventListener('loadeddata', loaded);
       video.removeEventListener('error', error); video.removeEventListener('ended', ended);
@@ -338,7 +352,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     if (!video || !document.pictureInPictureEnabled) return;
     try { if (document.pictureInPictureElement === video) await document.exitPictureInPicture(); else await video.requestPictureInPicture(); } catch { setNotice('Picture in picture is unavailable for this stream.'); }
   };
-  const chooseQuality = (index: number) => { if (hlsRef.current) { hlsRef.current.currentLevel = index; setQuality(index); } setSettings(false); };
+  const chooseQuality = (index: number) => { if (hlsRef.current) { manualQualityRef.current = true; hlsRef.current.currentLevel = index; setQuality(index); } setSettings(false); };
   const enablePlayback = () => {
     const video = ref.current; if (!video) return;
     const generation = sourceGeneration.current;
