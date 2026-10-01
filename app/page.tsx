@@ -27,7 +27,7 @@ const STORAGE = 'sunday-room:v1';
 const EMPTY_GAMES: Game[] = [];
 const layouts: { id: Layout; label: string; icon: typeof Grid2X2 }[] = [{ id:'quad', label:'Four games', icon:Grid2X2 }, { id:'focus', label:'Focus view', icon:LayoutPanelLeft }, { id:'duo', label:'Two games', icon:Columns2 }, { id:'single', label:'Single game', icon:Monitor }];
 function Badge({ team, large = false }: { team: Team; large?: boolean }) { const [failed,setFailed]=useState(false); return <span className={`team-badge ${large?'large':''}`} style={{'--team':`#${team.color}`} as React.CSSProperties}>{team.logo&&!failed ? <Image src={team.logo} alt="" width={large?56:32} height={large?56:32} unoptimized onError={()=>setFailed(true)}/> : team.abbreviation}</span>; }
-function GameStatus({ game }: { game: Game }) { return <span className={`game-status ${game.status}`}><i/>{game.detail}</span>; }
+function GameStatus({ game }: { game: Game }) { return game.detail==='Scheduled' ? null : <span className={`game-status ${game.status}`}><i/>{game.detail}</span>; }
 function score(team: Team, game: Game, hide: boolean) { return hide ? '—' : game.status==='pre' ? '—' : team.score ?? '—'; }
 
 export default function Home() {
