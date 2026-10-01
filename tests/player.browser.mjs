@@ -48,10 +48,12 @@ const desktopPage = desktopApp ? await desktopApp.firstWindow() : null;
 if (desktopPage) {
   await desktopPage.waitForURL(/^http:\/\/127\.0\.0\.1:/);
   origin = new URL(desktopPage.url()).origin;
-  await desktopApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach(window => {
+  const window = await desktopApp.browserWindow(desktopPage);
+  await window.evaluate(window => {
     window.webContents.setBackgroundThrottling(false);
     window.showInactive();
-  }));
+  });
+  await window.dispose();
 }
 const browser = desktopApp ? null : await chromium.launch({
   channel: process.env.PLAYER_BROWSER_CHANNEL || (process.platform === 'win32' ? 'msedge' : undefined),

@@ -53,10 +53,16 @@ try {
   const page = await desktop.firstWindow();
   page.setDefaultTimeout(15000);
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:/);
-  await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach(window => {
+  const hiddenWindow = await desktop.evaluateHandle(({ BrowserWindow }) => new BrowserWindow({ show: false }));
+  const window = await desktop.browserWindow(page);
+  await window.evaluate(window => {
     window.webContents.setBackgroundThrottling(false);
     window.showInactive();
-  }));
+  });
+  assert.equal(await window.evaluate(window => window.isVisible()), true);
+  await window.dispose();
+  assert.equal(await hiddenWindow.evaluate(window => window.isVisible()), false,
+    'Preparing the game window must keep background collector windows hidden.');
   page.on('pageerror', error => errors.push(error.message));
   const context = desktop.context();
   await context.route('**/api/games', route => route.fulfill({ json: {
@@ -216,6 +222,9 @@ try {
   assert.equal(await tile(5).locator('video').count(), 0);
   assert.equal(opens.some(open => open.gameId === games[5].id), false);
   assert.deepEqual(errors, []);
+  assert.equal(await hiddenWindow.evaluate(window => window.isVisible()), false,
+    'Background collector windows must stay hidden throughout the test.');
+  await hiddenWindow.dispose();
   console.log('Electron keeps final games informational and reports no runtime errors.');
 } finally {
   await desktop?.close();
