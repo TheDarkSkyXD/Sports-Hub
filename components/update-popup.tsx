@@ -118,7 +118,7 @@ export function UpdatePopup() {
       <span>{state.percent}%</span></div>}
     {failed && state.kind === 'failed' && state.detail && <p className="update-popup-error" role="alert">{state.detail}</p>}
     <div className="update-popup-actions">
-      {advance && <button className="button primary" type="button" disabled={busy || downloading} onClick={()=>run(advance)}><Icon size={14}/>{advanceText}</button>}
+      {advance && <button className="button primary" type="button" disabled={busy || downloading} onClick={()=>run(advance)}><Icon size={14} strokeWidth={3}/>{advanceText}</button>}
       <button className="button update-popup-later" type="button" onClick={dismiss}>Dismiss</button>
     </div>
     {error && <p className="update-popup-error" role="alert">{error}</p>}
