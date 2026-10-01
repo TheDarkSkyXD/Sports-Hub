@@ -1,6 +1,9 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
+@source "./";
+@source "../components";
+@source "../lib";
 
 .source-inventory{border-top:1px solid #353a44;padding-top:18px;display:flex;flex-direction:column;gap:10px}
 .settings-dialog{width:min(900px,calc(100vw - 32px))!important;max-width:min(900px,calc(100vw - 32px))!important}
