@@ -112,7 +112,7 @@ export function UpdatePopup() {
     <div className="update-popup-heading">
       <p className="update-popup-eyebrow">{state.kind === 'checking' ? 'Checking for updates' : 'Update available'}</p>
       <h2>Sunday Room {release.version}</h2>
-      <p className="update-popup-versions">You have {status.currentVersion}</p>
+      <p className="update-popup-versions">Current version: {status.currentVersion}</p>
     </div>
     {state.kind === 'downloading' && <div className="update-popup-progress"><Progress value={state.percent} max={100} aria-label="Update download progress"/>
       <span>{state.percent}%</span></div>}

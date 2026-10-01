@@ -154,13 +154,13 @@ main{padding:32px 36px 0;max-width:1920px;margin:auto}.eyebrow{font-size:10px;le
 .update-popup-dismiss:hover{background:#2b2f38;color:#dfe2e9}
 .update-popup-eyebrow{font-size:10px;letter-spacing:1.1px;font-weight:600;text-transform:uppercase;color:#ff8d76;margin:0}
 .update-popup-heading h2{font-size:17px;font-weight:600;letter-spacing:-.4px;margin:5px 0 0;color:#f0f1f5;padding-right:26px}
-.update-popup-versions{font-size:11px;color:#8b93a3;margin:4px 0 0;font-variant-numeric:tabular-nums}
+.update-popup-versions{font-size:14px;color:#d8dde7;font-weight:500;margin:6px 0 0;font-variant-numeric:tabular-nums}
 .update-popup-progress{display:flex;align-items:center;gap:10px}
 .update-popup-progress span{font-size:11px;color:#a2aab8;white-space:nowrap;font-variant-numeric:tabular-nums}
 .update-popup-actions{display:flex;flex-wrap:wrap;gap:8px}
 .update-popup-actions button{font-size:12px;min-height:34px;padding:8px 12px}
-.update-popup-actions .button.primary{font-size:14px;font-weight:700;min-height:40px;padding:10px 14px;background:#ff806c;border-color:#ff806c;color:#131316}
-.update-popup-actions .button.primary:not(:disabled):hover{background:#ff9b89;border-color:#ff9b89;color:#131316}
+.update-popup-actions .button.primary{font-size:14px;font-weight:700;min-height:40px;padding:10px 14px;background:#b93829;border-color:#b93829;color:#ffffff}
+.update-popup-actions .button.primary:not(:disabled):hover{background:#a93024;border-color:#a93024;color:#ffffff}
 .update-popup-actions .button.primary:focus-visible{outline:2px solid #ffac9b;outline-offset:2px}
 .update-popup-actions .button.primary:disabled{opacity:.8}
 .update-popup-actions .button.update-popup-later{background:#303641;color:#f0f1f5;border:1px solid #687486;font-weight:600;min-height:38px;font-size:13px}
