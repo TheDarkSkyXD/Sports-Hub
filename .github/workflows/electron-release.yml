@@ -58,15 +58,15 @@ jobs:
       - run: node tests/installer-path.mjs
       - run: node tests/installer-instdir.mjs
       - run: npm run desktop:smoke
-        - uses: actions/upload-artifact@v7
-          with:
-            name: sunday-room-windows-installer
-            # `latest.yml` and the blockmap travel with the installer because they are the
-            # update record. A release that omits them leaves every installed copy stuck.
-            path: |
-              dist-electron/Sunday-Room-*-Setup-x64.exe
-              dist-electron/Sunday-Room-*-Setup-x64.exe.blockmap
-              dist-electron/latest.yml
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sunday-room-windows-installer
+          # `latest.yml` and the blockmap travel with the installer because they are the
+          # update record. A release that omits them leaves every installed copy stuck.
+          path: |
+            dist-electron/Sunday-Room-*-Setup-x64.exe
+            dist-electron/Sunday-Room-*-Setup-x64.exe.blockmap
+            dist-electron/latest.yml
           if-no-files-found: error
 
   prepare-release:

@@ -27,6 +27,10 @@ const failureReasons = Object.freeze(['offline', 'rate-limited', 'unavailable', 
 // lets the same wiring serve an installed build and a development one.
 const defaultUpdateFeedUrl = 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download';
 const feedUrlPattern = /^https:\/\/github\.com\/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38})\/[A-Za-z0-9._-]{1,100}\/releases\/latest\/download$/;
+function selectUpdateFeedUrl(isPackaged, source) {
+  const candidate = typeof source === 'string' ? source.trim() : '';
+  return !isPackaged && feedUrlPattern.test(candidate) ? candidate : defaultUpdateFeedUrl;
+}
 const retryEntry = Object.freeze({ check: 'idle', download: 'available', install: 'ready' });
 
 // The releases page a reader can open for this feed, and for a given tag.
@@ -48,6 +52,9 @@ function describe(error) {
 function classify(error) {
   const code = typeof error?.code === 'string' ? error.code : '';
   const message = describe(error);
+  if (code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND') {
+    return { reason: 'unavailable', detail: 'The published release is missing its update record.', retry: undefined };
+  }
   if (/ERR_UPDATER_LATEST_VERSION_NOT_FOUND|ERR_UPDATER_NO_PUBLISHED_VERSIONS|ERR_UPDATER_CHANNEL_DOES_NOT_EXIST/.test(code)) {
     return { reason: 'unavailable', detail: 'This source has no published release to install yet.', retry: undefined };
   }
@@ -116,7 +123,10 @@ const outcomeRows = {
   downloading: {
     // electron-updater reports a percentage rather than bytes, and the total it knows is
     // the file size from the published record. The progress bar is the whole story here.
-    ':progress': (state, event) => ({ ...state, percent: Math.min(100, Math.max(0, Number(event.percent) || 0)) }),
+    ':progress': (state, event) => ({
+      ...state,
+      percent: Math.round(Math.min(100, Math.max(0, Number(event.percent) || 0)) * 10) / 10,
+    }),
     ':downloaded': (state, event) => ({ kind: 'ready', release: state.release, verifiedAt: event.at }),
   },
 };
@@ -221,6 +231,8 @@ function createUpdateService(deps) {
   let stopped = false;
   let currentFeed = feedUrl;
   let scheduler = null;
+  let stopListening = null;
+  let restoreAutoCheckTimestamp = null;
 
   // The source decides which installer this app will run, and the binary is unsigned, so
   // there is no signature to check that installer against. An installed build therefore
@@ -301,7 +313,8 @@ function createUpdateService(deps) {
     // record, so there is nothing to retry.
     const choice = classified.retry === null ? null : retry;
     log(`update: ${describe(error)}`);
-    apply({ type: ':failed', reason: classified.reason, retry: choice, detail: classified.detail });
+    apply({ type: ':failed', reason: retry === 'install' ? 'install' : classified.reason,
+      retry: choice, detail: retry === 'install' ? 'The installer could not be started.' : classified.detail });
   }
 
   function beginCheck(automatic = false) {
@@ -323,19 +336,24 @@ function createUpdateService(deps) {
     // No in-flight flag: the table already refuses a check from `checking`, so a second
     // press while one is running is free without a second source of truth.
     if (!apply({ type: 'check' })) { restoreTimestamp(); return; }
+    restoreAutoCheckTimestamp = automatic ? restoreTimestamp : null;
     let result = null;
     try {
       result = updater.checkForUpdates();
     } catch (error) {
-      restoreTimestamp();
-      fail(error, 'check');
+      if (state?.kind === 'checking') {
+        restoreAutoCheckTimestamp?.();
+        restoreAutoCheckTimestamp = null;
+        fail(error, 'check');
+      }
       return;
     }
     // The events own the outcome. This only stops an unhandled rejection when the library
     // reports through `error` instead of rejecting.
     Promise.resolve(result).catch(error => {
       if (state?.kind !== 'checking') return;
-      restoreTimestamp();
+      restoreAutoCheckTimestamp?.();
+      restoreAutoCheckTimestamp = null;
       fail(error, 'check');
     });
   }
@@ -371,23 +389,35 @@ function createUpdateService(deps) {
       on('checking-for-update', () => { if (state?.kind !== 'checking') apply({ type: 'check' }); }),
       on('update-available', info => {
         const release = toRelease(info);
-        if (!release) { apply({ type: ':failed', reason: 'malformed', retry: null, detail: 'The published release could not be read.' }); return; }
+        if (!release) {
+          restoreAutoCheckTimestamp?.();
+          restoreAutoCheckTimestamp = null;
+          apply({ type: ':failed', reason: 'malformed', retry: null, detail: 'The published release could not be read.' });
+          return;
+        }
         // A check that succeeded records its time whether or not it found something, or
         // a pending update would make every launch ask again.
         persisted.lastCheckedAt = now();
         writePersisted();
+        restoreAutoCheckTimestamp = null;
         apply({ type: ':checked', release });
       }),
       on('update-not-available', () => {
         persisted.lastCheckedAt = now();
         writePersisted();
+        restoreAutoCheckTimestamp = null;
         apply({ type: ':checked', release: null });
       }),
       on('download-progress', progress => apply({ type: ':progress', percent: progress?.percent })),
       on('update-downloaded', () => apply({ type: ':downloaded' })),
       on('error', error => {
         // A failure during a download is retryable as a download; during a check, as a check.
-        const retry = state?.kind === 'downloading' ? 'download' : 'check';
+        const retry = state?.kind === 'downloading' ? 'download'
+          : state?.kind === 'installing' ? 'install' : 'check';
+        if (state?.kind === 'checking') {
+          restoreAutoCheckTimestamp?.();
+          restoreAutoCheckTimestamp = null;
+        }
         fail(error, retry);
       }),
     ];
@@ -442,7 +472,8 @@ function createUpdateService(deps) {
       // The table already refuses these, but the download and install paths are the ones
       // that write to the machine and run a binary, so they are checked again here. A
       // development build must never reach them, whatever the state says.
-      if (command !== 'get' && command !== 'setSource' && allowedCommand && !allowedCommand(command)) {
+      if (command !== 'get' && command !== 'setSource' && command !== 'setPreferences'
+        && allowedCommand && !allowedCommand(command)) {
         return refuse('unavailable', 'Installing an update runs only in the installed Windows app.');
       }
       if (command !== 'get' && !validArgument(command, value)) {
@@ -459,11 +490,13 @@ function createUpdateService(deps) {
       if (command === 'check') beginCheck();
       else if (command === 'download') beginDownload();
       else if (command === 'install') {
-        if (state?.kind !== 'ready') return snapshot();
         // Silent with a forced relaunch, which is what an in-app update means. The library
         // passes `/D=` last and unquoted, which is what `desktop/installer.nsh` needs to
         // restore the install directory.
-        if (apply({ type: 'install' })) updater.quitAndInstall(true, true);
+        if (apply({ type: 'install' })) {
+          try { updater.quitAndInstall(true, true); }
+          catch (error) { fail(error, 'install'); }
+        }
       }
       return snapshot();
     };
@@ -492,6 +525,7 @@ function createUpdateService(deps) {
       scheduler = null;
       stopListening?.();
       stopListening = null;
+      restoreAutoCheckTimestamp = null;
       state = null;
     },
   };
@@ -503,6 +537,7 @@ module.exports = {
   updateCommands,
   failureReasons,
   defaultUpdateFeedUrl,
+  selectUpdateFeedUrl,
   feedUrlPattern,
   releasesPageUrl,
   reduce,

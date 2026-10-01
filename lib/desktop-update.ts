@@ -50,13 +50,14 @@ export function parseUpdateFeedUrl(input: string): UpdateFeedUrl | null {
   if (/(?:^|\/)\.\.?(?:\/|$)/.test(raw) || /%2e/i.test(raw) || raw.includes('\\')) return null;
   // An empty segment is refused rather than dropped: dropping `//name/...` would read
   // `name` as the owner, which is a different repository than the one pasted.
-  const segments = url.pathname.split('/').slice(1);
+  const pathname = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
+  const segments = pathname.split('/').slice(1);
   if (segments.some(segment => segment === '')) return null;
-  const parts = segments.filter(Boolean);
-  if (parts.length !== 4) return null;
-  if (parts[2] !== 'releases' || parts[3] !== 'download') return null;
-  const canonical = `https://github.com/${parts[0]}/${parts[1]}/releases/latest/download`;
-  return updateFeedUrlPattern.test(canonical) ? canonical as UpdateFeedUrl : null;
+  if (segments.length !== 5) return null;
+  if (segments[2] !== 'releases' || segments[3] !== 'latest' || segments[4] !== 'download') return null;
+  const canonical = `https://github.com/${segments[0]}/${segments[1]}/releases/latest/download`;
+  const parsed = UpdateFeedUrlSchema.safeParse(canonical);
+  return parsed.success ? parsed.data : null;
 }
 
 export const ReleaseInfoSchema = z.object({
@@ -81,7 +82,7 @@ export const UpdateStateSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('available'), release: ReleaseInfoSchema, lastCheckedAt: z.number().int().nonnegative() }),
   // electron-updater reports a percentage, not a byte count, and exposes no total, so the
   // progress bar is driven by the percentage alone.
-  z.object({ kind: z.literal('downloading'), release: ReleaseInfoSchema, percent: z.number().int().nonnegative() }),
+  z.object({ kind: z.literal('downloading'), release: ReleaseInfoSchema, percent: z.number().nonnegative().max(100) }),
   z.object({ kind: z.literal('ready'), release: ReleaseInfoSchema, verifiedAt: z.number().int().nonnegative() }),
   z.object({ kind: z.literal('installing'), release: ReleaseInfoSchema }),
   z.object({ kind: z.literal('failed'), reason: FailureReasonSchema, detail: z.string(), retry: RetrySchema, release: ReleaseInfoSchema.nullable() }),

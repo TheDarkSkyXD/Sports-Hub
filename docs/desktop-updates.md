@@ -6,9 +6,10 @@ one of them.
 
 ## The check
 
-The app is built on `electron-updater`. `desktop/main.cjs` constructs an `NsisUpdater` and
-`desktop/update.cjs` wires its events to the state machine the UI already speaks, so the
-library owns the transfer and the checksum while this repo owns the vocabulary.
+The app uses [StreamFusion's updater flow](https://github.com/TheDarkSkyXD/StreamFusion/blob/main/apps/desktop/src/backend/features/settings/adapters/electron/update-service.ts): a generic GitHub release feed,
+manual downloads, and installation on quit. `desktop/main.cjs` constructs an `NsisUpdater`.
+`desktop/update.cjs` maps its events to the state machine the UI already uses. The library
+owns the transfer and checksum check.
 
 The feed is a **plain URL**, not a provider:
 
@@ -27,9 +28,11 @@ electron-builder infers a `github` config from the git remote and writes one any
 `setFeedURL` replaces the provider, so it is inert. The packaged app was verified starting
 with that file renamed away.
 
-**A release must publish `latest.yml` and the blockmap.** Without them the library cannot
-resolve an update at all, and every installed copy stays where it is. The workflow uploads
-all three. A release published before this has none, so it is invisible until the next one.
+**A release must publish `latest.yml` and the blockmap.** Without `latest.yml`, the library
+cannot resolve an update. The workflow uploads the installer, `latest.yml`, and the blockmap
+as one artifact, then attaches them to the draft release. The existing `v1.0.2` release has
+only the installer, so installed copies cannot update from it. A later published release
+needs all three assets.
 
 A downloaded installer is checked against the `sha512` in `latest.yml`. That proves the
 bytes are the bytes the record names. It proves nothing about whether the release itself
@@ -60,10 +63,9 @@ when the interval has elapsed, and then every fifteen minutes to look — the in
 decides when to ask, the tick only decides when to look. `hourly`, `daily` (the default) or
 `weekly`, with a one-hour floor so nothing can drive it below that.
 
-StreamFusion checks once at startup and never polls. That is right when the app is short-lived
-and wrong for a viewer someone leaves open all day: a release published that morning would
-not be mentioned until the next launch. The schedule is on by default and toggleable in
-settings, because an updater nobody hears from is not one.
+StreamFusion checks once at startup when its saved interval has elapsed. Sunday Room also
+checks while it stays open, so a release published during a long viewing session can appear
+without a restart. The schedule is on by default and can be turned off in settings.
 
 A failed automatic check restores the previous timestamp, so one bad network moment does
 not block retries for a whole interval.

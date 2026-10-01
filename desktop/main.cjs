@@ -7,7 +7,7 @@ const { createLocalServer } = require('./local-server.cjs');
 const { createSportsurgeCollector } = require('./sportsurge-collector.cjs');
 const { createSportsurgeObserver } = require('./sportsurge-observer.cjs');
 const { createStreameastCollector } = require('./streameast-collector.cjs');
-const { CH, createUpdateService, defaultUpdateFeedUrl } = require('./update.cjs');
+const { CH, createUpdateService, selectUpdateFeedUrl } = require('./update.cjs');
 const { NsisUpdater } = require('electron-updater');
 
 app.setName('Sunday Room');
@@ -142,6 +142,9 @@ app.whenReady().then(async () => {
   win.on('closed',() => { win=undefined; app.quit(); });
   powerMonitor.on('resume',() => { if (!teardown) { void localServer?.checkNow(); sportsurgeCollector?.requestSweep(); streameastCollector?.requestSweep(); } });
   const updater=new NsisUpdater();
+  const currentVersion=app.isPackaged?app.getVersion():packagedVersion();
+  // An unpackaged Electron process reports Electron's version to NsisUpdater.
+  if (!app.isPackaged) updater.currentVersion=new updater.currentVersion.constructor(currentVersion);
   // Nothing downloads until a person asks. `autoDownload=false` is what keeps a check from
   // pulling 120 MB the moment the app opens.
   updater.autoDownload=false;
@@ -153,16 +156,12 @@ app.whenReady().then(async () => {
   // without `/D=`, and `desktop/installer.nsh` cannot restore the install directory, so
   // the next launch looks like a fresh install.
   updater.installDirectory=path.dirname(process.execPath);
-  // The feed is a plain HTTPS URL rather than a `github` provider with owner and repo baked
-  // in, so the same wiring serves an installed build and a development one, and the address
-  // can be changed without repackaging. `releases/latest/download` is the GitHub path that
-  // resolves to the newest published release's assets.
-  const feedUrl=process.env.SUNDAY_ROOM_UPDATE_SOURCE||defaultUpdateFeedUrl;
+  const feedUrl=selectUpdateFeedUrl(app.isPackaged,process.env.SUNDAY_ROOM_UPDATE_SOURCE);
   if (!app.isPackaged) configureDevelopmentUpdater(updater,feedUrl);
   else updater.setFeedURL({ provider:'generic', url:feedUrl });
   update=createUpdateService({
-    currentVersion:app.isPackaged?app.getVersion():packagedVersion(),userDataDir:app.getPath('userData'),
-    isPackaged:app.isPackaged,platform:process.platform,updater,trusted,
+    currentVersion,userDataDir:app.getPath('userData'),
+    isPackaged:app.isPackaged,platform:process.platform,updater,trusted,feedUrl,
     broadcast:status=>{
       if (win && !win.isDestroyed()) win.webContents.send(CH.status,status);
       if (status.state.kind === 'available' && status.state.release) announceUpdate(status.state.release.version);
