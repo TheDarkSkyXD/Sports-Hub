@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { type DesktopUpdateBridge, type UpdateCommand, type UpdateStatus } from '@/lib/desktop-update';
 
 const commandLabel:Record<UpdateCommand,{text:string;icon:typeof RefreshCw;primary:boolean}> = {
-  check: {text:'Check for updates',icon:RefreshCw,primary:false},
+  check: {text:'Check updates',icon:RefreshCw,primary:false},
   download: {text:'Download update',icon:Download,primary:true},
   install: {text:'Install and restart',icon:RotateCw,primary:true},
 };

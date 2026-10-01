@@ -164,6 +164,7 @@ main{padding:32px 36px 0;max-width:1920px;margin:auto}.eyebrow{font-size:10px;le
 .update-popup-actions .button.primary:focus-visible{outline:2px solid #ffac9b;outline-offset:2px}
 .update-popup-actions .button.primary:disabled{opacity:.8}
 .update-popup-actions .button.update-popup-later{background:#303641;color:#f0f1f5;border:1px solid #687486;font-weight:600;font-size:13px}
+.update-popup-actions .button.update-popup-later:only-child{flex:1}
 .update-popup-actions .button.update-popup-later:hover{background:#3d4654}
 .update-popup-actions .button.update-popup-later:focus-visible{outline:2px solid #ffac9b;outline-offset:2px}
 .update-popup-link{display:inline-flex;align-items:center;gap:5px;color:#ffac9b;font-size:12px;text-decoration:underline;text-underline-offset:2px;width:max-content}
