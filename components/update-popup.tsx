@@ -69,15 +69,15 @@ export function UpdatePopup() {
     void bridge[command]().then(setStatus).catch(() => setError('Sunday Room could not complete that request.'));
   },[]);
 
+  const state = status?.state;
+  const release = state && 'release' in state ? state.release ?? null : null;
+
   const dismiss = useCallback(() => {
-    const release = status?.state.kind === 'available' || status?.state.kind === 'ready' || status?.state.kind === 'downloading' ? status.state.release : null;
     const version = release?.version ?? status?.currentVersion ?? '';
     setDismissed(version);
     try { localStorage.setItem(DISMISSED,version); } catch {}
-  },[status]);
+  },[release,status]);
 
-  const state = status?.state;
-  const release = state && 'release' in state ? state.release ?? null : null;
   const busy = state?.kind === 'checking' || state?.kind === 'installing';
   // Only offer a step the updater itself accepts, so the popup cannot promise one the
   // machine would refuse. A development build accepts `check` alone, so the chained action

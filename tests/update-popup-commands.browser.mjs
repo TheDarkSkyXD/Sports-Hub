@@ -62,5 +62,44 @@ assert.equal(callsAfterDismiss, callsBeforeDismiss, 'dismissing must not send a 
 assert.equal(page.url(), popupUrl, 'the app itself never navigated');
 console.log('Dismiss closes the popup without sending anything');
 
+for (const [name, state, commands] of [
+  ['failed download', { kind: 'failed', reason: 'download', detail: 'Download interrupted.', retry: 'download', release: release('1.0.3') }, ['download']],
+  ['failed install', { kind: 'failed', reason: 'install', detail: 'Installer could not start.', retry: 'install', release: release('1.0.3') }, ['install']],
+  ['checking a known release', { kind: 'checking', release: release('1.0.3') }, []],
+]) {
+  for (const [button, selector] of [
+    ['Dismiss', (tab) => tab.getByRole('button', { name: /^Dismiss$/ })],
+    ['X', (tab) => tab.getByRole('button', { name: 'Dismiss this update' })],
+  ]) {
+    const isolated = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    try {
+      const tab = await isolated.newPage();
+      await install(tab, { ...available('1.0.3'), state, commands });
+      await tab.goto(base, { waitUntil: 'domcontentloaded' });
+      await tab.locator('.update-popup').waitFor({ state: 'visible', timeout: 20000 });
+      assert.match(await tab.locator('.update-popup h2').innerText(), /1\.0\.3/);
+      await selector(tab).click();
+      await tab.locator('.update-popup').waitFor({ state: 'detached', timeout: 5000 });
+      assert.equal(await tab.evaluate(() => localStorage.getItem('sunday-room:dismissed-update')),
+        '1.0.3', `${name}: ${button} must remember the release shown`);
+
+      await tab.reload({ waitUntil: 'domcontentloaded' });
+      await tab.waitForTimeout(1000);
+      assert.equal(await tab.locator('.update-popup').count(), 0,
+        `${name}: ${button} must keep the dismissed release hidden after reload`);
+
+      const newer = await isolated.newPage();
+      await install(newer, available('1.0.4'));
+      await newer.goto(base, { waitUntil: 'domcontentloaded' });
+      await newer.locator('.update-popup').waitFor({ state: 'visible', timeout: 20000 });
+      assert.match(await newer.locator('.update-popup h2').innerText(), /1\.0\.4/,
+        `${name}: ${button} must allow a newer release to appear`);
+    } finally {
+      await isolated.close();
+    }
+  }
+}
+console.log('Dismiss and X remember failed and checking releases while newer releases reopen');
+
 await browser.close();
 console.log('Popup buttons verified against the bridge.');
