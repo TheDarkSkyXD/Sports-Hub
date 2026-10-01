@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, Download, RefreshCw, RotateCw, X } from 'lucide-react';
+import { Download, RefreshCw, RotateCw, X } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { type DesktopUpdateBridge, type UpdateCommand, type UpdateStatus } from '@/lib/desktop-update';
 
@@ -119,12 +119,7 @@ export function UpdatePopup() {
     {failed && state.kind === 'failed' && state.detail && <p className="update-popup-error" role="alert">{state.detail}</p>}
     <div className="update-popup-actions">
       {advance && <button className="button primary" type="button" disabled={busy || downloading} onClick={()=>run(advance)}><Icon size={14}/>{advanceText}</button>}
-      {/* The changelog lives on the release page. A popup that opens on every launch is the
-          wrong place for a wall of text, and this keeps it one click away, not zero. */}
-      <button className="button subtle" type="button" onClick={()=>window.open(release.pageUrl,'_blank','noopener,noreferrer')}>
-        What changed <ArrowRight size={14} className="update-popup-arrow"/>
-      </button>
-      <button className="button subtle" type="button" onClick={dismiss}>Dismiss</button>
+      <button className="button update-popup-later" type="button" onClick={dismiss}>Dismiss</button>
     </div>
     {error && <p className="update-popup-error" role="alert">{error}</p>}
   </aside>;
