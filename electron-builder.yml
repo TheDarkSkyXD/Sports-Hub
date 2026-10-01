@@ -1,10 +1,10 @@
 appId: com.sundayroom.desktop
 productName: Sunday Room
-# The feed is a URL the app passes to `autoUpdater.setFeedURL`, not a provider baked into
-# `resources/app-update.yml`. That keeps one wiring for a packaged build and a development
-# one, and means the release source is a plain address rather than a compiled-in pair.
-# A `publish:` block is still what makes electron-builder emit `latest.yml` and a blockmap;
-# the provider named there decides only where those are uploaded from.
+# electron-builder needs a publish provider to emit latest.yml. The app sets its runtime
+# feed through `autoUpdater.setFeedURL`; `--publish never` keeps packaging local.
+publish:
+  provider: generic
+  url: https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download
 asar: true
 npmRebuild: false
 directories:
