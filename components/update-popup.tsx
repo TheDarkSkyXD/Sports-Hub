@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { type DesktopUpdateBridge, type UpdateCommand, type UpdateStatus } from '@/lib/desktop-update';
 
 const commandLabel:Record<UpdateCommand,{text:string;icon:typeof RefreshCw;primary:boolean}> = {
-  check: {text:'Check for updates',icon:RefreshCw,primary:false},
+  check: {text:'Check updates',icon:RefreshCw,primary:false},
   download: {text:'Download update',icon:Download,primary:true},
   install: {text:'Install and restart',icon:RotateCw,primary:true},
 };
@@ -112,13 +112,13 @@ export function UpdatePopup() {
     <div className="update-popup-heading">
       <p className="update-popup-eyebrow">{state.kind === 'checking' ? 'Checking for updates' : 'Update available'}</p>
       <h2>Sunday Room {release.version}</h2>
-      <p className="update-popup-versions">You have {status.currentVersion}</p>
+      <p className="update-popup-versions">Current version: {status.currentVersion}</p>
     </div>
     {state.kind === 'downloading' && <div className="update-popup-progress"><Progress value={state.percent} max={100} aria-label="Update download progress"/>
       <span>{state.percent}%</span></div>}
     {failed && state.kind === 'failed' && state.detail && <p className="update-popup-error" role="alert">{state.detail}</p>}
     <div className="update-popup-actions">
-      {advance && <button className="button primary" type="button" disabled={busy || downloading} onClick={()=>run(advance)}><Icon size={14}/>{advanceText}</button>}
+      {advance && <button className="button primary" type="button" disabled={busy || downloading} onClick={()=>run(advance)}><Icon size={14} strokeWidth={3}/>{advanceText}</button>}
       <button className="button update-popup-later" type="button" onClick={dismiss}>Dismiss</button>
     </div>
     {error && <p className="update-popup-error" role="alert">{error}</p>}

@@ -48,7 +48,7 @@ await advanceButton('Install and restart', { kind: 'ready', release: release('1.
 await advanceButton('Retry download', { kind: 'failed', reason: 'download', detail: 'The download did not finish.', retry: 'download', release: release('1.0.3') }, ['download']);
 await advanceButton('Retry install', { kind: 'failed', reason: 'install', detail: 'The installer could not start.', retry: 'install', release: release('1.0.3') }, ['install']);
 // A development build is offered check only, so the popup must not promise a download.
-await advanceButton('Check for updates', { kind: 'available', release: release('1.0.3'), lastCheckedAt: 1 }, ['check']);
+await advanceButton('Check updates', { kind: 'available', release: release('1.0.3'), lastCheckedAt: 1 }, ['check']);
 
 // electron-updater cannot abort a transfer, so a download in flight has no action to
 // offer. The popup must stay up showing progress, not disappear mid-transfer.
