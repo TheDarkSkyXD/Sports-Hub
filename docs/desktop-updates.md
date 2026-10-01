@@ -24,15 +24,15 @@ that always resolves to the newest published release's assets.
 Being a URL rather than a baked `owner`/`repo` pair is what lets one wiring serve an
 installed build and a development one, and what lets the address be shown and, in
 development, changed. `electron-builder.yml` declares the same generic URL as its publish
-provider so packaging emits `latest.yml` and a blockmap. The runtime `setFeedURL` call
+provider so packaging emits `latest.yml`. The runtime `setFeedURL` call
 selects the feed the app reads. `npm run desktop:package` passes `--publish never`, so
 packaging does not upload any assets.
 
-**A release must publish `latest.yml` and the blockmap.** Without `latest.yml`, the library
-cannot resolve an update. The workflow uploads the installer, `latest.yml`, and the blockmap
-as one artifact, then attaches them to the draft release. The existing `v1.0.2` release has
-only the installer, so installed copies cannot update from it. A later published release
-needs all three assets.
+**A release must publish the installer and `latest.yml`.** Without `latest.yml`, the library
+cannot resolve an update. The workflow uploads both files as one artifact, then attaches
+them to the draft release. Differential downloads are disabled, so new builds do not
+produce a blockmap. Older installed builds fall back to a full installer download when
+the blockmap is absent.
 
 A downloaded installer is checked against the `sha512` in `latest.yml`. That proves the
 bytes are the bytes the record names. It proves nothing about whether the release itself
