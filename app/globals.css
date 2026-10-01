@@ -166,3 +166,14 @@ main{padding:32px 36px 0;max-width:1920px;margin:auto}.eyebrow{font-size:10px;le
 .update-popup-error{font-size:12px;line-height:1.5;color:#ff9b89;margin:0}
 @media(max-width:600px){.update-popup{top:auto;bottom:70px;right:12px;left:12px;width:auto;max-width:none}}
 
+.tile-drag-grip{display:grid;place-items:center;width:18px;height:24px;margin-left:-5px;color:#9299a5;cursor:grab;touch-action:auto}
+.tile-drag-grip:active,.center-game[draggable=true]:active{cursor:grabbing}
+.tile-drag-grip:focus-visible{outline:2px solid #ff806c;outline-offset:1px}
+.center-game[draggable=true]{cursor:grab}
+.center-game[draggable=true] button{cursor:pointer}
+.game-tile.drop-hover,.quad-empty.drop-hover{border-color:#ff937d;box-shadow:0 0 0 2px #ff624b66,inset 0 0 0 1px #ff624b66}
+.game-tile.drop-hover:after{content:'Drop game here';position:absolute;inset:31px 0 0;display:grid;place-items:center;background:#0b0d12aa;color:#fff;font-size:14px;font-weight:600;pointer-events:none;z-index:5}
+.quad-empty{min-height:220px;aspect-ratio:1.85/1}
+.drag-instructions{margin:-3px 0 12px;color:#9399a6;font-size:10px;line-height:1.5}
+.game-center.remove-hover{border-color:#ff937d;box-shadow:0 0 0 2px #ff624b66}
+.center-remove-cue{border:1px dashed #ff937d;border-radius:5px;background:#ff624b20;color:#ffc3b7;text-align:center;padding:11px;margin-bottom:12px;font-size:12px;font-weight:600}
