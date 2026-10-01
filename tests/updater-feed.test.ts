@@ -61,9 +61,19 @@ test('the release workflow uploads and publishes the installer and update record
 });
 
 test('a packaged build produces the update record', { skip: !existsSync(path.join(root, 'dist-electron', 'latest.yml')) && 'run `npm run desktop:package` first' }, () => {
-  const record = readFileSync(path.join(root, 'dist-electron', 'latest.yml'), 'utf8');
-  for (const key of ['version:', 'files:', 'sha512:', 'path:']) {
-    assert.ok(record.includes(key), `latest.yml must carry ${key}`);
-  }
-  assert.ok(existsSync(path.join(root, 'dist-electron', 'Sunday-Room-1.0.2-Setup-x64.exe.blockmap')));
+  const { version } = z.object({ version: z.string() }).parse(
+    JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')),
+  );
+  const record = z.object({
+    version: z.string(),
+    path: z.string(),
+    sha512: z.string(),
+    files: z.array(z.object({ url: z.string(), sha512: z.string(), size: z.number().positive() })).nonempty(),
+  }).parse(yaml.load(readFileSync(path.join(root, 'dist-electron', 'latest.yml'), 'utf8')));
+  const installer = `Sunday-Room-${version}-Setup-x64.exe`;
+  assert.equal(record.version, version);
+  assert.equal(record.path, installer);
+  assert.ok(record.files.some(file => file.url === installer && file.sha512 === record.sha512));
+  assert.ok(existsSync(path.join(root, 'dist-electron', installer)), 'latest.yml must name the packaged installer');
+  assert.ok(existsSync(path.join(root, 'dist-electron', `${installer}.blockmap`)), 'the installer must have a blockmap');
 });
