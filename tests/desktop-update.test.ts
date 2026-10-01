@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import {
-  FailureReasonSchema, UpdateFeedUrlSchema, UpdateStateSchema, UpdateStatusSchema, updateCommands,
+  FailureReasonSchema, UpdateFeedUrlSchema, UpdateStateSchema, UpdateStatusSchema, parseUpdateFeedUrl, updateCommands,
   type UpdateStatus,
 } from '../lib/desktop-update.ts';
 
@@ -38,11 +38,12 @@ class FakeUpdater extends EventEmitter {
   downloads = 0;
   installs: { isSilent: boolean; isForceRunAfter: boolean }[] = [];
   feeds: (string | null)[] = [];
-  checkResult: 'available' | 'none' | 'error' | 'pending' = 'available';
+  checkResult: 'available' | 'none' | 'error' | 'event-error' | 'pending' = 'available';
   checkError: Error | null = null;
   checkInfo: Record<string, unknown> | null = null;
   throwOnCheck = false;
   throwOnDownload = false;
+  throwOnInstall = false;
 
   info(version = '1.0.3', extra: Record<string, unknown> = {}) {
     return {
@@ -58,6 +59,11 @@ class FakeUpdater extends EventEmitter {
     this.checks += 1;
     if (this.throwOnCheck) throw new Error('check exploded');
     if (this.checkResult === 'error') return Promise.reject(this.checkError ?? new Error('no feed'));
+    if (this.checkResult === 'event-error') {
+      const error = this.checkError ?? new Error('no feed');
+      this.emitError(error);
+      return Promise.reject(error);
+    }
     // A check that never answers, so a second press can be tested against a check that is
     // genuinely still running.
     if (this.checkResult === 'pending') return new Promise(() => {});
@@ -76,6 +82,7 @@ class FakeUpdater extends EventEmitter {
   }
 
   quitAndInstall(isSilent = false, isForceRunAfter = false) {
+    if (this.throwOnInstall) throw new Error('installer could not start');
     this.installs.push({ isSilent, isForceRunAfter });
   }
 
@@ -145,6 +152,21 @@ test('the command set and the failure vocabulary agree across the boundary', () 
   }
   assert.equal(channels.cancel, undefined, 'electron-updater cannot cancel, so no cancel channel exists');
   assert.match(channels.setSource as string, /^sunday-update:/, 'the feed can be moved in development');
+});
+
+test('the feed parser accepts a canonical release URL and one trailing slash', () => {
+  const feed = 'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download';
+  assert.equal(parseUpdateFeedUrl(feed), feed);
+  assert.equal(parseUpdateFeedUrl(`${feed}/`), feed);
+  for (const invalid of [
+    'https://github.com/TheDarkSkyXD/Sports-Hub/releases/download',
+    'https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download/extra',
+    `${feed}//`, `${feed}?asset=other`, `${feed}#fragment`,
+    'https://user:password@github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download',
+    'https://github.com/TheDarkSkyXD/../Sports-Hub/releases/latest/download',
+    'https://github.com/TheDarkSkyXD/%2e%2e/Sports-Hub/releases/latest/download',
+    'https://example.com/TheDarkSkyXD/Sports-Hub/releases/latest/download',
+  ]) assert.equal(parseUpdateFeedUrl(invalid), null, invalid);
 });
 
 test('a supported build checks once on start and reports a newer release', async () => {
@@ -263,9 +285,10 @@ test('a release is downloaded, reports progress, and becomes ready to install', 
     await room.service.invoke('download')(event('download'));
     assert.equal(room.service.snapshot().state.kind, 'downloading');
     assert.equal(room.updater.downloads, 1);
-    room.updater.emitProgress(41);
+    room.updater.emitProgress(41.26);
     await room.settle();
-    assert.equal((room.service.snapshot().state as { percent: number }).percent, 41);
+    assert.equal((room.service.snapshot().state as { percent: number }).percent, 41.3);
+    assert.equal(UpdateStatusSchema.safeParse(room.service.snapshot()).success, true);
     room.updater.emitDownloaded();
     await room.settle();
     const status = room.service.snapshot();
@@ -275,6 +298,25 @@ test('a release is downloaded, reports progress, and becomes ready to install', 
     // here to keep in step with it.
     assert.equal(room.read().verified, undefined);
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('an install failure keeps the verified release and offers install again', async () => {
+  const room = await started();
+  try {
+    await room.service.invoke('download')(event('download'));
+    room.updater.emitDownloaded();
+    room.updater.throwOnInstall = true;
+    const status = await room.service.invoke('install')(event('install'));
+    assert.equal(status.state.kind, 'failed');
+    if (status.state.kind !== 'failed') return;
+    assert.equal(status.state.reason, 'install');
+    assert.equal(status.state.retry, 'install');
+    assert.equal(status.state.release?.version, '1.0.3');
+    assert.deepEqual(status.commands, ['install']);
+    room.updater.throwOnInstall = false;
+    await room.service.invoke('install')(event('install'));
+    assert.equal(room.service.snapshot().state.kind, 'installing');
+  } finally { room.service.stop(); rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
 test('installing is silent and relaunches', async () => {
@@ -316,6 +358,19 @@ test('a source with no published release is unavailable, not broken', async () =
       assert.equal(state.retry, 'check', 'and the user can ask again');
     } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
   }
+});
+
+test('a release missing latest.yml reports its missing update record', async () => {
+  const room = await started();
+  try {
+    room.updater.emitError(Object.assign(new Error('404'), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' }));
+    const status = room.service.snapshot();
+    assert.equal(status.state.kind, 'failed');
+    if (status.state.kind !== 'failed') return;
+    assert.equal(status.state.reason, 'unavailable');
+    assert.equal(status.state.detail, 'The published release is missing its update record.');
+    assert.equal(status.state.retry, 'check');
+  } finally { room.service.stop(); rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
 test('a published record that cannot be read is malformed and not retryable', async () => {
@@ -383,6 +438,19 @@ test('a check that rejects without emitting is still contained', async () => {
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
+test('an automatic check restores its timestamp when the updater emits an error and rejects', async () => {
+  const updater = new FakeUpdater();
+  updater.checkResult = 'event-error';
+  updater.checkError = new Error('getaddrinfo ENOTFOUND api.github.com');
+  const previous = at - 24 * 60 * 60 * 1000 - 1;
+  const room = await started({ updater }, { lastCheckedAt: previous });
+  try {
+    assert.equal(room.read().lastCheckedAt, previous);
+    assert.equal(room.service.snapshot().state.kind, 'failed');
+    assert.equal(room.broadcasts.filter(status => status.state.kind === 'failed').length, 1);
+  } finally { room.service.stop(); rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
 test('a check that throws synchronously is contained', async () => {
   const room = harness();
   try {
@@ -430,6 +498,9 @@ test('a development build can read another feed, and exercises the whole flow', 
     // The whole point of the panel is to be exercised before packaging, so a development
     // build gets the read-only surface and nothing that writes to the machine.
     assert.deepEqual(status.commands, ['check']);
+    const changed = await room.service.invoke('setPreferences')(event('set-preferences'), { checkFrequency: 'weekly' });
+    assert.equal(changed.preferences.checkFrequency, 'weekly');
+    assert.equal(room.read().checkFrequency, 'weekly');
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
@@ -581,6 +652,30 @@ test('stopping unsubscribes, so a stopped service cannot publish', async () => {
     await room.settle();
     assert.equal(room.broadcasts.length, before, 'a stopped service is silent');
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('stopping one service removes only its updater listeners', async () => {
+  const updater = new FakeUpdater();
+  const first = harness({ updater, isPackaged: false });
+  const second = harness({ updater, isPackaged: false });
+  try {
+    await first.service.start();
+    await second.service.start();
+    await first.settle();
+    first.service.stop();
+    const before = first.broadcasts.length;
+    updater.emitError(new Error('getaddrinfo ENOTFOUND api.github.com'));
+    assert.equal(first.broadcasts.length, before);
+    assert.equal(second.service.snapshot().state.kind, 'failed');
+    assert.equal(second.broadcasts.at(-1)?.state.kind, 'failed');
+    second.service.stop();
+    assert.equal(updater.listenerCount('error'), 0);
+  } finally {
+    first.service.stop();
+    second.service.stop();
+    rmSync(first.userDataDir, { recursive: true, force: true });
+    rmSync(second.userDataDir, { recursive: true, force: true });
+  }
 });
 
 // The channel literals the preload duplicates. A mismatch cannot ship, because
