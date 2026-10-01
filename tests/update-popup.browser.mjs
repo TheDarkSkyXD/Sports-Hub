@@ -51,7 +51,7 @@ assert.equal(await page.locator('.update-popup-notes').count(), 0, 'the popup mu
 const releaseBody = await page.locator('.update-popup').innerText();
 assert.ok(!/Restore Sportsurge|playback inside the custom player/i.test(releaseBody),
   'release note text must not leak into the popup');
-assert.ok(await page.getByRole('button', { name: /What changed/i }).isVisible(), 'the changelog stays one click away');
+assert.equal(await page.getByRole('button', { name: /What changed/i }).count(), 0, 'the popup has no What changed action');
 assert.ok(await page.getByRole('button', { name: /^Dismiss$/ }).isVisible(), 'a visible Dismiss button, not just the X');
 console.log(`popup renders top-right at x=${Math.round(box.x)} y=${Math.round(box.y)} ${Math.round(box.width)}x${Math.round(box.height)}`);
 

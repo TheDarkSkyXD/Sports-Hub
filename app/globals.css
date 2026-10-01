@@ -159,8 +159,10 @@ main{padding:32px 36px 0;max-width:1920px;margin:auto}.eyebrow{font-size:10px;le
 .update-popup-progress span{font-size:11px;color:#a2aab8;white-space:nowrap;font-variant-numeric:tabular-nums}
 .update-popup-actions{display:flex;flex-wrap:wrap;gap:8px}
 .update-popup-actions button{font-size:12px;min-height:34px;padding:8px 12px}
+.update-popup-actions .button.update-popup-later{background:#303641;color:#f0f1f5;border:1px solid #687486;font-weight:600;min-height:38px;font-size:13px}
+.update-popup-actions .button.update-popup-later:hover{background:#3d4654}
+.update-popup-actions .button.update-popup-later:focus-visible{outline:2px solid #ffac9b;outline-offset:2px}
 .update-popup-link{display:inline-flex;align-items:center;gap:5px;color:#ffac9b;font-size:12px;text-decoration:underline;text-underline-offset:2px;width:max-content}
-.update-popup-arrow{transform:rotate(-45deg)}
 .update-popup-error{font-size:12px;line-height:1.5;color:#ff9b89;margin:0}
 @media(max-width:600px){.update-popup{top:auto;bottom:70px;right:12px;left:12px;width:auto;max-width:none}}
 
