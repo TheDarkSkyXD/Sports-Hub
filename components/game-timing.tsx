@@ -2,11 +2,12 @@
 
 import { useSyncExternalStore } from 'react';
 import type { Game } from '@/lib/sunday';
-import { countdown, gameTiming } from '@/lib/game-timing';
+import { countdown, gameTiming, relativeStartDay } from '@/lib/game-timing';
 
 const startFormatter = new Intl.DateTimeFormat(undefined, {
   weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
 });
+const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 const noSubscribe = () => () => {};
 const isClient = () => true;
 const isServer = () => false;
@@ -45,9 +46,12 @@ function KickoffCountdown({ game }: { game: Pick<Game, 'date' | 'status'> }) {
   return null;
 }
 
-export function GameTiming({ game }: { game: Pick<Game, 'date' | 'status'> }) {
+export function GameTiming({ game, relativeDay = false }: { game: Pick<Game, 'date' | 'status'>; relativeDay?: boolean }) {
+  const now = useSyncExternalStore(relativeDay ? subscribeClock : noSubscribe, relativeDay ? getClock : noClock, noClock);
   const mounted = useSyncExternalStore(noSubscribe, isClient, isServer);
   const timing = gameTiming(game, null);
   if (timing.kind === 'unavailable') return <span className="game-timing">Start time unavailable</span>;
-  return <span className="game-timing"><span>{mounted ? startFormatter.format(timing.start) : 'Start time loading…'}</span>{game.status === 'pre' && <KickoffCountdown game={game}/>}</span>;
+  const day = relativeDay && now !== null ? relativeStartDay({ start: timing.start, now }) : null;
+  const start = day ? `${day}, ${timeFormatter.format(timing.start)}` : startFormatter.format(timing.start);
+  return <span className="game-timing"><span>{mounted ? start : 'Start time loading…'}</span>{game.status === 'pre' && <KickoffCountdown game={game}/>}</span>;
 }
