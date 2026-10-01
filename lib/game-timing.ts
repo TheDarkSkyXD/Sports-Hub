@@ -26,3 +26,12 @@ export function countdown(remainingSeconds: number): string {
   const clock = [hours, minutes, seconds].map(value => String(value).padStart(2, '0')).join(':');
   return days ? `${days}d ${clock}` : clock;
 }
+
+export function relativeStartDay({ start, now }: { start: number; now: number }): 'Today' | 'Tomorrow' | null {
+  const startDay = new Date(start).toDateString();
+  const today = new Date(now);
+  if (startDay === today.toDateString()) return 'Today';
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return startDay === tomorrow.toDateString() ? 'Tomorrow' : null;
+}

@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addToSlots, placeInSlot, remapSlots, removeFromSlots, restoreSlots, selectedGames, slotsFromIds } from '../lib/multiview.ts';
-import { validGameId } from '../lib/sunday.ts';
+import { addToSlots, placeInSlot, reconcileSlots, removeFromSlots, restoreSlots, selectedGames, slotsFromIds, type RoomSlots } from '../lib/multiview.ts';
+import { validGameId, type Board } from '../lib/sunday.ts';
+
+const team = { name: 'Team', short: 'Team', abbreviation: 'TM', color: '000000', score: null };
+const board = (ids: string[], aliases: Board['aliases'] = {}): Pick<Board, 'games' | 'aliases'> => ({
+ games: ids.map(id => ({ id, league: 'nfl', name: id, home: team, away: team, detail: '', redzone: false, status: 'pre', lifecycle: 'scheduled' })),
+ aliases,
+});
 
 test('adding uses the first vacancy and removal leaves the other squares in place', () => {
  const room = slotsFromIds(['1', '2', '3', '4']);
@@ -26,7 +32,32 @@ test('stored slots retain vacancies, reject malformed data, and restore legacy s
  assert.deepEqual(restoreSlots(undefined, ['1', '2', '1', '3', '4', '5'], validGameId), ['1', '2', '3', '4']);
 });
 
-test('alias migration preserves positions and removes canonical duplicates', () => {
- assert.deepEqual(remapSlots(['1', null, '2', '3'], { '1': '2', '3': '4' }), ['2', null, null, '4']);
- assert.deepEqual(selectedGames(remapSlots(['1', null, '2', '3'], { '1': '2', '3': '4' })), ['2', '4']);
+test('stale saved slots clear and a current game takes the first vacancy', () => {
+ const cleared = reconcileSlots({ slots: ['1', '2', '3', '4'], board: board(['5']) });
+ assert.deepEqual(cleared, [null, null, null, null]);
+ assert.deepEqual(addToSlots(cleared, '5'), ['5', null, null, null]);
+});
+
+test('reconciliation keeps current games in their original squares', () => {
+ assert.deepEqual(reconcileSlots({ slots: ['1', '2', null, '3'], board: board(['1', '3']) }), ['1', null, null, '3']);
+});
+
+test('alias migration retains the first present canonical game and clears missing aliases', () => {
+ const currentBoard = board(['2', '4'], { '1': '2', '3': '4', '5': '6' });
+ assert.deepEqual(reconcileSlots({ slots: ['1', null, '2', '3'], board: currentBoard }), ['2', null, null, '4']);
+ assert.deepEqual(reconcileSlots({ slots: ['5', '1', '2', null], board: currentBoard }), [null, '2', null, null]);
+});
+
+test('an empty saved room stays empty and an empty board clears obsolete slots', () => {
+ assert.deepEqual(reconcileSlots({ slots: [null, null, null, null], board: board(['1']) }), [null, null, null, null]);
+ assert.deepEqual(reconcileSlots({ slots: ['1', null, '2', null], board: board([]) }), [null, null, null, null]);
+});
+
+test('reconciliation preserves unchanged tuple identity and is idempotent', () => {
+ const slots: RoomSlots = ['1', null, '2', null];
+ const currentBoard = board(['1', '2']);
+ assert.equal(reconcileSlots({ slots, board: currentBoard }), slots);
+ const reconciled = reconcileSlots({ slots: ['3', null, '2', null], board: currentBoard });
+ assert.deepEqual(reconciled, [null, null, '2', null]);
+ assert.equal(reconcileSlots({ slots: reconciled, board: currentBoard }), reconciled);
 });

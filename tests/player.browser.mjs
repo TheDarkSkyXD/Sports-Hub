@@ -48,10 +48,12 @@ const desktopPage = desktopApp ? await desktopApp.firstWindow() : null;
 if (desktopPage) {
   await desktopPage.waitForURL(/^http:\/\/127\.0\.0\.1:/);
   origin = new URL(desktopPage.url()).origin;
-  await desktopApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach(window => {
+  const window = await desktopApp.browserWindow(desktopPage);
+  await window.evaluate(window => {
     window.webContents.setBackgroundThrottling(false);
     window.showInactive();
-  }));
+  });
+  await window.dispose();
 }
 const browser = desktopApp ? null : await chromium.launch({
   channel: process.env.PLAYER_BROWSER_CHANNEL || (process.platform === 'win32' ? 'msedge' : undefined),
@@ -771,9 +773,10 @@ try {
   if (!desktopApp) await lateRoom.context.close();
 
   const scheduledRoom = await openRoom({ provider: true, waitingForLive: true });
-  await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 2 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2));
-  assert.equal(await scheduledRoom.page.locator('.game-tile').nth(0).getByRole('button', { name: 'Play game', exact: true }).count(), 1);
-  assert.equal(await scheduledRoom.page.locator('.game-tile').nth(1).getByRole('button', { name: 'No verified stream yet', exact: true }).count(), 1);
+  await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 3 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2 && !video.paused));
+  assert.equal(await scheduledRoom.page.locator('.game-tile').nth(0).getByRole('button', { name: 'Play game', exact: true }).count(), 0);
+  await scheduledRoom.page.locator('.game-tile').nth(1).getByText('No verified stream yet', { exact: true }).waitFor();
+  assert.equal(await scheduledRoom.page.locator('.game-tile').nth(1).getByRole('button', { name: 'No verified stream yet', exact: true }).count(), 0);
   await scheduledRoom.page.locator('.audio-focus').nth(2).click();
   await revealControls(scheduledRoom.page);
   await scheduledRoom.page.getByRole('button', { name: 'Pause stream', exact: true }).click();
@@ -789,7 +792,7 @@ try {
   await scheduledRoom.page.getByTitle('Add Away 1 at Home 1', { exact: true }).click();
   await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2 && !video.paused));
   assert.deepEqual(scheduledRoom.pageErrors, []);
-  results.push('Live status and newly listed sources auto-connect; focused pause survives refresh, and re-added live games auto-start.');
+  results.push('Scheduled games with active sources and newly listed sources auto-connect; focused pause survives refresh, and re-added games auto-start.');
   const continuedVideos = await scheduledRoom.page.locator('video').elementHandles();
   scheduledRoom.finishGame();
   await scheduledRoom.page.getByRole('button', { name: 'Refresh game data', exact: true }).click();
