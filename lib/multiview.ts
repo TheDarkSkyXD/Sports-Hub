@@ -1,3 +1,5 @@
+import type { Board } from './sunday.ts';
+
 export type RoomSlots = [string | null, string | null, string | null, string | null];
 
 export const emptySlots = (): RoomSlots => [null, null, null, null];
@@ -21,16 +23,23 @@ export function restoreSlots(value: unknown, legacy: unknown, validId: (value: u
  return slotsFromIds(Array.isArray(legacy) ? legacy.filter(validId) : []);
 }
 
-export function remapSlots(slots: RoomSlots, aliases: Record<string, string>): RoomSlots {
+export function reconcileSlots({ slots, board }: { slots: RoomSlots; board: Pick<Board, 'games' | 'aliases'> }): RoomSlots {
+ const available = new Set(board.games.map(game => game.id));
  const seen = new Set<string>();
- const mapped = slots.map(id => {
-  if (id === null) return null;
-  const canonical = aliases[id] || id;
-  if (seen.has(canonical)) return null;
-  seen.add(canonical);
-  return canonical;
- });
- return [mapped[0], mapped[1], mapped[2], mapped[3]];
+ const next: RoomSlots = [...slots];
+ let changed = false;
+ for (let index = 0; index < slots.length; index++) {
+  const id = slots[index];
+  if (id === null) continue;
+  const canonical = board.aliases[id] || id;
+  const resolved = available.has(canonical) && !seen.has(canonical) ? canonical : null;
+  if (resolved !== null) seen.add(resolved);
+  if (resolved !== id) {
+   next[index] = resolved;
+   changed = true;
+  }
+ }
+ return changed ? next : slots;
 }
 
 export function addToSlots(slots: RoomSlots, id: string): RoomSlots {

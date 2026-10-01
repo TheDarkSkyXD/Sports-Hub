@@ -17,7 +17,7 @@ import { UpdatePopup } from '@/components/update-popup';
 import { ServerControls } from '@/components/server-controls';
 import { SourcesSnapshotSchema, type SourcesSnapshot } from '@/lib/football/shared';
 import { parseQualityPreference, qualityPreferences, type QualityPreference } from '@/lib/playback-quality';
-import { addToSlots, emptySlots, placeInSlot, remapSlots, removeFromSlots, restoreSlots, selectedGames, slotsFromIds, type RoomSlots } from '@/lib/multiview';
+import { addToSlots, emptySlots, placeInSlot, reconcileSlots, removeFromSlots, restoreSlots, selectedGames, slotsFromIds, type RoomSlots } from '@/lib/multiview';
 import { Board, Feed, Game, LEAGUES, League, Team, priority, validFeedUrl, validGameId } from '@/lib/sunday';
 
 type Layout = 'quad' | 'focus' | 'duo' | 'single';
@@ -135,17 +135,17 @@ export default function Home() {
   return()=>window.clearTimeout(timer);
   },[board,ready,selected,slots,audio]);
  useEffect(()=>{
-  if(!board)return;
+  if(!board||!ready)return;
   const timer=window.setTimeout(()=>{
   const canonical=(id:string)=>board.aliases[id]||id;
   const remap=(ids:string[])=>[...new Set(ids.map(canonical))];
-   setSlots(current=>{const next=remapSlots(current,board.aliases);return next.every((id,index)=>id===current[index])?current:next;});
+   setSlots(current=>reconcileSlots({slots:current,board}));
   setFavorites(current=>{const next=remap(current);return next.length===current.length&&next.every((id,index)=>id===current[index])?current:next;});
   setFeeds(current=>{const next={...current};for(const [id,feed] of Object.entries(current)){const resolved=canonical(id);if(resolved!==id){if(!next[resolved])next[resolved]=feed;delete next[id];}}return Object.keys(next).length===Object.keys(current).length&&Object.keys(next).every(id=>next[id]===current[id])?current:next;});
   setProviderChoices(current=>{const next={...current};for(const id of Object.keys(current)){const resolved=canonical(id);if(resolved!==id){if(!next[resolved])next[resolved]=true;delete next[id];}}return Object.keys(next).length===Object.keys(current).length&&Object.keys(next).every(id=>next[id]===current[id])?current:next;});
   },0);
   return()=>window.clearTimeout(timer);
- },[board]);
+ },[board,ready]);
  useEffect(()=>{if(!board)return;const eligible=board.games.filter(g=>selected.includes(g.id)&&!feeds[g.id]&&g.status==='in'&&!!g.sourceUrl).map(g=>g.id);if(!eligible.length)return;const timer=window.setTimeout(()=>setProviderChoices(current=>{const next={...current};let changed=false;for(const id of eligible){if(next[id]===undefined){next[id]=true;changed=true;}}return changed?next:current;}),0);return()=>window.clearTimeout(timer);},[board,selected,feeds]);
  useEffect(()=>{if(chosen.some(g=>g.id===focus))return;const timer=window.setTimeout(()=>setFocus(chosen[0]?.id||''),0);return()=>window.clearTimeout(timer);},[chosen,focus]);
  useEffect(()=>{if(!auto||stale||spoilers)return;const target=[...chosen].sort((a,b)=>priority(b)-priority(a))[0];if(target&&target.redzone&&target.id!==focus&&Date.now()-lastAuto.current>20000){const timer=window.setTimeout(()=>{lastAuto.current=Date.now();setFocus(target.id);setAudio(target.id);toast(`${target.away.abbreviation} at ${target.home.abbreviation} is in the red zone`);},0);return()=>window.clearTimeout(timer);}},[auto,board,chosen,focus,stale,spoilers,toast]);
