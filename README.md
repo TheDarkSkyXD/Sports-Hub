@@ -35,6 +35,7 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 | **NFL and NCAA games** | Filter the score strip, game center, and schedule by league. Your room can hold games from both leagues. |
 | **Spoiler-free mode** | Hide numeric scores and latest-play updates in the room. Broadcast video and provider overlays remain visible. |
 | **Remember your room** | Save selected games, favorites, layout, volume, spoiler preference, and direct feed URLs on this device. |
+| **In-app update** | The installed Windows app checks GitHub Releases for a newer build and offers one button that downloads it, then installs and relaunches. |
 | **Direct-feed support** | Connect compatible HLS or video URLs, with delay adjustment inside the available video buffer. |
 
 <p align="center">
@@ -198,7 +199,7 @@ npm run desktop:smoke
 
 The installer is `dist-electron/Sunday-Room-<version>-Setup-x64.exe`. The smoke check launches the unpacked executable and checks the local page, preload bridge, static files, and an API route. The installed app runs its bundled Next.js server without a separate Node.js installation. Its logs are in the `logs` folder under the Electron user data directory.
 
-The `Electron release` workflow builds and tests the Windows installer on pull requests to `main`, manual runs, and `v*` tags. Manual runs store an Actions artifact. A tag must match the version in `package.json`, such as `v1.0.0`; after the packaged app passes its smoke check, the workflow creates a draft GitHub release with the installer. Review and publish that draft in GitHub when ready. The installer is unsigned and has no automatic updater.
+The `Electron release` workflow builds and tests the Windows installer on pull requests to `main`, manual runs, and `v*` tags. Manual runs store an Actions artifact. A tag must match the version in `package.json`, such as `v1.0.0`; after the packaged app passes its smoke check, the workflow creates a draft GitHub release with the installer. Review and publish that draft in GitHub when ready. A draft is invisible to the updater, so a release that is never published is never offered. The installer is unsigned.
 
 ### Commands
 
@@ -311,7 +312,29 @@ Sunday Room is an independent personal viewer, not an official NFL or NFL RedZon
 
 The ESPN endpoint is public and unversioned. Source pages, player URLs, access requirements, and stream availability can change. Player extraction supports the provider format implemented in `lib/sunday.ts`; it is not a universal streaming-site integration.
 
-There is no automatic updater or hosted service in this repository. Windows is the verified desktop platform.
+There is no hosted service in this repository. Windows is the verified desktop platform.
+
+### Updates
+
+The installed Windows app looks for a newer release on its own, so publishing a release is enough to tell people about it. It checks at launch and then keeps looking in the background — daily by default, hourly or weekly if you prefer, or off — and raises a system notification when it finds one, so it reaches you even when Sunday Room is behind another window. **Check for updates** always asks immediately.
+
+A newer version shows in a top-right popup and in **Room settings**, and one button walks the whole chain: it downloads the release, then installs and relaunches. Release notes stay on the release page rather than in the popup, and **Dismiss** keeps the popup closed for that version until something newer appears.
+
+A development build reaches GitHub and shows every one of those screens, so the update flow can be exercised before packaging. It refuses to download and install, because those write to the machine and run an unsigned binary.
+
+The updater is [`electron-updater`](https://github.com/electron-userland/electron-builder/tree/master/packages/electron-updater). `desktop/main.cjs` constructs it and `desktop/update.cjs` wires its events to the state machine the settings panel and the popup already speak, so the library owns the transfer and the checksum while this repo owns the wording.
+
+**A release must publish `latest.yml` and the blockmap** alongside the installer. Without them the updater cannot resolve an update at all and every installed copy stays where it is. The workflow uploads all three, and a release published before this change has none, so it is invisible to the app until the next one.
+
+**The feed is a plain URL**, `https://github.com/TheDarkSkyXD/Sports-Hub/releases/latest/download`, handed to the updater at runtime rather than baked in. The updater resolves `latest.yml` against that base, and that path is the GitHub one that always points at the newest published release's assets.
+
+**An installed app takes updates from one address only.** The feed is fixed, because it decides which installer the app will run and until the binary is signed there is no signature to check it against; the generic provider resolves against whatever base it is given. A development build *is* rewritable, through `SUNDAY_ROOM_UPDATE_SOURCE` or the settings field, which is how the flow gets exercised against a fork before packaging. The reasoning is in [`docs/desktop-updates.md`](docs/desktop-updates.md).
+
+To sign the installer, set `CSC_LINK` and `CSC_KEY_PASSWORD` in the repository secrets. The workflow then fails if a certificate is configured but the installer comes out unsigned, so signing cannot stop working unnoticed. Today neither is set, and the workflow says so in its summary.
+
+A downloaded installer is checked against the `sha512` the published record names before it is run. That proves the bytes are the bytes the record names. It proves nothing about whether the release itself was legitimate, because the binary is still unsigned. Signing the Windows binary is the follow-up this makes more urgent.
+
+A downloaded installer is checked against the byte count and the `sha256` the release publishes before it is renamed into place and run. That proves the bytes are the bytes GitHub published. It proves nothing about whether the release itself was legitimate, because the installer is still unsigned. Signing the Windows binary is the follow-up this makes more urgent.
 
 ## Artwork and third-party notices
 

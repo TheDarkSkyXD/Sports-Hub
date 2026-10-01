@@ -44,7 +44,7 @@ const eslintConfig = defineConfig([
         { pattern: "lib/playback/provider-registry.ts", category: "provider-composition" },
         { pattern: "lib/{playback,stream}-server.ts", category: "server-facade" },
         { pattern: "lib/stream-relay.ts", category: "relay" },
-        { pattern: "lib/{sunday,utils,playback-quality}.ts", category: "pure-lib" },
+        { pattern: "lib/{sunday,utils,playback-quality,desktop-update}.ts", category: "pure-lib" },
         { pattern: "desktop/**/*.cjs", category: "desktop" },
         { pattern: "scripts/verify-sportsurge-catalog.cjs", category: "desktop-verifier" },
         { pattern: "scripts/**/*.{ts,mjs,cjs}", category: "script" },

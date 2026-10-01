@@ -1,5 +1,10 @@
 appId: com.sundayroom.desktop
 productName: Sunday Room
+# The feed is a URL the app passes to `autoUpdater.setFeedURL`, not a provider baked into
+# `resources/app-update.yml`. That keeps one wiring for a packaged build and a development
+# one, and means the release source is a plain address rather than a compiled-in pair.
+# A `publish:` block is still what makes electron-builder emit `latest.yml` and a blockmap;
+# the provider named there decides only where those are uploaded from.
 asar: true
 npmRebuild: false
 directories:
@@ -7,12 +12,40 @@ directories:
 files:
   - package.json
   - desktop/**
+  # `!node_modules/**` keeps the dev tree out, which a blanket `node_modules/**` does not:
+  # that ships all 29,000 dev packages. These are electron-updater's transitive graph,
+  # listed explicitly because this app has no other production dependency and there is no
+  # pattern that admits one subtree without naming it.
+  # Verified rather than assumed: `tests/packaged-desktop.mjs` reads the packaged asar and
+  # requires electron-updater from inside the running main process. An earlier revision of
+  # this file omitted three of these and shipped an app that opened a window titled
+  # "Error", which the smoke test could only report as a bare timeout.
   - '!node_modules/**'
+  - node_modules/electron-updater/**
+  - node_modules/builder-util-runtime/**
+  - node_modules/fs-extra/**
+  - node_modules/graceful-fs/**
+  - node_modules/jsonfile/**
+  - node_modules/universalify/**
+  - node_modules/js-yaml/**
+  - node_modules/lazy-val/**
+  - node_modules/lodash.isequal/**
+  - node_modules/lodash.escaperegexp/**
+  - node_modules/semver/**
+  - node_modules/debug/**
+  - node_modules/ms/**
+  - node_modules/sax/**
 extraResources:
   - from: .next/standalone
     to: server
     filter:
       - '**/*'
+      # Dev scratch that the file tracer follows into standalone. Shipping it
+      # re-embeds the previous build inside this one, so the install grows and
+      # its paths outgrow what the NSIS uninstaller can rename.
+      - '!dist-electron/**'
+      - '!work/**'
+      - '!.desktop-runtime/**'
   - from: .next/standalone/node_modules
     to: server/node_modules
     filter:

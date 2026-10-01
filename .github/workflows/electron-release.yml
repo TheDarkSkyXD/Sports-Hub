@@ -13,6 +13,12 @@ permissions:
 jobs:
   package:
     runs-on: windows-latest
+    env:
+      # A code-signing certificate, when one exists. Absent today; see
+      # docs/desktop-updates.md. Partially configured is an error, and configured but
+      # unsigned output is an error, so signing cannot quietly stop working.
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -31,12 +37,36 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run desktop:package
+      - name: Report the signing state of the installer
+        shell: pwsh
+        run: |
+          $configured = [bool]$env:CSC_LINK
+          if ($configured -ne [bool]$env:CSC_KEY_PASSWORD) {
+            throw 'CSC_LINK and CSC_KEY_PASSWORD must be set together. Neither is expected today; both are needed to sign.'
+          }
+          $installer = Get-ChildItem dist-electron -Filter '*-Setup-x64.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'No installer was produced.' }
+          $status = (Get-AuthenticodeSignature $installer.FullName).Status
+          $summary = "| artifact | signature |`n| --- | --- |`n| $($installer.Name) | $status |"
+          Add-Content $env:GITHUB_STEP_SUMMARY $summary
+          if ($configured -and $status -ne 'Valid') {
+            throw "A certificate is configured but the installer is '$status'. Refusing to publish it unsigned."
+          }
+          if (-not $configured) {
+            Write-Warning "UNSIGNED. The installer is not signed, so Windows will warn and the updater cannot verify it. See docs/desktop-updates.md."
+          }
       - run: node tests/installer-path.mjs
+      - run: node tests/installer-instdir.mjs
       - run: npm run desktop:smoke
       - uses: actions/upload-artifact@v7
         with:
           name: sunday-room-windows-installer
-          path: dist-electron/Sunday-Room-*-Setup-x64.exe
+          # `latest.yml` and the blockmap travel with the installer because they are the
+          # update record. A release that omits them leaves every installed copy stuck.
+          path: |
+            dist-electron/Sunday-Room-*-Setup-x64.exe
+            dist-electron/Sunday-Room-*-Setup-x64.exe.blockmap
+            dist-electron/latest.yml
           if-no-files-found: error
 
   prepare-release:
@@ -50,6 +80,9 @@ jobs:
         with:
           name: sunday-room-windows-installer
           path: installer
+      # `latest.yml` and the blockmap are the update record electron-updater reads, and a
+      # release without them is invisible to the app. The .exe alone would leave every
+      # installed copy stuck on whatever it shipped with.
       - name: Create or update release installer
         env:
           GH_TOKEN: ${{ github.token }}
@@ -57,7 +90,7 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" installer/*.exe --clobber
+            gh release upload "$TAG_NAME" installer/*.exe installer/*.exe.blockmap installer/latest.yml --clobber
           else
-            gh release create "$TAG_NAME" installer/*.exe --draft --verify-tag --title "Sunday Room ${TAG_NAME#v}"
+            gh release create "$TAG_NAME" installer/*.exe installer/*.exe.blockmap installer/latest.yml --draft --verify-tag --title "Sunday Room ${TAG_NAME#v}"
           fi
