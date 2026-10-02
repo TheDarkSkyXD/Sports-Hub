@@ -130,7 +130,7 @@ try {
 
   for (const layout of ['focus', 'duo']) {
     await restore([null, null, null, null], layout);
-    await dragCenter(c, page.locator('.room-empty'));
+    await dragCenter(c, page.locator('.add-tile[data-slot-index="0"]'));
     await expectSlots([c, null, null, null], layout);
     assert.equal(await tile(c).getAttribute('data-slot-index'), '0');
     await grip(c).dragTo(page.locator('.game-center'));
@@ -142,7 +142,7 @@ try {
   await expectSlots([null, c, null, b], 'focus');
   assert.equal(await tile(c).getAttribute('data-slot-index'), '1');
   assert.match(await tile(c).getAttribute('class'), /focused/);
-  await dragCenter(d, page.locator('.add-tile'));
+  await dragCenter(d, page.locator('.add-tile[data-slot-index="0"]'));
   await expectSlots([d, c, null, b], 'focus');
   await grip(c).dragTo(tile(b));
   await expectSlots([d, b, null, c], 'focus');
@@ -152,7 +152,7 @@ try {
   await expectSlots([d, b, null, c], 'focus');
 
   await restore([null, a, null, null], 'duo');
-  await dragCenter(e, page.locator('.add-tile'));
+  await dragCenter(e, page.locator('.add-tile[data-slot-index="0"]'));
   await expectSlots([e, a, null, null], 'duo');
   await restore([a, b, c, d], 'duo');
   await dragCenter(c, tile(b));
@@ -164,7 +164,7 @@ try {
   assert.match(await tile(e).getAttribute('class'), /focused/);
 
   await restore([null, null, null, null], 'single');
-  await dragCenter(e, page.locator('.room-empty'));
+  await dragCenter(e, page.locator('.add-tile[data-slot-index="0"]'));
   await expectSlots([e, null, null, null], 'single');
   await dragCenter(a, tile(e));
   await expectSlots([a, null, null, null], 'single');
