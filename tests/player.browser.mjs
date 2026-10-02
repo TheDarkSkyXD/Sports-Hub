@@ -102,7 +102,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   let finishFailures;
   const finalFailure = new Promise(resolve => { finishFailures = resolve; });
   await context.route('**/api/games', route => route.fulfill({ json: {
-    schemaVersion: 2, revision: 1, aliases: {},
+    schemaVersion: 2, scheduleState: 'ready', revision: 1, aliases: {},
     games: roomGames,
     updatedAt: new Date().toISOString(), leagues: {
       nfl: { week: 3, scoresAt: new Date().toISOString(), sourceAt: null, errors: [] },

@@ -28,7 +28,7 @@ try {
   page.setDefaultTimeout(15000);
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:/);
   await desktop.context().route('**/api/games', route => route.fulfill({ json: {
-    schemaVersion: 2, revision: 1, aliases, games, updatedAt: new Date().toISOString(),
+    schemaVersion: 2, scheduleState: 'ready', revision: 1, aliases, games, updatedAt: new Date().toISOString(),
     leagues: {
       nfl: { week: 3, scoresAt: new Date().toISOString(), sourceAt: null, errors: [] },
       ncaaf: { scoresAt: null, sourceAt: null, errors: [] },

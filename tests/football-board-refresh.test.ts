@@ -97,23 +97,61 @@ test('explicit refresh waits for all partitions while board reads stay prompt',a
   }
 });
 
-test('failed and empty initial schedules still finish loading',async () => {
-  const dir=mkdtempSync(join(tmpdir(),'football-board-empty-'));
-  const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
+test('all empty or all failed initial schedules still finish loading',async () => {
+  for(const outcome of ['empty','failed'] as const) {
+    const dir=mkdtempSync(join(tmpdir(),`football-board-${outcome}-`));
+    const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
+      now:()=>at,schedules,sources:[],
+      readSchedule:async source=>{
+        if(outcome==='failed')throw new Error('upstream-failed');
+        return {games:[],at,league:source.league};
+      },
+    });
+    try {
+      await coordinator.refresh(true);
+      const board=await coordinator.command({kind:'board'});
+      assert.equal(board.kind,'board');
+      if(board.kind==='board') {
+        assert.equal(board.board.scheduleState,'ready');
+        assert.deepEqual(board.board.games,[]);
+        assert.deepEqual(board.board.leagues.ncaaf.errors,outcome==='failed'
+          ? ['FBS schedule is unavailable or stale.','FCS schedule is unavailable or stale.'] : []);
+      }
+    } finally {
+      await coordinator.stop();
+      rmSync(dir,{recursive:true,force:true});
+    }
+  }
+});
+
+test('a restored board stays visible while its first schedule pass is pending',async () => {
+  const dir=mkdtempSync(join(tmpdir(),'football-board-restored-'));
+  const path=join(dir,'state.sqlite');
+  const seed=createFootballCoordinator(path,{
     now:()=>at,schedules,sources:[],
-    readSchedule:async source=>{if(source.id==='fbs')throw new Error('upstream-failed');return {games:[],at,league:source.league};},
+    readSchedule:async source=>({games:source.id==='nfl'?[nfl]:[],at,league:source.league}),
+  });
+  await seed.refresh(true);
+  await seed.stop();
+  const pending=deferred<{games:Game[];at:number;league:'ncaaf'}>();
+  const restored=createFootballCoordinator(path,{
+    now:()=>at,schedules,sources:[],
+    readSchedule:async source=>source.id==='fbs'?pending.promise:{games:source.id==='nfl'?[nfl]:[],at,league:source.league},
   });
   try {
-    await coordinator.refresh(true);
-    const board=await coordinator.command({kind:'board'});
+    const first=restored.command({kind:'board'});
+    assert.equal(await settled(first),true);
+    const board=await first;
     assert.equal(board.kind,'board');
-    if(board.kind==='board') {
-      assert.equal(board.board.scheduleState,'ready');
-      assert.deepEqual(board.board.games,[]);
-      assert.deepEqual(board.board.leagues.ncaaf.errors,['FBS schedule is unavailable or stale.']);
-    }
+    if(board.kind==='board')assert.deepEqual([board.board.games.map(game=>game.id),board.board.scheduleState],[['100'],'loading']);
+    const stop=restored.stop();
+    assert.equal(await settled(stop),false);
+    pending.resolve({games:[],at,league:'ncaaf'});
+    await stop;
+    assert.deepEqual(await restored.command({kind:'board'}),{kind:'error',status:503,message:'Pipeline is stopped.'});
   } finally {
-    await coordinator.stop();
+    pending.resolve({games:[],at,league:'ncaaf'});
+    await restored.stop();
     rmSync(dir,{recursive:true,force:true});
   }
 });

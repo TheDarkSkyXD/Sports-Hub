@@ -61,6 +61,7 @@ export class FootballCoordinator {
   private discovering: Promise<void> | undefined;
   private lastDiscovery = 0;
   private lastSchedule = 0;
+  private scheduleState: Board['scheduleState'] = 'loading';
   private stopped = false;
   private tickTimer: ReturnType<typeof setInterval> | undefined;
   private sourceTimes = new Map<string,number>();
@@ -156,22 +157,26 @@ export class FootballCoordinator {
         try {
           const result = await this.fetchSchedule(source,now,this.controller.signal);
           if (this.stopped) return;
+          const previous = this.store.partition(source.id);
           this.store.savePartition(source.id,{...result,at:this.now()});
           this.errors.delete(source.id);
+          if(result.games.length || previous?.games.length)this.rebuild();
         } catch(error) { if (!this.stopped) this.errors.set(source.id,errorCode(error)); }
       }));
       if (this.stopped) return;
+      this.scheduleState='ready';
       const seasons = [...new Set(this.schedules.filter(source => source.league==='ncaaf').flatMap(source => this.store.partition(source.id)?.games.map(game => game.season).filter((year):year is number => year !== undefined) || []))];
+      let membershipChanged=false;
       await Promise.all(seasons.map(async season => {
         const cached = this.store.membership(season);
         if (cached && this.now()-cached.at<24*3600000) return;
         try {
           const membership = await this.fetchMembership(season,this.controller.signal);
-          if (!this.stopped) { this.store.saveMembership(membership); this.errors.delete(`membership-${season}`); }
+          if (!this.stopped) { this.store.saveMembership(membership); this.errors.delete(`membership-${season}`); membershipChanged=true; }
         } catch(error) { if (!this.stopped) this.errors.set(`membership-${season}`,errorCode(error)); }
       }));
       if (this.stopped) return;
-      this.rebuild();
+      if(membershipChanged)this.rebuild();
       this.sweep();
       if (now - this.lastDiscovery >= 120000 && !this.discovering) {
         this.lastDiscovery = now;
@@ -386,7 +391,7 @@ export class FootballCoordinator {
       return {week:partitions[0]?.week,scoresAt:oldest ? new Date(oldest).toISOString() : null,sourceAt:this.sourceTimes.size ? new Date(Math.max(...this.sourceTimes.values())).toISOString() : null,errors:keys.flatMap(key => this.errors.has(key) || !oldest || this.now()-oldest>90000 ? [`${key.toUpperCase()} schedule is unavailable or stale.`] : [])};
     };
     const now = this.now();
-    return {schemaVersion:2,revision:this.revision,updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs'])},games:this.games.filter(game => {
+    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs'])},games:this.games.filter(game => {
       return (game.partitions || []).some(key => now-(this.store.partition(key)?.at || 0)<24*3600000) || game.finalObservedAt !== undefined || [...this.sessions.values()].some(owned => owned.value.gameId===game.id);
     }).map(game => {
       if (game.lifecycle === 'final') return {...game,sourceUrl:undefined,sourceUrls:undefined};
@@ -532,7 +537,7 @@ export class FootballCoordinator {
       return {kind:'ok'};
     }
     if (command.kind==='refresh') { await this.refresh(true); return {kind:'ok'}; }
-    if (command.kind==='board') { if (!this.games.length) await this.refresh(); else void this.refresh(); return {kind:'board',board:this.board()}; }
+    if (command.kind==='board') { void this.refresh(); return {kind:'board',board:this.board()}; }
     if (command.kind==='sources') return {kind:'sources',snapshot:this.sourcesSnapshot()};
     if (command.kind==='check-sources') {
       const listed=new Set(this.games.map(game=>game.id));

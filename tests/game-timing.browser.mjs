@@ -15,7 +15,7 @@ const games = [
   makeGame('3', team('Bad Away', 'BDA'), team('Bad Home', 'BDH'), 'pre', 'Delayed', 'tomorrow'),
   makeGame('4', team('Live Away', 'LVA'), team('Live Home', 'LVH'), 'in', 'Q2', '2026-09-26T20:00Z'),
 ];
-const board = () => ({ schemaVersion: 2, revision: 1, aliases: {}, games, updatedAt: '2026-09-26T23:59:57Z', leagues: {
+const board = () => ({ schemaVersion: 2, scheduleState: 'ready', revision: 1, aliases: {}, games, updatedAt: '2026-09-26T23:59:57Z', leagues: {
   nfl: { week: 4, scoresAt: '2026-09-26T23:59:57Z', sourceAt: null, errors: [] },
   ncaaf: { scoresAt: null, sourceAt: null, errors: [] },
 } });

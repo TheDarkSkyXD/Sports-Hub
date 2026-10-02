@@ -4,19 +4,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
+import { GameSchema } from '../lib/football/shared.ts';
 
 const directory = await mkdtemp(join(tmpdir(), 'game-refresh-browser-'));
 const at = Date.now();
-const team = name => ({ name, short: name, abbreviation: name.slice(0, 3), color: '112233' });
-const nfl = {
+const team = name => ({ name, short: name, abbreviation: name.slice(0, 3), color: '112233', score: null });
+const nfl = GameSchema.parse({
   id: '100', league: 'nfl', name: 'Nfl Away at Nfl Home', date: new Date(at + 3600000).toISOString(),
   home: team('Nfl Home'), away: team('Nfl Away'), status: 'pre', lifecycle: 'scheduled',
   detail: 'Scheduled', redzone: false, partitions: ['nfl'],
-};
-const college = {
+});
+const college = GameSchema.parse({
   ...nfl, id: 'ncaaf-101', league: 'ncaaf', name: 'College Away at College Home',
   home: team('College Home'), away: team('College Away'), partitions: ['fbs'],
-};
+});
 const gate = Promise.withResolvers();
 const coordinator = createFootballCoordinator(join(directory, 'state.sqlite'), {
   sources: [],
@@ -31,6 +32,7 @@ const browser = await chromium.launch({
 });
 try {
   const page = await browser.newPage();
+  page.on('pageerror', error => console.error(String(error)));
   await page.addInitScript(() => localStorage.setItem('sunday-room:v1', JSON.stringify({
     slots: ['ncaaf-101', null, null, null], selected: ['ncaaf-101'],
   })));
@@ -45,7 +47,12 @@ try {
     await route.fulfill({ json: reply.snapshot });
   });
   await page.goto(process.env.PLAYER_BASE_URL || 'http://127.0.0.1:3000');
-  await page.waitForFunction(() => document.body.innerText.includes('Nfl Home'), {}, { timeout: 7000 });
+  try {
+    await page.waitForFunction(() => document.body.innerText.includes('Nfl Home'), {}, { timeout: 7000 });
+  } catch (error) {
+    console.error(await page.locator('body').innerText());
+    throw error;
+  }
   await page.waitForTimeout(16000);
   assert.equal(await page.getByText('Could not refresh game data. Retrying automatically.', { exact: true }).count(), 0);
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('sunday-room:v1')).slots), ['ncaaf-101', null, null, null]);
