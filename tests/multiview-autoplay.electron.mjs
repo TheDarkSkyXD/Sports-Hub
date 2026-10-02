@@ -68,7 +68,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   const context = desktop.context();
   await context.route('**/api/games', route => route.fulfill({ json: {
-    schemaVersion: 2, revision, aliases: {}, games, updatedAt: new Date().toISOString(),
+    schemaVersion: 2, scheduleState: 'ready', revision, aliases: {}, games, updatedAt: new Date().toISOString(),
     leagues: {
       nfl: { week: 3, scoresAt: new Date().toISOString(), sourceAt: null, errors: [] },
       ncaaf: { scoresAt: null, sourceAt: null, errors: [] },

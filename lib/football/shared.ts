@@ -26,6 +26,7 @@ export const GameSchema = z.discriminatedUnion('lifecycle',[ScheduledGameSchema,
 export const LeagueFeedSchema = z.object({ week: z.number().optional(), scoresAt: z.string().nullable(), sourceAt: z.string().nullable(), errors: z.array(z.string()) });
 export const BoardSchema = z.object({
   schemaVersion: z.literal(2), revision: z.number().int().nonnegative(), games: z.array(GameSchema), updatedAt: z.string(),
+  scheduleState: z.enum(['loading','ready']),
   leagues: z.object({ nfl: LeagueFeedSchema, ncaaf: LeagueFeedSchema }), aliases: z.record(z.string()),
 });
 export type Team = z.infer<typeof TeamSchema>;
