@@ -45,6 +45,7 @@ next-env.d.ts
 /.codex/
 /outputs/
 /work/
+/.scratch/
 
 /.unused-scaffold/
 /.sites-scaffold/
