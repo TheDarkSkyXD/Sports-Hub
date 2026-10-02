@@ -51,6 +51,7 @@ if (desktopPage) {
   const window = await desktopApp.browserWindow(desktopPage);
   await window.evaluate(window => {
     window.webContents.setBackgroundThrottling(false);
+    window.webContents.setAudioMuted(true);
     window.showInactive();
   });
   await window.dispose();
@@ -58,6 +59,7 @@ if (desktopPage) {
 const browser = desktopApp ? null : await chromium.launch({
   channel: process.env.PLAYER_BROWSER_CHANNEL || (process.platform === 'win32' ? 'msedge' : undefined),
   headless: true,
+  args: ['--mute-audio'],
 });
 const seededContexts = new WeakSet();
 
@@ -72,7 +74,7 @@ async function screenshot(page, name, fullPage = false) {
   } else await page.screenshot({ path: target, fullPage });
 }
 
-async function openRoom({ live = false, provider = false, manyQualities = false, mediaPlaylist = false, backupMediaPlaylist = false, mp4 = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false, holdHeartbeat = false, holdSelection = false } = {}) {
+async function openRoom({ live = false, provider = false, manyQualities = false, heightlessMaster = false, mediaPlaylist = false, backupMediaPlaylist = false, initialQuality = 'auto', mp4 = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false, holdHeartbeat = false, holdSelection = false } = {}) {
   const context = desktopApp ? desktopApp.context() : await browser.newContext({ viewport: { width: 1440, height: 1100 } });
   await context.unrouteAll({ behavior: 'wait' });
   let roomGames = games.map((g, index) => provider ? { ...g, status: waitingForLive && index === 0 ? 'pre' : g.status, sourceUrl: waitingForLive && index === 1 ? undefined : `https://isportsurge.ws/watch/nfl/test-game/${g.id}` } : g);
@@ -172,6 +174,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   });
   async function serveMedia(route, file) {
     let body = await readFile(path.join(media, file));
+    if (heightlessMaster && file === 'master.m3u8') body = Buffer.from(body.toString().replace(/,RESOLUTION=\d+x\d+/g, ''));
     if (manyQualities && file === 'master.m3u8') {
       body = Buffer.from(body.toString() + [500000, 650000, 800000].map(bandwidth => `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=640x360\nlevel_0.m3u8\n`).join(''));
     }
@@ -208,8 +211,9 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
       const provider = parameters.get('playerFixture') === 'provider';
       const mediaPlaylist = parameters.has('mediaPlaylist');
       const mp4 = parameters.has('mp4Fixture');
+      const initialQuality = parameters.get('initialQuality') ?? 'auto';
       localStorage.setItem('sunday-room:v1', JSON.stringify({
-        selected: games.map(g => g.id), favorites: [], layout: 'quad', volume: 70, spoilers: false,
+        selected: games.map(g => g.id), favorites: [], layout: 'quad', volume: 70, spoilers: false, defaultQuality: initialQuality,
         feeds: provider ? {} : Object.fromEntries(games.map((g, i) => [g.id, {
           url: `${location.origin}/__player_fixture__/${mp4 ? 'single.mp4' : mediaPlaylist ? 'level_0.m3u8' : 'master.m3u8'}?tile=${i}`, label: `Test stream ${i + 1}`,
         }])),
@@ -225,7 +229,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
   page.setDefaultTimeout(15000);
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}${mediaPlaylist ? '&mediaPlaylist=1' : ''}${mp4 ? '&mp4Fixture=1' : ''}${offlineStart ? '&offlineFixture=1' : ''}`);
+  await page.goto(`${origin}/?playerFixture=${provider ? 'provider' : 'direct'}${mediaPlaylist ? '&mediaPlaylist=1' : ''}${initialQuality !== 'auto' ? `&initialQuality=${encodeURIComponent(initialQuality)}` : ''}${mp4 ? '&mp4Fixture=1' : ''}${offlineStart ? '&offlineFixture=1' : ''}`);
   await page.locator('.game-tile').first().waitFor();
   if (!provider) await page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(v => v.readyState >= 2));
   return { context, page, pageErrors, manifestRequests, indexRequests, finalFailure, sessionCounts, heartbeatObserved, releaseHeartbeat, selectionObserved, releaseSelection,
@@ -246,13 +250,20 @@ async function revealControls(page) {
   await page.mouse.move(bounds.x + 24, bounds.y + bounds.height - 16);
 }
 
+async function openSettingsTab(page, name) {
+  const tab = page.getByRole('tab', { name });
+  if (await tab.count()) await tab.click();
+}
+
 async function selectDefaultQuality(page, label) {
+  await openSettingsTab(page, 'Playback');
   await page.getByRole('combobox', { name: 'Default video quality' }).click();
   await page.getByRole('option', { name: label, exact: true }).click();
 }
 
 try {
-  const mediaRoom = await openRoom({ mediaPlaylist: true });
+  const mediaRoom = await openRoom({ mediaPlaylist: true, initialQuality: '360' });
+  assert.deepEqual(await mediaRoom.page.locator('video').evaluateAll(videos => videos.map(video => video.muted)), [true, true, true, true]);
   await revealControls(mediaRoom.page);
   await mediaRoom.page.getByRole('button', { name: 'Video quality', exact: true }).click();
   const mediaMenu = mediaRoom.page.getByRole('dialog', { name: 'Playback quality', exact: true });
@@ -260,9 +271,44 @@ try {
   const mediaOptions = await mediaMenu.innerText();
   assert.match(mediaOptions, /360p/, 'Decoded 360p media playlist must expose its actual quality');
   assert.doesNotMatch(mediaOptions, /\b0 kbps\b/, 'Unknown playlist bandwidth must not appear as 0 kbps');
+  assert.match(await mediaMenu.getByRole('button', { name: /^360p/ }).getAttribute('class'), /selected/);
+  assert.doesNotMatch(mediaOptions, /1080p/, 'The playlist must not invent the requested resolution');
+  await mediaRoom.page.getByRole('button', { name: 'Room settings' }).click();
+  await selectDefaultQuality(mediaRoom.page, 'Highest available');
+  await mediaRoom.page.getByRole('button', { name: 'Close', exact: true }).click();
+  await revealControls(mediaRoom.page);
+  await mediaRoom.page.getByRole('button', { name: 'Video quality', exact: true }).click();
+  assert.match(await mediaRoom.page.getByRole('dialog', { name: 'Playback quality' }).getByRole('button', { name: /^360p/ }).getAttribute('class'), /selected/);
+  await mediaRoom.page.getByRole('dialog', { name: 'Playback quality' }).getByRole('button', { name: /^Auto/ }).click();
+  await mediaRoom.page.locator('video').first().evaluate(video => {
+    Object.defineProperty(video, 'videoHeight', { configurable: true, value: 180 });
+    video.dispatchEvent(new Event('resize'));
+  });
+  await revealControls(mediaRoom.page);
+  await mediaRoom.page.getByRole('button', { name: 'Video quality', exact: true }).click();
+  assert.match(await mediaRoom.page.getByRole('dialog', { name: 'Playback quality' }).getByRole('button', { name: /^Auto/ }).getAttribute('class'), /selected/);
+  assert.match(await mediaRoom.page.getByRole('dialog', { name: 'Playback quality' }).innerText(), /180p/);
   assert.deepEqual(mediaRoom.pageErrors, []);
-  results.push('A single-rendition media playlist reports decoded 360p without invented 0 kbps.');
+  results.push('A single-rendition media playlist reports and selects decoded 360p for numeric and highest defaults.');
   if (!desktopApp) await mediaRoom.context.close();
+
+  const heightlessRoom = await openRoom({ heightlessMaster: true });
+  await heightlessRoom.page.getByRole('button', { name: 'Room settings' }).click();
+  await selectDefaultQuality(heightlessRoom.page, '720p');
+  await heightlessRoom.page.getByRole('button', { name: 'Close', exact: true }).click();
+  await revealControls(heightlessRoom.page);
+  await heightlessRoom.page.getByRole('button', { name: 'Video quality', exact: true }).click();
+  assert.match(await heightlessRoom.page.getByRole('dialog', { name: 'Playback quality' }).getByRole('button', { name: /^Auto/ }).getAttribute('class'), /selected/);
+  await heightlessRoom.page.getByRole('button', { name: 'Room settings' }).click();
+  await selectDefaultQuality(heightlessRoom.page, 'Highest available');
+  await heightlessRoom.page.getByRole('button', { name: 'Close', exact: true }).click();
+  await heightlessRoom.page.waitForFunction(() => [...document.querySelectorAll('.game-tile video')].every(video => video.readyState >= 2 && video.videoHeight === 360));
+  await revealControls(heightlessRoom.page);
+  await heightlessRoom.page.getByRole('button', { name: 'Video quality', exact: true }).click();
+  assert.match(await heightlessRoom.page.getByRole('dialog', { name: 'Playback quality' }).getByRole('button', { name: /^420 kbps/ }).getAttribute('class'), /selected/);
+  assert.deepEqual(heightlessRoom.pageErrors, []);
+  results.push('Unknown-height variants stay on Auto for numeric defaults and use highest bitrate for Highest available.');
+  if (!desktopApp) await heightlessRoom.context.close();
 
   const switchRoom = await openRoom({ provider: true, backupMediaPlaylist: true });
   const switchControls = switchRoom.page.getByRole('group', { name: 'Focused stream controls', exact: true });
@@ -292,6 +338,7 @@ try {
   const defaultVideos = await defaultRoom.page.locator('video').elementHandles();
   const initialSources = await defaultRoom.page.locator('video').evaluateAll(videos => videos.map(video => video.currentSrc));
   await defaultRoom.page.getByRole('button', { name: 'Room settings' }).click();
+  await openSettingsTab(defaultRoom.page, 'Playback');
   assert.match(await defaultRoom.page.getByRole('combobox', { name: 'Default video quality' }).innerText(), /Auto/);
   await selectDefaultQuality(defaultRoom.page, '360p');
   await defaultRoom.page.waitForFunction(() => {
@@ -336,15 +383,18 @@ try {
     return videos.length === 4 && videos.every(video => video.readyState >= 2 && video.videoHeight === 360);
   });
   await defaultRoom.page.getByRole('button', { name: 'Room settings' }).click();
+  await openSettingsTab(defaultRoom.page, 'Playback');
   assert.match(await defaultRoom.page.getByRole('combobox', { name: 'Default video quality' }).innerText(), /360p/);
+  await openSettingsTab(defaultRoom.page, 'Privacy');
   await defaultRoom.page.getByRole('button', { name: 'Reset room and remove saved feeds' }).click();
   await defaultRoom.page.getByRole('button', { name: 'Room settings' }).click();
+  await openSettingsTab(defaultRoom.page, 'Playback');
   assert.match(await defaultRoom.page.getByRole('combobox', { name: 'Default video quality' }).innerText(), /Auto/);
   assert.deepEqual(defaultRoom.pageErrors, []);
   results.push('Room default controls four decoded streams without recreating sources and applies to new streams; a manual override survives focus, a new default resets it, reload restores the preference, and room reset returns to Auto.');
   if (!desktopApp) await defaultRoom.context.close();
 
-  const sourceRoom = await openRoom({ provider: true });
+  const sourceRoom = await openRoom({ provider: true, backupMediaPlaylist: true });
   await sourceRoom.page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
   await sourceRoom.page.getByRole('button', { name: 'Room settings' }).click();
   await selectDefaultQuality(sourceRoom.page, '360p');
