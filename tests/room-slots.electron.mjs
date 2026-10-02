@@ -26,7 +26,13 @@ try {
     cwd: appRoot,
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
   });
-  const page = await desktop.firstWindow();
+  let page;
+  for (let attempt = 0; attempt < 300; attempt++) {
+    page = desktop.windows().find(candidate => candidate.url().startsWith('http://127.0.0.1:'));
+    if (page) break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.ok(page, 'Local app window must open');
   await page.setViewportSize({ width: 1440, height: 1400 });
   page.setDefaultTimeout(15000);
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:/);
@@ -44,10 +50,12 @@ try {
     localStorage.setItem('sunday-room:v1', pending);
   });
 
-  async function restore(slots, layout = 'quad') {
+  async function restore(slots, layout = 'quad', withFeeds = false) {
     await page.evaluate(saved => sessionStorage.setItem('room-slot-test:pending', JSON.stringify({
-      slots: saved.slots, selected: saved.slots.filter(Boolean), favorites: [], feeds: {}, layout: saved.layout, volume: 70, spoilers: false,
-    })), { slots, layout });
+      slots: saved.slots, selected: saved.slots.filter(Boolean), favorites: [],
+      feeds: Object.fromEntries(saved.feedIds.map(id => [id, { url: 'http://localhost:9999/fixture.mp4', label: 'Fixture' }])),
+      layout: saved.layout, volume: 70, spoilers: false,
+    })), { slots, layout, feedIds: withFeeds ? games.slice(0, 4).map(game => game.id) : [] });
     await page.reload();
     await page.locator('.center-game').first().getByRole('button').last().waitFor();
     await page.getByRole('button', { name: { quad: 'Four games', focus: 'Focus view', duo: 'Two games', single: 'Single game' }[layout] }).waitFor();
@@ -196,6 +204,37 @@ try {
   }, e);
   await expectSlots([a, null, null, null], 'duo');
   assert.equal(await tile(a).evaluate(element => element.classList.contains('drop-hover')), false);
+
+  const sessions = new Map();
+  await desktop.context().route('**/api/playback?*', route => route.fulfill({ status: 204 }));
+  await desktop.context().route('**/api/playback', route => {
+    const body = route.request().postDataJSON();
+    let session = sessions.get(body.sessionId);
+    if (route.request().method() === 'POST') {
+      session = { id: randomUUID(), gameId: body.gameId, candidateId: 'manual', generation: 0, state: 'active', graceEndsAt: null };
+      sessions.set(session.id, session);
+    }
+    return route.fulfill({ json: { session, candidates: [] } });
+  });
+  await desktop.context().route('http://localhost:9999/**', route => route.fulfill({ status: 200, body: '', contentType: 'video/mp4' }));
+  const audibleVideos = () => page.locator('.game-tile').evaluateAll(tiles => tiles.filter(tile => tile.querySelector('video')?.muted === false).map(tile => tile.getAttribute('data-game-id')));
+  for (const layout of ['single', 'duo', 'quad']) {
+    await restore([a, b, c, d], layout, true);
+    await tile(a).locator('video').waitFor();
+    await tile(a).locator('.audio-focus').click();
+    await page.waitForFunction(id => document.querySelector(`.game-tile[data-game-id="${id}"] video`)?.muted === false, a);
+    assert.deepEqual(await audibleVideos(), [a]);
+    await center(c).dragTo(tile(a), { sourcePosition: { x: 24, y: 70 }, targetPosition: { x: 30, y: 15 } });
+    await expectSlots([c, b, a, d], layout);
+    const expectedAudible = layout === 'quad' ? a : c;
+    await tile(c).locator('video').waitFor();
+    await page.waitForFunction(id => {
+      const audible = [...document.querySelectorAll('.game-tile')].filter(tile => tile.querySelector('video')?.muted === false);
+      return audible.length === 1 && audible[0].getAttribute('data-game-id') === id;
+    }, expectedAudible);
+    assert.deepEqual(await audibleVideos(), [expectedAudible]);
+    assert.equal(await tile(a).count(), layout === 'quad' ? 1 : 0);
+  }
   console.log('Electron room slots: native drag add, replace, swap, remove, and persistence passed in every layout.');
 } finally {
   await desktop?.close();
