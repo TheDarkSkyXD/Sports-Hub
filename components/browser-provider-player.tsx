@@ -19,7 +19,6 @@ type Props = {
   volume: number;
   defaultQuality: QualityPreference;
   playing: boolean;
-  delay: number;
   onPlayingChange: (playing: boolean) => void;
   onAudibleChange: (audible: boolean) => void;
   onVolumeChange: (volume: number) => void;
@@ -68,7 +67,7 @@ async function updateSession(session: Session, changes: SessionChange = {}): Pro
   return parsed.data;
 }
 
-export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCandidates = [], manualFeed, graceEndsAt, focused, audible, volume, defaultQuality, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange }: Props) {
+export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCandidates = [], manualFeed, graceEndsAt, focused, audible, volume, defaultQuality, playing, onPlayingChange, onAudibleChange, onVolumeChange }: Props) {
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [message, setMessage] = useState('Finding your game…');
   const [endedReason, setEndedReason] = useState<'final' | 'media' | null>(null);
@@ -331,7 +330,7 @@ export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCan
   return <div className="provider-player">
     <div className="provider-surface">
       {ended ? <div className="player-message"><AlertCircle/><strong>{endedReason === 'final' ? 'Game stream ended' : 'Video ended'}</strong><p>{endedReason === 'final' ? 'Playback ended after the game became final.' : 'This video reached its end.'}</p></div>
-        : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} defaultQuality={defaultQuality} playing={playing} delay={delay} startupTimeoutMs={candidate?.sourceIds.includes('sportsurge-v2') ? 75000 : undefined} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : url => mediaChange(url,{failure:true})} onEnded={url => { if(!currentFeed(url))return; if (!manualFeed && session?.state === 'active') mediaChange(url,{failure:true}); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : url => mediaChange(url,{retry:true})} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
+        : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} defaultQuality={defaultQuality} playing={playing} startupTimeoutMs={candidate?.sourceIds.includes('sportsurge-v2') ? 75000 : undefined} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : url => mediaChange(url,{failure:true})} onEnded={url => { if(!currentFeed(url))return; if (!manualFeed && session?.state === 'active') mediaChange(url,{failure:true}); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : url => mediaChange(url,{retry:true})} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
         : <div className="player-message">{message === 'Finding your game…' || message === 'Reconnecting to your game…' ? <LoaderCircle className="spin"/> : <AlertCircle/>}<strong>{message === 'Finding your game…' ? 'Opening the live player' : message === 'Reconnecting to your game…' ? 'Reconnecting' : 'Player unavailable'}</strong><p>{message}</p>{message !== 'Finding your game…' && <button className="button" onClick={() => { if (openTimer.current !== null) { window.clearTimeout(openTimer.current); openTimer.current = null; } if (rejectedInitialCandidate.current) { rejectedInitialCandidate.current = false; reconcileIntent.current = null; setRequestedCandidateId(undefined); } setRetry(value => value + 1); }}><RefreshCw size={14}/>Try again</button>}</div>}
     </div>
     {!manualFeed && <ServerControls candidates={playback?.candidates ?? availableCandidates} selectedCandidateId={session?.candidateId ?? requestedCandidateId ?? ''} disabled={ended}

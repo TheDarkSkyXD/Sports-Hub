@@ -223,6 +223,7 @@ function createUpdateService(deps) {
     updater, currentVersion, userDataDir, isPackaged, platform,
     feedUrl = defaultUpdateFeedUrl, trusted = () => false,
     now = () => Date.now(), log = () => {}, broadcast = () => {},
+    prepareInstall = async () => {},
   } = deps;
 
   const file = path.join(userDataDir, 'update.json');
@@ -314,7 +315,7 @@ function createUpdateService(deps) {
     const choice = classified.retry === null ? null : retry;
     log(`update: ${describe(error)}`);
     apply({ type: ':failed', reason: retry === 'install' ? 'install' : classified.reason,
-      retry: choice, detail: retry === 'install' ? 'The installer could not be started.' : classified.detail });
+      retry: choice, detail: retry === 'install' ? describe(error) : classified.detail });
   }
 
   function beginCheck(automatic = false) {
@@ -490,11 +491,11 @@ function createUpdateService(deps) {
       if (command === 'check') beginCheck();
       else if (command === 'download') beginDownload();
       else if (command === 'install') {
-        // Silent with a forced relaunch, which is what an in-app update means. The library
-        // passes `/D=` last and unquoted, which is what `desktop/installer.nsh` needs to
-        // restore the install directory.
         if (apply({ type: 'install' })) {
-          try { updater.quitAndInstall(true, true); }
+          try {
+            await prepareInstall();
+            await updater.quitAndInstall(true, true);
+          }
           catch (error) { fail(error, 'install'); }
         }
       }

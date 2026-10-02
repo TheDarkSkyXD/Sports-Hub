@@ -27,7 +27,12 @@ export function chooseDefaultLevel({ preference, levels }: {
 }): number {
   if (preference === 'auto') return -1;
   const known = levels.filter(level => Number.isFinite(level.height) && level.height > 0);
-  if (known.length === 0) return -1;
+  if (known.length === 0) {
+    if (preference !== 'best') return -1;
+    const byBitrate = levels.filter(level => Number.isFinite(level.bitrate) && level.bitrate > 0);
+    byBitrate.sort((left, right) => right.bitrate - left.bitrate || left.index - right.index);
+    return byBitrate[0]?.index ?? -1;
+  }
   const target = preference === 'best' ? Infinity : Number(preference);
   const below = known.filter(level => level.height <= target);
   const candidates = below.length > 0 ? below : known;
