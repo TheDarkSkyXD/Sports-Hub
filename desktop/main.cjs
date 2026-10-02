@@ -11,7 +11,8 @@ const { CH, createUpdateService, selectUpdateFeedUrl } = require('./update.cjs')
 const { DesktopNsisUpdater } = require('./nsis-updater.cjs');
 
 app.setName('Sunday Room');
-if (process.platform === 'win32') app.setAppUserModelId('com.sundayroom.desktop');
+const appId = app.isPackaged ? 'com.sundayroom.desktop' : 'com.sundayroom.desktop.dev';
+if (process.platform === 'win32') app.setAppUserModelId(appId);
 
 // The version the installer will carry, read from the manifest. On an unpackaged run
 // `app.getVersion()` returns Electron's own version, which is not what a user should read
@@ -127,10 +128,20 @@ app.whenReady().then(async () => {
   streameastCollector.start();
   win = new BrowserWindow({
     title:'Sunday Room',width:1500,height:1060,minWidth:900,minHeight:650,
-    backgroundColor:'#101114',autoHideMenuBar:true,
+    backgroundColor:'#101114',autoHideMenuBar:true,show:false,
     icon:path.join(__dirname,'icons','sunday-room.png'),
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,webSecurity:true,backgroundThrottling:false},
   });
+  if (process.platform === 'win32') {
+    const quote = value => `"${value}"`;
+    win.setAppDetails({
+      appId,
+      appIconPath: process.execPath,
+      relaunchCommand: app.isPackaged ? quote(process.execPath) : `${quote(process.execPath)} ${quote(path.join(__dirname, 'main.cjs'))}`,
+      relaunchDisplayName: 'Sunday Room',
+    });
+  }
+  win.show();
   win.webContents.setWindowOpenHandler(({url}) => {
     try { if (new URL(url).protocol === 'https:') void shell.openExternal(url); } catch {}
     return {action:'deny'};

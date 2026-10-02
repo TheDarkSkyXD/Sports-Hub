@@ -47,6 +47,7 @@ const eslintConfig = defineConfig([
         { pattern: "lib/{sunday,utils,playback-quality,desktop-update,multiview}.ts", category: "pure-lib" },
         { pattern: "desktop/**/*.cjs", category: "desktop" },
         { pattern: "scripts/verify-sportsurge-catalog.cjs", category: "desktop-verifier" },
+        { pattern: "scripts/electron-runtime.mjs", category: "desktop-runtime" },
         { pattern: "scripts/**/*.{ts,mjs,cjs}", category: "script" },
         { pattern: "tests/**/*.{ts,mjs,cjs}", category: "test" },
       ],
@@ -84,8 +85,8 @@ const eslintConfig = defineConfig([
           { from: { file: { categories: "pure-lib" } }, allow: { to: { file: { categories: { anyOf: ["pure-lib", "shared"] } } } } },
           { from: { file: { categories: "desktop" } }, allow: { to: { file: { categories: "desktop" } } } },
           { from: { file: { categories: "desktop-verifier" } }, allow: { to: { file: { categories: "desktop" } } } },
-          { from: { file: { categories: "script" } }, allow: { to: { file: { categories: { anyOf: ["adapter", "domain", "shared", "pure-lib"] } } } } },
-          { from: { file: { categories: "test" } }, allow: { to: { file: { categories: { anyOf: ["ui", "route", "shared", "domain", "adapter", "store", "runtime", "composition", "server-facade", "relay", "provider-contract", "provider-parser", "provider-adapter", "provider-composition", "provider-probe", "pure-lib", "desktop", "script", "test"] } } } } },
+          { from: { file: { categories: "script" } }, allow: { to: { file: { categories: { anyOf: ["adapter", "domain", "shared", "pure-lib", "desktop-runtime"] } } } } },
+          { from: { file: { categories: "test" } }, allow: { to: { file: { categories: { anyOf: ["ui", "route", "shared", "domain", "adapter", "store", "runtime", "composition", "server-facade", "relay", "provider-contract", "provider-parser", "provider-adapter", "provider-composition", "provider-probe", "pure-lib", "desktop", "desktop-runtime", "script", "test"] } } } } },
         ],
       }],
     },
@@ -93,6 +94,20 @@ const eslintConfig = defineConfig([
   {
     files: ["desktop/**/*.cjs", "scripts/verify-sportsurge-catalog.cjs"],
     rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
+  {
+    files: ["tests/**/*.mjs", "scripts/**/*.mjs"],
+    ignores: ["scripts/electron-runtime.mjs"],
+    rules: {
+      "no-restricted-imports": ["error", { paths: [{ name: "electron", message: "Use prepareDevelopmentElectron() so Windows runs the branded executable." }] }],
+      "no-restricted-syntax": ["error", {
+        selector: "CallExpression[callee.object.name='electron'][callee.property.name='launch'] > ObjectExpression.arguments:not(:has(Property[key.name='executablePath']))",
+        message: "Pass an explicit branded executablePath from prepareDevelopmentElectron(), or the packaged executable.",
+      }, {
+        selector: "CallExpression[callee.name='require'][arguments.0.value='electron']",
+        message: "Use prepareDevelopmentElectron() instead of loading the stock executable path.",
+      }],
+    },
   },
   {
     files: ["components/ui/**/*.{ts,tsx}", "hooks/use-mobile.ts"],

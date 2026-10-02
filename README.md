@@ -67,6 +67,10 @@ After the first installation and build, Windows users can double-click **[Start 
 
 The launcher starts Electron and its own local Next.js server on `127.0.0.1`. It uses port `51931` when available and selects another local port when that port is occupied or reserved. Keep the project folder and dependencies in place; this is a source-based launcher, not a packaged installer.
 
+On Windows, desktop launches and Electron tests prepare a branded runtime in `.desktop-runtime/electron`. The taskbar and Task Manager use the Sunday Room logo. Preparation refreshes the runtime when Electron or `public/favicon.svg` changes and preserves the original Electron installation. Close development windows before a runtime refresh.
+
+Run `npm run desktop:branding` on Windows to check the running executable, native icons, and taskbar metadata. `npm run desktop:icons:check` checks that the desktop icons match `public/favicon.svg`. Release checks verify the packaged app before its installer is uploaded.
+
 ### Your first game day
 
 1. Choose **All**, **NFL**, or **NCAA**. Find a matchup in the **Game center** or scoreboard strip and add it to your room. Live games with listed sources start automatically, including saved selections when you reopen the room.

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright';
 import { listPackage } from '@electron/asar';
+import { assertDesktopBranding } from './desktop-branding.mjs';
 
 const unpackedPath = path.resolve('dist-electron/win-unpacked');
 assert.ok(existsSync(path.join(unpackedPath, 'Sunday Room.exe')), `Missing packaged app: ${unpackedPath}`);
@@ -21,6 +22,8 @@ try {
     'Packaged server resources must not embed a previous build output');
   assert.ok(!existsSync(path.join(appPath, 'resources/server/work')),
     'Packaged server resources must not embed local verification scratch');
+  assert.ok(!existsSync(path.join(appPath, 'resources/server/.desktop-runtime')),
+    'Packaged server resources must not embed the development Electron runtime');
 
   // electron-updater is a runtime dependency loaded at startup. A build that packaged
   // without it opened a window titled "Error" and served nothing, which the assertions
@@ -117,6 +120,7 @@ assert.ok(['hourly', 'daily', 'weekly'].includes(updateStatus.preferences.checkF
     'Packaged verification must reuse the build executable instead of launching a new Temp copy');
   assert.equal(path.normalize(runtime.resourcesPath), path.normalize(path.join(path.dirname(executablePath), 'resources')));
   console.log(`Packaged verification executable: ${runtime.executablePath}`);
+  await assertDesktopBranding(desktop, path.resolve('work/electron-release/branding'));
 
   origin = new URL(page.url()).origin;
   const staticAsset = await page.locator('script[src^="/_next/static/"]').first().getAttribute('src');

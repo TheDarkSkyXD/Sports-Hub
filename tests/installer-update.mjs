@@ -119,7 +119,7 @@ async function buildVersion(version) {
       asar: true,
       directories: { output: path.join(scratch, `build-${version}`) },
       files: ['package.json', 'main.cjs'],
-      win: { target: [{ target: 'nsis', arch: ['x64'] }] },
+      win: { icon: path.join(root, 'desktop/icons/sunday-room.ico'), target: [{ target: 'nsis', arch: ['x64'] }] },
       nsis: {
         oneClick: false,
         perMachine: false,

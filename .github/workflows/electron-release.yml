@@ -36,6 +36,8 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
+      - run: npm run desktop:icons:check
+      - run: npm run desktop:branding
       - run: npm run desktop:package
       - run: node --experimental-strip-types --test tests/updater-feed.test.ts
       - name: Report the signing state of the installer

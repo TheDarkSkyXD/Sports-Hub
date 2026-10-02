@@ -6,6 +6,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import ffmpeg from 'ffmpeg-static';
 import { chromium, _electron as electron } from 'playwright';
+import { prepareDevelopmentElectron } from '../scripts/electron-runtime.mjs';
 
 const desktop = process.argv.includes('--desktop');
 const qualityOnly = process.argv.includes('--quality-only');
@@ -42,6 +43,7 @@ const games = Array.from({ length: 4 }, (_, i) => ({
 }));
 const results = [];
 const desktopApp = desktop ? await electron.launch({
+  executablePath: await prepareDevelopmentElectron(),
   args: [path.resolve('desktop/main.cjs'), `--user-data-dir=${path.join(artifacts, 'profile')}`],
   env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
 }) : null;

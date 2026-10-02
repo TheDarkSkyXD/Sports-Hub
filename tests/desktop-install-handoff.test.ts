@@ -50,6 +50,8 @@ test('Install keeps the window open until the local server stops, then starts th
     }
 
     async loadURL(url: string) { this.webContents.mainFrame.url = url; }
+    setAppDetails() {}
+    show() { this.visible = true; }
     isDestroyed() { return false; }
     isFocused() { return true; }
     isVisible() { return this.visible; }

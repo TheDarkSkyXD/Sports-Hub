@@ -2,14 +2,14 @@ import { spawn } from 'node:child_process';
 import { readFileSync, rmSync } from 'node:fs';
 import { connect } from 'node:net';
 import { resolve } from 'node:path';
-import electronPath from 'electron';
+import { prepareDevelopmentElectron } from './electron-runtime.mjs';
 
 const root=resolve(import.meta.dirname,'..');
 const resultPath=resolve(root,'work/sportsurge-catalog-electron/result.json');
 rmSync(resultPath,{force:true});
 const env={...process.env};
 delete env.ELECTRON_RUN_AS_NODE;
-const executable=process.env.NODE_ENV==='test' && process.env.SUNDAY_ROOM_VERIFIER_EXECUTABLE || electronPath;
+const executable=process.env.NODE_ENV==='test' && process.env.SUNDAY_ROOM_VERIFIER_EXECUTABLE || await prepareDevelopmentElectron();
 const entry=process.env.NODE_ENV==='test' && process.env.SUNDAY_ROOM_VERIFIER_ENTRY || resolve(root,'scripts/verify-sportsurge-catalog.cjs');
 const child=spawn(executable,[entry],{
   cwd:root,env,stdio:'inherit',windowsHide:true,
