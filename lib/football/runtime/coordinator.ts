@@ -388,7 +388,7 @@ export class FootballCoordinator {
       const partitions = keys.map(key => this.store.partition(key));
       const times = partitions.map(partition => partition?.at || 0);
       const oldest = Math.min(...times);
-      return {week:partitions[0]?.week,scoresAt:oldest ? new Date(oldest).toISOString() : null,sourceAt:this.sourceTimes.size ? new Date(Math.max(...this.sourceTimes.values())).toISOString() : null,errors:keys.flatMap(key => this.errors.has(key) || !oldest || this.now()-oldest>90000 ? [`${key.toUpperCase()} schedule is unavailable or stale.`] : [])};
+      return {week:partitions[0]?.week,scoresAt:oldest ? new Date(oldest).toISOString() : null,sourceAt:this.sourceTimes.size ? new Date(Math.max(...this.sourceTimes.values())).toISOString() : null,errors:keys.flatMap((key,index) => this.errors.has(key) || !times[index] || this.now()-times[index]>90000 ? [`${key.toUpperCase()} schedule is unavailable or stale.`] : [])};
     };
     const now = this.now();
     return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs'])},games:this.games.filter(game => {
