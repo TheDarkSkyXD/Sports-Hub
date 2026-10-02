@@ -27,6 +27,9 @@ test('Install keeps the window open until the local server stops, then starts th
   const handlers = new Map<string, (event: unknown) => Promise<unknown>>();
   let window: FakeWindow | undefined;
   let updater: FakeNsisUpdater | undefined;
+  const autoUpdater = new EventEmitter();
+  const registerWindow = (value: FakeWindow) => { window = value; };
+  const registerUpdater = (value: FakeNsisUpdater) => { updater = value; };
 
   class FakeWindow extends EventEmitter {
     visible = true;
@@ -34,11 +37,16 @@ test('Install keeps the window open until the local server stops, then starts th
       mainFrame: { url: '' },
       setWindowOpenHandler: () => {},
       send: () => {},
+      executeJavaScript: async (script: string) => {
+        assert.match(script, /dialog\.update-screen\[open\]\[data-update-state=/);
+        assert.match(script, /requestAnimationFrame\(\(\) => requestAnimationFrame\(resolve\)\)/);
+        events.push('update screen painted');
+      },
     });
 
     constructor() {
       super();
-      window = this;
+      registerWindow(this);
     }
 
     async loadURL(url: string) { this.webContents.mainFrame.url = url; }
@@ -59,6 +67,9 @@ test('Install keeps the window open until the local server stops, then starts th
       let prevented = false;
       app.emit('before-quit', { preventDefault: () => { prevented = true; } });
       if (!prevented) {
+        let closePrevented = false;
+        window?.emit('close', { preventDefault: () => { closePrevented = true; } });
+        if (closePrevented) return;
         if (window) window.visible = false;
         app.emit('quit', 0);
       }
@@ -66,6 +77,7 @@ test('Install keeps the window open until the local server stops, then starts th
   });
 
   class FakeNsisUpdater extends EventEmitter {
+    failLaunch = true;
     currentVersion = { constructor: String };
     setFeedURL() {}
     checkForUpdates() {
@@ -78,11 +90,13 @@ test('Install keeps the window open until the local server stops, then starts th
     }
     quitAndInstall() {
       events.push('installer started');
-      setImmediate(() => app.quit());
+      if (this.failLaunch) return Promise.reject(new Error('installer launch failed'));
+      setImmediate(() => { autoUpdater.emit('before-quit-for-update'); app.quit(); });
+      return Promise.resolve();
     }
     constructor() {
       super();
-      updater = this;
+      registerUpdater(this);
     }
   }
 
@@ -104,12 +118,12 @@ test('Install keeps the window open until the local server stops, then starts th
   };
   const dependency = (name: string) => {
     if (name === 'electron') return {
-      app, BrowserWindow: FakeWindow,
+      app, autoUpdater, BrowserWindow: FakeWindow,
       ipcMain: { handle: (channel: string, handler: (event: unknown) => Promise<unknown>) => handlers.set(channel, handler) },
       shell: { openExternal: async () => {} }, powerMonitor: new EventEmitter(),
       Notification: { isSupported: () => false },
     };
-    if (name === 'electron-updater') return { NsisUpdater: FakeNsisUpdater };
+    if (name === './nsis-updater.cjs') return { DesktopNsisUpdater: FakeNsisUpdater };
     if (name === './port.cjs') return { localServerPort: async () => 4132 };
     if (name === './local-server.cjs') return { createLocalServer: () => localServer };
     if (name === './sportsurge-collector.cjs') return { createSportsurgeCollector: () => collector('sportsurge') };
@@ -122,7 +136,7 @@ test('Install keeps the window open until the local server stops, then starts th
   try {
     const source = readFileSync(path.resolve('desktop/main.cjs'), 'utf8');
     const boot = runInNewContext(`(function(require, __dirname, process, fetch, AbortSignal, console) { ${source}\n})`, {
-      setImmediate, setInterval, clearInterval, URL,
+      setImmediate, setInterval, clearInterval, setTimeout, clearTimeout, URL,
     });
     assert.equal(typeof boot, 'function');
     boot(
@@ -152,17 +166,35 @@ test('Install keeps the window open until the local server stops, then starts th
     assert.equal(status.state.kind, 'ready');
 
     const install = get(CH.install)(event);
-    await Promise.resolve();
+    await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(window.isVisible(), true, 'the updating window stays visible during shutdown');
     assert.equal(events.includes('installer started'), false, 'the installer waits for shutdown');
     assert.ok(events.includes('server stopping'), 'the local server began shutting down');
+    let closePrevented = false;
+    window.emit('close', { preventDefault: () => { closePrevented = true; } });
+    assert.equal(closePrevented, true, 'the window close button is blocked while installing');
+    app.quit();
+    assert.equal(window.isVisible(), true, 'a second quit is vetoed while shutdown is pending');
 
     serverStopped.resolve();
-    await install;
+    const failed = await install;
+    assert.ok(failed && typeof failed === 'object' && 'state' in failed);
+    assert.equal(failed.state.kind, 'failed');
+    assert.deepEqual(failed.commands, ['install']);
+    assert.equal(window.isVisible(), true, 'launch rejection leaves the update window open');
+    assert.ok(updater.listenerCount('error') > 0, 'the update service remains available for Retry');
     assert.ok(events.indexOf('installer started') > events.indexOf('server stopped'));
+    assert.ok(events.indexOf('server stopping') > events.indexOf('update screen painted'));
     assert.ok(events.indexOf('installer started') > events.indexOf('sportsurge stopped'));
     assert.ok(events.indexOf('installer started') > events.indexOf('streameast stopped'));
     assert.ok(events.indexOf('installer started') > events.indexOf('observer stopped'));
+    updater.failLaunch = false;
+    const retried = await get(CH.install)(event);
+    assert.ok(retried && typeof retried === 'object' && 'state' in retried);
+    assert.equal(retried.state.kind, 'installing');
+    assert.equal(events.filter(value => value === 'installer started').length, 2);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(window.isVisible(), false, 'only acknowledged installer launch permits process exit');
   } finally {
     serverStopped.resolve();
     rmSync(userData, { recursive: true, force: true });

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, powerMonitor, Notification } = require('electron');
+const { app, autoUpdater, BrowserWindow, ipcMain, shell, powerMonitor, Notification } = require('electron');
 const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -8,7 +8,7 @@ const { createSportsurgeCollector } = require('./sportsurge-collector.cjs');
 const { createSportsurgeObserver } = require('./sportsurge-observer.cjs');
 const { createStreameastCollector } = require('./streameast-collector.cjs');
 const { CH, createUpdateService, selectUpdateFeedUrl } = require('./update.cjs');
-const { NsisUpdater } = require('electron-updater');
+const { DesktopNsisUpdater } = require('./nsis-updater.cjs');
 
 app.setName('Sunday Room');
 if (process.platform === 'win32') app.setAppUserModelId('com.sundayroom.desktop');
@@ -70,7 +70,7 @@ let sportsurgeObserver;
 let streameastCollector;
 let update;
 const controlToken = randomUUID();
-let teardown = null;
+let runtimeStop = { kind: 'running' };
 let mainFrameFailed = false;
 let reloadingMainFrame = false;
 const singleInstance = app.requestSingleInstanceLock();
@@ -78,14 +78,14 @@ if (!singleInstance) app.quit();
 app.on('second-instance',() => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 
 function trusted(event) {
-  if (teardown || !win || win.isDestroyed()) return false;
+  if (!win || win.isDestroyed()) return false;
   if (event.sender !== win.webContents) return false;
   if (event.senderFrame !== win.webContents.mainFrame) return false;
   try { return new URL(event.senderFrame.url).origin === origin; } catch { return false; }
 }
 
 function restoreMainFrame() {
-  if (!mainFrameFailed || reloadingMainFrame || !win || win.isDestroyed() || teardown !== null) return;
+  if (!mainFrameFailed || reloadingMainFrame || !win || win.isDestroyed() || runtimeStop.kind !== 'running') return;
   mainFrameFailed = false;
   reloadingMainFrame = true;
   void win.loadURL(origin).catch(() => { mainFrameFailed = true; }).finally(() => { reloadingMainFrame = false; });
@@ -139,9 +139,12 @@ app.whenReady().then(async () => {
   win.webContents.on('did-fail-load',(_event,code,_description,url,isMainFrame) => {
     if (isMainFrame && code !== -3 && url === `${origin}/`) mainFrameFailed = true;
   });
+  win.on('close', event => {
+    if (update?.snapshot().state?.kind === 'installing' && runtimeStop.kind !== 'exiting') event.preventDefault();
+  });
   win.on('closed',() => { win=undefined; app.quit(); });
-  powerMonitor.on('resume',() => { if (!teardown) { void localServer?.checkNow(); sportsurgeCollector?.requestSweep(); streameastCollector?.requestSweep(); } });
-  const updater=new NsisUpdater();
+  powerMonitor.on('resume',() => { if (runtimeStop.kind === 'running') { void localServer?.checkNow(); sportsurgeCollector?.requestSweep(); streameastCollector?.requestSweep(); } });
+  const updater=new DesktopNsisUpdater();
   const currentVersion=app.isPackaged?app.getVersion():packagedVersion();
   // An unpackaged Electron process reports Electron's version to NsisUpdater.
   if (!app.isPackaged) updater.currentVersion=new updater.currentVersion.constructor(currentVersion);
@@ -163,6 +166,10 @@ app.whenReady().then(async () => {
   update=createUpdateService({
     currentVersion,userDataDir:app.getPath('userData'),
     isPackaged:app.isPackaged,platform:process.platform,updater,trusted,feedUrl,
+    prepareInstall: async () => {
+      await waitForUpdateScreen();
+      await stopApplicationWork();
+    },
     broadcast:status=>{
       if (win && !win.isDestroyed()) win.webContents.send(CH.status,status);
       if (status.state.kind === 'available' && status.state.release) announceUpdate(status.state.release.version);
@@ -193,21 +200,71 @@ async function stopServer() {
   await localServer.stop();
 }
 
-// Idempotent. The window-close path and the updater share one teardown, so the process
-// tree is provably dead before NSIS goes looking for it.
-function beginShutdown() {
-  teardown ??= (async () => {
+async function waitForUpdateScreen() {
+  if (!win || win.isDestroyed()) throw new Error('The update window is unavailable.');
+  let timeout;
+  try {
+    await Promise.race([
+      win.webContents.executeJavaScript(`new Promise((resolve, reject) => {
+        const deadline = performance.now() + 2000;
+        const frame = () => {
+          const dialog = document.querySelector('dialog.update-screen[open][data-update-state="installing"]');
+          if (dialog) {
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+          } else if (performance.now() >= deadline) {
+            reject(new Error('The update screen did not appear.'));
+          } else {
+            requestAnimationFrame(frame);
+          }
+        };
+        frame();
+      })`),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('The update screen did not appear.')), 2500);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function stopApplicationWork() {
+  if (runtimeStop.kind === 'stopped') return Promise.resolve();
+  if (runtimeStop.kind === 'stopping') return runtimeStop.done;
+  const done = (async () => {
     localServer?.beginStop();
     sportsurgeCollector?.stop();
-    sportsurgeObserver?.stop();
+    await sportsurgeObserver?.stop();
     streameastCollector?.stop();
-    update?.stop();
     await stopServer();
   })();
-  return teardown;
+  runtimeStop = { kind: 'stopping', done };
+  void done.then(
+    () => { runtimeStop = { kind: 'stopped' }; },
+    () => { runtimeStop = { kind: 'failed' }; },
+  );
+  return done;
 }
 app.on('before-quit',event => {
-  if (teardown) return;
+  if (runtimeStop.kind === 'exiting') return;
+  if (update?.snapshot().state?.kind === 'installing') {
+    event.preventDefault();
+    return;
+  }
+  if (runtimeStop.kind === 'stopped') {
+    runtimeStop = { kind: 'exiting' };
+    return;
+  }
   event.preventDefault();
-  void beginShutdown().finally(() => app.quit());
+  if (runtimeStop.kind === 'stopping') return;
+  void stopApplicationWork().then(() => app.quit(), error => {
+    try {
+      fs.mkdirSync(logDir,{recursive:true});
+      fs.appendFileSync(path.join(logDir,'startup.log'),`Shutdown failed: ${String(error)}\n`);
+    } catch {}
+  });
 });
+autoUpdater.on('before-quit-for-update', () => {
+  if (runtimeStop.kind === 'stopped') runtimeStop = { kind: 'exiting' };
+});
+app.on('will-quit', () => update?.stop());

@@ -41,6 +41,17 @@ export function UpdatePopup() {
   const [dismissed,setDismissed] = useState('');
   const [error,setError] = useState('');
   const api = useRef<DesktopUpdateBridge|null>(null);
+  const installDialog = useRef<HTMLDialogElement|null>(null);
+  const installing = status?.state.kind === 'installing' || (status?.state.kind === 'failed' && status.state.reason === 'install');
+
+  useEffect(() => {
+    if (!installing) return;
+    const dialog = installDialog.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = overflow; };
+  }, [installing]);
 
   useEffect(()=>{
     // Read directly rather than from a prop: `app/page.tsx` sets its `desktop` flag in a
@@ -78,7 +89,7 @@ export function UpdatePopup() {
     try { localStorage.setItem(DISMISSED,version); } catch {}
   },[release,status]);
 
-  const busy = state?.kind === 'checking' || state?.kind === 'installing';
+  const busy = state?.kind === 'checking';
   // Only offer a step the updater itself accepts, so the popup cannot promise one the
   // machine would refuse. A development build accepts `check` alone, so the chained action
   // falls back to asking GitHub again rather than vanishing.
@@ -86,10 +97,27 @@ export function UpdatePopup() {
   const wanted = status && state ? advanceCommand(state) : null;
   const advance = wanted && offered.includes(wanted) ? wanted : offered.includes('check') ? 'check' : null;
 
+  if (state?.kind === 'installing' || (state?.kind === 'failed' && state.reason === 'install')) {
+    const failed = state.kind === 'failed';
+    return <dialog ref={installDialog} className="update-screen" data-update-state={state.kind} aria-labelledby="update-screen-title" onCancel={event=>event.preventDefault()}>
+      <div className="update-screen-content">
+        <RotateCw className={failed ? 'update-screen-icon' : 'update-screen-icon update-screen-spin'} size={40} aria-hidden="true"/>
+        <p className="update-popup-eyebrow">Sunday Room{release ? ` ${release.version}` : ''}</p>
+        <h1 id="update-screen-title">{failed ? 'Update could not start' : 'Updating Sunday Room'}</h1>
+        {failed ? <p role="alert">{state.detail}</p> : <>
+          <p role="status">Closing streams and background services.</p>
+          <p className="update-screen-note">Windows will show installation progress, then Sunday Room will reopen automatically.</p>
+        </>}
+        {failed && advance === 'install' && <button className="button primary" type="button" onClick={()=>run('install')}><RotateCw size={16}/>Retry install</button>}
+        {error && <p role="alert">{error}</p>}
+      </div>
+    </dialog>;
+  }
+
   // Show only when a release is actually in hand, the user has not dismissed that
   // version, and nothing is mid-flight that a popup would only interrupt.
   const showable = state !== undefined && release !== null
-    && state.kind !== 'installing' && state.kind !== 'current' && state.kind !== 'unsupported';
+    && state.kind !== 'current' && state.kind !== 'unsupported';
   const show = showable && release !== null && dismissed !== release.version;
 
   if (!show || !status || !release || !state) return null;

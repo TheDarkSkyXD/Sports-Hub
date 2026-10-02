@@ -23,8 +23,9 @@ try {
       const updater = Object.assign(new EventEmitter(), {
         checkForUpdates() { this.emit('update-available', { version: '1.0.7' }); },
         downloadUpdate() { this.emit('update-downloaded'); },
-        quitAndInstall() {},
+        quitAndInstall() { this.launched = true; },
       });
+      global.testUpdater = updater;
       const service = createUpdateService({
         updater, currentVersion: '1.0.6', userDataDir: app.getPath('userData'),
         isPackaged: true, platform: 'win32', trusted: () => true,
@@ -50,8 +51,19 @@ try {
   assert.equal(await screen.isVisible(), true);
   assert.match(await screen.innerText(), /1\.0\.7/);
   assert.equal(await screen.getByRole('button', { name: /dismiss/i }).count(), 0);
+  await page.keyboard.press('Escape');
+  assert.equal(await screen.isVisible(), true, 'Escape cannot dismiss an active update');
+  assert.equal(await screen.evaluate(dialog => dialog.matches(':modal')), true, 'the update blocks interaction with the viewing room');
   await page.screenshot({ path: path.join(root, '.scratch/update-screen.png') });
   console.log('PASS Electron displays the updating page after Install and restart');
+  await desktop.evaluate(async () => {
+    while (!global.testUpdater.launched) await new Promise(resolve => setTimeout(resolve, 10));
+    global.testUpdater.emit('error', new Error('The installer could not start'));
+  });
+  await page.getByRole('heading', { name: 'Update could not start', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Retry install', exact: true }).click();
+  await page.getByRole('heading', { name: 'Updating Sunday Room', exact: true }).waitFor();
+  console.log('PASS Electron keeps installation failures visible and offers Retry install');
 } finally {
   await desktop?.close();
   await rm(scratch, { recursive: true, force: true });
