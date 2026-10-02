@@ -3,6 +3,23 @@
 !ifndef BUILD_UNINSTALLER
 InstallDir "$LOCALAPPDATA\Programs\${APP_FILENAME}"
 
+!macro customInit
+  ${If} ${isUpdated}
+  ${AndIf} ${isForceRun}
+    SetSilent normal
+  ${EndIf}
+!macroend
+
+!macro customInstallMode
+  ${If} ${isUpdated}
+    ${If} $installMode == "all"
+      StrCpy $isForceMachineInstall "1"
+    ${Else}
+      StrCpy $isForceCurrentInstall "1"
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 !macro customPageAfterChangeDir
   !undef MUI_PAGE_CUSTOMFUNCTION_PRE
   !define MUI_PAGE_CUSTOMFUNCTION_PRE ensureInstallDirectoryLeaf
@@ -16,6 +33,18 @@ InstallDir "$LOCALAPPDATA\Programs\${APP_FILENAME}"
 ; install section has settled $INSTDIR.
 !macro customInstall
   WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation "$INSTDIR"
+  ${If} ${isUpdated}
+  ${AndIf} ${isForceRun}
+  ${AndIfNot} ${Silent}
+    reopenUpdatedApp:
+      ${StdUtils.ExecShellAsUser} $0 "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "open" "--updated"
+      ${If} $0 != "ok"
+      ${AndIf} $0 != "fallback"
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "The update is installed, but Windows could not reopen ${PRODUCT_NAME}. Choose Retry to open it again." IDRETRY reopenUpdatedApp
+      ${EndIf}
+      HideWindow
+      !insertmacro quitSuccess
+  ${EndIf}
 !macroend
 
 !macro customHeader
