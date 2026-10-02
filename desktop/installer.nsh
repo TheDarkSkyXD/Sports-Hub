@@ -33,6 +33,12 @@ InstallDir "$LOCALAPPDATA\Programs\${APP_FILENAME}"
 ; install section has settled $INSTDIR.
 !macro customInstall
   WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation "$INSTDIR"
+  ; Updater installs preserve shortcuts, including links the user has removed.
+  ${If} $keepShortcuts == "true"
+    StrCpy $keepShortcuts "false"
+    !insertmacro addStartMenuLink $keepShortcuts
+    !insertmacro addDesktopLink $keepShortcuts
+  ${EndIf}
   ${If} ${isUpdated}
   ${AndIf} ${isForceRun}
   ${AndIfNot} ${Silent}
