@@ -61,6 +61,9 @@ nsis:
   differentialPackage: false
   installerIcon: desktop/icons/sunday-room.ico
   uninstallerIcon: desktop/icons/sunday-room.ico
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Sunday Room
   oneClick: false
   allowToChangeInstallationDirectory: true
   include: desktop/installer.nsh
