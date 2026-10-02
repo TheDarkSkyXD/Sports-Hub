@@ -7,10 +7,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { _electron as electron } from 'playwright';
-import electronPath from 'electron';
 import { Data, NtExecutable, NtExecutableResource, Resource } from 'resedit';
 import sharp from 'sharp';
-
+import { prepareDevelopmentElectron } from '../scripts/electron-runtime.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const execute = promisify(execFile);
@@ -27,7 +26,9 @@ export async function assertExecutableBranding(executablePath) {
     assert.deepEqual(group.getIconItemsFromEntries(resources.entries).map(icon => digest(payload(icon))).sort(),
       expected, `${executablePath} must embed every Sunday Room icon size for Task Manager and Explorer`);
   }
-  for (const version of Resource.VersionInfo.fromEntries(resources.entries)) {
+  const versions = Resource.VersionInfo.fromEntries(resources.entries);
+  assert.ok(versions.length > 0, 'The executable must expose its Sunday Room description to Windows');
+  for (const version of versions) {
     for (const language of version.getAllLanguagesForStringValues()) {
       const values = version.getStringValues(language);
       assert.equal(values.FileDescription, 'Sunday Room');
@@ -85,7 +86,7 @@ async function run() {
   const scratch = await mkdtemp(path.join(tmpdir(), 'sunday-room-branding-'));
   let desktop;
   try {
-    const executablePath = packaged ? path.join(root, 'dist-electron/win-unpacked/Sunday Room.exe') : electronPath;
+    const executablePath = packaged ? path.join(root, 'dist-electron/win-unpacked/Sunday Room.exe') : await prepareDevelopmentElectron();
     desktop = await electron.launch({
       executablePath,
       args: [...(packaged ? [] : [path.join(root, 'desktop/main.cjs')]), `--user-data-dir=${path.join(scratch, 'profile')}`],
@@ -97,7 +98,23 @@ async function run() {
       if (await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some(window => window.isVisible()))) break;
       await new Promise(resolve => setTimeout(resolve, 500));
     }
-    await assertDesktopBranding(desktop, path.join(root, 'work/icon-fix', packaged ? 'packaged' : 'development'));
+    const relaunchCommand = await assertDesktopBranding(desktop, path.join(root, 'work/icon-fix', packaged ? 'packaged' : 'development'));
+    const relaunch = /^"([^"]+)"(?: "([^"]+)")?$/.exec(relaunchCommand);
+    assert.ok(relaunch, 'The shell relaunch command must quote its executable and entry point');
+    await desktop.close();
+    desktop = await electron.launch({
+      executablePath: relaunch[1],
+      args: [...(relaunch[2] ? [relaunch[2]] : []), `--user-data-dir=${path.join(scratch, 'profile')}`],
+      cwd: scratch,
+      env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
+      timeout: 120_000,
+    });
+    for (let attempt = 0; attempt < 120; attempt++) {
+      if (await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some(window => window.isVisible()))) break;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    await assertDesktopBranding(desktop, path.join(root, 'work/icon-fix', packaged ? 'packaged-relaunch' : 'development-relaunch'));
+    console.log('PASS Windows relaunch from an unrelated working directory');
   } finally {
     if (desktop) await desktop.close();
     await rm(scratch, { recursive: true, force: true });

@@ -1,4 +1,5 @@
 import { _electron as electron } from 'playwright';
+import { prepareDevelopmentElectron } from './electron-runtime.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -17,6 +18,7 @@ const family = id => id.startsWith('streamcenter') ? 'streamcenter' : id.startsW
 
 try {
   app = await electron.launch({
+    executablePath: await prepareDevelopmentElectron(),
     args: [path.resolve('desktop/main.cjs'), `--user-data-dir=${path.join(directory, 'profile')}`],
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
     timeout: 120000,

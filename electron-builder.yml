@@ -52,6 +52,7 @@ extraResources:
       - '**/*'
 win:
   icon: desktop/icons/sunday-room.ico
+  signAndEditExecutable: true
   target:
     - target: nsis
       arch:

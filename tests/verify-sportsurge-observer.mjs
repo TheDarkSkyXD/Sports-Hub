@@ -1,11 +1,9 @@
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { publicHttpsRequest, sportsurgeUrl } from '../lib/playback/providers/sportsurge-v2.ts';
+import { prepareDevelopmentElectron } from '../scripts/electron-runtime.mjs';
 
-const require = createRequire(import.meta.url);
-const electron = require('electron');
 const targetUrl = process.argv[2];
 const verifyConcurrency = process.argv.includes('--concurrency');
 if (!targetUrl) throw new Error('Pass one current Sportsurge provider destination URL');
@@ -13,7 +11,7 @@ const token = 'observer-smoke-token';
 const env = { ...process.env, SUNDAY_ROOM_COLLECTOR_ORIGIN:'http://127.0.0.1:3100', SUNDAY_ROOM_CONTROL_TOKEN:token,
   SUNDAY_ROOM_OBSERVER_DEBUG:process.env.SUNDAY_ROOM_OBSERVER_DEBUG || '0' };
 delete env.ELECTRON_RUN_AS_NODE;
-const child = spawn(electron,[resolve('desktop/sportsurge-sidecar.cjs')],{
+const child = spawn(await prepareDevelopmentElectron(),[resolve('desktop/sportsurge-sidecar.cjs')],{
   cwd:process.cwd(),env,stdio:['ignore','inherit','ignore','ipc'],windowsHide:true,
 });
 async function pinnedRead(value, referer, userAgent) {

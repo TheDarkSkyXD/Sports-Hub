@@ -4,6 +4,7 @@ import { rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright';
+import { prepareDevelopmentElectron } from '../scripts/electron-runtime.mjs';
 
 const appRoot = path.resolve(process.env.ROOM_APP_ROOT || process.cwd());
 const profile = path.join(os.tmpdir(), `sunday-room-slots-${randomUUID()}`);
@@ -20,6 +21,7 @@ let desktop;
 
 try {
   desktop = await electron.launch({
+    executablePath: await prepareDevelopmentElectron(),
     args: [path.join(appRoot, 'desktop/main.cjs'), `--user-data-dir=${profile}`],
     cwd: appRoot,
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),

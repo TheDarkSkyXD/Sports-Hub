@@ -5,4 +5,5 @@ if not exist "node_modules\electron\dist\electron.exe" (
   pause
   exit /b 1
 )
-start "Sunday Room" "%~dp0node_modules\electron\dist\electron.exe" "%~dp0desktop\main.cjs"
+set "SUNDAY_ROOM_ROOT=%~dp0"
+powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath node.exe -ArgumentList ([char]34 + (Join-Path $env:SUNDAY_ROOM_ROOT 'scripts\desktop.mjs') + [char]34) -WorkingDirectory $env:SUNDAY_ROOM_ROOT -WindowStyle Hidden"
