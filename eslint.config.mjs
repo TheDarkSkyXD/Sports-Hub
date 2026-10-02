@@ -15,6 +15,7 @@ const eslintConfig = defineConfig([
     "dist-electron/**",
     "next-env.d.ts",
     ".agents/**",
+    ".scratch/**",
     ".desktop-runtime/**",
     "work/**",
   ]),
