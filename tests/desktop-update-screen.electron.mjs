@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright';
+import { prepareDevelopmentElectron } from '../scripts/electron-runtime.mjs';
 
 const base = process.env.POPUP_BASE_URL || 'http://127.0.0.1:3112';
 const scratch = await mkdtemp(path.join(tmpdir(), 'sunday-update-screen-'));
@@ -16,7 +17,8 @@ try {
     const { CH, createUpdateService } = require(${JSON.stringify(path.join(root, 'desktop/update.cjs'))});
     app.setPath('userData', ${JSON.stringify(path.join(scratch, 'profile'))});
     app.whenReady().then(async () => {
-      const win = new BrowserWindow({ width: 1280, height: 800, webPreferences: {
+      const win = new BrowserWindow({ width: 1280, height: 800,
+        icon: ${JSON.stringify(path.join(root, 'desktop/icons/sunday-room.png'))}, webPreferences: {
         preload: ${JSON.stringify(path.join(root, 'desktop/preload.cjs'))},
         contextIsolation: true, sandbox: true, nodeIntegration: false,
       }});
@@ -40,6 +42,7 @@ try {
     });
   `);
   desktop = await electron.launch({
+    executablePath: await prepareDevelopmentElectron(),
     args: [entry],
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
   });
