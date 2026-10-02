@@ -18,7 +18,7 @@
     "desktop:icons": "node desktop/icons/generate.mjs",
     "desktop:icons:check": "node desktop/icons/generate.mjs --check",
     "desktop:branding": "node tests/desktop-branding.mjs",
-    "desktop:package": "npm run desktop:icons && node scripts/prepare-desktop.mjs && electron-builder --win nsis --x64 --publish never",
+    "desktop:package": "npm run desktop:icons && node scripts/prepare-desktop.mjs && electron-builder --win nsis --x64 --publish never && node tests/desktop-branding.mjs --packaged",
     "desktop:smoke": "node tests/packaged-desktop.mjs",
     "test:player": "node tests/player.browser.mjs",
     "test:player:desktop": "node tests/player.browser.mjs --desktop",
