@@ -22,5 +22,7 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run lint
+      - run: npm run storybook:check
+      - run: npm run build-storybook
       - run: npm run desktop:icons:check
       - run: npm run build
