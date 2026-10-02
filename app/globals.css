@@ -211,7 +211,7 @@ main{padding:32px 36px 0;max-width:1920px;margin:auto}.eyebrow{font-size:10px;le
 .tile-drag-grip:focus-visible{outline:2px solid #ff806c;outline-offset:1px}
 .center-game[draggable=true]{cursor:grab}
 .center-game[draggable=true] button{cursor:pointer}
-.game-tile.drop-hover,.quad-empty.drop-hover{border-color:#ff937d;box-shadow:0 0 0 2px #ff624b66,inset 0 0 0 1px #ff624b66}
+.game-tile.drop-hover,.add-tile.drop-hover,.room-empty.drop-hover{border-color:#ff937d;box-shadow:0 0 0 2px #ff624b66,inset 0 0 0 1px #ff624b66}
 .game-tile.drop-hover:after{content:'Drop game here';position:absolute;inset:31px 0 0;display:grid;place-items:center;background:#0b0d12aa;color:#fff;font-size:14px;font-weight:600;pointer-events:none;z-index:5}
 .game-grid.quad{grid-auto-rows:1fr}
 .game-grid.quad>.game-tile{display:flex;flex-direction:column}
