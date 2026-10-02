@@ -18,12 +18,15 @@ const eslintConfig = defineConfig([
     ".scratch/**",
     ".desktop-runtime/**",
     "work/**",
+    "storybook-static/**",
   ]),
   {
-    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "hooks/**/*.{ts,tsx}", "lib/**/*.ts", "desktop/**/*.cjs", "scripts/**/*.{ts,mjs,cjs}", "tests/**/*.{ts,mjs,cjs}"],
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", ".storybook/**/*.{ts,tsx}", "hooks/**/*.{ts,tsx}", "lib/**/*.ts", "desktop/**/*.cjs", "scripts/**/*.{ts,mjs,cjs}", "tests/**/*.{ts,mjs,cjs}"],
     plugins: { boundaries },
     settings: {
       "boundaries/files": [
+        { pattern: "components/**/*.stories.{ts,tsx}", category: "story" },
+        { pattern: ".storybook/**/*.{ts,tsx}", category: "story-fixture" },
         { pattern: "app/**/*.tsx", category: "ui" },
         { pattern: "components/**/*.{ts,tsx}", category: "ui" },
         { pattern: "hooks/**/*.{ts,tsx}", category: "ui" },
@@ -57,6 +60,14 @@ const eslintConfig = defineConfig([
       "boundaries/dependencies": ["error", {
         default: "disallow",
         policies: [
+          {
+            from: { file: { categories: "story" } },
+            allow: { to: { file: { categories: { anyOf: ["ui", "shared", "pure-lib", "story-fixture"] } } } },
+          },
+          {
+            from: { file: { categories: "story-fixture" } },
+            allow: { to: { file: { categories: { anyOf: ["ui", "shared", "pure-lib", "story-fixture"] } } } },
+          },
           {
             from: { file: { categories: "ui" } },
             allow: { to: { file: { categories: { anyOf: ["ui", "shared", "pure-lib"] } } } },

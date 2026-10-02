@@ -181,6 +181,16 @@ npm run dev -- --port 3001
 
 Open [http://127.0.0.1:3001](http://127.0.0.1:3001). Interface changes update through Next.js development mode.
 
+### Component stories
+
+```sh
+npm run storybook
+```
+
+Open [http://localhost:6006](http://localhost:6006) to browse the components used by the app. Stories use the app's global styles. Player stories use a local sample video, including a Storybook-only HLS adapter for provider sessions. Run `npm run storybook:media` to regenerate the clip. Source inventory, playback sessions, and desktop update stories use in-memory responses, so their controls cannot contact a provider or start an installer.
+
+Run `npm run storybook:check` after adding a component. It follows static imports from the app and its stories, then checks that every component used by the app appears in a story. Run `npm run build-storybook` to verify the full catalog builds. The generated `storybook-static/` directory is ignored.
+
 ### Desktop development
 
 ```sh
@@ -216,6 +226,9 @@ The `Electron release` workflow builds and tests the Windows installer on pull r
 | `npm run desktop:package` | Build the Windows x64 NSIS installer from the compiled app |
 | `npm run desktop:smoke` | Check the packaged Windows executable |
 | `npm run typecheck` | Check TypeScript without emitting files |
+| `npm run storybook` | Open the component catalog on port 6006 |
+| `npm run storybook:check` | Check story coverage for components used by the app |
+| `npm run build-storybook` | Build the static component catalog |
 | `npm test` | Run matching, lifecycle, storage, relay, and desktop tests |
 | `npm run lint` | Check code and module boundaries |
 | `npm run diagnostics:football` | Print bounded local source and matching diagnostics |
@@ -260,6 +273,8 @@ npm test
 npm run typecheck
 npm run lint
 npm run build
+npm run storybook:check
+npm run build-storybook
 ```
 
 The automated tests cover source extraction, dated matching, ambiguous listings, overlapping college schedules, season membership, persisted final deadlines, session isolation, relay restrictions, and worker ownership.
