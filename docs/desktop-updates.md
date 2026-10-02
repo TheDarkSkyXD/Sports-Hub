@@ -7,7 +7,8 @@ one of them.
 ## The check
 
 The app uses [StreamFusion's updater flow](https://github.com/TheDarkSkyXD/StreamFusion/blob/main/apps/desktop/src/backend/features/settings/adapters/electron/update-service.ts): a generic GitHub release feed,
-manual downloads, and installation on quit. `desktop/main.cjs` constructs an `NsisUpdater`.
+manual downloads, and installation on quit. `desktop/main.cjs` constructs the
+`DesktopNsisUpdater` adapter in `desktop/nsis-updater.cjs`.
 `desktop/update.cjs` maps its events to the state machine the UI already uses. The library
 owns the transfer and checksum check.
 
@@ -85,10 +86,41 @@ machine and run an unsigned binary.
 
 ## The installer and its install directory
 
+**Install and restart** opens a full-window updating page in Electron. The app waits
+for that page to paint, then stops its streams, collectors, and local server before
+starting the installer. The update service stays alive until Electron exits, so a
+preparation or installer-launch failure stays visible with **Retry install**.
+
+The upstream `NsisUpdater.quitAndInstall` starts the installer before calling
+`app.quit`. Its synchronous return also precedes the result of the asynchronous
+process launch. `DesktopNsisUpdater` keeps the upstream download and checksum path,
+but awaits installer launch before quitting. Its launch arguments and elevation
+fallback follow the bundled electron-updater implementation. Check this adapter
+when upgrading electron-updater.
+
+An explicit update passes `--updated`, `/S`, and `--force-run`. The NSIS
+`customInit` hook makes that combination visible. The directory and install-mode
+pages remain skipped, so the Windows window shows installation progress directly.
+Electron must exit while Windows replaces its executable and resources.
+
+After replacement, the installer launches the executable in `$INSTDIR` directly,
+as the desktop user, and closes without a Finish click. It checks the shell launch
+result and offers Retry if Windows rejects the launch. Restart does not depend on
+the existing Start Menu shortcut.
+
+Closing the app after a download still uses the ordinary silent update path. That
+path does not force the app to reopen.
+
 `electron-updater` declares `installDirectory` but never sets it, and without it the
 installer runs without `/D=`. `desktop/main.cjs` sets it from `process.execPath`, which is
 what lets `desktop/installer.nsh` restore the install directory instead of looking like a
 fresh install on next launch.
+
+The runtime checks are `tests/desktop-install-handoff.test.ts`,
+`tests/nsis-updater.test.ts`, `tests/desktop-update-screen.electron.mjs`, and
+`tests/installer-update.mjs`. The native installer check uses a temporary app
+identity, custom install directory, and user-data marker. It does not update the
+user's Sunday Room installation.
 
 ## Signing
 

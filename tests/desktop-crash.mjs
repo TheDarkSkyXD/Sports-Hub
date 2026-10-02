@@ -3,12 +3,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright';
+import { prepareDevelopmentElectron } from '../scripts/electron-runtime.mjs';
 
 const profile = await mkdtemp(path.join(tmpdir(), 'sunday-desktop-crash-'));
 const dev = process.argv.includes('--dev');
 let app;
 try {
   app = await electron.launch({
+    executablePath: await prepareDevelopmentElectron(),
     args: [path.resolve('desktop/main.cjs'), `--user-data-dir=${profile}`],
     env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')), ...(dev ? { SUNDAY_ROOM_FORCE_DEV: '1' } : {}) },
     timeout: 120000,

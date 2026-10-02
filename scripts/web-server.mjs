@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { prepareDevelopmentElectron } from './electron-runtime.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const mode = process.argv[2];
@@ -78,7 +79,7 @@ async function stop(code = 0) {
 }
 
 async function startCollector() {
-  const { default: electron } = await import('electron');
+  const electron = await prepareDevelopmentElectron();
   const collectorEnv = { ...env, SUNDAY_ROOM_COLLECTOR_ORIGIN: origin };
   delete collectorEnv.ELECTRON_RUN_AS_NODE;
   collector = spawn(electron, [join(root, 'desktop', 'sportsurge-sidecar.cjs')], {

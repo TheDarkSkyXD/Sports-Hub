@@ -45,10 +45,11 @@ next-env.d.ts
 /.codex/
 /outputs/
 /work/
+/.scratch/
 
 /.unused-scaffold/
 /.sites-scaffold/
 /source-inspection.html
 /event-inspection.html
 *.tsbuildinfo
-  /.desktop-runtime/
+/.desktop-runtime/

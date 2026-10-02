@@ -81,7 +81,7 @@ class FakeUpdater extends EventEmitter {
     return Promise.resolve(['C:\\cache\\Sunday-Room-1.0.3-Setup-x64.exe']);
   }
 
-  quitAndInstall(isSilent = false, isForceRunAfter = false) {
+  quitAndInstall(isSilent = false, isForceRunAfter = false): void | Promise<void> {
     if (this.throwOnInstall) throw new Error('installer could not start');
     this.installs.push({ isSilent, isForceRunAfter });
   }
@@ -330,6 +330,64 @@ test('installing is silent and relaunches', async () => {
     assert.deepEqual(room.updater.installs, [{ isSilent: true, isForceRunAfter: true }],
       'an in-app update installs quietly and comes back up');
   } finally { rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('install waits for preparation and installer acknowledgement, and rejects a duplicate press', async () => {
+  let finishPreparation = () => {};
+  const preparation = new Promise<void>(resolve => { finishPreparation = resolve; });
+  let finishLaunch = () => {};
+  const launch = new Promise<void>(resolve => { finishLaunch = resolve; });
+  class PendingUpdater extends FakeUpdater {
+    override quitAndInstall(isSilent = false, isForceRunAfter = false) {
+      super.quitAndInstall(isSilent, isForceRunAfter);
+      return launch;
+    }
+  }
+  const room = await started({ updater: new PendingUpdater(), prepareInstall: () => preparation });
+  try {
+    await room.service.invoke('download')(event('download'));
+    room.updater.emitDownloaded();
+    const first = room.service.invoke('install')(event('install'));
+    assert.equal(room.service.snapshot().state.kind, 'installing');
+    assert.deepEqual(room.service.snapshot().commands, []);
+    await room.service.invoke('install')(event('install'));
+    assert.equal(room.updater.installs.length, 0);
+    finishPreparation();
+    await Promise.resolve();
+    assert.deepEqual(room.updater.installs, [{ isSilent: true, isForceRunAfter: true }]);
+    finishLaunch();
+    await first;
+    assert.equal(room.service.snapshot().state.kind, 'installing');
+  } finally { room.service.stop(); rmSync(room.userDataDir, { recursive: true, force: true }); }
+});
+
+test('preparation and asynchronous launch failures keep install retryable', async () => {
+  let attempts = 0;
+  class RejectingUpdater extends FakeUpdater {
+    override quitAndInstall(isSilent = false, isForceRunAfter = false) {
+      super.quitAndInstall(isSilent, isForceRunAfter);
+      return attempts === 2 ? Promise.reject(new Error('spawn failed')) : Promise.resolve();
+    }
+  }
+  const room = await started({
+    updater: new RejectingUpdater(),
+    prepareInstall: async () => { attempts += 1; if (attempts === 1) throw new Error('paint failed'); },
+  });
+  try {
+    await room.service.invoke('download')(event('download'));
+    room.updater.emitDownloaded();
+    for (let index = 0; index < 2; index += 1) {
+      const result = await room.service.invoke('install')(event('install'));
+      assert.equal(result.state.kind, 'failed');
+      assert.deepEqual(result.commands, ['install']);
+      assert.equal(result.state.release?.version, '1.0.3');
+      assert.equal(result.state.detail, index === 0 ? 'paint failed' : 'spawn failed');
+    }
+    assert.equal(room.updater.installs.length, 1);
+    const retried = await room.service.invoke('install')(event('install'));
+    assert.equal(retried.state.kind, 'installing');
+    assert.equal(room.updater.installs.length, 2);
+  } finally { room.service.stop(); rmSync(room.userDataDir, { recursive: true, force: true }); }
 });
 
 test('install is refused until the bytes are verified', async () => {

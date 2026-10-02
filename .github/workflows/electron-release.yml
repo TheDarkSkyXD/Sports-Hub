@@ -36,6 +36,8 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
+      - run: npm run desktop:icons:check
+      - run: npm run desktop:branding
       - run: npm run desktop:package
       - run: node --experimental-strip-types --test tests/updater-feed.test.ts
       - name: Report the signing state of the installer
@@ -58,6 +60,7 @@ jobs:
           }
       - run: node tests/installer-path.mjs
       - run: node tests/installer-instdir.mjs
+      - run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/installer-shortcuts.ps1
       - run: npm run desktop:smoke
       - uses: actions/upload-artifact@v7
         with:
