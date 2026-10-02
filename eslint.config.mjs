@@ -107,6 +107,9 @@ const eslintConfig = defineConfig([
       }, {
         selector: "CallExpression[callee.name='require'][arguments.0.value='electron']",
         message: "Use prepareDevelopmentElectron() instead of loading the stock executable path.",
+      }, {
+        selector: "ImportExpression[source.value='electron']",
+        message: "Use prepareDevelopmentElectron() instead of loading the stock executable path.",
       }],
     },
   },
