@@ -9,7 +9,6 @@ import type { Feed } from '@/lib/sunday';
 
 type Status = 'loading' | 'ready' | 'buffering' | 'error' | 'gesture' | 'audio-gesture' | 'ended';
 type Quality = { index: number; label: string };
-type Timeline = { start: number; end: number; current: number; live: boolean };
 type Props = {
   feed: Feed;
   focused: boolean;
@@ -17,7 +16,6 @@ type Props = {
   volume: number;
   defaultQuality: QualityPreference;
   playing: boolean;
-  delay: number;
   onPlayingChange: (playing: boolean) => void;
   onAudibleChange: (audible: boolean) => void;
   onVolumeChange: (volume: number) => void;
@@ -28,13 +26,7 @@ type Props = {
   startupTimeoutMs?: number;
 };
 
-function time(seconds: number) {
-  if (!Number.isFinite(seconds)) return '0:00';
-  const whole = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(whole / 3600) ? `${Math.floor(whole / 3600)}:` : ''}${Math.floor(whole % 3600 / 60).toString().padStart(whole >= 3600 ? 2 : 1, '0')}:${(whole % 60).toString().padStart(2, '0')}`;
-}
-
-export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, delay, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onEnded, onRetry, errorHint, startupTimeoutMs = 20000 }: Props) {
+export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onEnded, onRetry, errorHint, startupTimeoutMs = 20000 }: Props) {
   const shell = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -46,8 +38,8 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
   const pointerTimer = useRef<number | null>(null);
   const pointerActiveRef = useRef(false);
   const liveRef = useRef(false);
-  const previousDelay = useRef(delay);
   const playingRef = useRef(playing);
+  const wasPlayingRef = useRef(playing);
   const [status, setStatus] = useState<Status>('loading');
   const [retry, setRetry] = useState(0);
   const [qualities, setQualities] = useState<Quality[]>([]);
@@ -55,9 +47,8 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
   const [nativeHls, setNativeHls] = useState(false);
   const [nativeHeight, setNativeHeight] = useState<number | null>(null);
   const [usesHls, setUsesHls] = useState(false);
-  const [syncPosition, setSyncPosition] = useState<number | null>(null);
   const [settings, setSettings] = useState(false);
-  const [timeline, setTimeline] = useState<Timeline | null>(null);
+  const [live, setLive] = useState(false);
   const [pip, setPip] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
@@ -73,14 +64,15 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     applyDefaultRef.current?.();
   }, [defaultQuality]);
 
-  const updateTimeline = useCallback(() => {
+  const syncToLive = useCallback((force = false) => {
     const video = ref.current;
-    if (!video || !video.seekable.length) { setTimeline(null); return; }
-    const start = video.seekable.start(0);
+    if (!video || !playingRef.current || (!force && video.paused) || !(liveRef.current || !hlsRef.current && video.duration === Infinity) || !video.seekable.length) return;
+    const start = video.seekable.start(video.seekable.length - 1);
     const end = video.seekable.end(video.seekable.length - 1);
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < 1) { setTimeline(null); return; }
-    const live = liveRef.current || !Number.isFinite(video.duration);
-    setTimeline({ start, end, current: Math.min(end, Math.max(start, video.currentTime)), live });
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+    const sync = hlsRef.current?.liveSyncPosition;
+    const target = sync != null && Number.isFinite(sync) && sync >= start && sync <= end ? sync : Math.max(start, end - 3);
+    if (force ? Math.abs(video.currentTime - target) > 0.5 : video.currentTime < target - 8 || video.currentTime > end) video.currentTime = target;
   }, []);
 
   useEffect(() => {
@@ -98,9 +90,9 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     needsGesture.current = false;
     liveRef.current = false;
     const native = /\.m3u8(?:\?|$)/i.test(feed.url) && !Hls.isSupported();
-    const reset = window.setTimeout(() => { if (!active) return; setStatus('loading'); setSettings(false); if (!manifestParsed) { setQualities([]); setQuality(-1); setUsesHls(false); } if (!metadataLoaded) setNativeHeight(null); setTimeline(null); setNativeHls(native); setSyncPosition(null); setNotice(''); }, 0);
-    const ready = () => { if (active) { hasLoaded = true; setStatus(needsGesture.current ? 'audio-gesture' : 'ready'); updateTimeline(); } };
-    const loaded = () => { if (!active) return; hasLoaded = true; if (!playingRef.current) setStatus('ready'); updateTimeline(); };
+    const reset = window.setTimeout(() => { if (!active) return; setStatus('loading'); setSettings(false); if (!manifestParsed) { setQualities([]); setQuality(-1); setUsesHls(false); } if (!metadataLoaded) setNativeHeight(null); if (!liveRef.current && video.duration !== Infinity) setLive(false); setNativeHls(native); setNotice(''); }, 0);
+    const ready = () => { if (active) { hasLoaded = true; setStatus(needsGesture.current ? 'audio-gesture' : 'ready'); syncToLive(); } };
+    const loaded = () => { if (!active) return; hasLoaded = true; if (!playingRef.current) setStatus('ready'); syncToLive(); };
     const canRecover = () => playingRef.current && navigator.onLine && !document.hidden;
     const error = () => {
       if (!active || failed) return;
@@ -130,9 +122,10 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     video.addEventListener('leavepictureinpicture', leavePip);
     video.addEventListener('play', playInPip);
     video.addEventListener('pause', pauseInPip);
-    video.addEventListener('timeupdate', updateTimeline);
-    video.addEventListener('durationchange', updateTimeline);
-    video.addEventListener('progress', updateTimeline);
+    const durationChanged = () => { if (!hlsRef.current) setLive(video.duration === Infinity); syncToLive(); };
+    const progressed = () => syncToLive();
+    video.addEventListener('durationchange', durationChanged);
+    video.addEventListener('progress', progressed);
     let lastPosition = video.currentTime;
     let lastProgress = performance.now();
     const stallCheck = window.setInterval(() => {
@@ -142,6 +135,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       lastTick = now;
       const position = video.currentTime;
       if (deferredFailure && !slept && canRecover()) { deferredFailure = false; setRetry(value => value + 1); return; }
+      if (!slept) syncToLive();
       if (!hasLoaded && !slept && canRecover()) {
         startupElapsed += elapsed;
         if (startupElapsed >= startupTimeoutMs && video.readyState < 2) error();
@@ -204,8 +198,9 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
         applyDefault();
         setUsesHls(true);
       });
-      hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => { if (active) { liveRef.current = data.details.live; setSyncPosition(hls?.liveSyncPosition ?? null); updateTimeline(); } });
-      hls.on(Hls.Events.LEVEL_UPDATED, (_event, data) => { if (active) { liveRef.current = data.details.live; setSyncPosition(hls?.liveSyncPosition ?? null); updateTimeline(); } });
+      const updateLive = (isLive: boolean) => { if (active) { liveRef.current = isLive; setLive(isLive); syncToLive(); } };
+      hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => updateLive(data.details.live));
+      hls.on(Hls.Events.LEVEL_UPDATED, (_event, data) => updateLive(data.details.live));
       hls.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) error(); });
       hls.loadSource(feed.url);
       hls.attachMedia(video);
@@ -226,12 +221,11 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       video.removeEventListener('waiting', waiting); video.removeEventListener('pause', paused);
       video.removeEventListener('enterpictureinpicture', enterPip); video.removeEventListener('leavepictureinpicture', leavePip);
       video.removeEventListener('play', playInPip); video.removeEventListener('pause', pauseInPip);
-      video.removeEventListener('timeupdate', updateTimeline);
-      video.removeEventListener('durationchange', updateTimeline); video.removeEventListener('progress', updateTimeline);
+      video.removeEventListener('durationchange', durationChanged); video.removeEventListener('progress', progressed);
       video.removeEventListener('loadedmetadata', onVideoDimensions); video.removeEventListener('resize', onVideoDimensions);
       video.removeAttribute('src'); video.load();
     };
-  }, [feed.url, retry, startupTimeoutMs, updateTimeline]);
+  }, [feed.url, retry, startupTimeoutMs, syncToLive]);
 
   useEffect(() => {
     const video = ref.current;
@@ -246,6 +240,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     let active = true;
     const sync = () => {
       if (!playing) { video.pause(); return; }
+      if (!wasPlayingRef.current) syncToLive(true);
       void video.play().catch(async reason => {
         if (!active || reason?.name === 'AbortError') return;
         if (reason?.name === 'NotAllowedError' && !video.muted) {
@@ -259,30 +254,9 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     };
     video.addEventListener('loadedmetadata', sync);
     sync();
+    wasPlayingRef.current = playing;
     return () => { active = false; video.removeEventListener('loadedmetadata', sync); };
-  }, [playing, feed.url, retry]);
-
-  useEffect(() => {
-    const video = ref.current;
-    if (!video) return;
-    const returningLive = previousDelay.current > 0 && delay === 0;
-    previousDelay.current = delay;
-    let applied = false;
-    const apply = () => {
-      if (applied || !video.seekable.length) return;
-      const end = video.seekable.end(video.seekable.length - 1);
-      if (delay > 0) video.currentTime = Math.max(video.seekable.start(0), end - Math.max(3, delay));
-      else if (returningLive && (liveRef.current || video.duration === Infinity)) {
-        const sync = hlsRef.current?.liveSyncPosition;
-        video.currentTime = Math.min(end, Math.max(video.seekable.start(0), sync != null && Number.isFinite(sync) ? sync : end - 3));
-      } else return;
-      applied = true;
-    };
-    video.addEventListener('loadedmetadata', apply);
-    video.addEventListener('progress', apply);
-    apply();
-    return () => { video.removeEventListener('loadedmetadata', apply); video.removeEventListener('progress', apply); };
-  }, [delay, feed.url, retry]);
+  }, [playing, feed.url, retry, syncToLive]);
 
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 4000); return () => window.clearTimeout(timer); }, [notice]);
 
@@ -323,29 +297,6 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     }
   }, [focused]);
 
-  useEffect(() => {
-    if (!focused) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey || document.querySelector('[role="dialog"]') || (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,button,[role="slider"],[contenteditable]'))) return;
-      const video = ref.current;
-      if (!video?.seekable.length) return;
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-        const start = video.seekable.start(0), end = video.seekable.end(video.seekable.length - 1);
-        video.currentTime = Math.min(end, Math.max(start, video.currentTime + (event.key === 'ArrowLeft' ? -10 : 10)));
-        event.preventDefault();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [focused]);
-
-  const seek = (value: number) => { const video = ref.current; if (video && timeline) video.currentTime = timeline.start + (timeline.end - timeline.start) * value / 1000; };
-  const live = () => {
-    const video = ref.current; if (!video?.seekable.length) return;
-    const start = video.seekable.start(0), end = video.seekable.end(video.seekable.length - 1);
-    const sync = hlsRef.current?.liveSyncPosition;
-    video.currentTime = Math.min(end, Math.max(start, sync != null && Number.isFinite(sync) ? sync : end - 3));
-  };
   const toggleFullscreen = async () => { try { if (document.fullscreenElement === shell.current) await document.exitFullscreen(); else await shell.current?.requestFullscreen(); } catch { setNotice('Fullscreen is unavailable for this stream.'); } };
   const togglePip = async () => {
     const video = ref.current;
@@ -365,9 +316,6 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     video.muted = false;
     void video.play().then(() => { if (sourceGeneration.current === generation) { needsGesture.current = false; setStatus('ready'); } }).catch(() => { if (sourceGeneration.current === generation) { video.muted = true; setStatus('audio-gesture'); } });
   };
-  const safeLivePosition = timeline && syncPosition != null && Number.isFinite(syncPosition) ? syncPosition : timeline ? timeline.end - 3 : 0;
-  const behindLive = timeline?.live && timeline.current < Math.max(timeline.start, safeLivePosition - 2);
-
   return <div ref={shell} className={`native-player ${focused ? 'player-focused' : ''} ${settings ? 'player-settings-open' : ''} ${pointerActive ? 'player-pointer-active' : ''}`} onPointerEnter={showControls} onPointerMove={showControls} onPointerLeave={hideControls}>
     <video ref={ref} playsInline autoPlay={playing} muted={!audible} aria-label={feed.label}/>
     {notice && <div className="player-notice" role="status">{notice}</div>}
@@ -379,12 +327,12 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     {status === 'error' && <div className="player-message"><AlertCircle/><strong>Feed couldn&apos;t play</strong><p>{errorHint || 'Check the URL, availability, and whether the provider allows playback here.'}</p><button className="button" onClick={() => onRetry ? onRetry(feed.url) : setRetry(value => value + 1)}>Try again</button></div>}
     {status === 'ready' && !focused && <span className="feed-label"><Radio size={12}/>{feed.label}</span>}
     {focused && status !== 'error' && <div className="player-controls" role="group" aria-label="Focused stream controls">
-      {timeline && <div className="player-timeline"><input type="range" min="0" max="1000" step="1" value={Math.round((timeline.current - timeline.start) / (timeline.end - timeline.start) * 1000)} aria-label={`Seek ${feed.label}`} onChange={event => seek(Number(event.target.value))}/><span>{timeline.live ? behindLive ? `-${time(timeline.end - timeline.current)}` : 'LIVE' : time(timeline.current - timeline.start)}</span>{timeline.live ? <button className={behindLive ? 'go-live' : 'at-live'} onClick={live} disabled={!behindLive}>● LIVE</button> : <span>{time(timeline.end - timeline.start)}</span>}</div>}
       <div className="player-control-row">
         <button aria-label={playing ? 'Pause stream' : 'Play stream'} title={playing ? 'Pause focused game (Space)' : 'Play focused game (Space)'} onClick={() => callbacks.current.onPlayingChange(!playing)}>{playing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button>
         <button aria-label={audible ? 'Mute stream' : 'Unmute stream'} title="Toggle focused audio (M)" onClick={() => callbacks.current.onAudibleChange(!audible)}>{audible ? <Volume2 size={17}/> : <VolumeX size={17}/>}</button>
         <input className="player-volume" type="range" min="0" max="100" step="1" value={volume} aria-label="Stream volume" onChange={event => callbacks.current.onVolumeChange(Number(event.target.value))}/>
         <span className="player-source">{feed.label}</span>
+        {live && <span className="player-live"><Radio size={10}/>LIVE</span>}
         {canPip && <button aria-label={pip ? 'Exit picture in picture' : 'Picture in picture'} title="Picture in picture" onClick={() => void togglePip()}><PictureInPicture2 size={17}/></button>}
         <Popover.Root open={settings} onOpenChange={setSettings}>
           <Popover.Trigger asChild><button aria-label="Video quality" title="Quality settings"><Settings2 size={17}/></button></Popover.Trigger>

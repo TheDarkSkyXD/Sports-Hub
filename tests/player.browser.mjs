@@ -9,8 +9,9 @@ import { chromium, _electron as electron } from 'playwright';
 
 const desktop = process.argv.includes('--desktop');
 const qualityOnly = process.argv.includes('--quality-only');
+const liveOnly = process.argv.includes('--live-only');
 let origin = process.env.PLAYER_BASE_URL || 'http://127.0.0.1:3100';
-const artifacts = path.resolve(`work/player-verification${desktop ? '-electron' : ''}${qualityOnly ? '-quality' : ''}`);
+const artifacts = path.resolve(`work/player-verification${desktop ? '-electron' : ''}${qualityOnly ? '-quality' : ''}${liveOnly ? '-live' : ''}`);
 const media = path.join(artifacts, 'media');
 await mkdir(media, { recursive: true });
 await promisify(execFile)(ffmpeg, [
@@ -75,6 +76,7 @@ async function screenshot(page, name, fullPage = false) {
 }
 
 async function openRoom({ live = false, provider = false, manyQualities = false, heightlessMaster = false, mediaPlaylist = false, backupMediaPlaylist = false, initialQuality = 'auto', mp4 = false, providerFailure, waitingForLive = false, delayedBackup = false, offlineStart = false, holdHeartbeat = false, holdSelection = false } = {}) {
+  const liveStartedAt = Date.now();
   const context = desktopApp ? desktopApp.context() : await browser.newContext({ viewport: { width: 1440, height: 1100 } });
   await context.unrouteAll({ behavior: 'wait' });
   let roomGames = games.map((g, index) => provider ? { ...g, status: waitingForLive && index === 0 ? 'pre' : g.status, sourceUrl: waitingForLive && index === 1 ? undefined : `https://isportsurge.ws/watch/nfl/test-game/${g.id}` } : g);
@@ -178,8 +180,15 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
     if (manyQualities && file === 'master.m3u8') {
       body = Buffer.from(body.toString() + [500000, 650000, 800000].map(bandwidth => `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=640x360\nlevel_0.m3u8\n`).join(''));
     }
-    if (live && file.endsWith('.m3u8')) {
-      body = Buffer.from(body.toString().replace('#EXT-X-PLAYLIST-TYPE:VOD\n', '').replace('#EXT-X-ENDLIST', ''));
+    if (live && file.endsWith('.m3u8') && file !== 'master.m3u8') {
+      const playlist = body.toString();
+      const segments = [...playlist.matchAll(/#EXTINF:[^\r\n]*\r?\n[^\r\n]+/g)].map(match => match[0]);
+      const available = Math.min(segments.length, 22 + Math.floor((Date.now() - liveStartedAt) / 2000));
+      const first = Math.max(0, available - 16);
+      const header = playlist.slice(0, playlist.indexOf('#EXTINF:'))
+        .replace('#EXT-X-PLAYLIST-TYPE:VOD\n', '')
+        .replace(/#EXT-X-MEDIA-SEQUENCE:\d+/, `#EXT-X-MEDIA-SEQUENCE:${first}`);
+      body = Buffer.from(`${header}${segments.slice(first, available).join('\n')}\n`);
     }
     await route.fulfill({ body, contentType: file.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : file.endsWith('.mp4') ? 'video/mp4' : 'video/mp2t' });
   }
@@ -261,7 +270,62 @@ async function selectDefaultQuality(page, label) {
   await page.getByRole('option', { name: label, exact: true }).click();
 }
 
+async function checkLiveRoom() {
+  const liveRoom = await openRoom({ live: true });
+  const liveControls = liveRoom.page.getByRole('group', { name: 'Focused stream controls', exact: true });
+  await liveControls.getByText('LIVE', { exact: true }).waitFor();
+  assert.equal(await liveControls.getByRole('slider', { name: /^Seek / }).count(), 0);
+  assert.equal(await liveControls.getByRole('button', { name: /LIVE/ }).count(), 0);
+  const firstEdge = await liveRoom.page.locator('video').first().evaluate(video => video.seekable.end(video.seekable.length - 1));
+  await liveRoom.page.waitForFunction(edge => {
+    const video = document.querySelector('video');
+    return video.seekable.length && video.seekable.end(video.seekable.length - 1) >= edge + 4;
+  }, firstEdge);
+  const beforeArrows = await liveRoom.page.locator('video').first().evaluate(video => video.currentTime);
+  await liveRoom.page.keyboard.press('ArrowLeft');
+  await liveRoom.page.keyboard.press('ArrowRight');
+  const afterArrows = await liveRoom.page.locator('video').first().evaluate(video => video.currentTime);
+  assert.ok(afterArrows >= beforeArrows - 1 && afterArrows < beforeArrows + 3, 'Arrow keys must leave playback position alone');
+  await liveRoom.page.locator('video').first().evaluate(video => { video.currentTime = video.seekable.start(0) + 2; });
+  await liveRoom.page.waitForFunction(() => {
+    const v = document.querySelector('video');
+    return v.seekable.length && v.currentTime >= v.seekable.end(v.seekable.length - 1) - 10;
+  });
+  await revealControls(liveRoom.page);
+  await liveControls.getByRole('button', { name: 'Pause stream' }).click();
+  await liveRoom.page.waitForFunction(() => document.querySelector('video').paused);
+  const pausedPosition = await liveRoom.page.locator('video').first().evaluate(video => {
+    video.currentTime = video.seekable.end(video.seekable.length - 1) - 14;
+    return video.currentTime;
+  });
+  const pausedEdge = await liveRoom.page.locator('video').first().evaluate(video => video.seekable.end(video.seekable.length - 1));
+  await liveRoom.page.waitForTimeout(9000);
+  const afterPause = await liveRoom.page.locator('video').first().evaluate(video => video.currentTime);
+  assert.ok(Math.abs(afterPause - pausedPosition) < 2, 'Paused live playback must keep its position');
+  assert.ok(await liveRoom.page.locator('video').first().evaluate((video, edge) => video.seekable.end(video.seekable.length - 1) >= edge + 6, pausedEdge), 'Live edge must advance while paused');
+  await revealControls(liveRoom.page);
+  await liveControls.getByRole('button', { name: 'Play stream' }).click();
+  await liveRoom.page.waitForFunction(() => {
+    const v = document.querySelector('video');
+    return !v.paused && v.seekable.length && v.currentTime >= v.seekable.end(v.seekable.length - 1) - 10;
+  });
+  assert.deepEqual(liveRoom.pageErrors, []);
+  results.push('A moving live HLS edge stays current without seek controls or arrow seeking; pause keeps position and resume returns near live.');
+  if (!desktopApp) await liveRoom.context.close();
+}
+
 try {
+  if (liveOnly) {
+    await checkLiveRoom();
+    const finiteRoom = await openRoom({ mediaPlaylist: true });
+    assert.equal(await finiteRoom.page.getByRole('slider', { name: /^Seek / }).count(), 0);
+    await finiteRoom.page.locator('video').first().evaluate(video => { video.currentTime = 5; });
+    await finiteRoom.page.waitForTimeout(2500);
+    assert.ok(await finiteRoom.page.locator('video').first().evaluate(video => video.currentTime < 12), 'Finite media must retain its position');
+    assert.deepEqual(finiteRoom.pageErrors, []);
+    results.push('Finite media stays at its selected position without a seek control.');
+    if (!desktopApp) await finiteRoom.context.close();
+  } else {
   const mediaRoom = await openRoom({ mediaPlaylist: true, initialQuality: '360' });
   assert.deepEqual(await mediaRoom.page.locator('video').evaluateAll(videos => videos.map(video => video.muted)), [true, true, true, true]);
   await revealControls(mediaRoom.page);
@@ -288,6 +352,10 @@ try {
   await mediaRoom.page.getByRole('button', { name: 'Video quality', exact: true }).click();
   assert.match(await mediaRoom.page.getByRole('dialog', { name: 'Playback quality' }).getByRole('button', { name: /^Auto/ }).getAttribute('class'), /selected/);
   assert.match(await mediaRoom.page.getByRole('dialog', { name: 'Playback quality' }).innerText(), /180p/);
+  assert.equal(await mediaRoom.page.getByRole('slider', { name: /^Seek / }).count(), 0);
+  await mediaRoom.page.locator('video').first().evaluate(video => { video.currentTime = 5; });
+  await mediaRoom.page.waitForTimeout(2500);
+  assert.ok(await mediaRoom.page.locator('video').first().evaluate(video => video.currentTime < 12), 'Finite media must retain its position');
   assert.deepEqual(mediaRoom.pageErrors, []);
   results.push('A single-rendition media playlist reports and selects decoded 360p for numeric and highest defaults.');
   if (!desktopApp) await mediaRoom.context.close();
@@ -588,23 +656,7 @@ try {
   results.push('A manual feed stops at the final-game deadline, closes its session, and stays saved in preferences.');
   if (!desktopApp) await context.close();
 
-  const liveRoom = await openRoom({ live: true });
-  const liveControls = liveRoom.page.getByRole('group', { name: 'Focused stream controls', exact: true });
-  const goLive = liveControls.getByRole('button', { name: /LIVE/ });
-  await goLive.waitFor();
-  await liveControls.getByRole('slider', { name: /^Seek / }).press('Home');
-  await liveRoom.page.waitForFunction(() => document.querySelector('video').currentTime < 10);
-  await revealControls(liveRoom.page);
-  await goLive.click();
-  await liveRoom.page.waitForFunction(() => {
-    const v = document.querySelector('video');
-    return v.seekable.length && v.currentTime >= v.seekable.end(v.seekable.length - 1) - 10;
-  });
-  await liveControls.locator('button.at-live:disabled').waitFor();
-  assert.equal(await goLive.isDisabled(), true);
-  assert.deepEqual(liveRoom.pageErrors, []);
-  results.push('A live HLS manifest exposes DVR seeking and Go Live returns to the safe live position.');
-  if (!desktopApp) await liveRoom.context.close();
+  await checkLiveRoom();
 
   const providerRoom = await openRoom({ provider: true });
   const firstTile = providerRoom.page.locator('.game-tile').first();
@@ -879,6 +931,7 @@ try {
   assert.deepEqual(qualityRoom.pageErrors, []);
   results.push('Four quality options are fully visible; the Quality heading stays fixed while the options scroll.');
   if (!desktopApp) await qualityRoom.context.close();
+  }
   }
   await writeFile(path.join(artifacts, 'results.json'), JSON.stringify(results, null, 2));
   await rm(path.join(artifacts, 'failure.json'), { force: true });
