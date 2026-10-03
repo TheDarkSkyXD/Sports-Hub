@@ -9,7 +9,7 @@ import { candidateSummary, type Board, type Candidate, type CandidateAvailabilit
 
 type RecoveryPhase = {kind:'cycling'} | {kind:'exhausted';until:number;knownIds:string[]};
 type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;phase:RecoveryPhase;requestId?:string};
-type ProbeJob = {key:string;candidate:Candidate;controller:AbortController;priority:'unknown'|'retry';promise?:Promise<void>};
+type ProbeJob = {key:string;candidate:Candidate;controller:AbortController;priority:'forced'|'unknown'|'retry';promise?:Promise<void>};
 const PROBE_LIMIT=4;
 const PROBE_QUEUE_LIMIT=256;
 const PLAYABLE_TTL_MS=10*60_000;
@@ -107,7 +107,7 @@ export class FootballCoordinator {
   }
   start(): void {
     if (this.tickTimer) return;
-    this.tickTimer = setInterval(() => { this.sweep(); if(this.checkTargets.size)this.checkSources([],false); void this.refresh(); },15000);
+    this.tickTimer = setInterval(() => { this.sweep(); this.checkSources([],false); void this.refresh(); },15000);
     void this.refresh();
   }
   private rebuild(): void {
@@ -139,7 +139,7 @@ export class FootballCoordinator {
     this.reconcileStreameastCandidates();
     this.reconcileSportsurgeCandidates();
     this.reconcileProbeJobs();
-    if(this.checkTargets.size)this.checkSources([],false);
+    this.checkSources([],false);
     this.revision++;
   }
   async refresh(force = false): Promise<void> {
@@ -220,45 +220,61 @@ export class FootballCoordinator {
     }
   }
   private checkSources(gameIds:string[],retry:boolean):void {
+    const now=this.now();
     for(const gameId of gameIds) {
       this.checkTargets.delete(gameId);
-      this.checkTargets.set(gameId,this.now());
+      this.checkTargets.set(gameId,now);
     }
-    for(const [gameId,requestedAt] of this.checkTargets)if(this.now()-requestedAt>90_000)this.checkTargets.delete(gameId);
+    for(const [gameId,requestedAt] of this.checkTargets)if(now-requestedAt>90_000)this.checkTargets.delete(gameId);
     while(this.checkTargets.size>16)this.checkTargets.delete(this.checkTargets.keys().next().value!);
-    const eligible=[...this.checkTargets.keys()].flatMap(gameId=>{
-      const game=this.games.find(item=>item.id===gameId);
-      if(!game||game.finalObservedAt!==undefined||!this.scheduleFresh(game))return [];
-      return [{gameId,candidates:(this.candidates.get(gameId)||[]).filter(candidate=>this.now()-candidate.observedAt<30*60_000).sort(compareCandidates)}];
-    });
-    eligible.sort((left,right)=>Number(left.candidates.some(candidate=>this.availability(candidate).kind==='playable'))-
-      Number(right.candidates.some(candidate=>this.availability(candidate).kind==='playable')));
+    const queued=new Set(this.probeQueue.map(job=>job.key));
+    const hasPlayable=(candidate:Candidate):boolean=>{
+      const key=this.probeKey(candidate);
+      const health=this.health.get(key);
+      const deferred=this.deferredProbes.get(key);
+      return !this.activeProbes.has(key)&&!queued.has(key)&&(!deferred||deferred.until<=now)&&
+        health?.kind==='playable'&&health.expiresAt>now;
+    };
+    const eligible=this.games.filter(game=>game.finalObservedAt===undefined&&this.scheduleFresh(game)).map(game=>({
+      gameId:game.id,candidates:(this.candidates.get(game.id)||[]).filter(candidate=>now-candidate.observedAt<30*60_000).sort(compareCandidates)
+    })).filter(game=>game.candidates.length);
+    eligible.sort((left,right)=>Number(this.checkTargets.has(right.gameId))-Number(this.checkTargets.has(left.gameId))||
+      Number(left.candidates.some(hasPlayable))-Number(right.candidates.some(hasPlayable)));
     const ordered:Candidate[]=[];
     for(let index=0;eligible.some(game=>index<game.candidates.length);index++)
       for(const game of eligible)if(game.candidates[index])ordered.push(game.candidates[index]);
     const due:Candidate[]=[];
     const unknown:Candidate[]=[];
+    const forced:Candidate[]=[];
     const seen=new Set<string>();
     for(const candidate of ordered) {
       const key=this.probeKey(candidate);
-      if(seen.has(key)||this.activeProbes.has(key)||this.probeQueue.some(job=>job.key===key)||this.deferredProbes.has(key))continue;
+      if(seen.has(key)||this.activeProbes.has(key)||queued.has(key)||this.deferredProbes.has(key))continue;
       seen.add(key);
-      const availability=this.availability(candidate);
       const force=retry&&gameIds.includes(candidate.gameId);
       const prior=this.health.get(key);
       if(prior?.kind==='unavailable') {
-        if(force||prior.retryAt<=this.now())due.push(candidate);
-      } else if(availability.kind==='unknown')unknown.push(candidate);
+        if(force)forced.push(candidate);
+        else if(prior.retryAt<=now)due.push(candidate);
+      } else if(prior?.kind!=='playable'||prior.expiresAt<=now)unknown.push(candidate);
     }
-    const additions=[...unknown.map(candidate=>({candidate,priority:'unknown' as const})),...due.map(candidate=>({candidate,priority:'retry' as const}))];
-    for(const {candidate,priority} of additions.slice(0,Math.max(0,PROBE_QUEUE_LIMIT-this.probeQueue.length))) {
+    const additions=[...forced.map(candidate=>({candidate,priority:'forced' as const})),
+      ...unknown.map(candidate=>({candidate,priority:'unknown' as const})),...due.map(candidate=>({candidate,priority:'retry' as const}))];
+    for(const {candidate,priority} of additions) {
+      if(this.probeQueue.length>=PROBE_QUEUE_LIMIT) {
+        if(priority!=='forced')break;
+        const displaced=this.probeQueue.findLastIndex(job=>job.priority!=='forced');
+        if(displaced<0)break;
+        this.probeQueue.splice(displaced,1);
+      }
       const key=this.probeKey(candidate);
-      if(retry&&gameIds.includes(candidate.gameId))this.health.delete(key);
+      if(priority==='forced')this.health.delete(key);
       this.probeQueue.push({key,candidate,controller:new AbortController(),priority});
       this.revision++;
     }
     const rank=new Map(ordered.map((candidate,index)=>[this.probeKey(candidate),index]));
-    this.probeQueue.sort((left,right)=>Number(left.priority==='retry')-Number(right.priority==='retry')||
+    const priorityRank={forced:0,unknown:1,retry:2};
+    this.probeQueue.sort((left,right)=>priorityRank[left.priority]-priorityRank[right.priority]||
       (rank.get(left.key)??Infinity)-(rank.get(right.key)??Infinity));
     this.pumpProbes();
   }
@@ -289,6 +305,7 @@ export class FootballCoordinator {
       }).finally(()=>{
         if(this.activeProbes.get(job.key)===job)this.activeProbes.delete(job.key);
         this.pumpProbes();
+        if(!this.stopped)this.checkSources([],false);
       });
     }
   }
@@ -380,7 +397,7 @@ export class FootballCoordinator {
       }
     });
     this.reconcileProbeJobs();
-    if(this.checkTargets.size)this.checkSources([],false);
+    this.checkSources([],false);
     this.revision++;
   }
   private board(): Board {
@@ -494,7 +511,7 @@ export class FootballCoordinator {
       const catalog=sanitizeSportsurgeCatalog(command.catalog);
       if (!catalog) return {kind:'error',status:400,message:'Invalid Sportsurge catalog checkpoint.'};
       const decision=catalogDecision(this.store.sportsurgeCatalog().current,catalog);
-      if (decision==='replay') {this.reconcileSportsurgeCandidates();this.reconcileProbeJobs();return {kind:'ok'};}
+      if (decision==='replay') {this.reconcileSportsurgeCandidates();this.reconcileProbeJobs();this.checkSources([],false);return {kind:'ok'};}
       if (decision==='rejected') return {kind:'error',status:409,message:'Sportsurge catalog checkpoint is obsolete.'};
       const receivedAt=this.now();
       const match=createObservationMatcher(this.games);
@@ -506,7 +523,7 @@ export class FootballCoordinator {
       this.store.saveSportsurgeCatalog({catalog,receivedAt},observations);
       this.reconcileSportsurgeCandidates();
       this.reconcileProbeJobs();
-      if(this.checkTargets.size)this.checkSources([],false);
+      this.checkSources([],false);
       this.revision++;
       return {kind:'ok'};
     }
@@ -514,7 +531,7 @@ export class FootballCoordinator {
       const catalog=sanitizeStreameastCatalog(command.catalog);
       if(!catalog)return {kind:'error',status:400,message:'Invalid StreamEast catalog checkpoint.'};
       const decision=streameastDecision(this.store.streameastCatalog().current,catalog);
-      if(decision==='replay'){this.reconcileStreameastCandidates();this.reconcileProbeJobs();return {kind:'ok'};}
+      if(decision==='replay'){this.reconcileStreameastCandidates();this.reconcileProbeJobs();this.checkSources([],false);return {kind:'ok'};}
       if(decision==='rejected')return {kind:'error',status:409,message:'StreamEast catalog checkpoint is obsolete.'};
       const receivedAt=this.now();
       const match=createObservationMatcher(this.games);
@@ -532,7 +549,7 @@ export class FootballCoordinator {
       this.store.saveStreameastCatalog({catalog,receivedAt},visible);
       this.reconcileStreameastCandidates();
       this.reconcileProbeJobs();
-      if(this.checkTargets.size)this.checkSources([],false);
+      this.checkSources([],false);
       this.revision++;
       return {kind:'ok'};
     }
