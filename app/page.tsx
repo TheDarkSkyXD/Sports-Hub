@@ -64,11 +64,8 @@ export default function Home() {
  const live=discovery.filter(g=>g.status==='in'),hot=live.filter(g=>g.redzone);
  const filtered=centerGames.filter(g=>(filter==='all'||filter==='live'&&g.status==='in'||filter==='redzone'&&g.redzone||filter==='favorites'&&favorites.includes(g.id))&&`${g.name} ${g.home.abbreviation} ${g.away.abbreviation}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>priority(b)-priority(a));
  const stale=!!fetchError||!scheduleLoading&&!!errors.length;
- const needsServers=chosen.some(game=>game.lifecycle!=='final'&&!feeds[game.id]);
  useEffect(()=>{
-  if(!needsServers)return;
   const controller=new AbortController();
-  const gameIds=selected.filter(id=>!feeds[id]).slice(0,4);
   let timer:ReturnType<typeof setTimeout>;
   const refreshSources=async()=>{
    let nextDelay=30000;
@@ -77,16 +74,14 @@ export default function Home() {
     if(!response.ok)throw new Error('Source inventory unavailable');
     const snapshot=SourcesSnapshotSchema.parse(await response.json());
     if(!controller.signal.aborted)setSources(snapshot);
-    if(gameIds.length)void fetch('/api/sources',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({kind:'check-sources',gameIds,retry:false}),signal:controller.signal}).catch(()=>{});
     if(snapshot.sportsurgeV2.current?.state.kind==='collecting'||snapshot.streameast.current?.state.kind==='collecting'||
-      snapshot.games.some(row=>gameIds.includes(row.gameId)&&row.candidates.some(candidate=>candidate.availability.kind==='unknown'||candidate.availability.kind==='checking')))nextDelay=3000;
+      snapshot.games.some(row=>row.candidates.some(candidate=>candidate.availability.kind==='unknown'||candidate.availability.kind==='checking')))nextDelay=3000;
    }catch{nextDelay=5000;}
    finally{if(!controller.signal.aborted)timer=setTimeout(()=>void refreshSources(),nextDelay);}
   };
   void refreshSources();
   return()=>{controller.abort();clearTimeout(timer);};
- },[needsServers,selected,feeds]);
+ },[]);
  useEffect(()=>{const timer=window.setTimeout(()=>setDesktop(!!window.sundayDesktop),0);return()=>window.clearTimeout(timer);},[]);
  const toast=useCallback((message:string)=>setNotice(message),[]);
  useEffect(()=>{ if(notice){const timer=setTimeout(()=>setNotice(''),4500);return ()=>clearTimeout(timer);} },[notice]);
