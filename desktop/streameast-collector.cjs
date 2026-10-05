@@ -44,7 +44,9 @@ async function beforeDeadline(promise,deadline,signal,current) {
 function createStreameastCollector({origin,controlToken}) {
   let window,active,timer,controller;
   let stopped=false;
+  let started=false;
   let requestedPath='';
+  let rateLimitedUntil=0;
   const partition='streameast-catalog';
   const sourceSession=session.fromPartition(partition);
   sourceSession.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
@@ -89,13 +91,24 @@ function createStreameastCollector({origin,controlToken}) {
       void current.loadURL(url).catch(()=>{});
       let challenge=false;
       while(Date.now()<deadline) {
+        if(pageStatus===429){rateLimitedUntil=Date.now()+5*60_000;throw new Error('rate-limited');}
         if(pageStatus>=400)throw new Error('unavailable');
         if (signal.aborted || current.isDestroyed()) throw new Error('unavailable');
         if(!documentReady || pageStatus<200 || pageStatus>=300) {await pause(400,signal);continue;}
         try {
           const state=await beforeDeadline(current.webContents.mainFrame.executeJavaScript(`({url:location.href,title:document.title,cards:document.querySelectorAll('.m-card').length,
           empty:!!document.querySelector('#m-schedule-empty.m-empty .m-empty__title') && /no (?:college football|cfb|nfl) games available/i.test(document.querySelector('#m-schedule-empty.m-empty .m-empty__title').textContent||''),
-          detail:!!document.querySelector('.stream-alt-list a.stream-alt-item')})`),deadline,signal,current);
+          detail:(()=>{if(document.querySelector('.stream-alt-list a.stream-alt-item'))return true;
+            const list=document.querySelector('#se-streams-list.se-streams__list');
+            const rows=[...(list?.querySelectorAll('.se-stream:not(.se-stream--share)')||[])];
+            if(!document.querySelector('.streameast-video-page'))return false;
+            if(document.querySelector('.se-streams--share-only .se-streams__list') &&
+              document.querySelector('.se-board[data-match-id]') &&
+              document.querySelector('.se-countdown__title')?.textContent.trim()==='Stream starting soon' &&
+              !document.querySelector('.se-streams__list a.se-stream__link'))return true;
+            return !!document.querySelector('.se-progate__match')?.textContent.trim() &&
+              rows.length>0 && rows.every(row=>row.classList.contains('is-pro') &&
+                row.querySelector('a.se-stream__link')?.getAttribute('href')?.startsWith(${JSON.stringify(path)}));})()})`),deadline,signal,current);
           challenge=/just a moment|verify you are human|checking your browser/i.test(state.title);
           if (state.url===url && !challenge && (category ? state.cards>0 || state.empty : state.detail)) {
             if (category) {
@@ -142,6 +155,22 @@ function createStreameastCollector({origin,controlToken}) {
           headers:{'content-type':'application/json','x-sunday-control-token':controlToken},body,
           signal:AbortSignal.any([signal,AbortSignal.timeout(15000)])});
         if(response.status===204)return;
+        if(response.ok) {
+          const ack=await response.json();
+          if(ack?.kind!=='catalog-ack'||!Array.isArray(ack.skipDetailEventIds)||
+            !ack.skipDetailEventIds.every(id=>typeof id==='string'))throw new Error('parser-changed');
+          if(ack.skipDetailEventUrls!==undefined&&
+            (!Array.isArray(ack.skipDetailEventUrls)||
+              !ack.skipDetailEventUrls.every(url=>typeof url==='string'&&catalog.events.some(event=>event.url===url))))
+            throw new Error('parser-changed');
+          if(ack.reuseDetails!==undefined&&
+            (ack.reuseDetails?.kind!=='streameast'||!Array.isArray(ack.reuseDetails.events)||
+              Buffer.byteLength(JSON.stringify(ack.reuseDetails.events),'utf8')>512*1024||
+              !ack.reuseDetails.events.every(event=>typeof event?.id==='string'&&event.detail?.kind==='collected'&&
+                typeof event.detail.retainedFromRunId==='string'&&Number.isSafeInteger(event.detail.at)&&event.detail.at>=0&&
+                Array.isArray(event.detail.servers))))throw new Error('parser-changed');
+          return ack;
+        }
         await response.body?.cancel();
         if(response.status>=400&&response.status<500)throw new Error('parser-changed');
       } catch(error) {if(signal.aborted||error?.message==='parser-changed')throw error;}
@@ -153,13 +182,28 @@ function createStreameastCollector({origin,controlToken}) {
   function requestSweep() {
     if(stopped)return;
     if(active)return active;
+    if(Date.now()<rateLimitedUntil) {
+      if(started) {
+        if(timer)clearTimeout(timer);
+        timer=setTimeout(requestSweep,rateLimitedUntil-Date.now());
+      }
+      return;
+    }
+    if(timer)clearTimeout(timer);
     controller=new AbortController();
+    const delay=5*60_000;
     active=runStreameastSweep({read:document,send:catalog=>checkpoint(catalog,controller.signal),signal:controller.signal})
-      .catch(()=>{}).finally(()=>{active=undefined;controller=undefined;});
+      .then(catalog=>{
+        if(catalog.state.reason==='rate-limited')rateLimitedUntil=Math.max(rateLimitedUntil,Date.now()+5*60_000);
+        return catalog;
+      }).catch(()=>{}).finally(()=>{
+        active=undefined;controller=undefined;
+        if(started&&!stopped)timer=setTimeout(requestSweep,Math.max(delay,rateLimitedUntil-Date.now()));
+      });
     return active;
   }
-  function start() {if(stopped||timer)return;timer=setInterval(requestSweep,120000);requestSweep();}
-  function stop() {stopped=true;if(timer)clearInterval(timer);controller?.abort();if(window&&!window.isDestroyed())window.destroy();}
+  function start() {if(stopped||started)return;started=true;requestSweep();}
+  function stop() {stopped=true;if(timer)clearTimeout(timer);controller?.abort();if(window&&!window.isDestroyed())window.destroy();}
   return {start,requestSweep,stop};
 }
 

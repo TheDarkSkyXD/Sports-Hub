@@ -62,7 +62,10 @@ test('North Dakota historical listing reaches detail but an empty embed creates 
     try {
       const row = db.prepare('SELECT result FROM observations').get();
       assert.ok(row && typeof row.result === 'string');
-      assert.deepEqual(JSON.parse(row.result),{kind:'unmatched',reason:'compatible-media-not-resolved',possibleGameIds:['ncaaf-401867858']});
+      assert.deepEqual(JSON.parse(row.result),{kind:'matched',gameId:'ncaaf-401867858'});
+      const detail = db.prepare('SELECT payload FROM details').get();
+      assert.ok(detail && typeof detail.payload === 'string');
+      assert.equal(JSON.parse(detail.payload).outcome,'unresolved');
     } finally { db.close(); }
     if (board.kind==='board') assert.equal(board.board.games.find(game => game.id==='ncaaf-401867858')?.sourceUrl,undefined);
     assert.deepEqual(await coordinator.command({kind:'open',gameId:'ncaaf-401867858',manual:false,requestId:'11111111-1111-4111-8111-111111111111'}),
@@ -73,7 +76,7 @@ test('North Dakota historical listing reaches detail but an empty embed creates 
   }
 });
 
-test('catalog matches are retained without consuming detail slots or minting playback candidates',async () => {
+test('catalog event pages are checked while browser catalogs avoid generic detail work',async () => {
   const dir = mkdtempSync(join(tmpdir(),'football-catalog-'));
   const path = join(dir,'state.sqlite');
   const at = Date.parse('2026-09-26T19:30:00Z');
@@ -86,7 +89,14 @@ test('catalog matches are retained without consuming detail slots or minting pla
     home:team('Troy Trojans','espn:ncaaf:2653'),away:team('Utah State Aggies','espn:ncaaf:328'),partitions:['fbs']};
   const tvapp = SOURCES.find(source => source.id==='tvapp');
   const sportsurge = SOURCES[0];
-  assert.ok(tvapp);
+  const browserCatalog = SOURCES.find(source => source.id==='sportsurge-v2');
+  assert.ok(tvapp && browserCatalog);
+  const browserEventUrl='https://v2.sportsurge.net/watch-cfb-streams/florida-ole-miss';
+  const seed=new FootballStore(path);
+  seed.observe({id:'browser-catalog-fixture',sourceId:browserCatalog.id,url:browserEventUrl,title:'Florida vs Ole Miss',
+    league:'ncaaf',teams:['Florida','Ole Miss'],kickoff:at,rawTime:'',observedAt:at,parserVersion:1},
+    {kind:'matched',gameId:florida.id});
+  seed.close();
   const catalog = JSON.stringify([
     {id:'florida-vs-ole-miss-2498829',title:'Florida vs Ole Miss',category:'american-football',date:at,
       teams:{home:{name:'Florida'},away:{name:'Ole Miss'}},sources:[{source:'admin',id:'ppv-ole-miss-rebels-at-florida-gators'}]},
@@ -100,10 +110,11 @@ test('catalog matches are retained without consuming detail slots or minting pla
   const visited: string[] = [];
   const coordinator = createFootballCoordinator(path,{
     now:() => at,
-    sources:[tvapp,sportsurge],
+    sources:[tvapp,sportsurge,browserCatalog],
     probeCandidate:async()=>({kind:'playable',proof:'media'}),
     readSchedule:async (partition,time) => ({games:partition.id==='fbs' ? [florida,georgia,late] : [],at:time,league:partition.league}),
     readHtml:async url => { visited.push(url); return url===tvapp.url ? catalog : url===sportsurge.url ? listing :
+      url.startsWith('https://tvapp1.pk/watch/') ? '<main>Stream will be available shortly</main>' :
       '<iframe src="https://gooz.aapmains.net/new-stream-embed/123"></iframe>'; },
   });
   try {
@@ -114,12 +125,15 @@ test('catalog matches are retained without consuming detail slots or minting pla
       try { rows=db.prepare('SELECT payload,result FROM observations').all().flatMap(row =>
         typeof row.payload === 'string' && typeof row.result === 'string' ? [{payload:row.payload,result:row.result}] : []); }
       finally { db.close(); }
-      if (rows.length>=4 && visited.includes(detailUrl)) break;
+      if (rows.length>=5 && visited.includes(detailUrl) &&
+        visited.filter(url=>url.startsWith('https://tvapp1.pk/watch/')).length===3) break;
       await new Promise<void>(resolve => setImmediate(resolve));
     }
-    assert.equal(rows.length,4);
+    assert.equal(rows.length,5);
     assert.equal(visited.includes(detailUrl),true);
-    assert.equal(visited.some(url => url.startsWith('https://tvapp1.com/watch/')),false);
+    assert.equal(visited.filter(url=>url.startsWith('https://tvapp1.pk/watch/')).length,3);
+    assert.equal(visited.includes(browserEventUrl),false);
+    assert.equal(visited.includes(browserCatalog.url),false);
     const catalogRows = rows.filter(row => JSON.parse(row.payload).sourceId==='tvapp');
     assert.equal(catalogRows.length,3);
     assert.ok(catalogRows.every(row => JSON.parse(row.result).kind==='matched'));
@@ -130,6 +144,7 @@ test('catalog matches are retained without consuming detail slots or minting pla
     assert.equal(inventory.kind,'sources');
     if (inventory.kind==='sources') {
       assert.equal(inventory.snapshot.sources.find(source=>source.id==='tvapp')?.listingCount,3);
+      assert.equal(inventory.snapshot.sources.find(source=>source.id==='tvapp')?.collectionMode,'compatible-feed-discovery');
       assert.equal(inventory.snapshot.games.find(game=>game.gameId==='ncaaf-1')?.sourceCount,2);
       assert.equal(inventory.snapshot.games.find(game=>game.gameId==='ncaaf-1')?.uniqueFeedCount,1);
       assert.equal(inventory.snapshot.games.find(game=>game.gameId==='ncaaf-2')?.uniqueFeedCount,0);
@@ -156,6 +171,7 @@ test('the first fresh final timestamp survives restart and never extends the gra
   const path = join(dir,'state.sqlite');
   try {
     const first = new FootballStore(path);
+    first.setFinishedGameRetentionMinutes(5);
     first.savePartition('nfl',{games:[final],at:kickoff});
     first.close();
     const second = new FootballStore(path);
@@ -165,6 +181,45 @@ test('the first fresh final timestamp survives restart and never extends the gra
     assert.equal(second.finals()[0].home.score,'7');
     second.close();
   } finally { rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('partition reads follow committed writes and cannot change the stored schedule',() => {
+  const dir=mkdtempSync(join(tmpdir(),'football-partition-cache-'));
+  const path=join(dir,'state.sqlite');
+  const first=new FootballStore(path);
+  first.setFinishedGameRetentionMinutes(5);
+  const raw=new DatabaseSync(path);
+  let firstClosed=false;
+  try {
+    assert.equal(first.partition('nfl'),undefined);
+    const input={games:[{...live,home:{...live.home}}],at:kickoff};
+    first.savePartition('nfl',input);
+    input.games[0].home.score='99';
+    const saved=first.partition('nfl');
+    assert.ok(saved);
+    assert.equal(saved.games[0].home.score,'0');
+    assert.throws(()=>{saved.at=kickoff+1;},TypeError);
+    assert.throws(()=>{saved.games[0].home.score='42';},TypeError);
+    raw.exec("CREATE TRIGGER reject_partition BEFORE UPDATE ON partitions BEGIN SELECT RAISE(ABORT, 'partition-write-blocked'); END");
+    assert.throws(()=>first.savePartition('nfl',{games:[final],at:kickoff+60_000}),/partition-write-blocked/);
+    assert.equal(first.partition('nfl')?.at,kickoff);
+    raw.exec('DROP TRIGGER reject_partition');
+    first.savePartition('nfl',{games:[final],at:kickoff+120_000});
+    const accepted=first.partition('nfl');
+    assert.equal(accepted?.at,kickoff+120_000);
+    assert.equal(accepted?.games[0].finalObservedAt,kickoff+120_000);
+    assert.equal(accepted?.games[0].graceEndsAt,kickoff+420_000);
+    first.close();
+    firstClosed=true;
+    assert.throws(()=>first.partition('nfl'));
+    const reopened=new FootballStore(path);
+    try {assert.deepEqual(reopened.partition('nfl'),accepted);}
+    finally {reopened.close();}
+  } finally {
+    raw.close();
+    if(!firstClosed)first.close();
+    rmSync(dir,{recursive:true,force:true});
+  }
 });
 
 test('a delayed schedule response starts final grace when the coordinator accepts it',async () => {
@@ -180,6 +235,7 @@ test('a delayed schedule response starts final grace when the coordinator accept
     },
   });
   try {
+    await coordinator.command({kind:'set-retention',minutes:5});
     await coordinator.refresh(true);
     const board = await coordinator.command({kind:'board'});
     assert.equal(board.kind,'board');
@@ -252,6 +308,7 @@ test('active playback rejects stale failures, drains at final, then closes on th
       : '<iframe src="https://gooz.aapmains.net/new-stream-embed/123"></iframe>',
   });
   try {
+    await coordinator.command({kind:'set-retention',minutes:5});
     await coordinator.refresh(true);
     const requestId = '11111111-1111-4111-8111-111111111111';
     let opened = await coordinator.command({kind:'open',gameId:'100',manual:false,requestId});
@@ -380,7 +437,7 @@ test('automatic failover reaches the fourth source without heartbeats postponing
   } finally { await coordinator.stop(); rmSync(dir,{recursive:true,force:true}); }
 });
 
-test('a newly discovered candidate accompanies the session reply that selects it',async () => {
+test('a candidate discovered after the working route fails accompanies the session reply that selects it',async () => {
   const dir = mkdtempSync(join(tmpdir(),'football-late-candidate-'));
   let now = kickoff;
   const detailUrl = 'https://isportsurge.ws/watch/nfl/away-home/123';
@@ -409,18 +466,22 @@ test('a newly discovered candidate accompanies the session reply that selects it
     now += 60000;
     assert.equal((await coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false})).kind,'session');
     now += 60001;
+    const first = await coordinator.command({kind:'session',sessionId,generation:0,failure:true,retry:false});
+    assert.equal(first.kind,'session');
+    for(let elapsed=0;elapsed<300000;elapsed+=60000){
+      now+=60000;
+      await coordinator.command({kind:'session',sessionId,generation:1,failure:false,retry:false});
+    }
     await coordinator.refresh(true);
     await coordinator.command({kind:'check-sources',gameIds:['100'],retry:false});
     await new Promise<void>(resolve=>setImmediate(resolve));
-    let discovered = await coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false});
-    for (let attempt=0;discovered.kind==='session' && !discovered.candidates.some(candidate=>candidate.id==='gooz-124') && attempt<30;attempt++) {
+    let discovered = await coordinator.command({kind:'session',sessionId,generation:1,failure:false,retry:false});
+    for (let attempt=0;discovered.kind==='session' && !discovered.candidates.some(candidate=>candidate.id==='gooz-124'&&candidate.availability.kind==='playable') && attempt<30;attempt++) {
       await new Promise(resolve => setTimeout(resolve,10));
-      discovered = await coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false});
+      discovered = await coordinator.command({kind:'session',sessionId,generation:1,failure:false,retry:false});
     }
     assert.equal(discovered.kind,'session');
-    if (discovered.kind==='session') assert.ok(discovered.candidates.some(candidate=>candidate.id==='gooz-124'));
-    const first = await coordinator.command({kind:'session',sessionId,generation:0,failure:true,retry:false});
-    assert.equal(first.kind,'session');
+    if (discovered.kind==='session') assert.equal(discovered.candidates.find(candidate=>candidate.id==='gooz-124')?.availability.kind,'playable');
     const switched = await coordinator.command({kind:'session',sessionId,generation:1,failure:true,retry:false});
     assert.equal(switched.kind,'session',JSON.stringify(switched));
     if (switched.kind==='session') {
@@ -480,7 +541,12 @@ test('an exhausted session waits for its fixed deadline before automatically ret
     const cooling=await coordinator.command({kind:'session',sessionId,generation,failure:false,retry:false});
     assert.equal(cooling.kind,'error');
     if (cooling.kind==='error') assert.equal(cooling.retryAfter,kickoff+60000);
-    now=kickoff+60000;
+    for(const elapsed of [60000,120000,180000,240000,299999]){
+      now=kickoff+elapsed;
+      const waiting=await coordinator.command({kind:'session',sessionId,generation,failure:false,retry:false});
+      assert.equal(waiting.kind,'error','known failed media must wait five minutes');
+    }
+    now=kickoff+300000;
     const retried=await coordinator.command({kind:'session',sessionId,generation,failure:false,retry:false});
     assert.equal(retried.kind,'session');
     if (retried.kind==='session') assert.deepEqual({candidateId:retried.session.candidateId,generation:retried.session.generation},

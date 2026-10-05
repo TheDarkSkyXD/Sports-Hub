@@ -30,5 +30,6 @@ export async function POST(request:Request) {
   const parsed=StreameastCatalogSchema.safeParse(input.catalog);
   if(!parsed.success)return new Response(null,{status:400});
   const reply=await command({kind:'streameast-catalog',catalog:parsed.data});
+  if(reply.kind==='catalog-ack')return Response.json(reply,{headers:{'Cache-Control':'no-store'}});
   return new Response(null,{status:reply.kind==='ok'?204:reply.kind==='error'?reply.status:502,headers:{'Cache-Control':'no-store'}});
 }

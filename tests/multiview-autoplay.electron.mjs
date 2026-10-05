@@ -35,7 +35,7 @@ const games = Array.from({ length: 6 }, (_, index) => ({
 const candidates = gameId => [0, 1].map(index => ({
   id: `fixture-${gameId}-${index}`, gameId, label: index ? 'Backup 1' : 'Primary',
   sourceIds: ['fixture'], observedAt: Date.now(),
-  availability: { kind: 'playable', proof: 'media', checkedAt: Date.now(), expiresAt: Date.now() + 600000 },
+  availability: { kind: 'playable', proof: 'media', checkedAt: Date.now() },
 }));
 let revision = 1;
 let delayedPlayable = false;
@@ -84,7 +84,7 @@ try {
         gameId: game.id, name: game.name, sourceCount: index === 2 ? 0 : 1,
         uniqueFeedCount: index === 2 ? 0 : 2, sourceLinks: [],
         candidates: index === 2 ? [] : index === 1 && !delayedPlayable
-          ? [{ ...candidates(game.id)[0], availability: { kind: 'checking' } }]
+          ? [{ ...candidates(game.id)[0], availability: { kind: 'checking', progress: { kind: 'active', since: Date.now() } } }]
           : candidates(game.id),
       })),
     } });

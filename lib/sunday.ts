@@ -1,4 +1,5 @@
 import { ScheduleGameSchema } from './football/shared.ts';
+import { gameTiming } from './game-timing.ts';
 import type { Team, League, Game, ScheduleGame } from './football/shared.ts';
 export type { Team, League, Game, LeagueFeedStatus, Board } from './football/shared.ts';
 export type Feed = { url: string; label: string };
@@ -9,9 +10,12 @@ export const LEAGUES = {
 } satisfies Record<League, { label: string }>;
 export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|ncaaf-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
 export function parsePlayers(html: string): SourcePlayer[] {
-  const initial = html.match(/<iframe\b[^>]*src="(https:\/\/gooz\.aapmains\.net\/new-stream-embed\/(\d+))"/i);
-  if (!initial) return [];
-  const ids = [...new Set([initial[2], ...[...html.matchAll(/changeStream\((\d+)\)/g)].map(m => m[1])])];
+  const embeds = [...html.matchAll(/<iframe\b[^>]*>/gi)].flatMap(([tag]) => {
+    const source = tag.match(/(?:^|\s)src\s*=\s*(['"])(https:\/\/gooz\.aapmains\.net\/new-stream-embed\/(\d+))\1/i);
+    return source ? [source[3]] : [];
+  });
+  if (!embeds.length) return [];
+  const ids = [...new Set([...embeds, ...[...html.matchAll(/changeStream\((\d+)\)/g)].map(m => m[1])])];
   return ids.map((id, index) => ({ id, label: index ? `Backup ${index}` : 'Primary', url: `https://gooz.aapmains.net/new-stream-embed/${id}` }));
 }
 function object(value: unknown): Record<string, unknown> | null {
@@ -67,3 +71,17 @@ export function validFeedUrl(input: string): string | null {
   try { const url = new URL(input.trim()); return (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost','127.0.0.1','[::1]'].includes(url.hostname))) && !url.username && !url.password ? url.href : null; } catch { return null; }
 }
 export function priority(game: Game): number { return (game.status === 'in' ? 100 : game.status === 'pre' ? 30 : 0) + (game.redzone ? 60 : 0) + (game.status === 'in' && Math.abs(Number(game.home.score) - Number(game.away.score)) <= 8 ? 15 : 0); }
+
+export function sortGamesForDisplay<T extends Pick<Game, 'date' | 'status' | 'lifecycle'>>(games: readonly T[], now: number): T[] {
+  const today = new Date(now).toDateString();
+  const ranked = games.map((game, index) => {
+    const timing = gameTiming(game, null);
+    const start = timing.kind === 'unavailable' ? null : timing.start;
+    const isToday = start !== null && new Date(start).toDateString() === today;
+    const isFinal = game.lifecycle === 'final' || game.status === 'post';
+    const rank = game.status === 'in' ? 0 : isToday ? (isFinal ? 2 : 1) : isFinal ? (start === null ? 6 : 5) : start === null ? 4 : 3;
+    return { game, index, rank, start };
+  });
+  ranked.sort((a, b) => a.rank - b.rank || (a.rank === 5 ? (b.start ?? 0) - (a.start ?? 0) : (a.start ?? Infinity) - (b.start ?? Infinity)) || a.index - b.index);
+  return ranked.map(({ game }) => game);
+}

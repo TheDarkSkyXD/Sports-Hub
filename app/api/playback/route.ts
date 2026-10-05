@@ -1,5 +1,6 @@
 import { closePlayback, resolvePlayback, updatePlayback } from '@/lib/playback-server';
 import { CommandSchema } from '@/lib/football/shared';
+import { command } from '@/lib/football/runtime/client';
 
 export const dynamic = 'force-dynamic';
 const isJson = (request: Request) => request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() === 'application/json';
@@ -20,6 +21,12 @@ export async function PATCH(request: Request) {
   let input: unknown;
   try { input = await request.json(); } catch { return Response.json({ error: 'Invalid playback request.' }, { status: 400 }); }
   const parsed = CommandSchema.safeParse(input);
+  if (parsed.success && parsed.data.kind === 'playback-evidence') {
+    const reply = await command(parsed.data);
+    if (reply.kind === 'error') return Response.json({ error: reply.message }, { status: reply.status, headers: { 'Cache-Control': 'no-store' } });
+    if (reply.kind !== 'ok') return Response.json({ error: 'Unexpected playback evidence response.' }, { status: 502 });
+    return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+  }
   if (!parsed.success || parsed.data.kind !== 'session') return Response.json({ error: 'Invalid playback request.' }, { status: 400 });
   const body = parsed.data;
   const result = await updatePlayback(body.sessionId, body.generation, body.candidateId, body.failure, body.retry);

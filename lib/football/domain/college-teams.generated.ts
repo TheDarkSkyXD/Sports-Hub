@@ -1982,6 +1982,7 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "UAlbany",
       "UALB",
       "ALB",
+      "Albany",
       "Albany Great Danes",
       "University at Albany",
       "University at Albany Great Danes"

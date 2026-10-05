@@ -90,12 +90,14 @@
     {
         "espnId":  "399",
         "aliases":  [
+                        "Albany",
                         "Albany Great Danes",
                         "University at Albany",
                         "University at Albany Great Danes"
                     ],
         "sourceUrls":  [
                            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/399",
+                           "https://tvapp1.pk/watch/2594008",
                            "https://www.albany.edu/undergraduate-bulletin/athletics.php",
                            "https://ualbanysports.com/sports/2026/7/1/football-tickets.aspx"
                        ]

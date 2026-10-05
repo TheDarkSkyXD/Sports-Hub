@@ -9,6 +9,7 @@ const config: StorybookConfig = {
   staticDirs: ['../public', './public'],
   async viteFinal(config) {
     return mergeConfig(config, {
+      server: { watch: { ignored: ['**/.next/**', '**/.scratch/**', '**/work/**', '**/.desktop-runtime/**', '**/storybook-static/**'] } },
       resolve: { alias: { 'hls.js': fileURLToPath(new URL('./hls-mock.ts', import.meta.url)) } },
     });
   },

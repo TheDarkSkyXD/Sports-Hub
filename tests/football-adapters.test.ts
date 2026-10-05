@@ -53,7 +53,7 @@ test('Sportsurge category navigation is not an event and detail time can resolve
   assert.deepEqual(result.observations[0].teams,['Brown Bears','Harvard Crimson']);
   const enriched = enrichObservation(result.observations[0],'<body><time>2026-09-25 22:30ET</time><iframe src="https://gooz.aapmains.net/new-stream-embed/57069"></iframe></body>');
   assert.equal(enriched.kickoff,Date.parse('2026-09-26T02:30:00Z'));
-  assert.deepEqual(compatiblePlayers('ncaaf-1',enriched,'<iframe src="https://gooz.aapmains.net/new-stream-embed/57069"></iframe>',now)
+  assert.deepEqual(compatiblePlayers('ncaaf-1',enriched,'<iframe src="https://gooz.aapmains.net/new-stream-embed/57069"></iframe>')
     .map(player => player.locator.provider === 'gooz' ? player.locator.playerId : null),['57069']);
 });
 
@@ -68,12 +68,136 @@ test('event pages use machine timestamps and duplicate controls produce one obse
   assert.equal(result.observations[0].league,null);
 });
 
+test('rich college schedule rows retain both full team names and UTC kickoff', () => {
+  for (const id of ['methstreams','crackstreams-st']) {
+    const source = SOURCES.find(item => item.id === id);
+    assert.ok(source);
+    const html = `<section class="lg" id="college-football-live"><article class="ev-match" data-start="1790438400">
+      <a href="/event/brown-vs-harvard"><div class="ev-side"><span class="nm-l">Brown Bears</span></div>
+      <div class="ev-side"><span class="nm-l">Harvard Crimson</span></div>Live Watch</a></article></section>`;
+    const result = parseListings(source,html,now);
+    assert.equal(result.observations.length,1);
+    assert.deepEqual(result.observations[0].teams,['Brown Bears','Harvard Crimson']);
+    assert.equal(result.observations[0].league,'ncaaf');
+    assert.equal(result.observations[0].kickoff,now);
+    assert.equal(matchObservation(result.observations[0],[game('ncaaf-1',team('espn:ncaaf:108','Harvard Crimson'),team('espn:ncaaf:225','Brown Bears'))],now).kind,'matched');
+  }
+});
+
+test('Buffstream upgrades published CFB team links while retaining uncertain kickoff', () => {
+  const source = SOURCES.find(item => item.id === 'buffstream-cfb');
+  assert.ok(source);
+  const result = parseListings(source,`<table><tr><td>10:30 pm ET</td>
+    <td><a href="http://ms.buffstream.io/cfb-streams/montana-state-live-stream">Montana State Live Stream</a></td>
+    <td><a href="http://ms.buffstream.io/cfb-streams/idaho-live-stream">Idaho Live Stream</a></td></tr></table>`,now);
+  assert.equal(result.observations.length,2);
+  assert.ok(result.observations.every(item => item.url.startsWith('https://ms.buffstream.io/')));
+  assert.deepEqual(result.observations[0].teams,['Montana State','Idaho']);
+  assert.equal(result.observations[0].kickoff,null);
+  for (const url of ['http://ms.buffstream.io.evil.test/cfb-streams/idaho-live-stream',
+    'http://user@ms.buffstream.io/cfb-streams/idaho-live-stream',
+    'http://ms.buffstream.io:8080/cfb-streams/idaho-live-stream',
+    'http://ms.buffstream.io/cfb-streams/idaho-live-stream?paid=true',
+    'http://ms.buffstream.io/other/idaho-live-stream']) {
+    assert.equal(parseListings(source,`<a href="${url}">Idaho vs Montana State</a>`,now).observations.length,0);
+  }
+});
+
+test('all published VIP-family routes survive while unrelated routes do not', () => {
+  const cases = [
+    ['vipbox-cfb','https://vipbox.fm/onair/ncaaf/montana-state-vs-idaho', (n:number)=>`/live/ncaaf/montana-state-vs-idaho-${n}`],
+    ['vipboxtv-cfb','https://www.vipboxtv.sk/cfb/montana-state-vs-idaho-stream-live',(n:number)=>`/cfb/${n}/stream-montana-state-vs-idaho-live`],
+    ['strikeout-cfb','https://strikeout.im/college-football/stream-montana-state-vs-idaho-live',(n:number)=>`/college-football/${n}/montana-state-vs-idaho-stream`],
+  ] as const;
+  for (const [sourceId,url,server] of cases) {
+    const observed = {...observation(['Montana State','Idaho']),sourceId,url};
+    const title = sourceId === 'vipbox-cfb' ? 'Montana State vs Idaho Streaming Online' :
+      sourceId === 'vipboxtv-cfb' ? 'Watch Montana State vs Idaho Online' : 'Live Montana State vs. Idaho Streams Online';
+    const metadata = `<meta property="og:url" content="${url}"><script>const siteConfig = {"loaded_page":"stream","event_start_ts":1790438400};</script>`;
+    const controls = [1,2,3,4,5,1].map(n=>`<button data-uri="${server(n)}">Stream ${n}</button>`).join('') +
+      `<button data-uri="${server(6)}">Premium Stream</button><div class="paid"><button data-uri="${server(7)}">Stream 7</button></div>` +
+      `<button data-uri="${server(8)}" data-premium="true">Stream 8</button>` +
+      `<button data-uri="${server(9).replace('montana-state','other-team')}">Stream 9</button>` +
+      '<button data-uri="https://evil.test/player">Stream 10</button>';
+    const detail = `${metadata}<body><h1>${title}</h1>${controls}<footer>freely available online</footer></body>`;
+    const players = compatiblePlayers('ncaaf-401868094',observed,detail);
+    assert.equal(players.length,8);
+    assert.equal(new Set(players.map(player=>player.id)).size,8);
+    assert.deepEqual(players.map(player=>player.locator.provider === 'event-page' ? player.locator.serverUrl : null),
+      [1,2,3,4,5,6,7,8].map(n=>new URL(server(n),url).href));
+    assert.deepEqual(compatiblePlayers('ncaaf-401868094',observed,detail),players);
+    assert.notEqual(compatiblePlayers('ncaaf-other',observed,detail)[0].id,players[0].id);
+    assert.deepEqual(compatiblePlayers('ncaaf-401868094',observed,detail.replace('freely available online','subscription required')),players);
+    for (const invalid of [detail.replace('"loaded_page":"stream"','"loaded_page":"schedule"'),
+      detail.replace('1790438400','1790524800'),detail.replace(metadata,''),
+      detail.replace(`content="${url}"`,'content="https://evil.test/event"'),
+      detail.replace(`<h1>${title}</h1>`,`<h1>${title.replace('Idaho','Other Team')}</h1>`)]) {
+      assert.deepEqual(compatiblePlayers('ncaaf-401868094',observed,invalid),[]);
+    }
+    const mixed = `${detail}<iframe src="https://gooz.aapmains.net/new-stream-embed/57069"></iframe>` +
+      '<div class="paid"><iframe src="https://gooz.aapmains.net/new-stream-embed/57070"></iframe></div>';
+    assert.deepEqual(compatiblePlayers('ncaaf-401868094',observed,mixed).map(player=>player.id),
+      [...players.map(player=>player.id),'gooz-57069','gooz-57070']);
+  }
+});
+
+test('VIP-family NFL pages retain every published Gooz route for media checks',()=>{
+  const observed = {...observation(['Buffalo Bills','Miami Dolphins']),league:'nfl' as const,sourceId:'strikeout-nfl',
+    url:'https://strikeout.im/nfl/stream-buffalo-bills-vs-miami-dolphins-live'};
+  const detail = '<iframe src="https://gooz.aapmains.net/new-stream-embed/57069"></iframe>' +
+    '<div data-access="premium"><iframe src="https://gooz.aapmains.net/new-stream-embed/57070"></iframe></div>' +
+    '<button onclick="changeStream(57071)">Paid server</button><script>changeStream(57070)</script>';
+  assert.deepEqual(compatiblePlayers('nfl-1',observed,detail).map(player=>player.id),['gooz-57069','gooz-57070','gooz-57071']);
+});
+
+test('PPV retains all exact routes while rejecting wrong-game records', () => {
+  const parent = {id:29554,name:'Notre Dame Fighting Irish at North Carolina Tar Heels',tag:'College Football',
+    uri_name:'cfb/2026-10-03/nd-unc',starts_at:now/1000,source_tag:'ESPN',
+    iframe:'https://embedindia.st/embed/cfb/2026-10-03/nd-unc'};
+  const backup = {...parent,id:29555,source_tag:'SkyCast',uri_name:`${parent.uri_name}/skycast`,iframe:`${parent.iframe}/skycast`};
+  const observed = {...observation(['Notre Dame Fighting Irish','North Carolina Tar Heels']),sourceId:'ppv',
+    url:`https://ppv.st/live/${parent.uri_name}`};
+  const players = compatiblePlayers('ncaaf-1',observed,JSON.stringify({...parent,substreams:[backup,backup]}));
+  assert.deepEqual(players.map(player=>player.label),['PPV · ESPN','PPV · SkyCast']);
+  assert.equal(new Set(players.map(player=>player.id)).size,2);
+  assert.deepEqual(compatiblePlayers('ncaaf-1',observed,JSON.stringify({...parent,paid:true,substreams:[backup]})),players);
+  assert.deepEqual(compatiblePlayers('ncaaf-1',{...observed,kickoff:now+86400000},JSON.stringify(parent)),[]);
+  for (const invalid of [{...backup,paid:true},{...backup,premium:true},{...backup,name:'Other teams'},
+    {...backup,tag:'NFL'},{...backup,source_tag:'Pro'},{...backup,iframe:'https://evil.test/embed'},
+    {...backup,iframe:backup.iframe.replace('nd-unc','other-game')},{...backup,iframe:undefined}]) {
+    assert.equal(compatiblePlayers('ncaaf-1',observed,JSON.stringify({...parent,substreams:[invalid]})).length,
+      invalid.paid||invalid.premium||invalid.source_tag==='Pro'?2:1);
+  }
+  assert.deepEqual(compatiblePlayers('ncaaf-1',observed,JSON.stringify({...parent,iframe:undefined})),[]);
+});
+
+test('catalog detail collection selects the exact PPV parent and preserves API game dates', async () => {
+  const original = globalThis.fetch;
+  const parent = {id:29554,name:'Notre Dame at North Carolina',tag:'College Football',uri_name:'cfb/2026-10-03/nd-unc',starts_at:now/1000};
+  const observed = {...observation(['Notre Dame','North Carolina']),sourceId:'ppv',url:`https://ppv.st/live/${parent.uri_name}`};
+  const requests:string[] = [];
+  globalThis.fetch = async input => {requests.push(String(input)); return Response.json({success:true,
+    streams:[{category:'American Football',streams:[parent,{...parent,id:2,uri_name:'cfb/2026-10-03/other-game'}]}]});};
+  try {
+    assert.deepEqual(JSON.parse(await readHtml(observed.url,new AbortController().signal)),parent);
+    assert.deepEqual(requests,['https://api.ppv.st/api/streams']);
+    await assert.rejects(readHtml('https://ppv.st/live/cfb/2026-10-03/missing',new AbortController().signal),/parser-changed/);
+  } finally {globalThis.fetch = original;}
+  for (const sourceId of ['ppv','tvapp']) {
+    const catalogObservation = {...observed,sourceId};
+    assert.deepEqual(enrichObservation(catalogObservation,'<time datetime="2026-10-04T16:00:00Z"></time>'),catalogObservation);
+  }
+  assert.deepEqual(compatiblePlayers('ncaaf-1',{...observed,sourceId:'tvapp'},'<main>Stream will be available shortly...</main>'),[]);
+});
+
 test('known empty schedules differ from unsupported pages and parser changes', () => {
-  const hunter = SOURCES.find(item => item.id === 'nflhunter');
+  const unsupported = {id:'unknown-fixture',url:'https://unknown.example/list',family:'unknown'};
+  const nflstreams = SOURCES.find(item => item.id === 'nflstreams');
   const buff = SOURCES.find(item => item.id === 'buffstream-nfl');
-  assert.ok(hunter && buff);
-  assert.equal(parseListings(hunter,'<body><h2>NFL Schedule Update</h2>No matches available right now.</body>',now).outcome,'empty');
-  assert.equal(parseListings(hunter,'<body><h2>NFL Schedule Update</h2></body>',now).outcome,'unsupported');
+  assert.ok(nflstreams && buff);
+  assert.equal(parseListings(unsupported,'<body><h2>NFL Schedule Update</h2>No matches available right now.</body>',now).outcome,'empty');
+  assert.equal(parseListings(unsupported,'<body><h2>NFL Schedule Update</h2></body>',now).outcome,'unsupported');
+  assert.equal(parseListings(nflstreams,'<body><h2>NFL Schedule Update</h2></body>',now).outcome,'parser-changed');
   assert.equal(parseListings(buff,'<body><h2>NFL Schedule Update</h2></body>',now).outcome,'parser-changed');
 });
 
@@ -89,7 +213,7 @@ test('shared TVApp catalog keeps dated match identities without treating mirror 
   assert.deepEqual(result.observations[0].teams,['South Alabama Jaguars','Kentucky Wildcats']);
   assert.equal(result.observations[0].league,null);
   assert.equal(result.observations[0].kickoff,now);
-  assert.equal(result.observations[0].url,'https://tvapp1.com/watch/1681');
+  assert.equal(result.observations[0].url,'https://tvapp1.pk/watch/1681');
   assert.equal(parseListings(source,'[]',now).outcome,'empty');
   assert.equal(parseListings(source,JSON.stringify([row,{...row,date:now+60000}]),now).outcome,'parser-changed');
   assert.equal(parseListings(source,'[{"title":"missing date"}]',now).outcome,'parser-changed');
@@ -139,13 +263,13 @@ test('Streamcenter published game cards create exact ESPN-bound source locators'
   assert.equal(result.observations[0].kickoff,Date.parse('2026-09-26T19:30:00.000Z'));
   assert.equal(result.observations[0].url,`https://streamcenter.st${link}`);
   const detail='<iframe src="//streame.center/embed/hls.php?stream=lmdsjkfgv52"></iframe>';
-  const candidates=compatiblePlayers('ncaaf-401856699',result.observations[0],detail,now);
+  const candidates=compatiblePlayers('ncaaf-401856699',result.observations[0],detail);
   assert.equal(candidates.length,1);
   assert.deepEqual(candidates[0].locator,{provider:'streamcenter',eventId:'401856699',linkId:'aef974e2-5ef2-412c-b65e-e6905af1edfa'});
-  assert.deepEqual(compatiblePlayers('ncaaf-401856700',result.observations[0],detail,now),[]);
-  assert.deepEqual(compatiblePlayers('ncaaf-401856699',result.observations[0],'<iframe src="https://attacker.test/embed/hls.php?stream=lmdsjkfgv52"></iframe>',now),[]);
+  assert.deepEqual(compatiblePlayers('ncaaf-401856700',result.observations[0],detail),[]);
+  assert.deepEqual(compatiblePlayers('ncaaf-401856699',result.observations[0],'<iframe src="https://attacker.test/embed/hls.php?stream=lmdsjkfgv52"></iframe>'),[]);
   assert.equal(compatiblePlayers('ncaaf-401856699',result.observations[0],
-    '<iframe src="//streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85"></iframe>',now).length,1);
+    '<iframe src="//streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85"></iframe>').length,1);
 });
 
 test('matching rejects ambiguous aliases, stale rows, uncertain times, and final games', () => {
@@ -202,7 +326,7 @@ test('game and session states reject contradictory final and grace fields', () =
   assert.equal(GameSchema.safeParse(rawFinal).success,false);
   assert.equal(GameSchema.safeParse({...scheduled,finalObservedAt:now,graceEndsAt:now+300000}).success,false);
   assert.equal(GameSchema.safeParse({...rawFinal,finalObservedAt:now,graceEndsAt:now+300000}).success,true);
-  assert.equal(GameSchema.safeParse({...rawFinal,sourceUrl:'/play/ncaaf-1',finalObservedAt:now,graceEndsAt:now+300000}).success,false);
+  assert.equal(GameSchema.safeParse({...rawFinal,sourceUrl:'/play/ncaaf-1',finalObservedAt:now,graceEndsAt:now+300000}).success,true);
   assert.equal(GameSchema.safeParse({...rawFinal,sourceUrls:['/play/ncaaf-1'],finalObservedAt:now,graceEndsAt:now+300000}).success,false);
   const session = {id:'1',gameId:'ncaaf-1',candidateId:'gooz-1',generation:0};
   assert.equal(SessionSchema.safeParse({...session,state:'active',graceEndsAt:now}).success,false);

@@ -1,4 +1,4 @@
-import type { Board, CandidateSummary, Playback, SourcesSnapshot } from '../lib/football/shared';
+import { DEFAULT_FINISHED_GAME_RETENTION_MINUTES, type Board, type CandidateSummary, type Playback, type SourcesSnapshot } from '../lib/football/shared';
 import { defaultUpdateFeedUrl, UpdateFeedUrlSchema, type UpdateStatus } from '../lib/desktop-update';
 import type { Feed } from '../lib/sunday';
 
@@ -8,11 +8,11 @@ export const demoFeed: Feed = { url: '/sample.webm', label: 'Storybook sample fe
 
 export const candidates: CandidateSummary[] = [
   { id: 'sample-primary', gameId: '401', label: 'Primary', sourceIds: ['sportsurge'], observedAt: now,
-    availability: { kind: 'playable', checkedAt: now, expiresAt: now + 60_000, proof: 'media' } },
+    availability: { kind: 'playable', checkedAt: now, proof: 'media' } },
   { id: 'sample-backup', gameId: '401', label: 'Backup 1', sourceIds: ['streameast'], observedAt: now,
-    availability: { kind: 'playable', checkedAt: now, expiresAt: now + 60_000, proof: 'decoded' } },
+    availability: { kind: 'playable', checkedAt: now, proof: 'decoded' } },
   { id: 'sample-pending', gameId: '401', label: 'Unverified', sourceIds: ['sportsurge-v2'], observedAt: now,
-    availability: { kind: 'checking' } },
+    availability: { kind: 'checking', progress: { kind: 'queued', since: now - 12_000 } } },
 ];
 
 export const playback: Playback = {
@@ -31,19 +31,21 @@ export const sourcesSnapshot: SourcesSnapshot = {
     collectionMode: 'compatible-feed-discovery',
     lastAttempt: { at: now - 30_000, outcome: 'parsed' },
     listingCount: 1, matchedGameCount: 1, staleListingCount: 0, compatibleFeedCount: 1,
+    freeChoiceCount:1,workingChoiceCount:1,collectionHealth:{kind:'no-baseline'},
     unmatchedListingCount: 0, unmatchedReasons: [],
-    links: [{ title: 'Sample game listing', url: 'https://example.invalid/game', gameId: '401', observedAt: now, freshness: 'fresh' }],
+    links: [{ title: 'Sample game listing', url: 'https://example.invalid/game', gameId: '401', observedAt: now, freshness: 'fresh',evidence:{kind:'collected',checkedAt:now,candidateIds:['sample-primary']} }],
   }],
   games: [{ gameId: '401', name: 'Green Bay Packers at Chicago Bears', sourceCount: 1, uniqueFeedCount: 1,
+    freeChoiceCount:1,workingChoiceCount:1,sharedRoutes:[],
     candidates: [candidates[0]], sourceLinks: [{ sourceId: 'sportsurge', title: 'Sample game listing',
-      url: 'https://example.invalid/game', observedAt: now, freshness: 'fresh' }] }],
+      url: 'https://example.invalid/game', observedAt: now, freshness: 'fresh',evidence:{kind:'collected',checkedAt:now,candidateIds:['sample-primary']} }] }],
 };
 
 const team = (id: string, name: string, short: string, abbreviation: string, color: string, score: string | null) =>
   ({ id, name, short, abbreviation, color, score, record: '2-1' });
 
 export const productBoard: Board = {
-  schemaVersion: 2, revision: 1, updatedAt: new Date(now).toISOString(), scheduleState: 'ready', aliases: {},
+  schemaVersion: 2, revision: 1, updatedAt: new Date(now).toISOString(), scheduleState: 'ready', aliases: {}, finishedGameRetentionMinutes:DEFAULT_FINISHED_GAME_RETENTION_MINUTES,
   leagues: {
     nfl: { week: 4, scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
     ncaaf: { week: 5, scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },

@@ -1,9 +1,23 @@
-import { createObservationMatcher } from './matching.ts';
+import { confirmedFinishedGameId, createObservationMatcher } from './matching.ts';
 import type { Candidate,CandidateLocator,Game,Match,Observation,SourceMatchReason,StreameastCatalog,StreameastCatalogView,StoredStreameastCatalog } from '../shared.ts';
 
 const EVENT_PATH=/^\/(cfb|nfl)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/;
 
-export function sanitizeStreameastCatalog(catalog:StreameastCatalog,now=Date.now()):StreameastCatalog|null {
+function freeDetail(detail:StreameastCatalog['events'][number]['detail']):StreameastCatalog['events'][number]['detail'] {
+  return detail.kind==='collected' ? {...detail,servers:detail.servers.filter(server=>server.availability.kind.startsWith('free-'))} : detail;
+}
+
+function freeCatalog(catalog:StreameastCatalog):StreameastCatalog {
+  return {...catalog,events:catalog.events.map(event=>({...event,detail:freeDetail(event.detail)}))};
+}
+
+export function sameStreameastEvent(left:StreameastCatalog['events'][number],right:StreameastCatalog['events'][number]):boolean {
+  return left.id===right.id&&left.url===right.url&&left.league===right.league&&left.title===right.title&&
+    left.kickoff===right.kickoff&&JSON.stringify(left.teams)===JSON.stringify(right.teams)&&left.espnEventId===right.espnEventId;
+}
+
+export function sanitizeStreameastCatalog(input:StreameastCatalog,now=Date.now(),history:readonly StoredStreameastCatalog[]=[]):StreameastCatalog|null {
+  const catalog=freeCatalog(input);
   if(catalog.startedAt>now+60_000||catalog.startedAt<now-24*3600_000)return null;
   const current=(at:number)=>at>=catalog.startedAt&&at<=now+60_000;
   if(catalog.state.kind!=='collecting'&&!current(catalog.state.at))return null;
@@ -19,9 +33,14 @@ export function sanitizeStreameastCatalog(catalog:StreameastCatalog,now=Date.now
     if(url.origin!=='https://v2.streameast.ga'||url.username||url.password||url.search||url.hash||!match||
       match[1] !== (event.league==='ncaaf'?'cfb':'nfl')||urls.has(url.href)||ids.has(event.id))return null;
     urls.add(url.href);ids.add(event.id);
+    const detail=event.detail;
+    const retained=detail.kind==='collected'&&detail.retainedFromRunId!==undefined;
+    if(retained&&!history.some(stored=>stored.catalog.events.some(prior=>sameStreameastEvent(event,prior)&&
+      prior.detail.kind==='collected'&&detail.retainedFromRunId===(prior.detail.retainedFromRunId||stored.catalog.runId)&&
+      JSON.stringify([detail.at,detail.servers])===JSON.stringify([prior.detail.at,prior.detail.servers]))))return null;
     if(event.detail.kind==='pending')continue;
     const category=catalog.categories[event.league];
-    if(category.kind!=='collected'||!current(event.detail.at)||event.detail.at<category.at)return null;
+    if(category.kind!=='collected'||(!retained&&(!current(event.detail.at)||event.detail.at<category.at)))return null;
     latest=Math.max(latest,event.detail.at);
     if(event.detail.kind==='failed')continue;
     const serverIds=new Set<string>();
@@ -44,7 +63,7 @@ export function streameastDecision(previous:StoredStreameastCatalog|null,incomin
   const current=previous.catalog;
   if(current.runId!==incoming.runId)return incoming.sequence===0&&incoming.startedAt>current.startedAt?'accepted':'rejected';
   if(incoming.startedAt!==current.startedAt)return 'rejected';
-  if(incoming.sequence===current.sequence)return JSON.stringify(incoming)===JSON.stringify(current)?'replay':'rejected';
+  if(incoming.sequence===current.sequence)return JSON.stringify(freeCatalog(incoming))===JSON.stringify(freeCatalog(current))?'replay':'rejected';
   if(incoming.sequence<current.sequence||current.state.kind!=='collecting')return 'rejected';
   return 'accepted';
 }
@@ -93,7 +112,13 @@ function publicReason(value:string):SourceMatchReason {
 export function streameastCatalogView(stored:StoredStreameastCatalog,games:Game[],now:number):StreameastCatalogView {
   const {catalog,receivedAt}=stored;
   const match=createObservationMatcher(games);
-  const views=catalog.events.map(event=>{
+  const activeEvents=catalog.events.filter(event=>{
+    const category=catalog.categories[event.league];
+    const observedAt=category.kind==='pending'?catalog.startedAt:category.at;
+    const expectedId=event.espnEventId===null?undefined:event.league==='ncaaf'?`ncaaf-${event.espnEventId}`:event.espnEventId;
+    return !confirmedFinishedGameId(streameastObservation(event,observedAt),games,now,expectedId);
+  });
+  const views=activeEvents.map(event=>{
     const category=catalog.categories[event.league];
     const observedAt=category.kind==='pending'?catalog.startedAt:category.at;
     const observation=streameastObservation(event,observedAt);
@@ -101,14 +126,14 @@ export function streameastCatalogView(stored:StoredStreameastCatalog,games:Game[
     const result=verifiedStreameastMatch(event,raw,games.find(game=>game.id===(raw.kind==='matched'?raw.gameId:'')));
     return {id:event.id,title:event.title,url:event.url,league:event.league,
       gameId:result.kind==='matched'?result.gameId:null,
-      matchReason:result.kind==='unmatched'?publicReason(result.reason):null,detail:event.detail};
+      matchReason:result.kind==='unmatched'?publicReason(result.reason):null,detail:freeDetail(event.detail)};
   });
-  const details=catalog.events.map(event=>event.detail);
+  const details=views.map(view=>view.detail);
   const rows=details.flatMap(detail=>detail.kind==='collected'?detail.servers:[]);
-  const compatible=new Set(views.flatMap((view,index)=>view.gameId&&catalog.events[index].detail.kind==='collected'?
-    streameastCandidates(catalog.events[index],view.gameId).map(candidate=>`${view.gameId}:${candidate.id}`):[]));
+  const compatible=new Set(views.flatMap((view,index)=>view.gameId&&activeEvents[index].detail.kind==='collected'?
+    streameastCandidates(activeEvents[index],view.gameId).map(candidate=>`${view.gameId}:${candidate.id}`):[]));
   return {runId:catalog.runId,startedAt:catalog.startedAt,receivedAt,interrupted:catalog.state.kind==='collecting'&&now-receivedAt>180000,
-    state:catalog.state,categories:catalog.categories,gameCount:catalog.events.length,
+    state:catalog.state,categories:catalog.categories,gameCount:activeEvents.length,
     collectedDetails:details.filter(detail=>detail.kind==='collected').length,
     pendingDetails:details.filter(detail=>detail.kind==='pending').length,
     failedDetails:details.filter(detail=>detail.kind==='failed').length,

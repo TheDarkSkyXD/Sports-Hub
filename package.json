@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.6"
   },
   "main": "desktop/main.cjs",
   "scripts": {
@@ -17,6 +17,7 @@
     "storybook:check": "node scripts/check-storybook-coverage.mjs",
     "storybook:media": "node scripts/generate-storybook-media.mjs",
     "lint": "eslint . --max-warnings=0",
+    "pretest": "node -e \"require('electron')\"",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "desktop": "node scripts/desktop.mjs",
     "desktop:icons": "node desktop/icons/generate.mjs",

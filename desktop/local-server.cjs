@@ -123,7 +123,7 @@ function createLocalServer({ root, origin, port, userData, controlToken, observe
       packaged ? 'standalone' : production ? 'start' : 'dev', String(port),
     ], {
       cwd: root, windowsHide: true,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', SUNDAY_ROOM_DESKTOP: '1', SUNDAY_ROOM_BROWSER_COLLECTORS: '1', SUNDAY_ROOM_DATA_DIR: userData,
+      env: { ...process.env, NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA ?? '1', ELECTRON_RUN_AS_NODE: '1', SUNDAY_ROOM_DESKTOP: '1', SUNDAY_ROOM_BROWSER_COLLECTORS: '1', SUNDAY_ROOM_DATA_DIR: userData,
         SUNDAY_ROOM_CONTROL_TOKEN: controlToken,
         ...(observerOrigin ? { SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN: observerOrigin } : {}) },
       stdio: ['ignore', log, log, 'ipc'],

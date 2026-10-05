@@ -1,7 +1,7 @@
 import { parseScoreboard, scoreboardFeedData, scoreboardWeek } from '../../sunday.ts';
 import { GameSchema } from '../shared.ts';
-import type { Game, League, SeasonMembership } from '../shared.ts';
-import type { ScheduleSource } from '../domain/ports.ts';
+import type { Game, SeasonMembership } from '../shared.ts';
+import type { ScheduleResult, ScheduleSource } from '../domain/ports.ts';
 import { recordFinal } from '../domain/lifecycle.ts';
 
 export const SCHEDULES = [
@@ -9,6 +9,11 @@ export const SCHEDULES = [
   {id:'fbs',league:'ncaaf',path:'college-football',group:'80'},
   {id:'fcs',league:'ncaaf',path:'college-football',group:'81'},
 ] as const;
+
+type FutureDay = { date: string; games: Game[]; expiresAt: number };
+const futureDays = new WeakMap<AbortSignal, Map<string, FutureDay>>();
+const FUTURE_TTL_MS = 300000;
+const FUTURE_CONCURRENCY = 3;
 
 function validKickoff(date: string | undefined): boolean {
   if (!date || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/.test(date)) return false;
@@ -54,34 +59,64 @@ export async function readSeasonMembership(season: number, signal: AbortSignal):
   return {season,at:Date.now(),teams};
 }
 
-export async function readSchedule(partition: ScheduleSource, now: number, signal: AbortSignal): Promise<{games:Game[];week?:number;league:League;at:number}> {
+export async function readSchedule(partition: ScheduleSource, now: number, signal: AbortSignal, onCurrent?: (result: ScheduleResult) => void): Promise<ScheduleResult> {
   const date = (time: number) => new Date(time).toISOString().slice(0,10).replaceAll('-','');
+  const today = date(now);
+  const lastFutureDate = date(now + 7*24*3600000);
+  let cache = futureDays.get(signal);
+  if (!cache) {
+    cache = new Map();
+    futureDays.set(signal,cache);
+  }
+  for (const [key, entry] of cache) {
+    if (entry.date <= today || entry.date > lastFutureDate) cache.delete(key);
+  }
+  const futureDates = Array.from({length:7},(_,index) => date(now + (index+1)*24*3600000));
+  const keyFor = (day: string) => `${partition.path}|${partition.group ?? ''}|${day}`;
+  const cached = futureDates.map(day => cache.get(keyFor(day)));
   const games = new Map<string,Game>();
-  let week: number | undefined;
-  for (let day = -1; day <= 7; day++) {
+  const horizonErrors: string[] = [];
+  const fetchDay = async (day: string, withWeek = false): Promise<{games:Game[];week?:number}> => {
     const url = new URL(`https://site.api.espn.com/apis/site/v2/sports/football/${partition.path}/scoreboard`);
     url.searchParams.set('limit','200');
-    url.searchParams.set('dates',date(now + day*24*3600000));
+    url.searchParams.set('dates',day);
     if (partition.group) url.searchParams.set('groups',partition.group);
-    const response = await fetch(url,{cache:'no-store',redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:{'User-Agent':'SundayRoom/1.0',Accept:'application/json'}});
-    if (!response.ok) { await response.body?.cancel(); throw new Error(`http-${response.status}`); }
-    const input: unknown = await response.json();
-    if (!input || typeof input !== 'object' || !('events' in input) || !Array.isArray(input.events)) throw new Error('scoreboard-format-changed');
-    if (input.events.length >= 200) throw new Error('schedule-may-be-truncated');
-    const daily = parseScoreboard(input,partition.league).map(game => {
-      return GameSchema.parse(game.lifecycle === 'final'
-        ? recordFinal({...game,partitions:[partition.id]},now)
-        : {...game,partitions:[partition.id]});
-    });
-    if (daily.length !== input.events.length || new Set(daily.map(game => game.id)).size !== daily.length) throw new Error('schedule-incomplete-or-duplicate');
+    const request = async () => {
+      const response = await fetch(url,{cache:'no-store',redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:{'User-Agent':'SundayRoom/1.0',Accept:'application/json'}});
+      if (!response.ok) { await response.body?.cancel(); throw new Error(`http-${response.status}`); }
+      const input: unknown = await response.json();
+      if (!input || typeof input !== 'object' || !('events' in input) || !Array.isArray(input.events)) throw new Error('scoreboard-format-changed');
+      if (input.events.length >= 200) throw new Error('schedule-may-be-truncated');
+      const daily = parseScoreboard(input,partition.league).map(game => {
+        return GameSchema.parse(game.lifecycle === 'final'
+          ? recordFinal({...game,partitions:[partition.id]},now)
+          : {...game,partitions:[partition.id]});
+      });
+      if (daily.length !== input.events.length || new Set(daily.map(game => game.id)).size !== daily.length) throw new Error('schedule-incomplete-or-duplicate');
+      return {games:daily,week:withWeek ? scoreboardWeek(input) : undefined};
+    };
+    try {return await request();}
+    catch(error) {
+      if(signal.aborted||!(error instanceof DOMException&&error.name==='TimeoutError'))throw error;
+      return request();
+    }
+  };
+  const addGames = (daily: Game[], futureDate?: string) => {
     for (const game of daily) {
       const previous = games.get(game.id);
-      if (previous && (previous.home.id !== game.home.id || previous.away.id !== game.away.id)) throw new Error('schedule-conflicting-event');
+      if (previous) {
+        if (previous.home.id !== game.home.id || previous.away.id !== game.away.id) {
+          if (futureDate) horizonErrors.push(`${futureDate}:schedule-conflicting-event`);
+          else throw new Error('schedule-conflicting-event');
+        }
+        if (!futureDate) games.set(game.id,game);
+        continue;
+      }
       games.set(game.id,game);
     }
-    if (day === 0) week = scoreboardWeek(input);
-  }
-  if (partition.league === 'ncaaf' && partition.group && [...games.values()].some(game => !validKickoff(game.date))) {
+  };
+  const supplementDates = async () => {
+    if (partition.league !== 'ncaaf' || !partition.group || ![...games.values()].some(game => !validKickoff(game.date))) return;
     try {
       const url = `https://cdn.espn.com/core/college-football/scoreboard?xhr=1&limit=500&group=${partition.group}`;
       const response = await fetch(url,{cache:'no-store',redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:{'User-Agent':'SundayRoom/1.0',Accept:'application/json'}});
@@ -94,6 +129,53 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
     } catch (error) {
       if (signal.aborted) throw error;
     }
+  };
+  addGames((await fetchDay(date(now - 24*3600000))).games);
+  const current = await fetchDay(today,true);
+  addGames(current.games);
+  const currentIds = new Set(games.keys());
+  for (let index = 0; index < futureDates.length; index++) {
+    const entry = cached[index];
+    if (!entry) continue;
+    addGames(entry.games,futureDates[index]);
   }
-  return {games:[...games.values()],week,league:partition.league,at:Date.now()};
+  await supplementDates();
+  const currentGames = [...games.values()].filter(game => currentIds.has(game.id));
+  const result = (): ScheduleResult => ({games:[...games.values()],week:current.week,league:partition.league,at:Date.now(),
+    ...(horizonErrors.length ? {horizonErrors:[...new Set(horizonErrors)]} : {})});
+  horizonErrors.length = 0;
+  onCurrent?.(result());
+
+  const refreshed: Array<Game[] | undefined> = Array.from({length:7});
+  const failures: Array<string | undefined> = Array.from({length:7});
+  let next = 0;
+  const worker = async () => {
+    while (next < futureDates.length) {
+      const index = next++;
+      const day = futureDates[index];
+      const entry = cached[index];
+      if (entry && entry.expiresAt > now) continue;
+      try {
+        const daily = (await fetchDay(day)).games;
+        refreshed[index] = daily;
+        cache.set(keyFor(day),{date:day,games:daily,expiresAt:now+FUTURE_TTL_MS});
+      } catch (error) {
+        if (signal.aborted) throw error;
+        const code = error instanceof Error && (/^http-\d{3}$/.test(error.message) ||
+          ['scoreboard-format-changed','schedule-may-be-truncated','schedule-incomplete-or-duplicate'].includes(error.message))
+          ? error.message : error instanceof DOMException && error.name === 'TimeoutError' ? 'timeout' : 'future-unavailable';
+        failures[index] = `${day}:${code}`;
+      }
+    }
+  };
+  await Promise.all(Array.from({length:FUTURE_CONCURRENCY},() => worker()));
+  horizonErrors.push(...failures.filter((failure): failure is string => failure !== undefined));
+  games.clear();
+  addGames(currentGames);
+  for (let index = 0; index < refreshed.length; index++) {
+    const daily = refreshed[index] ?? cached[index]?.games;
+    if (daily) addGames(daily,futureDates[index]);
+  }
+  await supplementDates();
+  return result();
 }
