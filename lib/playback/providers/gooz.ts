@@ -48,12 +48,14 @@ function nflSegment(reference: string, playlist: string, fetcher: typeof fetch):
     [...wrapper.searchParams.keys()].join(',')!=='path') return null;
   const target=new URL(wrapper.searchParams.get('path') || '');
   const authority=/^https:\/\/([^/?#]+)/.exec(target.href)?.[1];
-  const credential=/^o\d{6}-mp-lura-live\.fsy\.nfl\.com$/.test(target.hostname) ? 'token' :
-    /^o\d{6}-mp-lura-live\.akamaized\.net$/.test(target.hostname) ? 'hdntl' : null;
-  if (authority!==target.hostname || !credential ||
+  const credentials=/^o\d{6}-mp-lura-live\.fsy\.nfl\.com$/.test(target.hostname) ? ['token'] :
+    /^o\d{6}-mp-lura-live\.akamaized\.net$/.test(target.hostname) ? ['hdntl'] :
+      /^o\d{6}\.mp\.lura\.live$/.test(target.hostname) ? ['Expires','KeyName','Signature'] : null;
+  if (authority!==target.hostname || !credentials ||
     !/^\/live\/ephemeral\/(?:[A-Za-z0-9_-]+\/)+segment_[a-z0-9]+\.ts$/.test(target.pathname) ||
     !target.pathname.endsWith(`/${segment[1]}.ts`) || target.hash || target.href.length>4096 ||
-    [...target.searchParams.keys()].join(',')!==credential || !target.searchParams.get(credential)) return null;
+    target.searchParams.size!==credentials.length ||
+    !credentials.every(name=>target.searchParams.getAll(name).length===1&&!!target.searchParams.get(name))) return null;
   const stable=new URL(target);
   stable.search='';
   return {

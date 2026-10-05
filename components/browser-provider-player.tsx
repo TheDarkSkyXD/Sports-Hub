@@ -54,6 +54,23 @@ function changePriority(change: SessionChange): number {
   return change.candidateId ? 3 : change.retry ? 2 : change.failure ? 1 : 0;
 }
 
+function selectedCandidateMissing(value: Playback): boolean {
+  return !value.candidates.some(candidate => candidate.id === value.session.candidateId);
+}
+
+function missingSelectionKey(session: Session): string {
+  return JSON.stringify([session.id, session.candidateId]);
+}
+
+function retainCurrentFeed(next: Playback, previous: Playback | null): Playback {
+  if (!selectedCandidateMissing(next) || !previous || previous.session.id !== next.session.id ||
+    previous.session.candidateId !== next.session.candidateId || previous.session.generation !== next.session.generation) return next;
+  const selected = previous.candidates.find(candidate => candidate.id === next.session.candidateId);
+  return selected ? { ...next, candidates: [{ ...selected, availability: { kind: 'unknown' } }, ...next.candidates] } : next;
+}
+
+const missingServerMessage = 'This server is no longer listed. Choose another verified server or try again.';
+
 async function updateSession(session: Session, changes: SessionChange = {}): Promise<Playback> {
   const response = await fetch('/api/playback', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -75,6 +92,7 @@ export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCan
   const [retry, setRetry] = useState(0);
   const [requestedCandidateId, setRequestedCandidateId] = useState(initialCandidateId);
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
+  const [missingSelection, setMissingSelection] = useState<string | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const ownedSession = useRef<Session | null>(null);
   const inFlight = useRef(false);
@@ -91,6 +109,7 @@ export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCan
   const commandSerial = useRef(0);
   const openTimer = useRef<number | null>(null);
   const commandTimer = useRef<number | null>(null);
+  const repairAttemptedFor = useRef<string | null>(null);
   useEffect(() => { graceRef.current = graceEndsAt; if (graceEndsAt !== undefined) fixedDeadline.current = graceEndsAt; }, [graceEndsAt]);
   const endingDeadline = useCallback(() => fixedDeadline.current ?? graceRef.current ?? ownedSession.current?.graceEndsAt ?? null, []);
 
@@ -109,6 +128,7 @@ export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCan
     commandSerial.current++;
     if (commandTimer.current !== null) { window.clearTimeout(commandTimer.current); commandTimer.current = null; }
     setPlayback(null);
+    setMissingSelection(null);
     setRetryAfter(null);
     setMessage(reason);
     if (openTimer.current !== null) window.clearTimeout(openTimer.current);
@@ -175,7 +195,9 @@ export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCan
       sessionRef.current = parsed.data.session;
       ownedSession.current = parsed.data.session;
       if (parsed.data.session.graceEndsAt !== null) fixedDeadline.current = parsed.data.session.graceEndsAt;
-      setMessage('');
+      const missing = !manualFeed && selectedCandidateMissing(parsed.data);
+      setMissingSelection(missing ? missingSelectionKey(parsed.data.session) : null);
+      setMessage(missing ? missingServerMessage : '');
       setPlayback(parsed.data);
       const replay = reconcileIntent.current;
       reconcileIntent.current = null;
@@ -255,7 +277,11 @@ export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCan
       if (next.session.graceEndsAt !== null) fixedDeadline.current = next.session.graceEndsAt;
       if (next.session.state === 'closed') setEndedReason('final');
       else {
-        setMessage(''); setRetryAfter(null); setPlayback(next);
+        const missing = !manualFeed && selectedCandidateMissing(next);
+        setMissingSelection(missing ? missingSelectionKey(next.session) : null);
+        setMessage(missing ? missingServerMessage : '');
+        setRetryAfter(null);
+        setPlayback(previous => retainCurrentFeed(next, previous));
       }
     } catch (error) {
       if (sessionRef.current?.id === session.id) {
@@ -301,8 +327,18 @@ export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCan
       pendingChange.current = null;
       if (pending && sessionRef.current?.id === session.id) void changeRef.current(pending);
     }
-  }, [reopen, endingDeadline]);
+  }, [reopen, endingDeadline, manualFeed]);
   useEffect(() => { changeRef.current = change; }, [change]);
+
+  useEffect(() => {
+    if (!missingSelection || ended || manualFeed) {
+      if (!missingSelection) repairAttemptedFor.current = null;
+      return;
+    }
+    if (repairAttemptedFor.current === missingSelection) return;
+    repairAttemptedFor.current = missingSelection;
+    void changeRef.current({});
+  }, [missingSelection, ended, manualFeed]);
 
   useEffect(() => {
     if (retryAfter === null || ended || !playback) return;
@@ -326,11 +362,20 @@ export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCan
     if(!currentFeed(url)||!session||!candidate)return;
     void change({...changes,origin:{id:session.id,candidateId:candidate.id,generation:session.generation}});
   };
+  const mediaDecoded=(url:string,startupMs:number)=>{
+    if(manualFeed||!currentFeed(url)||!session||!candidate||session.state!=='active')return;
+    void fetch('/api/playback',{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({kind:'playback-evidence',sessionId:session.id,candidateId:candidate.id,
+        generation:session.generation,evidence:{kind:'decoded',startupMs}}),
+      signal:AbortSignal.timeout(10000),
+    }).catch(()=>{});
+  };
 
   return <div className="provider-player">
     <div className="provider-surface">
       {ended ? <div className="player-message"><AlertCircle/><strong>{endedReason === 'final' ? 'Game stream ended' : 'Video ended'}</strong><p>{endedReason === 'final' ? 'Playback ended after the game became final.' : 'This video reached its end.'}</p></div>
-        : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} defaultQuality={defaultQuality} playing={playing} startupTimeoutMs={candidate?.sourceIds.includes('sportsurge-v2') ? 75000 : undefined} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onFatal={manualFeed ? undefined : url => mediaChange(url,{failure:true})} onEnded={url => { if(!currentFeed(url))return; if (!manualFeed && session?.state === 'active') mediaChange(url,{failure:true}); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : url => mediaChange(url,{retry:true})} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
+        : feed ? <GamePlayer feed={feed} focused={focused} audible={audible} volume={volume} defaultQuality={defaultQuality} playing={playing} startupTimeoutMs={candidate?.sourceIds.includes('sportsurge-v2') ? 75000 : undefined} onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange} onVolumeChange={onVolumeChange} onDecoded={manualFeed?undefined:mediaDecoded} onFatal={manualFeed ? undefined : url => mediaChange(url,{failure:true})} onEnded={url => { if(!currentFeed(url))return; if (!manualFeed && session?.state === 'active') mediaChange(url,{failure:true}); else setEndedReason('media'); }} onRetry={manualFeed ? undefined : url => mediaChange(url,{retry:true})} errorHint={message || 'This server is unavailable. Try again or switch to another listed server.'}/>
         : <div className="player-message">{message === 'Finding your game…' || message === 'Reconnecting to your game…' ? <LoaderCircle className="spin"/> : <AlertCircle/>}<strong>{message === 'Finding your game…' ? 'Opening the live player' : message === 'Reconnecting to your game…' ? 'Reconnecting' : 'Player unavailable'}</strong><p>{message}</p>{message !== 'Finding your game…' && <button className="button" onClick={() => { if (openTimer.current !== null) { window.clearTimeout(openTimer.current); openTimer.current = null; } if (rejectedInitialCandidate.current) { rejectedInitialCandidate.current = false; reconcileIntent.current = null; setRequestedCandidateId(undefined); } setRetry(value => value + 1); }}><RefreshCw size={14}/>Try again</button>}</div>}
     </div>
     {!manualFeed && <ServerControls candidates={playback?.candidates ?? availableCandidates} selectedCandidateId={session?.candidateId ?? requestedCandidateId ?? ''} disabled={ended}

@@ -12,13 +12,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { BrowserProviderPlayer } from '@/components/browser-provider-player';
 import { GameTiming } from '@/components/game-timing';
 import { SourceInventory } from '@/components/source-inventory';
+import { FinishedGameRetentionSetting } from '@/components/finished-game-retention-setting';
 import { UpdatePanel } from '@/components/update-panel';
 import { UpdatePopup } from '@/components/update-popup';
 import { ServerControls } from '@/components/server-controls';
-import { SourcesSnapshotSchema, type SourcesSnapshot } from '@/lib/football/shared';
+import { BoardSchema, DEFAULT_FINISHED_GAME_RETENTION_MINUTES, SourcesSnapshotSchema, type SourcesSnapshot } from '@/lib/football/shared';
 import { parseQualityPreference, qualityPreferences, type QualityPreference } from '@/lib/playback-quality';
 import { addToSlots, emptySlots, placeInSlot, reconcileSlots, removeFromSlots, restoreSlots, selectedGames, slotsFromIds, type RoomSlots } from '@/lib/multiview';
-import { Board, Feed, Game, LEAGUES, League, Team, priority, validFeedUrl, validGameId } from '@/lib/sunday';
+import { Board, Feed, Game, LEAGUES, League, Team, priority, sortGamesForDisplay, validFeedUrl, validGameId } from '@/lib/sunday';
 
 type Layout = 'quad' | 'focus' | 'duo' | 'single';
 type RoomPlayback = { defaultPlaying: boolean; overrides: Record<string, boolean> };
@@ -32,6 +33,7 @@ function score(team: Team, game: Game, hide: boolean) { return hide ? '—' : ga
 
 export default function Home() {
  const [board,setBoard]=useState<Board|null>(null),[fetchError,setFetchError]=useState(''),[loading,setLoading]=useState(true);
+ const [displayNow,setDisplayNow]=useState(0);
  const [sources,setSources]=useState<SourcesSnapshot|null>(null);
  const [slots,setSlots]=useState<RoomSlots>(emptySlots),[favorites,setFavorites]=useState<string[]>([]),[feeds,setFeeds]=useState<Record<string,Feed>>({});
  const [desktop,setDesktop]=useState(false),[providerChoices,setProviderChoices]=useState<Partial<Record<string,true>>>({});
@@ -42,18 +44,22 @@ export default function Home() {
  const [dragOverSlot,setDragOverSlot]=useState<number|null>(null),[dragOverCenter,setDragOverCenter]=useState(false);
  const dragging=useRef<{kind:'center'|'tile';id:string}|null>(null);
  const initialized=useRef(false),refreshing=useRef(false),room=useRef<HTMLDivElement>(null),lastAuto=useRef(0),lastSourceRefresh=useRef(-1);
+ const retentionGeneration=useRef(0);
  const games=board?.games??EMPTY_GAMES;
  const scheduleLoading=board?.scheduleState!=='ready';
  const selected=useMemo(()=>selectedGames(slots),[slots]);
  const chosen=selected.map(id=>games.find(g=>g.id===id)).filter(Boolean) as Game[];
  const candidatesByGame=useMemo(()=>new Map(sources?.games.map(game=>[game.gameId,game.candidates])||[]),[sources]);
  const sourcesCollecting=sources?.sportsurgeV2.current?.state.kind==='collecting'||sources?.streameast.current?.state.kind==='collecting';
- const checkingServers=selected.some(id=>candidatesByGame.get(id)?.some(candidate=>candidate.availability.kind==='unknown'||candidate.availability.kind==='checking'));
- const canPlay=useCallback((game:Game)=>game.lifecycle!=='final'&&game.status!=='post'&&
-  (!!game.sourceUrl||!!candidatesByGame.get(game.id)?.some(candidate=>candidate.availability.kind==='playable')),[candidatesByGame]);
+ const checkingServers=(gameId:string)=>candidatesByGame.get(gameId)?.some(candidate=>candidate.availability.kind==='unknown'||candidate.availability.kind==='checking');
+ const canPlay=useCallback((game:Game)=>(game.lifecycle==='final'?
+  game.graceEndsAt!==undefined&&displayNow<game.graceEndsAt:game.status!=='post')&&
+  (!!game.sourceUrl||!!candidatesByGame.get(game.id)?.some(candidate=>candidate.availability.kind==='playable')),[candidatesByGame,displayNow]);
  const providerGames=chosen.filter(g=>!feeds[g.id]&&(providerChoices[g.id]??canPlay(g))).map(g=>g.id);
  const discovery=games.filter(g=>leagueFilter==='all'||g.league===leagueFilter);
- const centerGames=discovery.filter(g=>g.lifecycle!=='final'&&g.status!=='post');
+ const headerGames=sortGamesForDisplay(discovery,displayNow);
+ const centerGames=discovery.filter(g=>g.lifecycle==='final'||g.status==='post'?
+  g.graceEndsAt!==undefined&&displayNow<g.graceEndsAt:true);
  const leagueLabel=leagueFilter==='all'?'FOOTBALL':LEAGUES[leagueFilter].label;
  const week=leagueFilter==='all'?undefined:board?.leagues[leagueFilter].week;
  const errors=board ? Object.values(board.leagues).flatMap(status=>status.errors) : [];
@@ -62,10 +68,12 @@ export default function Home() {
  const capacity=layout==='single'?1:layout==='duo'?2:4;
  const gridCells=layout==='quad'?slots.map((id,index)=>({g:games.find(game=>game.id===id),index,slotIndex:index})):[...visible.map((g,index)=>({g,index,slotIndex:slots.indexOf(g.id)})),...slots.flatMap((id,slotIndex)=>id===null?[{g:undefined,index:0,slotIndex}]:[])].slice(0,capacity).map((cell,index)=>({...cell,index}));
  const live=discovery.filter(g=>g.status==='in'),hot=live.filter(g=>g.redzone);
- const filtered=centerGames.filter(g=>(filter==='all'||filter==='live'&&g.status==='in'||filter==='redzone'&&g.redzone||filter==='favorites'&&favorites.includes(g.id))&&`${g.name} ${g.home.abbreviation} ${g.away.abbreviation}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>priority(b)-priority(a));
+ const filteredGames=centerGames.filter(g=>(filter==='all'||filter==='live'&&g.status==='in'||filter==='redzone'&&g.redzone||filter==='favorites'&&favorites.includes(g.id))&&`${g.name} ${g.home.abbreviation} ${g.away.abbreviation}`.toLowerCase().includes(search.toLowerCase()));
+ const filtered=filter==='live'||filter==='redzone'?filteredGames.sort((a,b)=>priority(b)-priority(a)):sortGamesForDisplay(filteredGames,displayNow);
  const stale=!!fetchError||!scheduleLoading&&!!errors.length;
  useEffect(()=>{
   const controller=new AbortController();
+  const startupAt=Date.now();
   let timer:ReturnType<typeof setTimeout>;
   const refreshSources=async()=>{
    let nextDelay=30000;
@@ -74,7 +82,8 @@ export default function Home() {
     if(!response.ok)throw new Error('Source inventory unavailable');
     const snapshot=SourcesSnapshotSchema.parse(await response.json());
     if(!controller.signal.aborted)setSources(snapshot);
-    if(snapshot.sportsurgeV2.current?.state.kind==='collecting'||snapshot.streameast.current?.state.kind==='collecting'||
+    if(Date.now()-startupAt<90_000||snapshot.sources.some(source=>source.links.some(link=>link.evidence.kind==='pending'))||
+      snapshot.sportsurgeV2.current?.state.kind==='collecting'||snapshot.streameast.current?.state.kind==='collecting'||
       snapshot.games.some(row=>row.candidates.some(candidate=>candidate.availability.kind==='unknown'||candidate.availability.kind==='checking')))nextDelay=3000;
    }catch{nextDelay=5000;}
    finally{if(!controller.signal.aborted)timer=setTimeout(()=>void refreshSources(),nextDelay);}
@@ -83,6 +92,19 @@ export default function Home() {
   return()=>{controller.abort();clearTimeout(timer);};
  },[]);
  useEffect(()=>{const timer=window.setTimeout(()=>setDesktop(!!window.sundayDesktop),0);return()=>window.clearTimeout(timer);},[]);
+ useEffect(()=>{
+  if(!ready||!selected.length)return;
+  const controller=new AbortController();
+  const prioritize=async()=>{
+   try{
+    const response=await fetch('/api/sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'check-sources',gameIds:selected,retry:false}),signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])});
+    await response.body?.cancel();
+   }catch{}
+  };
+  void prioritize();
+  const timer=setInterval(()=>void prioritize(),30000);
+  return()=>{controller.abort();clearInterval(timer);};
+ },[ready,selected]);
  const toast=useCallback((message:string)=>setNotice(message),[]);
  useEffect(()=>{ if(notice){const timer=setTimeout(()=>setNotice(''),4500);return ()=>clearTimeout(timer);} },[notice]);
  useEffect(()=>{const timer=window.setTimeout(()=>{
@@ -106,7 +128,17 @@ export default function Home() {
   } }catch{} setReady(true);
  },0);return()=>window.clearTimeout(timer);},[]);
   useEffect(()=>{ if(!ready)return;try{localStorage.setItem(STORAGE,JSON.stringify({slots,selected,favorites,feeds,layout,volume,spoilers,showGameDayHeader,defaultQuality}));}catch{queueMicrotask(()=>toast('Device storage is unavailable. Your room will last for this session.'));} },[ready,slots,selected,favorites,feeds,layout,volume,spoilers,showGameDayHeader,defaultQuality,toast]);
- const refresh=useCallback(async()=>{ if(refreshing.current)return;refreshing.current=true;setLoading(true);try{const r=await fetch('/api/games',{signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error();const b:Board=await r.json();if(!Array.isArray(b.games))throw new Error();setBoard(b);setFetchError('');}catch{setFetchError('Could not refresh game data. Retrying automatically.');}finally{refreshing.current=false;setLoading(false);}},[]);
+ const refresh=useCallback(async()=>{ if(refreshing.current)return;const generation=retentionGeneration.current;refreshing.current=true;setLoading(true);try{const r=await fetch('/api/games',{signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error();const b:Board=await r.json();if(!Array.isArray(b.games))throw new Error();if(generation===retentionGeneration.current){setBoard(b);setFetchError('');}}catch{setFetchError('Could not refresh game data. Retrying automatically.');}finally{setDisplayNow(Date.now());refreshing.current=false;setLoading(false);}},[]);
+ const saveFinishedRetention=async(minutes:number)=>{
+  retentionGeneration.current++;
+  const response=await fetch('/api/games',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({kind:'set-retention',minutes}),signal:AbortSignal.timeout(15000)});
+  if(!response.ok)throw new Error('Could not save the retention time. Try again.');
+  const parsed=BoardSchema.safeParse(await response.json());
+  if(!parsed.success)throw new Error('Could not confirm the saved retention time. Try again.');
+  retentionGeneration.current++;
+  setBoard(parsed.data);setDisplayNow(Date.now());
+ };
  useEffect(()=>{
   if(!sources||lastSourceRefresh.current===sources.revision||refreshing.current)return;
   if(!sources.games.some(row=>selected.includes(row.gameId)&&row.candidates.some(candidate=>candidate.availability.kind==='playable')&&!board?.games.find(game=>game.id===row.gameId)?.sourceUrl))return;
@@ -170,7 +202,7 @@ export default function Home() {
  const time=scoresAt?new Date(scoresAt).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):null;
  return <div className={`app ${theater?'theater':''} ${desktop?'desktop':''}`}>
   <header className="topbar"><Link className="brand" href="/" aria-label="Sunday Room home"><span className="brand-mark"><i/><i/><i/><i/></span><span>SUNDAY<span className="brand-light">ROOM</span></span></Link><nav className="main-nav" aria-label="Main navigation"><button className={view==='room'?'active':''} onClick={()=>setView('room')}><Tv size={16}/>Watch room</button><button className={view==='schedule'?'active':''} onClick={()=>setView('schedule')}>Game schedule</button></nav><div className="top-right"><span className="private-room"><ShieldCheck size={14}/>{desktop?"Desktop viewer":"Personal room"}</span><button className="icon-button" title="Room settings" aria-label="Room settings" onClick={()=>setModal('settings')}><Settings2 size={19}/></button></div></header>
-  {showGameDayHeader&&<section className="score-strip" aria-label="Football scoreboard"><div className="score-label"><span className="eyebrow">{leagueLabel}</span><strong>{week?`WEEK ${week}`:'GAME DAY'}</strong><span>{live.length} live games</span></div><div className="score-scroll">{discovery.length?discovery.map(g=><button key={g.id} className={`mini-game ${selected.includes(g.id)?'selected':''}`} onClick={()=>{addGame(g.id);setView('room');}} title={`Add ${g.name}`}><div className="mini-game-top"><span className="league-tag">{LEAGUES[g.league].label}</span><GameTiming game={g} relativeDay/><GameStatus game={g}/></div><div><Badge team={g.away}/><span>{g.away.abbreviation}</span><b>{score(g.away,g,spoilers)}</b></div><div><Badge team={g.home}/><span>{g.home.abbreviation}</span><b>{score(g.home,g,spoilers)}</b></div></button>):<div className="strip-empty">{scheduleLoading||loading?'Finding this week’s games…':'Game scores are currently unavailable.'}</div>}</div><button className="score-refresh icon-button" aria-label="Refresh game data" onClick={()=>void refresh()} disabled={loading}><RefreshCw size={17} className={loading?'spin':''}/></button></section>}
+  {showGameDayHeader&&<section className="score-strip" aria-label="Football scoreboard"><div className="score-label"><span className="eyebrow">{leagueLabel}</span><strong>{week?`WEEK ${week}`:'GAME DAY'}</strong><span>{live.length} live games</span></div><div className="score-scroll">{headerGames.length?headerGames.map(g=><button key={g.id} className={`mini-game ${selected.includes(g.id)?'selected':''}`} onClick={()=>{addGame(g.id);setView('room');}} title={`Add ${g.name}`}><div className="mini-game-top"><span className="league-tag">{LEAGUES[g.league].label}</span><GameTiming game={g} relativeDay/><GameStatus game={g}/></div><div><Badge team={g.away}/><span>{g.away.abbreviation}</span><b>{score(g.away,g,spoilers)}</b></div><div><Badge team={g.home}/><span>{g.home.abbreviation}</span><b>{score(g.home,g,spoilers)}</b></div></button>):<div className="strip-empty">{scheduleLoading||loading?'Finding this week’s games…':'Game scores are currently unavailable.'}</div>}</div><button className="score-refresh icon-button" aria-label="Refresh game data" onClick={()=>void refresh()} disabled={loading}><RefreshCw size={17} className={loading?'spin':''}/></button></section>}
   <main>
    {stale?<div role="status" className="data-alert"><Radio size={16}/><span>{fetchError||errors.join(' ')}</span><button onClick={()=>void refresh()}>Retry</button></div>:null}
    {view==='room'?<div className="workspace"><div className="viewing-column"><div className="viewing-room" ref={room}>
@@ -178,7 +210,7 @@ export default function Home() {
     <div className={`game-grid ${layout}`}>
      {gridCells.map(({g,index,slotIndex})=>g?<article key={g.id} data-game-id={g.id} data-slot-index={slotIndex} className={`game-tile ${focus===g.id?'focused':''} ${dragOverSlot===slotIndex?'drop-hover':''}`} onDragOver={event=>{if(!draggedGame(event))return;event.preventDefault();event.dataTransfer.dropEffect=dragging.current?.kind==='tile'?'move':'copy';setDragOverSlot(slotIndex);}} onDragLeave={event=>{if(!(event.relatedTarget instanceof Node)||!event.currentTarget.contains(event.relatedTarget))setDragOverSlot(null);}} onDrop={event=>dropOnSlot(event,slotIndex)} style={{'--away':`#${g.away.color}`,'--home':`#${g.home.color}`} as React.CSSProperties}>
       <div className="tile-top"><div className="tile-meta"><button type="button" className="tile-drag-grip" draggable aria-label={`Drag ${g.name} to move or remove it`} title="Drag to another square or Game center" onDragStart={event=>startDrag(event,g.id,'tile')} onDragEnd={endDrag}><GripVertical size={14}/></button><span className="tile-number">0{index+1}</span><span className="league-tag">{LEAGUES[g.league].label}</span><GameTiming game={g}/>{g.redzone&&!spoilers?<span className="redzone-pill"><Flame size={12}/>RED ZONE</span>:<GameStatus game={g}/>}</div><div className="tile-actions"><button className={`icon-button ${favorites.includes(g.id)?'starred':''}`} aria-label={`${favorites.includes(g.id)?'Unfavorite':'Favorite'} ${g.name}`} onClick={()=>star(g.id)}><Star size={14} fill={favorites.includes(g.id)?'currentColor':'none'}/></button><button className="icon-button" aria-label={`Remove ${g.name}`} onClick={()=>removeGame(g.id)}><X size={15}/></button></div></div>
-      <div className="tile-screen">{providerGames.includes(g.id)||feeds[g.id]?<BrowserProviderPlayer gameId={g.id} initialCandidateId={initialCandidateIds[g.id]} availableCandidates={candidatesByGame.get(g.id)||[]} manualFeed={feeds[g.id]} graceEndsAt={g.graceEndsAt} focused={focus===g.id} audible={audio===g.id&&!muted} volume={volume} defaultQuality={defaultQuality} playing={effectivePlaying(playback,g.id)} onPlayingChange={value=>setGamePlaying(g.id,value)} onAudibleChange={value=>setGameAudible(g.id,value)} onVolumeChange={value=>setGameVolume(g.id,value)}/>:<div className="matchup-screen"><div className="team-watermark left">{g.away.abbreviation}</div><div className="team-watermark right">{g.home.abbreviation}</div><div className="matchup"><div><Badge team={g.away} large/><span>{g.away.short}</span></div><span className="versus">VS</span><div><Badge team={g.home} large/><span>{g.home.short}</span></div></div><span className="screen-caption" role="status">{(sourcesCollecting||checkingServers)?'Checking listed servers…':'No verified stream yet'}</span><span className="screen-caption">{g.broadcast?`${g.broadcast} · `:''}Source checks continue automatically</span></div>}</div>
+      <div className="tile-screen">{providerGames.includes(g.id)||feeds[g.id]?<BrowserProviderPlayer gameId={g.id} initialCandidateId={initialCandidateIds[g.id]} availableCandidates={candidatesByGame.get(g.id)||[]} manualFeed={feeds[g.id]} graceEndsAt={g.graceEndsAt} focused={focus===g.id} audible={audio===g.id&&!muted} volume={volume} defaultQuality={defaultQuality} playing={effectivePlaying(playback,g.id)} onPlayingChange={value=>setGamePlaying(g.id,value)} onAudibleChange={value=>setGameAudible(g.id,value)} onVolumeChange={value=>setGameVolume(g.id,value)}/>:<div className="matchup-screen"><div className="team-watermark left">{g.away.abbreviation}</div><div className="team-watermark right">{g.home.abbreviation}</div><div className="matchup"><div><Badge team={g.away} large/><span>{g.away.short}</span></div><span className="versus">VS</span><div><Badge team={g.home} large/><span>{g.home.short}</span></div></div><span className="screen-caption" role="status">{g.lifecycle==='final'?'Game finished':(checkingServers(g.id)||sourcesCollecting&&!candidatesByGame.get(g.id)?.length)?'Checking listed servers…':'No verified stream yet'}</span><span className="screen-caption">{g.lifecycle==='final'?'Source collection has ended.':<>{g.broadcast?`${g.broadcast} · `:''}Source checks continue automatically</>}</span></div>}</div>
       {!providerGames.includes(g.id)&&!feeds[g.id]&&g.lifecycle!=='final'&&<ServerControls candidates={candidatesByGame.get(g.id)||[]} selectedCandidateId="" onSelect={candidateId=>playGame(g.id,candidateId)}/>}
       <div className="tile-score"><div className="tile-teams"><span>{g.away.abbreviation}<b>{score(g.away,g,spoilers)}</b></span><i/><span>{g.home.abbreviation}<b>{score(g.home,g,spoilers)}</b></span></div><button className={`audio-focus ${focus===g.id?'active':''}`} onClick={()=>pick(g.id)} title={feeds[g.id]||providerGames.includes(g.id)?'Focus this game and its audio':'Focus this game'}>{(feeds[g.id]||providerGames.includes(g.id))&&audio===g.id&&!muted?<Volume2 size={14}/>:<Headphones size={14}/>}<span>{focus===g.id?'IN FOCUS':'FOCUS'}</span></button></div>
       <div className="tile-bottom"><span>{spoilers?'Scores hidden':g.down||g.venue||`${LEAGUES[g.league].label} game day`}</span><div><button aria-label={`Feed settings for ${g.name}`} title="Feed settings" onClick={()=>openFeed(g.id)}><SlidersHorizontal size={13}/></button></div></div>
@@ -200,9 +232,9 @@ export default function Home() {
      <TabsTrigger value="updates"><RefreshCw size={17}/>Updates</TabsTrigger>
      <TabsTrigger value="privacy"><ShieldCheck size={17}/>Privacy</TabsTrigger>
     </TabsList>
-    <TabsContent forceMount value="general" className="settings-panel"><div className="settings-panel-heading"><h3>General</h3><p>Choose how game day appears in your room.</p></div><div className="setting-row"><div><strong>Spoiler-free mode</strong><p>Hide scores and latest play updates.</p></div><Switch aria-label="Spoiler-free mode" checked={spoilers} onCheckedChange={v=>{setSpoilers(v);if(v){setAuto(false);setFilter('all');}}}/></div><div className="setting-row"><div><strong>Show Game Day header</strong><p>Show the scoreboard above your room.</p></div><Switch aria-label="Show Game Day header" checked={showGameDayHeader} onCheckedChange={setShowGameDayHeader}/></div></TabsContent>
+    <TabsContent forceMount value="general" className="settings-panel"><div className="settings-panel-heading"><h3>General</h3><p>Choose how game day appears in your room.</p></div><div className="setting-row"><div><strong>Spoiler-free mode</strong><p>Hide scores and latest play updates.</p></div><Switch aria-label="Spoiler-free mode" checked={spoilers} onCheckedChange={v=>{setSpoilers(v);if(v){setAuto(false);setFilter('all');}}}/></div><div className="setting-row"><div><strong>Show Game Day header</strong><p>Show the scoreboard above your room.</p></div><Switch aria-label="Show Game Day header" checked={showGameDayHeader} onCheckedChange={setShowGameDayHeader}/></div><FinishedGameRetentionSetting minutes={board?.finishedGameRetentionMinutes??DEFAULT_FINISHED_GAME_RETENTION_MINUTES} disabled={!board} onChange={saveFinishedRetention}/></TabsContent>
     <TabsContent forceMount value="playback" className="settings-panel"><div className="settings-panel-heading"><h3>Playback</h3><p>Set your room&apos;s sound and preferred video quality.</p></div><div className="setting-row"><div><strong>Room volume</strong><p>Only your selected feed plays audio.</p></div><span>{volume}%</span></div><Slider aria-label="Default room volume" value={[volume]} onValueChange={v=>setVolume(v[0])} max={100}/><div className="quality-setting"><strong>Default video quality</strong><p>Uses the closest available quality at or below your choice, or the lowest available if none are lower.</p><Select value={defaultQuality} onValueChange={value=>setDefaultQuality(parseQualityPreference(value))}><SelectTrigger aria-label="Default video quality"><SelectValue/></SelectTrigger><SelectContent>{qualityPreferences.map(option=><SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div></TabsContent>
-    <TabsContent forceMount value="sources" className="settings-panel"><div className="settings-panel-heading"><h3>Sources</h3><p>Review the game listings and available streams.</p></div><SourceInventory gameIds={selected}/></TabsContent>
+    <TabsContent forceMount value="sources" className="settings-panel"><div className="settings-panel-heading"><h3>Sources</h3><p>Review the game listings and available streams.</p></div><SourceInventory gameIds={selected} branding={{games}}/></TabsContent>
     <TabsContent forceMount value="updates" className="settings-panel"><div className="settings-panel-heading"><h3>Updates</h3><p>Manage updates to the Sunday Room desktop viewer.</p></div>{desktop?<UpdatePanel/>:<div className="feed-note"><Monitor size={18}/><p>App updates are available in the desktop viewer. This browser version updates when you reload the page.</p></div>}</TabsContent>
     <TabsContent forceMount value="privacy" className="settings-panel"><div className="settings-panel-heading"><h3>Privacy</h3><p>Manage the room data saved on this device.</p></div><div className="feed-note"><ShieldCheck size={18}/><p>Layouts, favorites, and feed URLs are stored only in this browser. Avoid saving links on a shared device.</p></div><button className="button subtle" onClick={()=>{setFeeds({});setProviderChoices({});setInitialCandidateIds({});setFavorites([]);setSlots(slotsFromIds([...games].sort((a,b)=>priority(b)-priority(a)).slice(0,4).map(g=>g.id)));setLayout('quad');setAudio('');setAuto(false);setSpoilers(false);setShowGameDayHeader(false);setVolume(70);setDefaultQuality('auto');setPlayback({defaultPlaying:true,overrides:{}});toast('Room reset. Saved feeds removed.');setModal(null);}}>Reset room and remove saved feeds</button></TabsContent>
    </Tabs>}

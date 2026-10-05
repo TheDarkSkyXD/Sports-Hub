@@ -13,6 +13,17 @@ const team = (id: string, name: string, aliases: string[] = []): Game['home'] =>
 const game = (id: string, home: Game['home'], away: Game['away'] = opponent): Game => ({id,league:'ncaaf',name:`${home.name} vs ${away.name}`,date:new Date(now).toISOString(),home,away,status:'pre',lifecycle:'scheduled',detail:'Scheduled',redzone:false});
 const observation = (first: string, second = 'Synthetic Opponent', kickoff: number | null = now): Observation => ({id:'fixture:event',sourceId:'fixture',url:'https://example.org/event',title:`${first} vs ${second}`,teams:[first,second],league:'ncaaf',rawTime:null,kickoff,observedAt:now,parserVersion:1});
 
+test('Albany matches UAlbany against Delaware State without matching Albany State',()=>{
+  const delawareState=team('espn:ncaaf:2169','Delaware State Hornets');
+  const ualbany=game('ualbany',team('espn:ncaaf:399','UAlbany Great Danes'),delawareState);
+  const albanyState=game('albany-state',team('espn:ncaaf:2013','Albany State Golden Rams'),delawareState);
+  const listing={...observation('Albany','Delaware State'),sourceId:'tvapp',url:'https://tvapp1.pk/watch/2594008'};
+  assert.deepEqual(matchObservation(listing,[ualbany,albanyState],now),{kind:'matched',gameId:'ualbany'});
+  assert.deepEqual(matchObservation(listing,[albanyState],now),{kind:'unmatched',reason:'unknown-teams',possibleGameIds:[]});
+  assert.deepEqual(matchObservation(observation('Albany State','Delaware State'),[ualbany,albanyState],now),{kind:'matched',gameId:'albany-state'});
+  assert.deepEqual(matchObservation(observation('Albany State','Delaware State'),[ualbany],now),{kind:'unmatched',reason:'unknown-teams',possibleGameIds:[]});
+});
+
 test('every 2026 FBS/FCS member and official catalog alias resolves to its owner or fails closed on collision', () => {
   const coverage = JSON.parse(readFileSync(new URL('../lib/football/domain/college-teams.coverage.json',import.meta.url),'utf8'));
   assert.equal(coverage.fbs,148);

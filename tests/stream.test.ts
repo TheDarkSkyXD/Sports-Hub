@@ -5,6 +5,7 @@ import { goozResource, goozSourceFromEmbed, validGoozResourceUrl } from '../lib/
 import { streamcenterProvider, streamcenterResource, validStreamcenterResourceUrl } from '../lib/playback/providers/streamcenter.ts';
 import { parseStreamcenterPlayer } from '../lib/playback/providers/streamcenter-player.ts';
 import type { ProviderResource } from '../lib/playback/provider.ts';
+import { probeCandidate } from '../lib/playback/probe.ts';
 import { expireIdleStreams, openGeneration, registeredResource, registerResource, resourceCount, revokeGeneration, revokeSession,
   rewritePlaylist, streamSignal, touchStreamSession, validByteRange } from '../lib/stream-relay.ts';
 
@@ -179,6 +180,50 @@ test('Gooz resolves Akamai NFL segments for primary and backup quality variants'
   }
   assert.equal(requests.length,6);
   assert.ok(requests.every(url=>url===target));
+});
+
+test('Gooz verifies a published NFL segment signed by the Lura live CDN',async()=>{
+  const playerId='57612';
+  const master=`https://chatgpt.hereisman.net/playlist/${playerId}/load-playlist`;
+  const variant=`https://pl.playlist6.space/playlist/${playerId}/pl.goozekhar1.space/caxi-low`;
+  const target='https://o300803.mp.lura.live/live/ephemeral/game/dmla-anvato01/1128k/stream/174456/segment_174456359c.ts?Signature=fake&Expires=1791149931&KeyName=sample';
+  const wrapper=`https://pl.goozekhar1.space/redirect/video-1segment_174456359c.txt?path=${encodeURIComponent(target)}`;
+  const mediaBytes=Buffer.alloc(188*4);
+  for(let offset=0;offset<mediaBytes.length;offset+=188)mediaBytes[offset]=0x47;
+  const requests:{url:string;headers:Headers;redirect:RequestRedirect|undefined}[]=[];
+  const fetcher:typeof fetch=async(input,init)=>{
+    const url=String(input);
+    requests.push({url,headers:new Headers(init?.headers),redirect:init?.redirect});
+    const body=url===master?`#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=500000,RESOLUTION=640x360\n${variant}\n`:
+      url===variant?`#EXTM3U\n#EXTINF:5,\n${wrapper}\n`:url===target?mediaBytes:null;
+    assert.ok(body);
+    return new Response(body,{status:200,headers:{'content-type':url===target?'video/MP2T':'application/vnd.apple.mpegurl'}});
+  };
+  const root=goozResource(master,playerId,'playlist',fetcher);
+  assert.ok(root);
+  const child=root.resolve(variant,'playlist');
+  assert.ok(child);
+  const segment=child.resolve(wrapper,'media');
+  assert.ok(segment);
+  assert.equal(segment.identity,target.split('?')[0]);
+  assert.deepEqual(await probeCandidate({provider:'gooz',playerId},new AbortController().signal,
+    async()=>({root,close(){}})),{kind:'playable',proof:'media'});
+  assert.deepEqual(requests.map(row=>row.url),[master,variant,target]);
+  assert.equal(requests[2].redirect,'manual');
+  assert.equal(requests[2].headers.get('referer'),null);
+  assert.equal(requests[2].headers.get('origin'),null);
+  for(const bad of [
+    target.replace('mp.lura.live','mp.lura.live.attacker.test'),
+    target.replace('https://','http://'),
+    target.replace('o300803.','user@o300803.'),
+    target.replace('mp.lura.live/','mp.lura.live:8443/'),
+    target.replace('/live/ephemeral/','/private/'),
+    target.replace('segment_174456359c.ts','segment_174456359d.ts'),
+    target.replace('Expires=1791149931&',''),
+    target.replace('KeyName=sample','KeyName='),
+    target.replace('Signature=fake','Signature=fake&Signature=second'),
+    `${target}&other=value`,
+  ]) assert.equal(child.resolve(wrapper.replace(encodeURIComponent(target),encodeURIComponent(bad)),'media'),null);
 });
 
 test('Gooz relays published NFL 720p and 1080p segment wrappers',()=>{

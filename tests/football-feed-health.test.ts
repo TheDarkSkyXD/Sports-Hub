@@ -96,3 +96,45 @@ test('each failed schedule reports once and clears after recovery', async () => 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a failed refresh reports saved scores as available until they become stale',async()=>{
+  const directory=mkdtempSync(join(tmpdir(),'football-feed-fresh-failure-'));
+  let now=at;
+  let fail=false;
+  const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{
+    now:()=>now,sources:[],
+    readSchedule:async source=>{
+      if(fail&&source.id==='fbs')throw new Error('upstream-failed');
+      return {games:[],at:now,league:source.league};
+    },
+  });
+  try {
+    await coordinator.refresh(true);
+    now+=30_000;
+    fail=true;
+    await coordinator.refresh(true);
+    const fresh=await coordinator.command({kind:'board'});
+    assert.equal(fresh.kind,'board');
+    if(fresh.kind==='board'){
+      assert.equal(fresh.board.leagues.ncaaf.scoresAt,new Date(at).toISOString());
+      assert.deepEqual(fresh.board.leagues.ncaaf.errors,
+        ['FBS schedule refresh failed; showing saved scores.']);
+    }
+    now+=60_001;
+    const stale=await coordinator.command({kind:'board'});
+    assert.equal(stale.kind,'board');
+    if(stale.kind==='board')assert.deepEqual(stale.board.leagues.ncaaf.errors,
+      ['FBS schedule is unavailable or stale.']);
+    fail=false;
+    await coordinator.refresh(true);
+    const recovered=await coordinator.command({kind:'board'});
+    assert.equal(recovered.kind,'board');
+    if(recovered.kind==='board'){
+      assert.equal(recovered.board.leagues.ncaaf.scoresAt,new Date(now).toISOString());
+      assert.deepEqual(recovered.board.leagues.ncaaf.errors,[]);
+    }
+  } finally {
+    await coordinator.stop();
+    rmSync(directory,{recursive:true,force:true});
+  }
+});

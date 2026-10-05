@@ -1,4 +1,4 @@
-import type { Game, Match, Observation } from '../shared.ts';
+import type { Game, Match, Observation, SourceEventBinding } from '../shared.ts';
 import { COLLEGE_TEAM_CATALOG } from './college-teams.generated.ts';
 
 export function normalizedName(value: string): string {
@@ -52,7 +52,8 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
       return home.has(first) && away.has(second) || home.has(second) && away.has(first);
     });
     const ids=[...new Set(possible.map(({game})=>game.id))];
-    if (observation.kickoff===null) return {kind:'unmatched',reason:'unverified-kickoff',possibleGameIds:ids};
+    if (observation.kickoff===null) return {kind:'unmatched',reason:!ids.length?'unknown-teams':
+      ids.length===1&&possible[0].game.lifecycle==='final'?'finished-game':'unverified-kickoff',possibleGameIds:ids};
     const kickoff=observation.kickoff;
     const dated=possible.filter(({date})=>Number.isFinite(date) && Math.abs(date-kickoff)<=3*60*60_000);
     if (dated.length!==1) return {kind:'unmatched',reason:dated.length?'ambiguous-matchup':possible.length?'conflicting-date':'unknown-teams',possibleGameIds:ids};
@@ -66,6 +67,33 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
 
 export function matchObservation(observation: Observation, games: Game[], now: number): Match {
   return createObservationMatcher(games)(observation,now);
+}
+
+export function matchSourceLiveGame(result:Match,games:readonly Game[],now:number):Match {
+  if(result.kind!=='unmatched'||result.reason!=='unverified-kickoff'||result.possibleGameIds.length!==1)return result;
+  const game=games.find(game=>game.id===result.possibleGameIds[0]);
+  return game&&(game.lifecycle==='live'||game.lifecycle==='scheduled'&&game.date!==undefined&&Math.abs(Date.parse(game.date)-now)<=30*60_000)
+    ?{kind:'matched',gameId:game.id}:result;
+}
+
+export function confirmedFinishedGameId(observation:Observation,games:Game[],now:number,expectedGameId?:string):string|null {
+  if(observation.kickoff===null)return null;
+  const result=createObservationMatcher(games,'inventory-live')({...observation,observedAt:now},now);
+  return result.kind==='unmatched'&&result.reason==='finished-game'&&result.possibleGameIds.length===1&&
+    (!expectedGameId||result.possibleGameIds[0]===expectedGameId)?result.possibleGameIds[0]:null;
+}
+
+export function confirmedFinishedBoundEvent(observation:Observation,eventId:string,bindings:readonly SourceEventBinding[],games:Game[]):string|null {
+  if(observation.kickoff!==null)return null;
+  const teams=observation.teams;
+  if(!teams)return null;
+  const pair=(teams:readonly string[])=>teams.map(normalizedName).sort().join('|');
+  const binding=bindings.find(row=>row.sourceId===observation.sourceId&&row.eventId===eventId&&
+    row.url===observation.url&&row.league===observation.league&&pair(row.teams)===pair(teams));
+  if(!binding||!games.some(game=>game.id===binding.gameId&&game.lifecycle==='final'))return null;
+  const current=createObservationMatcher(games,'inventory-live')(observation,observation.observedAt);
+  return current.kind==='unmatched'&&current.possibleGameIds.length===1&&
+    current.possibleGameIds[0]===binding.gameId?binding.gameId:null;
 }
 
 export function mergeSchedulePartitions(partitions: Game[][]): Game[] {

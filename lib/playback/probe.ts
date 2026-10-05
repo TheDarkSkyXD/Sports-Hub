@@ -2,6 +2,7 @@ import { createDecipheriv } from 'node:crypto';
 import type { CandidateProbeResult } from '../football/domain/ports.ts';
 import type { CandidateLocator } from '../football/shared.ts';
 import { openProvider } from './provider-registry.ts';
+export { providerProbeIdentity as probeIdentity } from './provider-registry.ts';
 import { ProviderDeferredError, type ProviderPlayback, type ProviderResource } from './provider.ts';
 
 type Range = { start: number; length: number };
@@ -154,15 +155,28 @@ async function checkPlaylist(resource: ProviderResource, signal: AbortSignal, bu
   });
   if (variants.length) {
     const video = variants.filter(variant=>variant.RESOLUTION || /avc|hev|hvc|av01|vp0[89]/i.test(variant.CODECS || ''));
-    const selected = [...(video.length ? video : variants)].sort((left,right)=>Number(right.BANDWIDTH||0)-Number(left.BANDWIDTH||0))[0];
-    await checkPlaylist(resolve(resource,selected.URI,'playlist'),signal,budget,visited,audio);
-    if (selected.AUDIO) {
-      const renditions = lines.filter(line=>line.startsWith('#EXT-X-MEDIA:')).map(attributes)
-        .filter(item=>item.TYPE==='AUDIO' && item['GROUP-ID']===selected.AUDIO);
-      const rendition = renditions.find(item=>item.DEFAULT==='YES') || renditions.find(item=>item.AUTOSELECT==='YES') || renditions[0];
-      if (rendition?.URI) await checkPlaylist(resolve(resource,rendition.URI,'playlist'),signal,budget,visited,true);
+    const eligible = video.length ? video : variants.filter(variant=>!variant.CODECS ||
+      !variant.CODECS.split(',').every(codec=>/^(?:mp4a|ac-3|ec-3|opus|flac|alac)(?:\.|$)/i.test(codec.trim())));
+    const ordered = [...eligible].sort((left,right)=>Number(left.BANDWIDTH||0)-Number(right.BANDWIDTH||0));
+    let failure: unknown;
+    for (const selected of ordered) {
+      try {
+        const branch = new Set(visited);
+        await checkPlaylist(resolve(resource,selected.URI,'playlist'),signal,budget,branch,audio);
+        if (selected.AUDIO) {
+          const renditions = lines.filter(line=>line.startsWith('#EXT-X-MEDIA:')).map(attributes)
+            .filter(item=>item.TYPE==='AUDIO' && item['GROUP-ID']===selected.AUDIO);
+          const rendition = renditions.find(item=>item.DEFAULT==='YES') || renditions.find(item=>item.AUTOSELECT==='YES') || renditions[0];
+          if (rendition?.URI) await checkPlaylist(resolve(resource,rendition.URI,'playlist'),signal,budget,branch,true);
+        }
+        return;
+      } catch (error) {
+        if (signal.aborted || error instanceof ProviderDeferredError) throw error;
+        failure = error;
+      }
     }
-    return;
+    if (failure) throw failure;
+    return invalid();
   }
   const available = segments(lines);
   const segment = available[Math.max(0,available.length-3)];

@@ -64,7 +64,11 @@ test('all fresh games and alternatives warm without check-sources, even beyond q
     assert.equal(probed.length,300);
     assert.equal(new Set(probed).size,300);
     assert.equal(peak,4);
-    assert.equal(probed.slice(0,20).every((id,index)=>id===String(index*15+1)),true);
+    const firstGameFeeds=new Set(games.map((_,index)=>String(index*15+1)));
+    assert.equal(probed.slice(0,30).filter(id=>firstGameFeeds.has(id)).length,20,
+      'all 20 live games should get a first feed turn within 30 admissions');
+    assert.equal(probed.slice(0,30).some(id=>!firstGameFeeds.has(id)),true,
+      'background alternatives should retain a share of probe turns');
     const opened=await coordinator.command({kind:'open',gameId:games[19].id,manual:false,requestId:'11111111-1111-4111-8111-111111111111'});
     assert.equal(opened.kind,'playback');
     if(opened.kind==='playback')assert.equal(opened.playback.candidates.filter(candidate=>candidate.availability.kind==='playable').length,15);
@@ -119,7 +123,10 @@ test('explicit retry reaches an unavailable server while the background queue is
     await coordinator.refresh(true);
     const finalSnapshot=await coordinator.command({kind:'sources'});
     assert.equal(finalSnapshot.kind,'sources');
-    if(finalSnapshot.kind==='sources')assert.equal(finalSnapshot.snapshot.games.reduce((total,row)=>total+row.candidates.length,0),0);
+    if(finalSnapshot.kind==='sources') {
+      assert.equal(finalSnapshot.snapshot.games.reduce((total,row)=>total+row.candidates.length,0),1);
+      assert.equal(finalSnapshot.snapshot.games[0].candidates[0].availability.kind,'playable');
+    }
     const before=calls.length;
     await new Promise<void>(resolve=>setImmediate(resolve));
     assert.equal(calls.length,before);

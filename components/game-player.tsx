@@ -20,13 +20,14 @@ type Props = {
   onAudibleChange: (audible: boolean) => void;
   onVolumeChange: (volume: number) => void;
   onFatal?: (feedUrl:string) => void;
+  onDecoded?: (feedUrl:string,startupMs:number) => void;
   onEnded?: (feedUrl:string) => void;
   onRetry?: (feedUrl:string) => void;
   errorHint?: string;
   startupTimeoutMs?: number;
 };
 
-export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onEnded, onRetry, errorHint, startupTimeoutMs = 20000 }: Props) {
+export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onDecoded, onEnded, onRetry, errorHint, startupTimeoutMs = 20000 }: Props) {
   const shell = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -55,9 +56,9 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
   const [canPip, setCanPip] = useState(false);
   const [notice, setNotice] = useState('');
   const [pointerActive, setPointerActive] = useState(false);
-  const callbacks = useRef({ onFatal, onEnded, onPlayingChange, onAudibleChange, onVolumeChange });
+  const callbacks = useRef({ onFatal, onDecoded, onEnded, onPlayingChange, onAudibleChange, onVolumeChange });
   useEffect(() => { playingRef.current = playing; }, [playing]);
-  useEffect(() => { callbacks.current = { onFatal, onEnded, onPlayingChange, onAudibleChange, onVolumeChange }; }, [onFatal, onEnded, onPlayingChange, onAudibleChange, onVolumeChange]);
+  useEffect(() => { callbacks.current = { onFatal, onDecoded, onEnded, onPlayingChange, onAudibleChange, onVolumeChange }; }, [onFatal, onDecoded, onEnded, onPlayingChange, onAudibleChange, onVolumeChange]);
   useEffect(() => {
     preferenceRef.current = defaultQuality;
     manualQualityRef.current = false;
@@ -94,6 +95,38 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     const ready = () => { if (active) { hasLoaded = true; setStatus(needsGesture.current ? 'audio-gesture' : 'ready'); syncToLive(); } };
     const loaded = () => { if (!active) return; hasLoaded = true; if (!playingRef.current) setStatus('ready'); syncToLive(); };
     const canRecover = () => playingRef.current && navigator.onLine && !document.hidden;
+    let decodedReported = false;
+    let evidenceElapsed = 0;
+    let evidenceTick = performance.now();
+    let evidenceEligible = canRecover();
+    let frameCallback: number | undefined;
+    const sampleStartup = () => {
+      const now = performance.now();
+      const elapsed = now - evidenceTick;
+      const eligible = canRecover() && !needsGesture.current;
+      if (evidenceEligible && eligible && elapsed <= 6000) evidenceElapsed += elapsed;
+      evidenceTick = now;
+      evidenceEligible = eligible;
+    };
+    const reportDecoded = () => {
+      sampleStartup();
+      if (!active || failed || decodedReported || !canRecover() || video.paused || video.videoWidth <= 0 || video.videoHeight <= 0) return;
+      decodedReported = true;
+      callbacks.current.onDecoded?.(feed.url, Math.round(evidenceElapsed));
+    };
+    const observeFrame = () => {
+      frameCallback = video.requestVideoFrameCallback((_now, metadata) => {
+        if (metadata.presentedFrames > 0) reportDecoded();
+        if (active && !decodedReported) observeFrame();
+      });
+    };
+    const decodedProgress = () => {
+      if (video.readyState < 2 || typeof video.getVideoPlaybackQuality !== 'function') return;
+      const quality = video.getVideoPlaybackQuality();
+      if (quality.totalVideoFrames > quality.droppedVideoFrames) reportDecoded();
+    };
+    if (typeof video.requestVideoFrameCallback === 'function') observeFrame();
+    else video.addEventListener('timeupdate', decodedProgress);
     const error = () => {
       if (!active || failed) return;
       if (!canRecover() || (hasLoaded && video.paused) || performance.now() - lastTick > 6000) {
@@ -129,6 +162,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     let lastPosition = video.currentTime;
     let lastProgress = performance.now();
     const stallCheck = window.setInterval(() => {
+      sampleStartup();
       const now = performance.now();
       const elapsed = now - lastTick;
       const slept = elapsed > 6000;
@@ -217,6 +251,8 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       if (applyDefaultRef.current === applyDefault) applyDefaultRef.current = null;
       video.pause();
       video.removeEventListener('playing', ready); video.removeEventListener('loadeddata', loaded);
+      if (frameCallback !== undefined) video.cancelVideoFrameCallback(frameCallback);
+      video.removeEventListener('timeupdate', decodedProgress);
       video.removeEventListener('error', error); video.removeEventListener('ended', ended);
       video.removeEventListener('waiting', waiting); video.removeEventListener('pause', paused);
       video.removeEventListener('enterpictureinpicture', enterPip); video.removeEventListener('leavepictureinpicture', leavePip);
@@ -249,7 +285,10 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
           try { await video.play(); if (active) setStatus('audio-gesture'); return; }
           catch (again) { if (!active || (again instanceof Error && again.name === 'AbortError')) return; }
         }
-        if (active) setStatus(current => current === 'error' ? current : 'gesture');
+        if (active) {
+          needsGesture.current = true;
+          setStatus(current => current === 'error' ? current : 'gesture');
+        }
       });
     };
     video.addEventListener('loadedmetadata', sync);

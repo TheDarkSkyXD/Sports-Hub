@@ -102,7 +102,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
     id: `gooz-${gameId}-${index}`, gameId, playerId: String(57000 + index),
     url: `https://gooz.aapmains.net/new-stream-embed/${57000 + index}`,
     label: index ? 'Backup' : 'Primary', sourceIds: ['fixture'], observedAt: Date.now(),
-    availability: { kind: 'playable', proof: 'media', checkedAt: Date.now(), expiresAt: Date.now() + 600000 },
+    availability: { kind: 'playable', proof: 'media', checkedAt: Date.now() },
   }));
   const publicSession = session => ({ id: session.id, gameId: session.gameId, candidateId: session.candidateId, generation: session.generation, state: session.state, graceEndsAt: session.graceEndsAt });
   let finishFailures;

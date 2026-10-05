@@ -48,7 +48,7 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 
 ### Requirements
 
-- **Node.js 24 or newer**, with npm. The pipeline uses Node's SQLite and TypeScript runtime support.
+- **Node.js 24.6 or newer**, with npm. The pipeline uses Node's SQLite, TypeScript runtime support, and system certificate trust.
 - **Git** to clone the repository.
 - An internet connection for game data, provider pages, and video.
 - **Windows** for the included double-click launcher. The desktop workflow has been verified on Windows; other operating systems have not been validated.

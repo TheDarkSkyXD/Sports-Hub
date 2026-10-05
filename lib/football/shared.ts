@@ -20,13 +20,16 @@ const ScheduledGameSchema = GameFields.extend({...NonfinalFields,status:z.litera
 const LiveGameSchema = GameFields.extend({...NonfinalFields,status:z.literal('in'),lifecycle:z.literal('live')}).strict();
 const UnknownGameSchema = GameFields.extend({...NonfinalFields,status:z.enum(['pre','in','post','unknown']),lifecycle:z.literal('unknown')}).strict();
 const RawFinalGameSchema = GameFields.extend({...NonfinalFields,status:z.literal('post'),lifecycle:z.literal('final')}).strict();
-const FinalGameSchema = GameFields.extend({status:z.literal('post'),lifecycle:z.literal('final'),sourceUrl:z.never().optional(),sourceUrls:z.tuple([]).optional(),finalObservedAt:z.number(),graceEndsAt:z.number()}).strict();
+const FinalGameSchema = GameFields.extend({status:z.literal('post'),lifecycle:z.literal('final'),sourceUrls:z.tuple([]).optional(),finalObservedAt:z.number(),graceEndsAt:z.number()}).strict();
 export const ScheduleGameSchema = z.discriminatedUnion('lifecycle',[ScheduledGameSchema,LiveGameSchema,UnknownGameSchema,RawFinalGameSchema]);
 export const GameSchema = z.discriminatedUnion('lifecycle',[ScheduledGameSchema,LiveGameSchema,UnknownGameSchema,FinalGameSchema]);
 export const LeagueFeedSchema = z.object({ week: z.number().optional(), scoresAt: z.string().nullable(), sourceAt: z.string().nullable(), errors: z.array(z.string()) });
+export const FinishedGameRetentionMinutesSchema = z.number().int().min(5).max(10080);
+export const DEFAULT_FINISHED_GAME_RETENTION_MINUTES = 1440;
 export const BoardSchema = z.object({
   schemaVersion: z.literal(2), revision: z.number().int().nonnegative(), games: z.array(GameSchema), updatedAt: z.string(),
   scheduleState: z.enum(['loading','ready']),
+  finishedGameRetentionMinutes: FinishedGameRetentionMinutesSchema.default(DEFAULT_FINISHED_GAME_RETENTION_MINUTES),
   leagues: z.object({ nfl: LeagueFeedSchema, ncaaf: LeagueFeedSchema }), aliases: z.record(z.string()),
 });
 export type Team = z.infer<typeof TeamSchema>;
@@ -46,16 +49,26 @@ export type SeasonMembership = z.infer<typeof SeasonMembershipSchema>;
 export const ObservationSchema = z.object({
   id: z.string(), sourceId: z.string(), url: z.string(), title: z.string(),
   league: LeagueSchema.nullable(), teams: z.tuple([z.string(), z.string()]).nullable(),
-  kickoff: z.number().nullable(), rawTime: z.string(), observedAt: z.number(), parserVersion: z.literal(1),
+  kickoff: z.number().nullable(), rawTime: z.string(), observedAt: z.number(), parserVersion: z.union([z.literal(1),z.literal(2)]),
   legacyId: z.string().optional(),
+  kickoffLineage:z.object({observedAt:z.number(),rawTime:z.string()}).optional(),
 });
 export type Observation = z.infer<typeof ObservationSchema>;
+export const SourceEventBindingSchema=z.object({
+  sourceId:z.string(),eventId:z.string(),url:z.string().url(),league:LeagueSchema,
+  teams:z.tuple([z.string(),z.string()]),gameId:z.string(),observedAt:z.number(),
+});
+export type SourceEventBinding=z.infer<typeof SourceEventBindingSchema>;
 export type Match = { kind: 'matched'; gameId: string } | { kind: 'unmatched'; reason: string; possibleGameIds: string[] };
 export const CandidateAvailabilitySchema = z.discriminatedUnion('kind',[
   z.object({kind:z.literal('unknown')}),
-  z.object({kind:z.literal('checking')}),
-  z.object({kind:z.literal('playable'),checkedAt:z.number(),expiresAt:z.number(),proof:z.enum(['media','decoded'])}),
-  z.object({kind:z.literal('unavailable'),checkedAt:z.number(),retryAt:z.number(),reason:z.enum(['upstream','unsupported','invalid-media','timeout'])}),
+  z.object({kind:z.literal('checking'),progress:z.discriminatedUnion('kind',[
+    z.object({kind:z.literal('queued'),since:z.number()}),
+    z.object({kind:z.literal('active'),since:z.number()}),
+    z.object({kind:z.literal('deferred'),since:z.number(),retryAt:z.number()}),
+  ])}),
+  z.object({kind:z.literal('playable'),checkedAt:z.number(),proof:z.enum(['media','decoded'])}),
+  z.object({kind:z.literal('unavailable'),checkedAt:z.number(),retryAt:z.number(),reason:z.enum(['upstream','unsupported','invalid-media','timeout','playback'])}),
 ]);
 export type CandidateAvailability = z.infer<typeof CandidateAvailabilitySchema>;
 export const CandidateSummarySchema = z.object({
@@ -63,11 +76,14 @@ export const CandidateSummarySchema = z.object({
 });
 export type CandidateSummary = z.infer<typeof CandidateSummarySchema>;
 export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
+  z.object({provider:z.literal('swac'),eventId:z.string().regex(/^[a-f0-9]{32}$/)}),
   z.object({provider:z.literal('gooz'),playerId:z.string().regex(/^\d{1,20}$/)}),
   z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid()}),
   z.object({provider:z.literal('streameast'),channelId:z.string().regex(/^\d{1,4}$/)}),
   z.object({provider:z.literal('sportsurge-v2'),eventId:z.string().regex(/^(?:ncaaf|nfl):\d{1,12}$/),providerId:z.string().min(1).max(100),url:z.string().url().max(2000)}),
   z.object({provider:z.literal('wikisport'),section:z.enum(['0nhl','strm']),playerId:z.string().regex(/^\d{1,4}$/)}),
+  z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:ncaaf-)?\d{1,20}$/),
+    eventUrl:z.string().url().max(2000),serverUrl:z.string().url().max(2000)}).strict(),
 ]);
 export type CandidateLocator = z.infer<typeof CandidateLocatorSchema>;
 export const CandidateSchema = CandidateSummarySchema.omit({availability:true}).extend({locator:CandidateLocatorSchema});
@@ -89,13 +105,28 @@ export const PlaybackSchema = z.object({ session: SessionSchema, candidates: z.a
 export type Playback = z.infer<typeof PlaybackSchema>;
 export const SourceAttemptSchema = z.object({
   at:z.number(),outcome:z.enum(['parsed','empty','unsupported','parser-changed','failed']),
-  failure:z.enum(['not-found','rate-limited','timed-out','network-unavailable','unsupported-address','invalid-response','upstream-error']).optional(),
+  failure:z.enum(['not-found','blocked','rate-limited','timed-out','network-unavailable','unsupported-address','invalid-response','upstream-error']).optional(),
+  count:z.number().int().nonnegative().optional(),failures:z.number().int().nonnegative().optional(),nextEligibleAt:z.number().optional(),
+  parserVersion:z.number().int().positive().optional(),
 });
 export type SourceAttempt = z.infer<typeof SourceAttemptSchema>;
+export type CollectionAttempt = {sourceId:string;league:League|null;at:number;outcome:SourceAttempt['outcome'];count:number};
+export const ResolvedPlayerSchema = CandidateSchema.pick({id:true,label:true,locator:true});
+export type ResolvedPlayer = z.infer<typeof ResolvedPlayerSchema>;
+export const MissingPlayerReasonSchema=z.enum(['no-compatible-media','not-yet-published','no-published-player',
+  'unsupported-player','paid-only','conflicting-game','parser-changed']);
+export type MissingPlayerReason=z.infer<typeof MissingPlayerReasonSchema>;
+const LastDetailSuccessSchema=z.object({identity:z.string(),at:z.number(),count:z.number().int().positive()});
+export const DetailEvidenceSchema = z.discriminatedUnion('outcome',[
+  z.object({outcome:z.literal('resolved'),observationId:z.string(),generation:z.string(),identity:z.string().optional(),at:z.number(),players:z.array(ResolvedPlayerSchema),nextEligibleAt:z.number(),lastSuccess:LastDetailSuccessSchema.optional()}),
+  z.object({outcome:z.literal('unresolved'),observationId:z.string(),generation:z.string(),at:z.number(),reason:MissingPlayerReasonSchema,failures:z.number().int().nonnegative(),nextEligibleAt:z.number(),lastSuccess:LastDetailSuccessSchema.optional()}),
+  z.object({outcome:z.literal('failed'),observationId:z.string(),generation:z.string(),at:z.number(),failure:SourceAttemptSchema.shape.failure.unwrap(),failures:z.number().int().nonnegative(),nextEligibleAt:z.number(),lastSuccess:LastDetailSuccessSchema.optional()}),
+]);
+export type DetailEvidence = z.infer<typeof DetailEvidenceSchema>;
 export const SourceMatchReasonSchema=z.enum(['not-a-matchup','unknown-teams','unverified-kickoff',
   'ambiguous-matchup','conflicting-date','finished-game','other']);
 export type SourceMatchReason=z.infer<typeof SourceMatchReasonSchema>;
-export const SportsurgeFailureSchema=z.enum(['blocked','timeout','parser-changed','unavailable','invalid-detail-url','limit']);
+export const SportsurgeFailureSchema=z.enum(['blocked','rate-limited','timeout','parser-changed','unavailable','invalid-detail-url','limit']);
 export const SportsurgeProviderSchema=z.object({
   id:z.string().min(1).max(100),label:z.string().min(1).max(160),observedAt:z.number().int().nonnegative(),
   destination:z.discriminatedUnion('kind',[
@@ -107,7 +138,7 @@ export const SportsurgeProviderSchema=z.object({
 export type SportsurgeProvider=z.infer<typeof SportsurgeProviderSchema>;
 export const SportsurgeDetailSchema=z.discriminatedUnion('kind',[
   z.object({kind:z.literal('pending')}).strict(),
-  z.object({kind:z.literal('collected'),at:z.number().int().nonnegative(),providers:z.array(SportsurgeProviderSchema)}).strict(),
+  z.object({kind:z.literal('collected'),at:z.number().int().nonnegative(),retainedFromRunId:z.string().uuid().optional(),providers:z.array(SportsurgeProviderSchema)}).strict(),
   z.object({kind:z.literal('failed'),at:z.number().int().nonnegative(),reason:SportsurgeFailureSchema}).strict(),
 ]);
 export const SportsurgeEventSchema=z.object({
@@ -136,7 +167,7 @@ export const SportsurgeCatalogSchema=z.object({
 export type SportsurgeCatalog=z.infer<typeof SportsurgeCatalogSchema>;
 export const StoredSportsurgeCatalogSchema=z.object({catalog:SportsurgeCatalogSchema,receivedAt:z.number().int().nonnegative()}).strict();
 export type StoredSportsurgeCatalog=z.infer<typeof StoredSportsurgeCatalogSchema>;
-export const StreameastFailureSchema=z.enum(['blocked','timeout','parser-changed','unavailable','limit']);
+export const StreameastFailureSchema=z.enum(['blocked','rate-limited','timeout','parser-changed','unavailable','limit']);
 export const StreameastCategorySchema=z.discriminatedUnion('kind',[
   z.object({kind:z.literal('pending')}).strict(),
   z.object({kind:z.literal('collected'),at:z.number().int().nonnegative()}).strict(),
@@ -156,7 +187,7 @@ export const StreameastServerSchema=z.object({
 }).strict();
 export const StreameastDetailSchema=z.discriminatedUnion('kind',[
   z.object({kind:z.literal('pending')}).strict(),
-  z.object({kind:z.literal('collected'),at:z.number().int().nonnegative(),servers:z.array(StreameastServerSchema)}).strict(),
+  z.object({kind:z.literal('collected'),at:z.number().int().nonnegative(),retainedFromRunId:z.string().uuid().optional(),servers:z.array(StreameastServerSchema)}).strict(),
   z.object({kind:z.literal('failed'),at:z.number().int().nonnegative(),reason:StreameastFailureSchema}).strict(),
 ]);
 export const StreameastEventSchema=z.object({
@@ -215,6 +246,24 @@ export const SportsurgeCatalogViewSchema=z.object({
   })),
 });
 export type SportsurgeCatalogView=z.infer<typeof SportsurgeCatalogViewSchema>;
+export const LinkEvidenceSchema=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('pending')}),
+  z.object({kind:z.literal('unmatched'),reason:SourceMatchReasonSchema}),
+  z.object({kind:z.literal('collected'),checkedAt:z.number(),candidateIds:z.array(z.string())}),
+  z.object({kind:z.literal('missing'),checkedAt:z.number(),reason:MissingPlayerReasonSchema,retryAt:z.number().nullable()}),
+  z.object({kind:z.literal('failed'),checkedAt:z.number(),failure:SourceAttemptSchema.shape.failure.unwrap(),retryAt:z.number().nullable()}),
+]);
+export type LinkEvidence=z.infer<typeof LinkEvidenceSchema>;
+export const CollectionHealthSchema=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('no-baseline')}),
+  z.object({kind:z.literal('healthy'),currentAt:z.number(),currentCount:z.number().int().nonnegative(),baselineAt:z.number(),baselineCount:z.number().int().positive()}),
+  z.object({kind:z.literal('attention'),reason:z.enum(['parser-changed','empty-after-success','player-drop','collection-failed']),
+    currentAt:z.number(),currentCount:z.number().int().nonnegative(),baselineAt:z.number(),baselineCount:z.number().int().positive()}),
+]);
+export type CollectionHealth=z.infer<typeof CollectionHealthSchema>;
+export const SharedRouteSchema=z.object({id:z.string(),candidateIds:z.array(z.string()),sourceIds:z.array(z.string()),
+  evidence:z.literal('same-published-server')});
+export type SharedRoute=z.infer<typeof SharedRouteSchema>;
 export const SourcesSnapshotSchema = z.object({
   at:z.number(),revision:z.number(),windowStartAt:z.number(),lastDiscoveryAt:z.number().nullable(),browserCollectorsAvailable:z.boolean(),
   sportsurgeV2:z.object({current:SportsurgeCatalogViewSchema.nullable(),lastComplete:SportsurgeCatalogViewSchema.nullable(),previous:SportsurgeCatalogViewSchema.nullable()}),
@@ -224,27 +273,33 @@ export const SourcesSnapshotSchema = z.object({
     collectionMode:z.enum(['listings-only','compatible-feed-discovery']),
     lastAttempt:SourceAttemptSchema.nullable(),listingCount:z.number().int().nonnegative(),
     matchedGameCount:z.number().int().nonnegative(),staleListingCount:z.number().int().nonnegative(),
+    freeChoiceCount:z.number().int().nonnegative().default(0),workingChoiceCount:z.number().int().nonnegative().default(0),
+    collectionHealth:CollectionHealthSchema.default({kind:'no-baseline'}),
     compatibleFeedCount:z.number().int().nonnegative(),
     unmatchedListingCount:z.number().int().nonnegative(),
     unmatchedReasons:z.array(z.object({reason:SourceMatchReasonSchema,count:z.number().int().positive()})),
     links:z.array(z.object({title:z.string(),url:z.string().url(),gameId:z.string().nullable(),
-      observedAt:z.number(),freshness:z.enum(['fresh','stale-live'])})),
+      observedAt:z.number(),freshness:z.enum(['fresh','stale-live']),evidence:LinkEvidenceSchema.default({kind:'pending'})})),
   })),
   games:z.array(z.object({
     gameId:z.string(),name:z.string(),sourceCount:z.number().int().nonnegative(),
-    uniqueFeedCount:z.number().int().nonnegative(),candidates:z.array(CandidateSummarySchema),sourceLinks:z.array(z.object({sourceId:z.string(),title:z.string(),url:z.string().url(),
-      observedAt:z.number(),freshness:z.enum(['fresh','stale-live'])})),
+    uniqueFeedCount:z.number().int().nonnegative(),freeChoiceCount:z.number().int().nonnegative().default(0),
+    workingChoiceCount:z.number().int().nonnegative().default(0),sharedRoutes:z.array(SharedRouteSchema).default([]),
+    candidates:z.array(CandidateSummarySchema),sourceLinks:z.array(z.object({sourceId:z.string(),title:z.string(),url:z.string().url(),
+      observedAt:z.number(),freshness:z.enum(['fresh','stale-live']),evidence:LinkEvidenceSchema.default({kind:'pending'})})),
   })),
 });
 export type SourcesSnapshot = z.infer<typeof SourcesSnapshotSchema>;
 export const CommandSchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('board')}),
+  z.object({kind:z.literal('set-retention'),minutes:FinishedGameRetentionMinutesSchema}),
   z.object({kind:z.literal('sources')}),
   z.object({kind:z.literal('check-sources'),gameIds:z.array(z.string().min(1).max(100)).min(1).max(4),retry:z.boolean().default(false)}),
   z.object({kind:z.literal('open'),gameId:z.string().min(1).max(100),manual:z.boolean().default(false),requestId:z.string().uuid().optional(),initialCandidateId:z.string().min(1).max(100).optional()}),
   z.object({kind:z.literal('session'),sessionId:z.string().uuid(),generation:z.number().int().nonnegative(),candidateId:z.string().max(100).optional(),failure:z.boolean().default(false),retry:z.boolean().default(false)}),
   z.object({kind:z.literal('close'),sessionId:z.string().uuid()}),
   z.object({kind:z.literal('authorize'),sessionId:z.string().uuid(),candidateId:z.string().min(1).max(100),generation:z.number().int().nonnegative()}),
+  z.object({kind:z.literal('playback-evidence'),sessionId:z.string().uuid(),candidateId:z.string().min(1).max(100),generation:z.number().int().nonnegative(),evidence:z.object({kind:z.literal('decoded'),startupMs:z.number().int().nonnegative().max(300000)})}),
   z.object({kind:z.literal('refresh')}),
   z.object({kind:z.literal('sportsurge-catalog'),catalog:SportsurgeCatalogSchema}),
   z.object({kind:z.literal('streameast-catalog'),catalog:StreameastCatalogSchema}),
@@ -258,6 +313,10 @@ export const ReplySchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('session'),session:SessionSchema,candidates:z.array(CandidateSummarySchema)}),
   z.object({kind:z.literal('authorized'),candidate:CandidateSchema,session:SessionSchema}),
   z.object({kind:z.literal('ok')}),
+  z.object({kind:z.literal('catalog-ack'),skipDetailEventIds:z.array(z.string()),skipDetailEventUrls:z.array(z.string().url()).optional(),reuseDetails:z.discriminatedUnion('kind',[
+    z.object({kind:z.literal('sportsurge-v2'),events:z.array(SportsurgeEventSchema)}),
+    z.object({kind:z.literal('streameast'),events:z.array(StreameastEventSchema)}),
+  ]).optional()}),
   z.object({kind:z.literal('error'),status:z.number(),message:z.string(),retryAfter:z.number().int().nonnegative().optional(),code:z.enum(['drain-exhausted']).optional()}),
 ]);
 export type Reply = z.infer<typeof ReplySchema>;

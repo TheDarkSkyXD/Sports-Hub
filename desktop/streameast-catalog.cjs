@@ -77,26 +77,41 @@ function parseCategory(html,league) {
   return {kind:'collected',events,rejectedGames};
 }
 
+function freeRows($) {
+  return $('.stream-alt-list a.stream-alt-item').toArray().filter(row=>{
+    const node=$(row);
+    return !node.hasClass('stream-alt-item-pro') && !node.find('.stream-alt-pro-icon').length &&
+      node.find('.stream-alt-free-badge').length>0;
+  });
+}
+
 function parseDetail(html,event,at,freePages) {
   const $=load(html);
   const rows=$('.stream-alt-list a.stream-alt-item');
-  if (!rows.length) return {kind:'failed',at,reason:'parser-changed'};
+  if (!rows.length) {
+    const sourceId=event.id.split(':')[1];
+    if ($('.streameast-video-page').length && $('.se-board[data-match-id]').first().attr('data-match-id')===sourceId &&
+      $('.se-streams--share-only .se-streams__list').length && !$('.se-streams__list a.se-stream__link').length &&
+      $('.se-countdown__title').first().text().trim()==='Stream starting soon')
+      return {kind:'collected',at,servers:[]};
+    const list=$('#se-streams-list.se-streams__list');
+    const published=list.find('.se-stream:not(.se-stream--share)').toArray();
+    const heading=$('.se-progate__match').first().text().replace(/\s+/g,' ').trim();
+    if ($('.streameast-video-page').length && heading===event.title && published.length &&
+      published.every(row=>$(row).hasClass('is-pro') && serverUrl($(row).find('a.se-stream__link').attr('href')||'',event)))
+      return {kind:'collected',at,servers:[]};
+    return {kind:'failed',at,reason:'parser-changed'};
+  }
   const servers=[];
-  for (const row of rows.toArray()) {
+  for (const row of freeRows($)) {
     const node=$(row);
     const link=serverUrl(node.attr('href') || '',event);
     if (!link) return {kind:'failed',at,reason:'parser-changed'};
     const label=(node.find('.stream-alt-name').text() || `Server ${link.id}`).trim().slice(0,120);
-    const pro=node.hasClass('stream-alt-item-pro') || node.find('.stream-alt-pro-icon').length>0;
-    const free=node.find('.stream-alt-free-badge').length>0;
-    let availability={kind:'unknown'};
-    if (pro) availability={kind:'premium'};
-    else if (free) {
-      const result=freePages.get(link.url);
-      availability=result?.kind==='channel' ? {kind:'free-channel',channelId:result.id} :
-        result?.kind==='wikisport' ? {kind:'free-wikisport',section:result.section,playerId:result.id} :
-        result?.kind==='unsupported' ? {kind:'free-unsupported'} : {kind:'free-unresolved'};
-    }
+    const result=freePages.get(link.url);
+    const availability=result?.kind==='channel' ? {kind:'free-channel',channelId:result.id} :
+      result?.kind==='wikisport' ? {kind:'free-wikisport',section:result.section,playerId:result.id} :
+      result?.kind==='unsupported' ? {kind:'free-unsupported'} : {kind:'free-unresolved'};
     servers.push({id:link.id,label,url:link.url,availability});
   }
   return {kind:'collected',at,servers};
@@ -104,20 +119,18 @@ function parseDetail(html,event,at,freePages) {
 
 function freeServerUrls(html,event) {
   const $=load(html);
-  return $('.stream-alt-list a.stream-alt-item').toArray().flatMap(row=>{
+  return freeRows($).flatMap(row=>{
     const node=$(row);
     const link=serverUrl(node.attr('href') || '',event);
-    return link && !node.hasClass('stream-alt-item-pro') && !node.find('.stream-alt-pro-icon').length &&
-      node.find('.stream-alt-free-badge').length ? [link.url] : [];
+    return link ? [link.url] : [];
   });
 }
 
 function activeFreeServerUrl(html,event) {
   const $=load(html);
-  const node=$('.stream-alt-list a.stream-alt-item.active').first();
-  const link=serverUrl(node.attr('href') || '',event);
-  return link && !node.hasClass('stream-alt-item-pro') && !node.find('.stream-alt-pro-icon').length &&
-    !!node.find('.stream-alt-free-badge').length ? link.url : null;
+  const active=freeRows($).find(row=>$(row).hasClass('active'));
+  const link=active && serverUrl($(active).attr('href') || '',event);
+  return link ? link.url : null;
 }
 
 module.exports={ORIGIN,CATEGORY_URLS,MAX_PAGE_BYTES,MAX_CHECKPOINT_BYTES,eventUrl,serverUrl,freePlayer,parseCategory,parseDetail,freeServerUrls,activeFreeServerUrl};

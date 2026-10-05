@@ -3,12 +3,16 @@ const { randomUUID, timingSafeEqual } = require('node:crypto');
 const { lookup } = require('node:dns/promises');
 const http = require('node:http');
 const net = require('node:net');
+const { createObservedMedia } = require('./observed-media.cjs');
+const { handleCertificateIssuerRequest } = require('./certificate-issuer-proxy.cjs');
 
 const OBSERVE_MS = 20000;
 const OBSERVER_SLOTS = 4;
 const MAX_REQUESTS = 300;
 const MAX_CONNECTS = 100;
 const MAX_FRAMES = 32;
+const SPORTSPATRIKA_MAX_FRAMES = 64;
+const NFLSTREAMS_MAX_FRAMES = 64;
 const MAX_BYTES = 24 * 1024 * 1024;
 const blockedV4 = [
   [0x00000000,8],[0x0a000000,8],[0x64400000,10],[0x7f000000,8],
@@ -40,15 +44,110 @@ function publicUrl(value) {
 }
 
 function publicNetworkUrl(value) {
-  if (typeof value === 'string' && value.startsWith('wss://')) return publicUrl(`https://${value.slice(6)}`);
-  return publicUrl(value);
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  const transport = value.split('#',1)[0];
+  if (transport.startsWith('wss://')) return publicUrl(`https://${transport.slice(6)}`);
+  return publicUrl(transport);
 }
 
-async function pinnedAddress(host) {
+function isOfflinePlayerState(state) {
+  return state.readyState !== 'loading' && !state.hasVideo && state.title === 'Stream is Offline' &&
+    state.status === 'Offline' && state.description.startsWith('The stream is currently offline.');
+}
+
+function isNetworkErrorPlayerState(state) {
+  return state.readyState === 'complete' && !state.hasVideo && state.title === 'Technical Issue' &&
+    state.errorVisible && state.errorHeading === 'Network Error' &&
+    state.errorDescription.startsWith('We are having trouble connecting to the server. Please reload the page.');
+}
+
+function offlinePlayerFrame(source, frames) {
+  if (!['vipbox.fm','www.vipboxtv.sk','strikeout.im'].includes(new URL(source).hostname)) return null;
+  const players = frames.filter(frame => {
+    try { const url = new URL(frame.url); return url.protocol === 'https:' && url.pathname === '/sd0embed/NFL'; }
+    catch { return false; }
+  });
+  return players.length === 1 ? players[0] : null;
+}
+
+function belongsToEmbeddedServer(frame,serverUrl) {
+  try {
+    for(let current=frame;current;current=current.parent){
+      if(current.isDestroyed())return false;
+      if(current.url===serverUrl)return true;
+    }
+  } catch { return false; }
+  return false;
+}
+
+function sportspatrikaEntry(value) {
+  const url = publicUrl(value);
+  return !!url && url.origin === 'https://embed.sportspatrika.com' && url.pathname === '/live/embed.php' &&
+    /^\?ch=es[0-9]+$/.test(url.search);
+}
+
+function aianimalvibesPlayer(value) {
+  const url = publicUrl(value);
+  return !!url && url.origin === 'https://ch.aianimalvibes.com' &&
+    /^\/football\/[0-9]{1,10}$/.test(url.pathname) && !url.search && !url.port;
+}
+
+function createNavigationPolicy(value) {
+  const initial = new URL(value);
+  const event = ['https://streameast.ga','https://v2.streameast.ga'].includes(initial.origin) &&
+    !initial.search && !initial.hash && /^\/(?:cfb|nfl)\/[a-z0-9]+(?:-[a-z0-9]+)*\/$/.test(initial.pathname);
+  const canonical = event ? `https://v2.streameast.ga${initial.pathname}` : null;
+  const mygoodstreamShort = initial.origin === 'https://mygoodstream.pw' &&
+    /^\/short\/[A-Za-z0-9]{8,32}$/.test(initial.pathname);
+  const providerRedirect = !initial.search && !initial.hash && !initial.port ?
+    initial.origin === 'https://dudestream1.com' && /^\/[a-z0-9]{16,32}$/.test(initial.pathname)
+      ? target => target.origin === initial.origin && target.pathname === '/nfl2/' :
+    mygoodstreamShort
+      ? target => target.origin === 'https://v2.mygoodstream.pw' && /^\/watch\/[a-f0-9]{24}$/.test(target.pathname) :
+    initial.origin === 'https://shd247.world' && /^\/live-go-streaming-[0-9]+\.html$/.test(initial.pathname)
+      ? target => target.origin === 'https://streamhd247.click' && target.pathname === initial.pathname : null : null;
+  let current = value;
+  let phase = value === canonical ? 'canonical' : 'initial';
+  return target => {
+    if (target === current) return true;
+    const url = publicUrl(target);
+    if (!url || url.port) return false;
+    if (providerRedirect) {
+      if (mygoodstreamShort && phase === 'canonical' && !url.search &&
+        url.origin === 'https://v2.mygoodstream.pw' &&
+        url.pathname === new URL(current).pathname.slice('/watch'.length)) {
+        current = target;
+        phase = 'complete';
+        return true;
+      }
+      if (phase !== 'initial' || url.search || !providerRedirect(url)) return false;
+      current = target;
+      phase = mygoodstreamShort ? 'canonical' : 'complete';
+      return true;
+    }
+    if (!event) return false;
+    const handoff = url.origin === 'https://auth.streamea.st' && url.pathname === '/SsoHandoff.php' &&
+      [...url.searchParams.keys()].sort().join(',') === 'h,p' &&
+      url.searchParams.get('h') === 'v2.streameast.ga' && url.searchParams.get('p') === initial.pathname;
+    const connect = url.origin === 'https://v2.streameast.ga' && url.pathname === '/connect.php' &&
+      [...url.searchParams.keys()].join(',') === 'redirect' && url.searchParams.get('redirect') === initial.pathname;
+    if ((phase === 'initial' || phase === 'canonical') && handoff) phase = 'handoff';
+    else if (phase === 'handoff' && connect) phase = 'connect';
+    else if (phase === 'initial' && target === canonical) phase = 'canonical';
+    else if ((phase === 'handoff' || phase === 'connect') && target === canonical) phase = 'complete';
+    else return false;
+    current = target;
+    return true;
+  };
+}
+
+async function pinnedAddress(host,isActive = () => true) {
+  if (!isActive()) throw new Error('dns-inactive');
   const addresses = await Promise.race([
-    lookup(host, { all: true }),
-    new Promise((_,reject) => setTimeout(() => reject(new Error('dns-timeout')), 3000)),
+    lookup(host,{all:true}),
+    new Promise((_,reject) => setTimeout(() => reject(new Error('dns-timeout')),3000)),
   ]);
+  if (!isActive()) throw new Error('dns-inactive');
   if (!addresses.length || addresses.some(item => item.family !== net.isIP(item.address) || !publicAddress(item.address)))
     throw new Error('private-address');
   return addresses.find(item => item.family === 4) || addresses[0];
@@ -89,7 +188,14 @@ function createObserverSlot(index) {
     current.resolve(result);
   }
 
-  proxy = http.createServer((_request,response) => { response.writeHead(405); response.end(); });
+  proxy = http.createServer((request,response) => {
+    const current = active;
+    void handleCertificateIssuerRequest(request,response,{
+      authorization:proxyAuthorization,pinAddress:pinnedAddress,
+      isActive:()=>!!current && active===current,
+      admit:()=>++current.issuerRequests<=8,
+    });
+  });
   proxy.on('connect',async (request,client,head) => {
     client.on('error',() => {});
     const current = active;
@@ -116,7 +222,7 @@ function createObserverSlot(index) {
     };
     client.once('close',release);
     let address;
-    try { address = await pinnedAddress(url.hostname); }
+    try { address = await pinnedAddress(url.hostname,() => active === current); }
     catch (error) { debug('dns rejected',url.hostname,error?.message); if (!client.destroyed) client.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return; }
     if (active !== current || client.destroyed) { client.destroy(); return; }
     const remote = net.connect({ host: address.address, port: Number(match[2]), family: address.family });
@@ -148,6 +254,14 @@ function createObserverSlot(index) {
 
   sourceSession.webRequest.onBeforeRequest((details,callback) => {
     const current = active;
+    if(current?.embeddedEventUrl && details.resourceType==='subFrame'){
+      let parent='';
+      try { parent=details.frame?.parent?.url||''; } catch {}
+      if(parent===current.embeddedEventUrl && details.url!==current.url){
+        callback({cancel:true});
+        return;
+      }
+    }
     const url = publicNetworkUrl(details.url);
     const localPdfObject = details.resourceType === 'object' &&
       details.url.startsWith('data:application/pdf;base64,') && details.url.length <= 1024 &&
@@ -156,7 +270,8 @@ function createObserverSlot(index) {
     if (!current || !url && !localPdfObject ||
       (details.url.startsWith('wss://') && details.resourceType !== 'webSocket') ||
       ['image','font','ping','cspReport'].includes(details.resourceType) ||
-      (details.resourceType === 'mainFrame' && url.href !== current.url) || ++current.requests > MAX_REQUESTS) {
+      (details.resourceType === 'mainFrame' && !current.navigation(details.url)) || ++current.requests > MAX_REQUESTS) {
+      if (current && details.resourceType === 'mainFrame' && url) debug('main frame rejected',url.origin,url.pathname);
       callback({ cancel: true });
       if (current && current.requests > MAX_REQUESTS) endActive(current,null);
       return;
@@ -173,6 +288,7 @@ function createObserverSlot(index) {
       (details.webContentsId === undefined || details.webContentsId === current.window.webContents.id)) requests.set(details.id,{
       operation:current,url:details.url,frame:details.frame,initiatorOrigin:details.initiatorOrigin,
       referer:referer || details.referrer || details.frame?.url,userAgent,
+      requestReferer:referer,origin:header('origin'),
     });
     callback({ requestHeaders: details.requestHeaders });
   });
@@ -184,6 +300,10 @@ function createObserverSlot(index) {
     const isHls = /\.m3u8(?:$|[?#])/i.test(details.url) || /(?:application\/(?:vnd\.apple\.mpegurl|x-mpegurl)|audio\/(?:mpegurl|x-mpegurl))/i.test(contentType);
     if (active && candidate?.operation===active && details.statusCode >= 200 && details.statusCode < 300 && isHls) {
       const current = active;
+      if(current.embeddedEventUrl && !belongsToEmbeddedServer(candidate.frame,current.url)){
+        callback({cancel:false});
+        return;
+      }
       let refererUrl;
       try {
         const value = new URL(candidate.referer);
@@ -218,9 +338,10 @@ function createObserverSlot(index) {
             if (active !== current) return;
             const visible = results.filter((result,index) => result.status === 'fulfilled' && result.value &&
               !frames[index].isDestroyed() && frames[index].url === urls[index] &&
-              current.window.webContents.mainFrame.framesInSubtree.includes(frames[index]));
+              current.window.webContents.mainFrame.framesInSubtree.includes(frames[index]) &&
+              (!current.embeddedEventUrl || belongsToEmbeddedServer(frames[index],current.url)));
             if (visible.length === 1) { endActive(current,{ url: candidate.url, referer: refererUrl.href,
-              userAgent: candidate.userAgent }); return; }
+              userAgent: candidate.userAgent,requestReferer:candidate.requestReferer,origin:candidate.origin }); return; }
             if (Date.now()+500 < current.deadline) {
               const timer = setTimeout(() => { current.probeTimers.delete(timer); void probe(); },500);
               current.probeTimers.add(timer);
@@ -232,8 +353,7 @@ function createObserverSlot(index) {
     }
     callback({ cancel: false });
   });
-
-  function observe(url,purpose) {
+  function observe(url,purpose,embeddedEventUrl) {
     if (active) return null;
     const window = new BrowserWindow({ show: false, webPreferences: {
       partition, contextIsolation: true, sandbox: true,
@@ -241,8 +361,13 @@ function createObserverSlot(index) {
     } });
     window.webContents.setAudioMuted(true);
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    const navigation = createNavigationPolicy(embeddedEventUrl||url);
     for (const name of ['will-navigate','will-redirect']) window.webContents.on(name,(event,target) => {
-      if (target !== url) event.preventDefault();
+      if (event.isMainFrame !== false && !navigation(event.url || target)) {
+        const blocked = publicUrl(event.url || target);
+        debug('navigation rejected',blocked?.origin,blocked?.pathname);
+        event.preventDefault();
+      }
     });
     window.webContents.on('login',(event,_details,authInfo,callback) => {
       debug('login',authInfo.isProxy,authInfo.host);
@@ -252,7 +377,10 @@ function createObserverSlot(index) {
     });
     let current;
     const promise = new Promise(resolve => {
-      current = { window, url, purpose, resolve, sockets: new Set(), requests: 0, proxyRequests: 0, tunnels: 0, bytes: 0,
+      current = { window, url, embeddedEventUrl, navigation, purpose, resolve, sockets: new Set(), requests: 0, proxyRequests: 0, tunnels: 0, bytes: 0,
+        issuerRequests:0,
+        frameLimit:embeddedEventUrl && new URL(embeddedEventUrl).hostname==='nflstreams.org' ? NFLSTREAMS_MAX_FRAMES :
+          sportspatrikaEntry(url) ? SPORTSPATRIKA_MAX_FRAMES : MAX_FRAMES,
         deadline: Date.now()+OBSERVE_MS, probeKeys: new Set(), probeTimers: new Set(),
         timer: setTimeout(() => endActive(current,null),OBSERVE_MS) };
       active = current;
@@ -261,17 +389,49 @@ function createObserverSlot(index) {
         let frames;
         try { frames = window.webContents.mainFrame.framesInSubtree; }
         catch { endActive(current,null); return; }
-        const player = frames.find(frame => {
+        const offline = offlinePlayerFrame(current.url,frames);
+        if (offline && !offline.isDestroyed()) {
+          const frame = offline, url = frame.url;
+          void frame.executeJavaScript(`({title:document.title,readyState:document.readyState,
+            hasVideo:!!document.querySelector('video'),
+            status:document.querySelector('.banner-container .status-text')?.textContent.trim() || '',
+            description:document.querySelector('.banner-container .description')?.textContent.trim() || '',
+            errorVisible:(()=>{const error=document.querySelector('.error-state');if(!error)return false;
+              const rect=error.getBoundingClientRect(),style=getComputedStyle(error);
+              return rect.width>0&&rect.height>0&&style.display!=='none'&&style.visibility!=='hidden';})(),
+            errorHeading:document.querySelector('.error-state > h2')?.textContent.trim() || '',
+            errorDescription:document.querySelector('.error-state > p')?.textContent.trim() || ''})`).then(state => {
+            if (active === current && !frame.isDestroyed() && frame.url === url &&
+              current.window.webContents.mainFrame.framesInSubtree.includes(frame) &&
+              (isOfflinePlayerState(state) || isNetworkErrorPlayerState(state))) {
+              debug('player explicitly unavailable');
+              endActive(current,null);
+            }
+          }).catch(() => {});
+        }
+        const aianimalvibesFrames = frames.filter(frame => aianimalvibesPlayer(frame.url));
+        if (aianimalvibesFrames.length > 1) return;
+        const player = aianimalvibesFrames[0] || frames.find(frame => {
           try { return new URL(frame.url).hostname === 'nfl.earnsphere.site'; }
           catch { return false; }
         });
         if (!player || player.isDestroyed()) return;
+        const aianimalvibes = aianimalvibesFrames.length === 1;
+        const expectedUrl = JSON.stringify(player.url);
         void player.executeJavaScript(`(() => {
+          if (${aianimalvibes} && location.href !== ${expectedUrl}) return false;
+          if (${aianimalvibes} &&
+            (document.querySelectorAll('video').length !== 1 ||
+              document.querySelectorAll('button[aria-label="playpause"]').length !== 1)) return false;
           const video = document.querySelector('video');
           const button = document.querySelector('button[aria-label="playpause"]');
-          if (document.title !== 'LIVE NFL' || !video || !button || !video.paused) return false;
+          if ((!${aianimalvibes} && document.title !== 'LIVE NFL') || !video || !button || !video.paused) return false;
           const rect = video.getBoundingClientRect();
           if (rect.width < 240 || rect.height < 135) return false;
+          if (${aianimalvibes}) {
+            const videoStyle = getComputedStyle(video);
+            if (videoStyle.display === 'none' || videoStyle.visibility === 'hidden') return false;
+          }
           video.muted = true;
           button.click();
           void video.play().catch(() => {});
@@ -285,12 +445,45 @@ function createObserverSlot(index) {
         let frames;
         try { frames = window.webContents.mainFrame.framesInSubtree.length; }
         catch { endActive(current,null); return; }
-        if (frames > MAX_FRAMES) { debug('too many frames',frames); endActive(current,null); }
+        if (frames > current.frameLimit) { debug('too many frames',frames); endActive(current,null); }
+      });
+      if(embeddedEventUrl)window.webContents.on('dom-ready',()=>{
+        if(active!==current||window.webContents.getURL()!==embeddedEventUrl)return;
+        const selectedUrl=JSON.stringify(url),eventUrl=JSON.stringify(embeddedEventUrl);
+        const isNfl=new URL(embeddedEventUrl).hostname==='nflstreams.org';
+        void window.webContents.executeJavaScript(`(() => {
+          if(location.href!==${eventUrl})return false;
+          if(${isNfl}){
+            if(document.querySelector('.home__team-fixture-matche.fixture-active')?.href!==${eventUrl})return false;
+          }else{
+            const canonical=document.querySelector('link[rel="canonical"]')?.href;
+            if(!canonical)return false;
+            const canonicalUrl=new URL(canonical),eventUrl=new URL(${eventUrl});
+            if(!['http:','https:'].includes(canonicalUrl.protocol)||canonicalUrl.hostname!==eventUrl.hostname||
+              canonicalUrl.pathname!==eventUrl.pathname||canonicalUrl.search||canonicalUrl.hash)return false;
+          }
+          const matches=[];
+          for(const script of document.querySelectorAll(${isNfl?"'.theatre1 script[type=\"text/template\"]'":"'script[type=\"text/template\"]'"})){
+            const frames=new DOMParser().parseFromString(script.textContent,'text/html').querySelectorAll('iframe[src]');
+            if(frames.length===1&&frames[0].getAttribute('src')===${selectedUrl})matches.push(frames[0].getAttribute('src'));
+          }
+          for(const frame of document.querySelectorAll(${isNfl?"'.theatre1 iframe[src]'":"'iframe[src]'"})){
+            if(frame.getAttribute('src')===${selectedUrl})matches.push(frame.getAttribute('src'));
+          }
+          if(matches.length!==1)return false;
+          for(const frame of document.querySelectorAll('iframe'))frame.remove();
+          const frame=document.createElement('iframe');
+          frame.src=matches[0];frame.width='800';frame.height='450';
+          document.body.prepend(frame);
+          return true;
+        })()`).then(selected=>{if(active===current&&!selected)endActive(current,null);}).catch(()=>{
+          if(active===current)endActive(current,null);
+        });
       });
       window.on('closed',() => { if (active === current) { debug('window closed'); endActive(current,null); } });
     });
     return { promise, cancel: () => endActive(current,null),
-      start: () => { if (active === current) void window.loadURL(url).catch(() => {}); } };
+      start: () => { if (active === current) void window.loadURL(embeddedEventUrl||url).catch(() => {}); } };
   }
 
   async function start() {
@@ -315,9 +508,12 @@ function createObserverSlot(index) {
 
 function createSportsurgeObserver({ controlToken, port = 0 }) {
   const slots = Array.from({ length: OBSERVER_SLOTS },(_,index) => createObserverSlot(index));
+  const media = createObservedMedia({ pinAddress:pinnedAddress,validateUrl:publicUrl });
   const service = http.createServer(async (request,response) => {
-    if (request.method !== 'POST' || request.url !== '/observe') { response.writeHead(404); response.end(); return; }
+    const release = request.method === 'DELETE' && /^\/media\/([a-f0-9-]{36})$/.exec(request.url || '');
+    if (!release && (request.method !== 'POST' || !['/observe','/media'].includes(request.url))) { response.writeHead(404); response.end(); return; }
     if (!authorized(request.headers['x-sunday-control-token'],controlToken)) { response.writeHead(401); response.end(); return; }
+    if (release) { media.close(release[1]); response.writeHead(204); response.end(); return; }
     let operation;
     let closed = false;
     const onClose = () => { closed = true; operation?.cancel(); };
@@ -329,19 +525,31 @@ function createSportsurgeObserver({ controlToken, port = 0 }) {
         if (Buffer.byteLength(body) > 4096) { response.writeHead(413); response.end(); return; }
       }
       const input = JSON.parse(body);
+      if (request.url === '/media') {
+        media.read(input?.capability,input?.url,input?.range,response);
+        return;
+      }
       const url = typeof input?.url === 'string' && publicUrl(input.url);
       const purpose = input?.purpose === undefined ? 'playback' : input.purpose;
-      if (!url || purpose !== 'probe' && purpose !== 'playback') { response.writeHead(400); response.end(); return; }
+      const embeddedEvent = input?.embeddedEventUrl === undefined ? undefined :
+        typeof input.embeddedEventUrl === 'string' && publicUrl(input.embeddedEventUrl);
+      if (!url || purpose !== 'probe' && purpose !== 'playback' ||
+        input?.embeddedEventUrl !== undefined && !embeddedEvent ||
+        embeddedEvent && !(
+          embeddedEvent.hostname==='nflstreams.org'&&url.hostname==='piratecat.store'||
+          embeddedEvent.hostname==='ms.buffstream.io'&&url.hostname==='embedsports.me')) {
+        response.writeHead(400); response.end(); return;
+      }
       for (const slot of slots) {
-        operation = slot.observe(url.href,purpose);
+        operation = slot.observe(url.href,purpose,embeddedEvent?.href);
         if (operation) break;
       }
       if (!operation && purpose === 'playback') {
         const victim = slots.find(slot => slot.preemptProbe());
-        if (victim) operation = victim.observe(url.href,purpose);
+        if (victim) operation = victim.observe(url.href,purpose,embeddedEvent?.href);
       }
       if (!operation) { response.writeHead(429); response.end(); return; }
-      await pinnedAddress(url.hostname);
+      await pinnedAddress((embeddedEvent||url).hostname,() => !closed);
       if (closed) return;
       operation.start();
       const result = await operation.promise;
@@ -349,8 +557,11 @@ function createSportsurgeObserver({ controlToken, port = 0 }) {
       if (closed) return;
       if (result?.deferred) { response.writeHead(503); response.end(); return; }
       if (result === null) { response.writeHead(404); response.end(); return; }
+      const capability = await media.register(result);
+      if (!capability) { response.writeHead(503); response.end(); return; }
+      if (response.destroyed) { media.close(capability); return; }
       response.writeHead(200,{ 'content-type':'application/json', 'cache-control':'no-store' });
-      response.end(JSON.stringify(result));
+      response.end(JSON.stringify({url:result.url,referer:result.referer,userAgent:result.userAgent,capability}));
     } catch {
       operation?.cancel();
       if (!response.headersSent) response.writeHead(400);
@@ -369,10 +580,11 @@ function createSportsurgeObserver({ controlToken, port = 0 }) {
     } catch (error) { stop(); throw error; }
   }
   function stop() {
+    media.stop();
     if (service.listening) service.close();
     for (const slot of slots) slot.stop();
   }
   return { start, stop };
 }
 
-module.exports = { createSportsurgeObserver };
+module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, aianimalvibesPlayer };

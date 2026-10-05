@@ -83,6 +83,7 @@ test('Sportsurge bounds redirects and page extraction', async () => {
 });
 
 test('Sportsurge uses the private browser observer when static HTML has no HLS', async () => {
+  const capability='11111111-1111-4111-8111-111111111111';
   const requests: Array<{ path: string | undefined; token: string | undefined; body: string }> = [];
   const server = createServer((request, response) => {
     const parts: Uint8Array[] = [];
@@ -90,8 +91,14 @@ test('Sportsurge uses the private browser observer when static HTML has no HLS',
     request.on('end', () => {
       requests.push({ path: request.url, token: request.headers['x-sunday-control-token']?.toString(),
         body: Buffer.concat(parts).toString('utf8') });
-      response.setHeader('Content-Type', 'application/json');
-      response.end(JSON.stringify({ url: 'https://cdn.example/live/index.m3u8', referer: 'https://provider.example/embed',userAgent:'Observed Chromium/1.0' }));
+      if(request.url==='/media') {
+        const input=JSON.parse(Buffer.concat(parts).toString('utf8'));
+        response.setHeader('Content-Type',input.url.endsWith('.m3u8')?'application/vnd.apple.mpegurl':'video/mp2t');
+        response.end(input.url.endsWith('.m3u8')?'#EXTM3U\n#EXTINF:4,\nsegment.ts':'segment');
+      } else {
+        response.setHeader('Content-Type', 'application/json');
+        response.end(JSON.stringify({ url: 'https://cdn.example/live/index.m3u8', referer: 'https://provider.example/embed',userAgent:'Observed Chromium/1.0',capability }));
+      }
     });
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -102,25 +109,85 @@ test('Sportsurge uses the private browser observer when static HTML has no HLS',
   process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN = `http://127.0.0.1:${address.port}`;
   process.env.SUNDAY_ROOM_CONTROL_TOKEN = 'test-control-token';
   try {
-    const headers:Headers[]=[];
-    const playback = await sportsurgeV2Provider(async (url,_signal,requestHeaders) => {
-      if(url.hostname==='cdn.example') {
-        headers.push(requestHeaders);
-        return new Response(url.pathname.endsWith('.m3u8')?'#EXTM3U\n#EXTINF:4,\nsegment.ts':'segment',
-          {headers:{'Content-Type':url.pathname.endsWith('.m3u8')?'application/vnd.apple.mpegurl':'video/mp2t'}});
-      }
+    const playback = await sportsurgeV2Provider(async () => {
       return new Response('<div>No stream in static HTML</div>',{headers:{'Content-Type':'text/html'}});
     }).open(locator, new AbortController().signal);
     assert.equal(playback.root.identity, 'https://cdn.example/live/index.m3u8');
     const rootRead=await playback.root.read({signal:AbortSignal.timeout(1000)});
-    await rootRead.body?.cancel();
+    assert.equal(await new Response(rootRead.body).text(),'#EXTM3U\n#EXTINF:4,\nsegment.ts');
     const segment=playback.root.resolve('segment.ts','media');
     assert.ok(segment);
     const segmentRead=await segment.read({signal:AbortSignal.timeout(1000)});
-    await segmentRead.body?.cancel();
-    assert.equal(headers.length,2);
-    assert.ok(headers.every(value=>value.get('user-agent')==='Observed Chromium/1.0'&&value.get('referer')==='https://provider.example/embed'));
-    assert.deepEqual(requests, [{ path: '/observe', token: 'test-control-token', body: JSON.stringify({ url: locator.url, purpose:'playback' }) }]);
+    assert.equal(await new Response(segmentRead.body).text(),'segment');
+    assert.deepEqual(requests, [
+      { path: '/observe', token: 'test-control-token', body: JSON.stringify({ url: locator.url, purpose:'playback' }) },
+      { path: '/media', token: 'test-control-token', body: JSON.stringify({capability,url:'https://cdn.example/live/index.m3u8'}) },
+      { path: '/media', token: 'test-control-token', body: JSON.stringify({capability,url:'https://cdn.example/live/segment.ts'}) },
+    ]);
+    playback.close();
+    await assert.rejects(playback.root.read({signal:AbortSignal.timeout(1000)}),/session is closed/);
+  } finally {
+    if (previousOrigin === undefined) delete process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN;
+    else process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN = previousOrigin;
+    if (previousToken === undefined) delete process.env.SUNDAY_ROOM_CONTROL_TOKEN;
+    else process.env.SUNDAY_ROOM_CONTROL_TOKEN = previousToken;
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
+
+test('Sportsurge browser fallback starts at the sole published Sportspatrika player', async () => {
+  const outer = 'https://socowatch.site/14748/0/cfb/93';
+  const player = 'https://embed.sportspatrika.com/live/embed.php?ch=es168';
+  const channel = 'https://embed.sportspatrika.com/live/channel.php?ch=es168';
+  const observed: Array<{ url: string; purpose: string }> = [];
+  const server = createServer((request, response) => {
+    const parts: Uint8Array[] = [];
+    request.on('data', part => parts.push(part));
+    request.on('end', () => {
+      if (request.url === '/observe') {
+        observed.push(JSON.parse(Buffer.concat(parts).toString('utf8')));
+        response.setHeader('Content-Type', 'application/json');
+        response.end(JSON.stringify({ url: 'https://cdn.example/live/index.m3u8',
+          referer: player, userAgent: 'Observed Chromium/1.0',
+          capability: '11111111-1111-4111-8111-111111111111' }));
+      } else { response.statusCode = 204; response.end(); }
+    });
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const previousOrigin = process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN;
+  const previousToken = process.env.SUNDAY_ROOM_CONTROL_TOKEN;
+  process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN = `http://127.0.0.1:${address.port}`;
+  process.env.SUNDAY_ROOM_CONTROL_TOKEN = 'test-control-token';
+  try {
+    const cases = [
+      { html: `<iframe src="${player}"></iframe>`, expected: player },
+      { html: '<iframe src="https://ch.aianimalvibes.com/football/728"></iframe>', expected: 'https://ch.aianimalvibes.com/football/728' },
+      { html: '<iframe src="https://ch.aianimalvibes.com/football/728"></iframe><iframe src="https://ads.example/"></iframe>', expected: outer },
+      { html: '<iframe src="https://ch.aianimalvibes.com.evil.example/football/728"></iframe>', expected: outer },
+      { html: '<iframe src="https://ch.aianimalvibes.com/football/728?other=1"></iframe>', expected: outer },
+      { html: `<iframe src="${player}"></iframe><iframe src="https://embed.sportspatrika.com/live/embed.php?ch=es169"></iframe>`, expected: outer },
+      { html: '<iframe src="https://other.example/live/embed.php?ch=es168"></iframe>', expected: outer },
+      { html: '<iframe src="https://embed.sportspatrika.com.evil.example/live/embed.php?ch=es168"></iframe>', expected: outer },
+      { html: '<iframe src="http://embed.sportspatrika.com/live/embed.php?ch=es168"></iframe>', expected: outer },
+      { html: '<iframe src="https://user@embed.sportspatrika.com/live/embed.php?ch=es168"></iframe>', expected: outer },
+      { html: '<iframe src="https://127.0.0.1/live/embed.php?ch=es168"></iframe>', expected: outer },
+      { html: '<iframe src="https://embed.sportspatrika.com/live/embed.php?ch=es168#player"></iframe>', expected: outer },
+      { html: `<iframe src="${channel}"></iframe>`, expected: outer },
+      { html: '<iframe src="https://embed.sportspatrika.com/live/embed.php?ch=esABC"></iframe>', expected: outer },
+      { html: '<iframe src="https://embed.sportspatrika.com/live/embed.php?ch=es168&other=1"></iframe>', expected: outer },
+      { html: '<iframe src="https://embed.sportspatrika.com/live/embed.php?ch=es168&ch=es169"></iframe>', expected: outer },
+    ];
+    for (const scenario of cases) {
+      const requester = async (url: URL): Promise<Response> => new Response(url.href === outer ? scenario.html :
+        url.href === player ? `<iframe src="${channel}"></iframe>` : '<div>Static page has no HLS</div>',
+        { headers: { 'Content-Type': 'text/html' } });
+      const playback = await sportsurgeV2Provider(requester).open({ ...locator, url: outer }, new AbortController().signal);
+      assert.equal(playback.root.identity, 'https://cdn.example/live/index.m3u8');
+      assert.deepEqual(observed.at(-1), { url: scenario.expected, purpose: 'playback' }, scenario.html);
+      playback.close();
+    }
   } finally {
     if (previousOrigin === undefined) delete process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN;
     else process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN = previousOrigin;

@@ -49,14 +49,14 @@ test('source snapshot retains stale live listings without counting them as compa
     observed('tvapp:unsafe','tvapp','https://edgestream4.pro/hls/private.m3u8?st=secret',['Florida Gators','Ole Miss Rebels']),
   ];
   const snapshot=sourceInventory({at,revision:7,lastDiscoveryAt:at-1000,sources,observations,
-    availability:()=>({kind:'playable',proof:'media',checkedAt:at,expiresAt:at+600_000}),
+    availability:()=>({kind:'playable',proof:'media',checkedAt:at}),
     games:[florida,georgia,finished],candidates:new Map([[florida.id,[candidate('gooz-57069',['tvapp','sportsurge','old-source']),
       candidate('gooz-57069',['tvapp']),candidate('old',['tvapp'],at-31*60_000)]]]),
     attempts:{tvapp:{at,outcome:'parsed'},sportsurge:{at,outcome:'failed'}},browserCollectorsAvailable:false,
     sportsurgeCatalog:{current:null,lastComplete:null,previous:null},streameastCatalog:{current:null,lastComplete:null,previous:null}});
   assert.equal(SourcesSnapshotSchema.safeParse(snapshot).success,true);
   assert.equal(snapshot.browserCollectorsAvailable,false);
-  assert.equal(snapshot.sources[0].listingCount,8);
+  assert.equal(snapshot.sources[0].listingCount,7);
   assert.equal(snapshot.sources[0].staleListingCount,1);
   assert.equal(snapshot.sources[0].links.find(link=>link.url==='https://tvapp1.com/watch/stale')?.freshness,'stale-live');
   assert.ok(snapshot.sources[0].links.some(link=>link.url===first+'?channel=backup'));
@@ -85,13 +85,13 @@ test('scheduled games publish fresh selectable servers without exposing locators
   const fresh={...candidate('fresh',['sportsurge-v2']),gameId:scheduled.id};
   const stale={...candidate('stale',['sportsurge-v2'],at-31*60_000),gameId:scheduled.id};
   const snapshot=sourceInventory({at,revision:1,lastDiscoveryAt:null,browserCollectorsAvailable:true,
-    availability:()=>({kind:'playable',proof:'media',checkedAt:at,expiresAt:at+600_000}),
+    availability:()=>({kind:'playable',proof:'media',checkedAt:at}),
     sources:[],observations:[],games:[scheduled,finished],candidates:new Map([[scheduled.id,[fresh,stale]],
       [finished.id,[{...fresh,gameId:finished.id}]]]),attempts:{},
     sportsurgeCatalog:{current:null,lastComplete:null,previous:null},streameastCatalog:{current:null,lastComplete:null,previous:null}});
   assert.equal(SourcesSnapshotSchema.safeParse(snapshot).success,true);
   assert.deepEqual(snapshot.games.map(game=>game.gameId),[scheduled.id]);
   assert.deepEqual(snapshot.games[0].candidates,[{id:fresh.id,gameId:scheduled.id,label:fresh.label,
-    sourceIds:fresh.sourceIds,observedAt:fresh.observedAt,availability:{kind:'playable',proof:'media',checkedAt:at,expiresAt:at+600_000}}]);
+    sourceIds:fresh.sourceIds,observedAt:fresh.observedAt,availability:{kind:'playable',proof:'media',checkedAt:at}}]);
   assert.equal(JSON.stringify(snapshot).includes('playerId'),false);
 });

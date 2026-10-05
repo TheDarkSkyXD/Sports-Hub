@@ -82,7 +82,7 @@ test('every distinct detail is visited beyond the generic 80-slot budget and a l
   assert.equal(result.events[84].detail.kind,'failed');
   assert.equal(result.state.kind,'partial');
   assert.equal(checkpoints.at(-1)?.events.length,85);
-  assert.equal(checkpoints.length,89);
+  assert.equal(checkpoints.length,174);
   const verified=SportsurgeCatalogSchema.safeParse(checkpoints.at(-1));
   assert.equal(verified.success,true);
 });
@@ -182,7 +182,7 @@ test('every safe provider row becomes a stable custom-player candidate through p
   assert.deepEqual(sportsurgeCandidates({...input,current:{catalog:staleDetail,receivedAt:at+30_000},lastComplete:stored})
     .map(candidate=>candidate.id),candidates.map(candidate=>candidate.id));
   const inventoryInput={at:at+60_000,revision:1,lastDiscoveryAt:null,browserCollectorsAvailable:false,
-    availability:()=>({kind:'playable' as const,proof:'media' as const,checkedAt:at,expiresAt:at+600_000}),
+    availability:()=>({kind:'playable' as const,proof:'media' as const,checkedAt:at}),
     sources:[{id:'sportsurge-v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'browser-catalog' as const}],
     observations:[],games:[live],candidates:new Map([[live.id,candidates]]),attempts:{},
     sportsurgeCatalog:{current:{catalog:partial,receivedAt:at+30_000},previous:null,lastComplete:stored},
@@ -197,6 +197,38 @@ test('every safe provider row becomes a stable custom-player candidate through p
     current:{catalog:completedEmpty,receivedAt:at+60_000}}}).sources[0].listingCount,0);
   assert.equal(sportsurgeCandidates({...input,games:[{...live,status:'post',lifecycle:'final',finalObservedAt:at,graceEndsAt:at+300_000}]}).length,0);
   assert.equal(sportsurgeCandidates({...input,now:at+30*60_000}).length,0);
+});
+
+test('a source live flag matches the unique scheduled game only near kickoff',()=>{
+  const event=parseCategory(fixture('cfb'),'ncaaf').events[0];
+  event.detail=parseDetail(fixture('detail'),event,at);
+  const catalog:SportsurgeCatalog={runId,sequence:0,startedAt:at,state:{kind:'complete',at},
+    categories:{ncaaf:{kind:'collected',at},nfl:{kind:'collected',at}},events:[event],rejectedGames:[],catalogIssues:[]};
+  const stored={catalog,receivedAt:at};
+  const team=(name:string,id:string)=>({id,name,short:name,abbreviation:name.slice(0,3),color:'112233',score:'0'});
+  const game:Game={id:'ncaaf-999',league:'ncaaf',name:'Delaware at Virginia',date:new Date(at).toISOString(),
+    home:team('Virginia Cavaliers','espn:ncaaf:258'),away:team('Delaware Blue Hens','espn:ncaaf:48'),status:'pre',lifecycle:'scheduled',
+    detail:'Scheduled',redzone:false,partitions:['fcs']};
+  const candidates=sportsurgeCandidates({current:stored,previous:null,lastComplete:null,games:[game],now:at+6*60_000});
+  assert.equal(candidates.length,17);
+  const inventory=sourceInventory({at:at+6*60_000,revision:1,lastDiscoveryAt:null,browserCollectorsAvailable:true,
+    availability:()=>({kind:'playable',proof:'media',checkedAt:at}),
+    sources:[{id:'sportsurge-v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'browser-catalog'}],
+    observations:[],games:[game],candidates:new Map([[game.id,candidates]]),attempts:{},
+    sportsurgeCatalog:{current:stored,previous:null,lastComplete:null},
+    streameastCatalog:{current:null,previous:null,lastComplete:null}});
+  assert.equal(inventory.sources[0].matchedGameCount,1);
+  assert.equal(inventory.sources[0].compatibleFeedCount,17);
+  assert.equal(inventory.sportsurgeV2.current?.games[0].gameId,game.id);
+  for(const date of [at-31*60_000,at+31*60_000]) {
+    const other={...game,date:new Date(date).toISOString()};
+    assert.equal(sportsurgeCandidates({current:stored,previous:null,lastComplete:null,games:[other],now:at}).length,0);
+  }
+  assert.equal(sportsurgeCandidates({current:stored,previous:null,lastComplete:null,games:[{...game,date:undefined}],now:at}).length,0);
+  const duplicate={...game,id:'ncaaf-other'};
+  assert.equal(sportsurgeCandidates({current:stored,previous:null,lastComplete:null,games:[game,duplicate],now:at}).length,0);
+  const upcoming:SportsurgeCatalog={...catalog,events:[{...event,sourceStatus:'upcoming'}]};
+  assert.equal(sportsurgeCandidates({current:{catalog:upcoming,receivedAt:at},previous:null,lastComplete:null,games:[game],now:at}).length,0);
 });
 
 test('an accepted v2 checkpoint opens and authorizes a custom-player session',async()=>{
@@ -217,7 +249,8 @@ test('an accepted v2 checkpoint opens and authorizes a custom-player session',as
   let clock=at+60_000;
   store.savePartition('fcs',{games:scheduled,at});
   const coordinator=new FootballCoordinator({store,browserCollectorsAvailable:false,
-    schedules:[{id:'fcs',league:'ncaaf',path:'',group:null}],sources:[],
+    schedules:[{id:'fcs',league:'ncaaf',path:'',group:null}],
+    sources:[{id:'sportsurge-v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'browser-catalog'}],
     readSchedule:async()=>({games:scheduled,at:clock,league:'ncaaf'}),
     readSeasonMembership:async()=>{throw new Error('unused');},
     readHtml:async()=>{throw new Error('unused');},
@@ -228,8 +261,8 @@ test('an accepted v2 checkpoint opens and authorizes a custom-player session',as
   try {
     const catalog:SportsurgeCatalog={runId,sequence:0,startedAt:at,state:{kind:'complete',at},
       categories:{ncaaf:{kind:'collected',at},nfl:{kind:'collected',at}},events:[event,otherEvent],rejectedGames:[],catalogIssues:[]};
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'ok'});
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'ok'});
+    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'catalog-ack',skipDetailEventIds:[]});
+    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'catalog-ack',skipDetailEventIds:[]});
     clock=at+89_000;
     const freshInventory=await coordinator.command({kind:'sources'});
     assert.equal(freshInventory.kind,'sources');
@@ -311,7 +344,8 @@ function probeFixture(probeCandidate:FootballDependencies['probeCandidate']) {
     status:'in',lifecycle:'live',detail:'Q2',redzone:false,partitions:['fcs']};
   const clock={value:at+60_000};
   store.savePartition('fcs',{games:[game],at:clock.value});
-  const coordinator=new FootballCoordinator({store,schedules:[{id:'fcs',league:'ncaaf',path:'',group:null}],sources:[],
+  const coordinator=new FootballCoordinator({store,schedules:[{id:'fcs',league:'ncaaf',path:'',group:null}],
+    sources:[{id:'sportsurge-v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'browser-catalog'}],
     readSchedule:async()=>({games:[game],at:clock.value,league:'ncaaf'}),readSeasonMembership:async()=>{throw new Error('unused');},
     readHtml:async()=>{throw new Error('unused');},parseListings:()=>({observations:[],outcome:'empty'}),
     enrichObservation:observation=>observation,compatiblePlayers:()=>[],retryAfterMs:()=>0,probeCandidate,
@@ -325,7 +359,7 @@ test('an obsolete saved game does not block checks for a listed game',async()=>{
   let probes=0;
   const {dir,coordinator,game,catalog}=probeFixture(async()=>{probes++;return {kind:'playable',proof:'media'};});
   try {
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'ok'});
+    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'catalog-ack',skipDetailEventIds:[]});
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:['obsolete-game',game.id],retry:false}),{kind:'ok'});
     await new Promise<void>(resolve=>setImmediate(resolve));
     const sources=await coordinator.command({kind:'sources'});
@@ -343,7 +377,7 @@ test('an obsolete saved game does not block checks for a listed game',async()=>{
   } finally {await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
 });
 
-test('availability gates open and switch while an active session survives probe expiry',async()=>{
+test('availability gates open and switch while unchanged proof survives its old expiry window',async()=>{
   let resolveFirst!:(result:CandidateProbeResult)=>void;
   const firstProbe=new Promise<CandidateProbeResult>(resolve=>{resolveFirst=resolve;});
   let calls=0;
@@ -354,7 +388,7 @@ test('availability gates open and switch while an active session survives probe 
   });
   const {coordinator,clock,game,catalog,dir}=setup;
   try {
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'ok'});
+    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'catalog-ack',skipDetailEventIds:[]});
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[game.id],retry:false}),{kind:'ok'});
     await new Promise<void>(resolve=>setImmediate(resolve));
     const checking=await coordinator.command({kind:'sources'});
@@ -393,10 +427,11 @@ test('availability gates open and switch while an active session survives probe 
     if(beforeExpiry.kind==='sources')assert.equal(beforeExpiry.snapshot.games.find(row=>row.gameId===game.id)?.candidates.find(row=>row.id===playable.id)?.availability.kind,'playable');
     clock.value++;
     await coordinator.refresh(true);
-    const afterExpiry=await coordinator.command({kind:'sources'});
-    assert.equal(afterExpiry.kind,'sources');
-    if(afterExpiry.kind==='sources')assert.notEqual(afterExpiry.snapshot.games.find(row=>row.gameId===game.id)?.candidates.find(row=>row.id===playable.id)?.availability.kind,'playable');
-    assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false})).kind,'error');
+    const retained=await coordinator.command({kind:'sources'});
+    assert.equal(retained.kind,'sources');
+    if(retained.kind==='sources')assert.equal(retained.snapshot.games.find(row=>row.gameId===game.id)?.candidates.find(row=>row.id===playable.id)?.availability.kind,'playable');
+    assert.equal(calls,1,'unchanged playable route needs no second media check');
+    assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false})).kind,'playback');
     assert.equal((await coordinator.command({kind:'authorize',sessionId:opened.playback.session.id,candidateId:playable.id,generation:0})).kind,'authorized');
   } finally {await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
 });
@@ -413,7 +448,7 @@ test('a replaced catalog cancels its probe and ignores a late playable result',a
     const empty:SportsurgeCatalog={...catalog,runId:'22222222-2222-4222-8222-222222222222',startedAt:at+60_000,
       sequence:0,state:{kind:'complete',at:at+60_000},
       categories:{ncaaf:{kind:'collected',at:at+60_000},nfl:{kind:'collected',at:at+60_000}},events:[]};
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:empty}),{kind:'ok'});
+    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:empty}),{kind:'catalog-ack',skipDetailEventIds:[]});
     resolveProbe({kind:'playable',proof:'media'});
     await new Promise<void>(resolve=>setImmediate(resolve));
     const sources=await coordinator.command({kind:'sources'});
@@ -421,5 +456,57 @@ test('a replaced catalog cancels its probe and ignores a late playable result',a
     if(sources.kind==='sources')assert.equal(sources.snapshot.games.find(row=>row.gameId===game.id)?.candidates.length||0,0);
     const board=await coordinator.command({kind:'board'});
     if(board.kind==='board')assert.equal(board.board.games.find(row=>row.id===game.id)?.sourceUrl,undefined);
+  } finally {await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a duplicate Sportsurge ID skips only the out-of-window detail URL',async()=>{
+  const clock=Date.parse('2026-10-03T23:30:00Z');
+  const later=clock+7*24*60*60_000;
+  const eligibleUrl='https://v2.sportsurge.net/watch-10001-cfb-alpha-beta/';
+  const excludedUrl='https://v2.sportsurge.net/watch-10001-cfb-gamma-delta/';
+  const team=(name:string)=>({id:`espn:${name}`,name,short:name,abbreviation:name.slice(0,3),color:'112233',score:'0'});
+  const game=(id:string,away:string,home:string,date:number):Game=>({id,league:'ncaaf',name:`${away} at ${home}`,
+    date:new Date(date).toISOString(),away:team(away),home:team(home),status:'pre',lifecycle:'scheduled',
+    detail:'Scheduled',redzone:false,partitions:['fcs']});
+  const games=[game('ncaaf-eligible','Alpha','Beta',clock),game('ncaaf-future','Gamma','Delta',later)];
+  const row=(url:string,away:string,home:string,date:number)=>`<a class="match-row" href="${url}">`+
+    `<span class="match-row-team-name">${away}</span><span class="match-row-team-name">${home}</span>`+
+    `<span class="match-time" data-timestamp="${Math.floor(date/1000)}"></span></a>`;
+  const category=`<main id="match-list-container">${row(eligibleUrl,'Alpha','Beta',clock)}`+
+    `${row(excludedUrl,'Gamma','Delta',later)}</main>`;
+  assert.equal(parseCategory(category,'ncaaf').catalogIssues[0]?.reason,'duplicate-game-id');
+  const dir=mkdtempSync(join(tmpdir(),'sportsurge-duplicate-window-'));
+  const store=new FootballStore(join(dir,'state.sqlite'));
+  store.savePartition('fcs',{games,at:clock});
+  const coordinator=new FootballCoordinator({store,browserCollectorsAvailable:false,
+    schedules:[{id:'fcs',league:'ncaaf',path:'',group:null}],
+    sources:[{id:'sportsurge-v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'browser-catalog'}],
+    readSchedule:async()=>({games,at:clock,league:'ncaaf'}),readSeasonMembership:async()=>{throw new Error('unused');},
+    readHtml:async()=>{throw new Error('unused');},parseListings:()=>({observations:[],outcome:'empty'}),
+    enrichObservation:observation=>observation,compatiblePlayers:()=>[],retryAfterMs:()=>0,
+    probeCandidate:async()=>({kind:'playable',proof:'media'}),now:()=>clock,id:()=>runId});
+  const reads:string[]=[];
+  const acknowledgedUrls:string[]=[];
+  try {
+    const result:SportsurgeCatalog=await runSportsurgeSweep({
+      read:async(url:string,page:string)=>{
+        reads.push(url);
+        if(page==='category')return url===CATEGORY_URLS.ncaaf?category:
+          '<main id="match-list-container"><div class="watch-empty-state">No live or upcoming games</div></main>';
+        assert.equal(url,eligibleUrl);
+        return fixture('detail');
+      },
+      send:async(catalog:SportsurgeCatalog)=>{
+        const reply=await coordinator.command({kind:'sportsurge-catalog',catalog});
+        assert.equal(reply.kind,'catalog-ack');
+        if(reply.kind==='catalog-ack')acknowledgedUrls.push(...(reply.skipDetailEventUrls||[]));
+        return reply;
+      },
+      signal:new AbortController().signal,now:()=>clock,runId,
+    });
+    assert.ok(acknowledgedUrls.includes(excludedUrl));
+    assert.deepEqual(reads.filter(url=>url===eligibleUrl||url===excludedUrl),[eligibleUrl]);
+    assert.deepEqual(result.events.map(event=>event.url),[eligibleUrl]);
+    assert.equal(result.events[0].detail.kind,'collected');
   } finally {await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
 });

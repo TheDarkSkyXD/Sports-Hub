@@ -53,6 +53,34 @@ test('probe decrypts AES-128 and rejects valid ciphertext containing non-media',
   }
 });
 
+test('probe rejects an AES segment with a missing final block',async()=>{
+  const key=Buffer.alloc(16,4),iv=Buffer.alloc(16);iv[15]=8;
+  const cipher=createCipheriv('aes-128-cbc',key,iv);
+  const encrypted=Buffer.concat([cipher.update(transportStream),cipher.final()]);
+  const run=fixture({'index.m3u8':playlist('#EXT-X-MEDIA-SEQUENCE:8\n#EXT-X-KEY:METHOD=AES-128,URI="key"\n'),
+    key,'segment.ts':encrypted.subarray(0,-16)});
+  assert.deepEqual(await probeCandidate(locator,signal(),run.open),{kind:'unavailable',reason:'invalid-media'});
+});
+
+test('probe rejects a truncated segment even when its opening signature is valid',async()=>{
+  const run=fixture({'index.m3u8':playlist(),'segment.ts':transportStream});
+  const open=async()=>{
+    const playback=await run.open();
+    const resource=(item:ProviderResource):ProviderResource=>({
+      ...item,
+      resolve(reference,kind){const resolved=item.resolve(reference,kind);return resolved?resource(resolved):null;},
+      async read(input){
+        const result=await item.read(input);
+        return item.identity==='segment.ts'
+          ? {...result,body:new Response(transportStream.subarray(0,188*3)).body,contentLength:String(transportStream.length)}
+          : result;
+      },
+    });
+    return {...playback,root:resource(playback.root)};
+  };
+  assert.deepEqual(await probeCandidate(locator,signal(),open),{kind:'unavailable',reason:'invalid-media'});
+});
+
 test('probe applies the key state at the chosen segment and METHOD=NONE clears encryption',async()=>{
   const run=fixture({'index.m3u8':'#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="old-key"\n#EXT-X-KEY:METHOD=NONE\n#EXTINF:4,\nsegment.ts\n','segment.ts':transportStream});
   assert.deepEqual(await probeCandidate(locator,signal(),run.open),{kind:'playable',proof:'media'});
@@ -72,6 +100,51 @@ test('probe chooses video rather than an audio-only low variant and checks alter
     'video.m3u8':playlist(),'segment.ts':transportStream,'audio.m3u8':'#EXTM3U\n#EXTINF:4,\naudio.aac\n','audio.aac':Buffer.from([0xff,0xf1,0x50,0x80,0,0,0])});
   assert.deepEqual(await probeCandidate(locator,signal(),run.open),{kind:'playable',proof:'media'});
   assert.deepEqual(run.reads.map(read=>read.uri),['index.m3u8','video.m3u8','segment.ts','audio.m3u8','audio.aac']);
+});
+
+test('probe verifies the smallest video rendition without waiting for a slow larger rendition',async()=>{
+  const master='#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=200,CODECS="avc1.42e01e",RESOLUTION=640x360\nlow.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=5000000,CODECS="avc1.42e01e",RESOLUTION=1920x1080\nhigh.m3u8\n';
+  const run=fixture({'index.m3u8':master,'low.m3u8':'#EXTM3U\n#EXTINF:4,\nlow.ts\n','low.ts':transportStream,
+    'high.m3u8':'#EXTM3U\n#EXTINF:4,\nhigh.ts\n','high.ts':transportStream});
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),500);
+  try {
+    const open=async()=>{
+      const playback=await run.open();
+      const root=playback.root;
+      const resource=(item:ProviderResource):ProviderResource=>({
+        ...item,
+        resolve(reference,kind){const resolved=item.resolve(reference,kind);return resolved?resource(resolved):null;},
+        async read(input){
+          if(item.identity==='high.ts') await new Promise<never>((_,reject)=>{
+            input.signal.addEventListener('abort',()=>reject(input.signal.reason),{once:true});
+          });
+          return item.read(input);
+        },
+      });
+      return {...playback,root:resource(root)};
+    };
+    assert.deepEqual(await probeCandidate(locator,controller.signal,open),{kind:'playable',proof:'media'});
+    assert.deepEqual(run.reads.map(read=>read.uri),['index.m3u8','low.m3u8','low.ts']);
+  } finally {clearTimeout(timeout);}
+});
+
+test('probe falls back to a larger video rendition when the smallest has invalid media',async()=>{
+  const run=fixture({'index.m3u8':'#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=200,CODECS="avc1.42e01e",RESOLUTION=640x360\nlow.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=5000000,CODECS="avc1.42e01e",RESOLUTION=1920x1080\nhigh.m3u8\n',
+    'low.m3u8':'#EXTM3U\n#EXTINF:4,\nlow.ts\n','low.ts':'<html>broken</html>',
+    'high.m3u8':'#EXTM3U\n#EXTINF:4,\nhigh.ts\n','high.ts':transportStream});
+  assert.deepEqual(await probeCandidate(locator,signal(),run.open),{kind:'playable',proof:'media'});
+  assert.deepEqual(run.reads.map(read=>read.uri),['index.m3u8','low.m3u8','low.ts','high.m3u8','high.ts']);
+});
+
+test('probe retries a shared video playlist when the next variant has working audio',async()=>{
+  const run=fixture({'index.m3u8':'#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="broken",NAME="Broken",DEFAULT=YES,URI="broken.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="working",NAME="Working",DEFAULT=YES,URI="working.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=200,RESOLUTION=640x360,AUDIO="broken"\nvideo.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=500,RESOLUTION=640x360,AUDIO="working"\nvideo.m3u8\n',
+    'video.m3u8':'#EXTM3U\n#EXTINF:4,\nvideo.ts\n','video.ts':transportStream,
+    'broken.m3u8':'#EXTM3U\n#EXTINF:4,\nbroken.aac\n','broken.aac':'<html>broken</html>',
+    'working.m3u8':'#EXTM3U\n#EXTINF:4,\nworking.aac\n','working.aac':Buffer.from([0xff,0xf1,0x50,0x80,0,0,0])});
+  assert.deepEqual(await probeCandidate(locator,signal(),run.open),{kind:'playable',proof:'media'});
+  assert.deepEqual(run.reads.map(read=>read.uri),['index.m3u8','video.m3u8','video.ts','broken.m3u8','broken.aac',
+    'video.m3u8','video.ts','working.m3u8','working.aac']);
 });
 
 test('probe rejects cycles and unsupported encryption',async()=>{
