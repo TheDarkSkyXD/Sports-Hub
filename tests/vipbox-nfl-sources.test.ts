@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import { test } from 'node:test';
 import { compatiblePlayers, enrichObservation, parseListings, SOURCES } from '../lib/football/adapters/sources.ts';
-import type { Observation } from '../lib/football/shared.ts';
+import { matchObservation } from '../lib/football/domain/matching.ts';
+import type { Game, Observation } from '../lib/football/shared.ts';
 import { validEventPagePair } from '../lib/playback/providers/event-page-policy.ts';
 
 const slug = 'baltimore-ravens-vs-tennessee-titans';
@@ -20,6 +21,47 @@ const strikeServers = [
   'https://strikeout.im/nfl/3/baltimore-ravens-vs-tennessee-titans-stream',
   'https://strikeout.im/nfl/4/baltimore-ravens-vs-tennessee-titans-stream',
 ];
+
+const peytonAt = Date.parse('2026-10-05T23:01:00Z');
+const peytonGame: Game = {
+  id:'401872979',league:'nfl',name:'Atlanta Falcons at New Orleans Saints',date:'2026-10-06T00:15:00Z',
+  home:{id:'espn:nfl:18',name:'New Orleans Saints',short:'Saints',abbreviation:'NO',color:'d3bc8d',score:'0'},
+  away:{id:'espn:nfl:1',name:'Atlanta Falcons',short:'Falcons',abbreviation:'ATL',color:'a71930',score:'0'},
+  status:'pre',lifecycle:'scheduled',detail:'Scheduled',redzone:false,
+};
+const peytonSlug = 'mnf-with-peyton-and-eli-atlanta-falcons-vs-new-orleans-saints';
+for (const sourceId of ['vipbox-nfl','strikeout-nfl']) {
+  test(`${sourceId} retains the Peyton and Eli alternate for its NFL matchup`, () => {
+    const source = SOURCES.find(item=>item.id===sourceId);
+    assert.ok(source);
+    const vip = sourceId==='vipbox-nfl';
+    const url = vip ? `https://vipbox.fm/onair/nfl/${peytonSlug}` :
+      `https://strikeout.im/nfl/stream-${peytonSlug}-live`;
+    const title = vip ? 'MNF with Peyton and Eli-Atlanta Falcons vs New Orleans Saints' :
+      'MNF with Peyton and Eli-Atlanta Falcons vs. New Orleans Saints';
+    const listing = `<a href="${new URL(url).pathname}" title="${title}"><span content="2026-10-06T01:15">01:15</span> ${title}</a>`;
+    const parsed = parseListings(source,listing,peytonAt);
+    assert.equal(parsed.outcome,'parsed');
+    assert.equal(parsed.observations.length,1);
+    const observation = parsed.observations[0];
+    assert.deepEqual(observation.teams,['Atlanta Falcons','New Orleans Saints'],sourceId);
+    const servers = vip ? [1,2].map(number=>`https://vipbox.fm/live/nfl/${peytonSlug}-${number}`) :
+      [1,2].map(number=>`https://strikeout.im/nfl/${number}/${peytonSlug}-stream`);
+    const heading = vip ? `${title} Streaming Online` : `Live ${title} Streams Online`;
+    const detail = `<meta property="og:url" content="${url}"><h1>${heading}</h1>
+      <script>const siteConfig={"loaded_page":"stream","event_start_ts":1791245700};</script>
+      ${servers.map(server=>`<button data-uri="${new URL(server).pathname}">Stream</button>`).join('')}`;
+    const enriched = enrichObservation(observation,detail);
+    assert.equal(enriched.kickoff,Date.parse(peytonGame.date || ''));
+    assert.deepEqual(matchObservation(enriched,[peytonGame],peytonAt),{kind:'matched',gameId:peytonGame.id},sourceId);
+    assert.deepEqual(compatiblePlayers(peytonGame.id,enriched,detail).map(player=>player.locator),
+      servers.map(serverUrl=>({provider:'event-page',gameId:peytonGame.id,eventUrl:url,serverUrl})),sourceId);
+    assert.deepEqual(compatiblePlayers(peytonGame.id,enriched,detail.replace(heading,
+      vip ? 'Other Team vs New Orleans Saints Streaming Online' : 'Live Other Team vs. New Orleans Saints Streams Online')),[],sourceId);
+    assert.deepEqual(compatiblePlayers(peytonGame.id,enriched,detail.replace(`content="${url}"`,
+      'content="https://other.example/event"')),[],sourceId);
+  });
+}
 
 for (const sourceId of ['vipbox-nfl', 'strikeout-nfl']) {
   test(`${sourceId} extracts every published NFL server after checking page identity and kickoff`, () => {

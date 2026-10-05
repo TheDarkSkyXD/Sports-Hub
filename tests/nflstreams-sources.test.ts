@@ -47,6 +47,14 @@ test('NFLStreams active detail yields six distinct free choices and excludes pai
   assert.deepEqual(compatiblePlayers(game.id,event,detail).map(player=>player.id),players.map(player=>player.id));
 });
 
+test('NFLStreams accepts the published Saints channel identifiers',()=>{
+  const eventUrl='https://nflstreams.org/teams/new-orleans-saints-live/';
+  for(let number=1;number<=6;number++){
+    const serverUrl=`https://piratecat.store/sports/player.php?hd=new-orleans-saints=ch0${number}`;
+    assert.equal(validEventPagePair(eventUrl,serverUrl),true,serverUrl);
+  }
+});
+
 test('NFLStreams rejects a rolled-over detail and unrelated player destinations',()=>{
   const event=parseListings(source,listing,now).observations[0];
   assert.deepEqual(compatiblePlayers(game.id,event,detail.replace('data-kickoff-ts="1791159600000"',
