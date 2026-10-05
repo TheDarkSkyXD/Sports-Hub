@@ -19,8 +19,7 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
       server.username||server.password||server.port||server.hash||server.pathname!=='/sports/player.php'||
       server.href.length>2000||server.searchParams.size!==1)return false;
     const value=server.searchParams.get('hd')||'';
-    return /^\?hd=[A-Za-z0-9-=]{22}$/.test(server.search)&&/^[A-Za-z0-9-]{1,20}=[A-Za-z0-9-]{1,20}$/.test(value)&&
-      value.length===22&&value.includes('-');
+    return server.search===`?hd=${value}`&&/^[A-Za-z0-9-]{1,20}=[A-Za-z0-9-]{1,20}$/.test(value)&&value.includes('-');
   }
   if(eventUrl.startsWith('https://livetv.sx/')||serverUrl.startsWith('https://livetv.sx/')){
     const event=exactPage(eventUrl);

@@ -44,6 +44,7 @@ for (const sourceId of ['vipbox-nfl','strikeout-nfl']) {
     assert.equal(parsed.outcome,'parsed');
     assert.equal(parsed.observations.length,1);
     const observation = parsed.observations[0];
+    assert.equal(observation.title,title,sourceId);
     assert.deepEqual(observation.teams,['Atlanta Falcons','New Orleans Saints'],sourceId);
     const servers = vip ? [1,2].map(number=>`https://vipbox.fm/live/nfl/${peytonSlug}-${number}`) :
       [1,2].map(number=>`https://strikeout.im/nfl/${number}/${peytonSlug}-stream`);

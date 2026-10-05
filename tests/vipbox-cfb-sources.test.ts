@@ -13,3 +13,14 @@ test('VIPBox college schedule reports its published no-match state as empty', ()
   assert.deepEqual(parseListings(source,html,Date.parse('2026-10-05T23:01:00Z')),
     {observations:[],outcome:'empty'});
 });
+
+test('VIPBox college empty marker does not mask unknown markup or another schedule', () => {
+  const college = SOURCES.find(item=>item.id==='vipbox-cfb');
+  const nfl = SOURCES.find(item=>item.id==='vipbox-nfl');
+  assert.ok(college);
+  assert.ok(nfl);
+  const at = Date.parse('2026-10-05T23:01:00Z');
+  assert.equal(parseListings(college,'<main>Schedule unavailable</main>',at).outcome,'parser-changed');
+  assert.equal(parseListings(college,"<h3>No Match's Today for NCAAF</h3>",at).outcome,'parser-changed');
+  assert.equal(parseListings(nfl,"<h3>No Match's Today for NCAAF</h3>",at).outcome,'parser-changed');
+});

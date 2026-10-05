@@ -43,6 +43,10 @@ export const SOURCES = [
   {id:'swac',name:'SWAC TV',url:SWAC_CATALOG_URL,family:'swac',kind:'catalog',publicUrls:['https://tv.swac.org/']},
 ] as const;
 const vipboxSourceIds = new Set<string>(SOURCES.filter(source => source.family === 'vipbox').map(source => source.id));
+function vipboxMatchupTitle(sourceId:string,title:string):string {
+  return sourceId==='vipbox-nfl'||sourceId==='strikeout-nfl'
+    ?title.replace(/^MNF with Peyton and Eli-/,''):title;
+}
 export class SourceFetchError extends Error {
   readonly retryAfterMs?: number;
   constructor(message:string,retryAfterMs?:number) { super(message); this.retryAfterMs=retryAfterMs; }
@@ -209,14 +213,15 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
       if (match.id === 'ppv-nfl-network' && match.title === 'NFL Network' && match.date === 0) continue;
       if (match.date < Date.UTC(2000,0,1) || match.date >= Date.UTC(2100,0,1)) return invalid();
       if (match.date > now+7*86400000) continue;
-      const slug = match.id.startsWith('ppv-') || /^\d+$/.test(match.id) ? match.id : /-(\d+)$/.exec(match.id)?.[1];
-      if (!slug || !/^[a-zA-Z0-9-]{1,120}$/.test(slug)) return invalid();
-      const url = `https://tvapp1.pk/watch/${slug}`;
       const title = match.title.replace(/\s+/g,' ').trim();
       const structured: [string,string] | null = match.teams
         ? [match.teams.home.name.trim(),match.teams.away.name.trim()]
         : null;
       const teams = preferredCatalogTeams(title,structured);
+      if (!teams && !catalogTeams(title)) continue;
+      const slug = match.id.startsWith('ppv-') || /^\d+$/.test(match.id) ? match.id : /-(\d+)$/.exec(match.id)?.[1];
+      if (!slug || !/^[a-zA-Z0-9-]{1,120}$/.test(slug)) return invalid();
+      const url = `https://tvapp1.pk/watch/${slug}`;
       const rawTime = new Date(match.date).toISOString();
       if (!add({id:`${source.id}:${digest(match.id)}`,sourceId:source.id,url,title,teams,
         league:null,kickoff:match.date,rawTime,observedAt:now,parserVersion:2})) return invalid();
@@ -282,7 +287,8 @@ export function parseListings(source: ListingSource, html: string, now: number):
     const textTime = /\d{4}-\d{2}-\d{2}(?:,\s*[a-z]+)?(?:\s*-\s*|[ T])\d{1,2}:\d{2}\s*(?:AM|PM)?\s*ET\b/i.exec(title)?.[0] || '';
     const cleaned = title.replace(textTime,'').replace(/\d{1,2}:\d{2}\s*UTC.*$/i,'')
       .replace(/(?:Live)?Watch\s*→?\s*$/i,'').replace(/^\s*(?:\d{1,2}:\d{2}\s*)?/,'').replace(/\s*\bCH\s*\d+\s*$/i,'');
-    const pair = cleaned.split(/\s+(?:vs\.?|versus|at|@)\s+/i).map(value => value.replace(/^#?\d+\s+/,'').trim());
+    const matchupTitle = vipboxMatchupTitle(source.id,cleaned);
+    const pair = matchupTitle.split(/\s+(?:vs\.?|versus|at|@)\s+/i).map(value => value.replace(/^#?\d+\s+/,'').trim());
     const structuredNames = source.family === 'event'
       ? anchor.find('.ev-side .nm-l').map((_i,node) => $(node).text().trim()).get() : [];
     const rowTeams = source.family === 'buffstream' ? container.find('a[href]').toArray().flatMap(node => {
@@ -320,11 +326,14 @@ export function parseListings(source: ListingSource, html: string, now: number):
         kickoff:conflictingTimeIds.has(id) ? null : previous.kickoff ?? kickoff});
       return;
     }
-    observations.set(id,{id,sourceId:source.id,url,title:teams ? teams.join(' vs ') : title,teams,league,rawTime,kickoff,observedAt:now,parserVersion:2,legacyId:numeric ? `${numeric[1] === 'cfb' ? 'ncaaf-' : ''}source-${numeric[2]}` : undefined});
+    observations.set(id,{id,sourceId:source.id,url,title:matchupTitle!==cleaned ? cleaned : teams ? teams.join(' vs ') : title,teams,league,rawTime,kickoff,observedAt:now,parserVersion:2,legacyId:numeric ? `${numeric[1] === 'cfb' ? 'ncaaf-' : ''}source-${numeric[2]}` : undefined});
   });
   const values = [...observations.values()];
   const knownEmpty = /no matches available right now|sorry, no games scheduled on this date|no (?:live )?(?:games|events) (?:available|scheduled|found)/i.test($('body').text());
-  return {observations:values,outcome:values.length ? 'parsed' : knownEmpty ? 'empty' : source.family === 'unknown' ? 'unsupported' : 'parser-changed'};
+  const vipboxCollegeEmpty = source.id==='vipbox-cfb' && $('meta[property="og:url"]').first().attr('content')===source.url &&
+    (/^No Match'?s Today for NCAAF$/i.test($('h3.card-header').first().text().replace(/\s+/g,' ').trim()) ||
+      /Not able to find any match\/event on NCAAF today\./i.test($('body').text()));
+  return {observations:values,outcome:values.length ? 'parsed' : knownEmpty||vipboxCollegeEmpty ? 'empty' : source.family === 'unknown' ? 'unsupported' : 'parser-changed'};
 }
 
 const streamcenterLink = /^\/api\/stream-link\/iframe\/event-espn-league-football-college-football-(\d{5,12})\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/;
@@ -394,7 +403,7 @@ function vipboxPageTeams(sourceId:string,html:string):[string,string] | null {
   const matchup = sourceId.startsWith('vipbox-') ? /^(.*?) Streaming Online$/i.exec(title)?.[1] :
     sourceId.startsWith('vipboxtv-') ? /^Watch (.*?) Online$/i.exec(title)?.[1] :
     sourceId.startsWith('strikeout-') ? /^Live (.*?) Streams Online$/i.exec(title)?.[1] : undefined;
-  const teams = matchup?.split(/\s+vs\.?\s+/i).map(value=>value.trim());
+  const teams = matchup ? vipboxMatchupTitle(sourceId,matchup).split(/\s+vs\.?\s+/i).map(value=>value.trim()) : null;
   return teams?.length === 2 && teams.every(Boolean) ? [teams[0],teams[1]] : null;
 }
 
