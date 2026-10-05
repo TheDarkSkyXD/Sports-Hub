@@ -545,3 +545,8 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
   }
   return goozPlayers(html);
 }
+
+export async function tvappPlayers(gameId:string,observation:Observation,html:string,_signal:AbortSignal,
+  _read:(url:string,signal:AbortSignal)=>Promise<string>=readPage):Promise<ResolvedPlayer[]> {
+  return compatiblePlayers(gameId,observation,html);
+}

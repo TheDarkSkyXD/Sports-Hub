@@ -87,6 +87,9 @@ export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
   z.object({provider:z.literal('wikisport'),section:z.enum(['0nhl','strm']),playerId:z.string().regex(/^\d{1,4}$/)}),
   z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:ncaaf-)?\d{1,20}$/),
     eventUrl:z.string().url().max(2000),serverUrl:z.string().url().max(2000)}).strict(),
+  z.object({provider:z.literal('tvapp'),gameId:z.string().regex(/^(?:ncaaf-)?\d{1,20}$/),
+    eventUrl:z.string().url().max(2000),source:z.string().regex(/^[a-z0-9-]{1,32}$/),
+    sourceId:z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/),streamNo:z.number().int().min(1).max(100)}).strict(),
 ]);
 export type CandidateLocator = z.infer<typeof CandidateLocatorSchema>;
 export const CandidateSchema = CandidateSummarySchema.omit({availability:true}).extend({locator:CandidateLocatorSchema});
