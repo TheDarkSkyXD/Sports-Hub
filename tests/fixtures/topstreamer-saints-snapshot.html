@@ -1,0 +1,7 @@
+<!doctype html><html><head><title>NFL: Falcons at Saints</title></head><body>
+<video id="video"></video>
+<script>
+var masterinf = {"3_saints.m3u8":{"inf":"#EXT-X-STREAM-INF:BANDWIDTH=500000,CODECS=\"avc1.64001f,mp4a.40.2\",RESOLUTION=416x234","subfolder":"https://cdn.example/live/ephemeral/event/528k/","backupsubfolder":""}};
+var payload = {"name":"saints","renditions":{"3_saints":"#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-TARGETDURATION:10\n#EXT-X-MEDIA-SEQUENCE:100\n#EXT-X-DISCONTINUITY-SEQUENCE:4\n#EXT-X-INDEPENDENT-SEGMENTS\n#EXTINF:6.000,\nhttps://media.example/live/ephemeral/event/528k/segment_a.ts?Expires=9999999999&KeyName=fixture&Signature=fixture-a\n#EXTINF:6.000,\nhttps://media.example/live/ephemeral/event/528k/segment_b.ts?Expires=9999999999&KeyName=fixture&Signature=fixture-b\n#EXTINF:6.000,\nhttps://media.example/live/ephemeral/event/528k/segment_c.ts?Expires=9999999999&KeyName=fixture&Signature=fixture-c"}};
+window.masterinf = masterinf; window.payload = payload;
+</script></body></html>
