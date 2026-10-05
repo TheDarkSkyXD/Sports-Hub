@@ -26,10 +26,13 @@ export const GameSchema = z.discriminatedUnion('lifecycle',[ScheduledGameSchema,
 export const LeagueFeedSchema = z.object({ week: z.number().optional(), scoresAt: z.string().nullable(), sourceAt: z.string().nullable(), errors: z.array(z.string()) });
 export const FinishedGameRetentionMinutesSchema = z.number().int().min(5).max(10080);
 export const DEFAULT_FINISHED_GAME_RETENTION_MINUTES = 1440;
+export const FeedCheckIntervalMinutesSchema = z.number().int().refine(minutes=>[1,5,10,15].includes(minutes));
+export const DEFAULT_FEED_CHECK_INTERVAL_MINUTES = 5;
 export const BoardSchema = z.object({
   schemaVersion: z.literal(2), revision: z.number().int().nonnegative(), games: z.array(GameSchema), updatedAt: z.string(),
   scheduleState: z.enum(['loading','ready']),
   finishedGameRetentionMinutes: FinishedGameRetentionMinutesSchema.default(DEFAULT_FINISHED_GAME_RETENTION_MINUTES),
+  feedCheckIntervalMinutes: FeedCheckIntervalMinutesSchema.default(DEFAULT_FEED_CHECK_INTERVAL_MINUTES),
   leagues: z.object({ nfl: LeagueFeedSchema, ncaaf: LeagueFeedSchema }), aliases: z.record(z.string()),
 });
 export type Team = z.infer<typeof TeamSchema>;
@@ -293,6 +296,7 @@ export type SourcesSnapshot = z.infer<typeof SourcesSnapshotSchema>;
 export const CommandSchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('board')}),
   z.object({kind:z.literal('set-retention'),minutes:FinishedGameRetentionMinutesSchema}),
+  z.object({kind:z.literal('set-feed-check-interval'),minutes:FeedCheckIntervalMinutesSchema}),
   z.object({kind:z.literal('sources')}),
   z.object({kind:z.literal('check-sources'),gameIds:z.array(z.string().min(1).max(100)).min(1).max(4),retry:z.boolean().default(false)}),
   z.object({kind:z.literal('open'),gameId:z.string().min(1).max(100),manual:z.boolean().default(false),requestId:z.string().uuid().optional(),initialCandidateId:z.string().min(1).max(100).optional()}),
@@ -313,7 +317,7 @@ export const ReplySchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('session'),session:SessionSchema,candidates:z.array(CandidateSummarySchema)}),
   z.object({kind:z.literal('authorized'),candidate:CandidateSchema,session:SessionSchema}),
   z.object({kind:z.literal('ok')}),
-  z.object({kind:z.literal('catalog-ack'),skipDetailEventIds:z.array(z.string()),skipDetailEventUrls:z.array(z.string().url()).optional(),reuseDetails:z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('catalog-ack'),skipDetailEventIds:z.array(z.string()),sourceRefreshMs:z.number().int().refine(milliseconds=>[60_000,300_000,600_000,900_000].includes(milliseconds)).optional(),skipDetailEventUrls:z.array(z.string().url()).optional(),reuseDetails:z.discriminatedUnion('kind',[
     z.object({kind:z.literal('sportsurge-v2'),events:z.array(SportsurgeEventSchema)}),
     z.object({kind:z.literal('streameast'),events:z.array(StreameastEventSchema)}),
   ]).optional()}),

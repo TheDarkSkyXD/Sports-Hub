@@ -123,6 +123,7 @@ test('Sportsurge retries failed feeds every five minutes for a scheduled game wi
   let clock = at + 60_000;
   store.savePartition('nfl', { games: [scheduled], at: clock });
   const calls = new Map<string, number>();
+  const callCounts = () => ['nfl-row-1', 'nfl-row-2', 'nfl-row-3'].map(id => calls.get(id) || 0);
   const coordinator = new FootballCoordinator({
     store, now: () => clock, id: () => runId,
     schedules: [{ id: 'nfl', league: 'nfl', path: '', group: null }],
@@ -175,20 +176,21 @@ test('Sportsurge retries failed feeds every five minutes for a scheduled game wi
     assert.deepEqual(first.candidates.map(candidate => [candidate.label, candidate.availability.kind]), [
       ['Sportsurge v2 · Server 1', 'playable'], ['Sportsurge v2 · Server 2', 'unavailable'], ['Sportsurge v2 · Server 3', 'unavailable'],
     ]);
-    const working = first.candidates[0].availability;
+    const working = first.candidates.find(candidate => candidate.label === 'Sportsurge v2 · Server 1');
+    assert.ok(working);
 
     advance(6 * 60_000);
     await publish(initial);
     const recovered = await row();
     assert.equal(recovered.workingChoiceCount, 2, 'working feeds must recover after the failed check cooldown');
-    assert.deepEqual([...calls.values()], [1, 2, 2]);
-    assert.deepEqual(recovered.candidates[0].availability, working);
+    assert.deepEqual(callCounts(), [1, 2, 2]);
+    assert.deepEqual(recovered.candidates.find(candidate => candidate.id === working.id)?.availability, working.availability);
 
     advance(7 * 60_000);
     const beforeCooldown = checkpoint(1, clock);
     await publish(beforeCooldown);
     assert.equal((await row()).workingChoiceCount, 2);
-    assert.deepEqual([...calls.values()], [1, 2, 2], 'new source evidence must respect the failed check cooldown');
+    assert.deepEqual(callCounts(), [1, 2, 2], 'new source evidence must respect the failed check cooldown');
 
     advance(11 * 60_000);
     const latest = checkpoint(2, clock);
@@ -196,11 +198,11 @@ test('Sportsurge retries failed feeds every five minutes for a scheduled game wi
     const complete = await row();
     assert.equal(complete.candidates.length, 3);
     assert.equal(complete.workingChoiceCount, 3);
-    assert.deepEqual([...calls.values()], [1, 2, 3]);
-    assert.deepEqual(complete.candidates[0].availability, working);
+    assert.deepEqual(callCounts(), [1, 2, 3]);
+    assert.deepEqual(complete.candidates.find(candidate => candidate.id === working.id)?.availability, working.availability);
     await publish(latest);
     assert.equal((await row()).workingChoiceCount, 3);
-    assert.deepEqual([...calls.values()], [1, 2, 3], 'replays and inventory reads must preserve completed checks');
+    assert.deepEqual(callCounts(), [1, 2, 3], 'replays and inventory reads must preserve completed checks');
   } finally {
     await coordinator.stop();
     rmSync(dir, { recursive: true, force: true });

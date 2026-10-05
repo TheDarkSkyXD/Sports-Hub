@@ -15,6 +15,8 @@ export type ListingResult = { observations: Observation[]; outcome: 'parsed' | '
 export interface FootballRepository {
   finishedGameRetentionMinutes(): number;
   setFinishedGameRetentionMinutes(minutes:number):void;
+  feedCheckIntervalMinutes():number;
+  setFeedCheckIntervalMinutes(minutes:number):void;
   workingFeeds(): WorkingFeed[];
   replaceWorkingIdentity(gameId:string,identityHash:string,feeds:readonly WorkingFeed[]):void;
   removeWorkingGames(gameIds:readonly string[]):void;

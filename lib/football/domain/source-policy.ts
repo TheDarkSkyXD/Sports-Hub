@@ -7,8 +7,16 @@ export function detailIdentity(observation:Observation):string {
 
 export const SOURCE_REFRESH_MS=5*60_000;
 
-export function retryDeadline(at:number,retryAfterMs=0):number {
-  return at+Math.max(SOURCE_REFRESH_MS,retryAfterMs);
+export function retryDeadline(at:number,retryAfterMs=0,sourceRefreshMs=SOURCE_REFRESH_MS):number {
+  return at+Math.max(sourceRefreshMs,retryAfterMs);
+}
+
+export function rebaseRetryDeadline(at:number,currentDeadline:number,previousRefreshMs:number,nextRefreshMs:number,rateLimited=false):number {
+  if(currentDeadline===Number.MAX_SAFE_INTEGER)return currentDeadline;
+  const minimumCooldown=rateLimited?SOURCE_REFRESH_MS:0;
+  const previousDeadline=at+Math.max(previousRefreshMs,minimumCooldown);
+  const nextDeadline=at+Math.max(nextRefreshMs,minimumCooldown);
+  return rateLimited||currentDeadline>previousDeadline?Math.max(nextDeadline,currentDeadline):nextDeadline;
 }
 
 export function sourceFailure(error:unknown):NonNullable<SourceAttempt['failure']> {

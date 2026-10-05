@@ -17,7 +17,7 @@ async function drain() {
   for (let i = 0; i < 60; i++) await new Promise<void>(resolve => setImmediate(resolve));
 }
 
-for (const missing of [true, false]) test(missing ? 'missing player details retry at five minutes' : 'unavailable media waits for manual retry', async () => {
+for (const missing of [true, false]) test(missing ? 'missing player details retry at five minutes' : 'unavailable media retries automatically at five minutes', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'source-minute-retry-'));
   let clock = at, details = 0, probes = 0;
   const coordinator = createFootballCoordinator(join(directory, 'state.sqlite'), {
@@ -42,14 +42,14 @@ for (const missing of [true, false]) test(missing ? 'missing player details retr
     clock = at + 300000;
     await coordinator.refresh();
     await drain();
-    assert.equal(count(), missing ? 2 : 1);
+    assert.equal(count(), 2);
     if (!missing) {
       const sources = await coordinator.command({ kind: 'sources' });
       assert.equal(sources.kind, 'sources');
       if (sources.kind === 'sources') assert.equal(sources.snapshot.games[0]?.candidates[0]?.availability.kind, 'unavailable');
       assert.deepEqual(await coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: true }), { kind: 'ok' });
       await drain();
-      assert.equal(probes, 2);
+      assert.equal(probes, 3);
     }
   } finally { await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); }
 });

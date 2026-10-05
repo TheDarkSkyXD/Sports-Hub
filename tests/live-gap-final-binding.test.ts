@@ -49,7 +49,7 @@ test('a bound final event and an unmatched lookalike remain out of the feed wind
     await coordinator.command({kind:'set-retention',minutes:5});
     const first=catalog('11111111-1111-4111-8111-111111111111',at,[original]);
     assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:first}),
-      {kind:'catalog-ack',skipDetailEventIds:[]});
+      {kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
     assert.deepEqual(store.sourceEventBindings().map(row=>[row.eventId,row.gameId]),[[original.id,live.id]]);
     await until(async()=>{
       const reply=await coordinator.command({kind:'sources'});
@@ -63,11 +63,11 @@ test('a bound final event and an unmatched lookalike remain out of the feed wind
     scheduled={...live,status:'post',lifecycle:'final',detail:'Final',finalObservedAt:clock,graceEndsAt:clock+5*60_000};
     await coordinator.refresh(true);
     assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:first}),
-      {kind:'catalog-ack',skipDetailEventIds:[original.id]});
+      {kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[original.id]});
     const lookalike=event('65346');
     const second=catalog('22222222-2222-4222-8222-222222222222',clock,[original,lookalike]);
     assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:second}),
-      {kind:'catalog-ack',skipDetailEventIds:[original.id,lookalike.id]});
+      {kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[original.id,lookalike.id]});
     const sources=await coordinator.command({kind:'sources'});
     assert.equal(sources.kind,'sources');
     if(sources.kind==='sources'){
@@ -87,7 +87,7 @@ test('a bound final event and an unmatched lookalike remain out of the feed wind
     const reused={...original,kickoff:at+7*24*3600_000,sourceStatus:'upcoming' as const};
     const third=catalog('33333333-3333-4333-8333-333333333333',clock,[reused,lookalike]);
     assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:third}),
-      {kind:'catalog-ack',skipDetailEventIds:[original.id,lookalike.id]},
+      {kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[original.id,lookalike.id]},
       'a conflicting future date cannot reuse the old binding or enter the feed window');
     const futureSources=await coordinator.command({kind:'sources'});
     assert.equal(futureSources.kind,'sources');

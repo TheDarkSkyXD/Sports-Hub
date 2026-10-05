@@ -42,8 +42,12 @@ test('both collectors return accepted checkpoint acknowledgments and tolerate le
   ]) {
     const ack={kind:'catalog-ack',skipDetailEventIds:['ncaaf:10001']};
     assert.deepEqual((await collectAck(file,exportName,sweepName,Response.json(ack))).seen,ack);
+    const intervalAck={kind:'catalog-ack',skipDetailEventIds:[],sourceRefreshMs:60_000};
+    assert.deepEqual((await collectAck(file,exportName,sweepName,Response.json(intervalAck))).seen,intervalAck);
     assert.equal((await collectAck(file,exportName,sweepName,new Response(null,{status:204}))).seen,undefined);
     const malformed=await collectAck(file,exportName,sweepName,Response.json({kind:'catalog-ack',skipDetailEventIds:[42]}));
     assert.equal(malformed.error instanceof Error?malformed.error.message:null,'parser-changed');
+    const invalidInterval=await collectAck(file,exportName,sweepName,Response.json({kind:'catalog-ack',skipDetailEventIds:[],sourceRefreshMs:500}));
+    assert.equal(invalidInterval.error instanceof Error?invalidInterval.error.message:null,'parser-changed');
   }
 });

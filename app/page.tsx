@@ -13,10 +13,11 @@ import { BrowserProviderPlayer } from '@/components/browser-provider-player';
 import { GameTiming } from '@/components/game-timing';
 import { SourceInventory } from '@/components/source-inventory';
 import { FinishedGameRetentionSetting } from '@/components/finished-game-retention-setting';
+import { FeedCheckIntervalSetting } from '@/components/feed-check-interval-setting';
 import { UpdatePanel } from '@/components/update-panel';
 import { UpdatePopup } from '@/components/update-popup';
 import { ServerControls } from '@/components/server-controls';
-import { BoardSchema, DEFAULT_FINISHED_GAME_RETENTION_MINUTES, SourcesSnapshotSchema, type SourcesSnapshot } from '@/lib/football/shared';
+import { BoardSchema, DEFAULT_FEED_CHECK_INTERVAL_MINUTES, DEFAULT_FINISHED_GAME_RETENTION_MINUTES, SourcesSnapshotSchema, type SourcesSnapshot } from '@/lib/football/shared';
 import { parseQualityPreference, qualityPreferences, type QualityPreference } from '@/lib/playback-quality';
 import { addToSlots, emptySlots, placeInSlot, reconcileSlots, removeFromSlots, restoreSlots, selectedGames, slotsFromIds, type RoomSlots } from '@/lib/multiview';
 import { Board, Feed, Game, LEAGUES, League, Team, priority, sortGamesForDisplay, validFeedUrl, validGameId } from '@/lib/sunday';
@@ -139,6 +140,16 @@ export default function Home() {
   retentionGeneration.current++;
   setBoard(parsed.data);setDisplayNow(Date.now());
  };
+ const saveFeedCheckInterval=async(minutes:number)=>{
+  retentionGeneration.current++;
+  const response=await fetch('/api/games',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({kind:'set-feed-check-interval',minutes}),signal:AbortSignal.timeout(15000)});
+  if(!response.ok)throw new Error('Could not save the feed check interval. Try again.');
+  const parsed=BoardSchema.safeParse(await response.json());
+  if(!parsed.success)throw new Error('Could not confirm the saved feed check interval. Try again.');
+  retentionGeneration.current++;
+  setBoard(parsed.data);setDisplayNow(Date.now());
+ };
  useEffect(()=>{
   if(!sources||lastSourceRefresh.current===sources.revision||refreshing.current)return;
   if(!sources.games.some(row=>selected.includes(row.gameId)&&row.candidates.some(candidate=>candidate.availability.kind==='playable')&&!board?.games.find(game=>game.id===row.gameId)?.sourceUrl))return;
@@ -234,7 +245,7 @@ export default function Home() {
     </TabsList>
     <TabsContent forceMount value="general" className="settings-panel"><div className="settings-panel-heading"><h3>General</h3><p>Choose how game day appears in your room.</p></div><div className="setting-row"><div><strong>Spoiler-free mode</strong><p>Hide scores and latest play updates.</p></div><Switch aria-label="Spoiler-free mode" checked={spoilers} onCheckedChange={v=>{setSpoilers(v);if(v){setAuto(false);setFilter('all');}}}/></div><div className="setting-row"><div><strong>Show Game Day header</strong><p>Show the scoreboard above your room.</p></div><Switch aria-label="Show Game Day header" checked={showGameDayHeader} onCheckedChange={setShowGameDayHeader}/></div><FinishedGameRetentionSetting minutes={board?.finishedGameRetentionMinutes??DEFAULT_FINISHED_GAME_RETENTION_MINUTES} disabled={!board} onChange={saveFinishedRetention}/></TabsContent>
     <TabsContent forceMount value="playback" className="settings-panel"><div className="settings-panel-heading"><h3>Playback</h3><p>Set your room&apos;s sound and preferred video quality.</p></div><div className="setting-row"><div><strong>Room volume</strong><p>Only your selected feed plays audio.</p></div><span>{volume}%</span></div><Slider aria-label="Default room volume" value={[volume]} onValueChange={v=>setVolume(v[0])} max={100}/><div className="quality-setting"><strong>Default video quality</strong><p>Uses the closest available quality at or below your choice, or the lowest available if none are lower.</p><Select value={defaultQuality} onValueChange={value=>setDefaultQuality(parseQualityPreference(value))}><SelectTrigger aria-label="Default video quality"><SelectValue/></SelectTrigger><SelectContent>{qualityPreferences.map(option=><SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div></TabsContent>
-    <TabsContent forceMount value="sources" className="settings-panel"><div className="settings-panel-heading"><h3>Sources</h3><p>Review the game listings and available streams.</p></div><SourceInventory gameIds={selected} branding={{games}}/></TabsContent>
+    <TabsContent forceMount value="sources" className="settings-panel"><div className="settings-panel-heading"><h3>Sources</h3><p>Review the game listings and available streams.</p></div><FeedCheckIntervalSetting minutes={board?.feedCheckIntervalMinutes??DEFAULT_FEED_CHECK_INTERVAL_MINUTES} disabled={!board} onChange={saveFeedCheckInterval}/><SourceInventory gameIds={selected} branding={{games}}/></TabsContent>
     <TabsContent forceMount value="updates" className="settings-panel"><div className="settings-panel-heading"><h3>Updates</h3><p>Manage updates to the Sunday Room desktop viewer.</p></div>{desktop?<UpdatePanel/>:<div className="feed-note"><Monitor size={18}/><p>App updates are available in the desktop viewer. This browser version updates when you reload the page.</p></div>}</TabsContent>
     <TabsContent forceMount value="privacy" className="settings-panel"><div className="settings-panel-heading"><h3>Privacy</h3><p>Manage the room data saved on this device.</p></div><div className="feed-note"><ShieldCheck size={18}/><p>Layouts, favorites, and feed URLs are stored only in this browser. Avoid saving links on a shared device.</p></div><button className="button subtle" onClick={()=>{setFeeds({});setProviderChoices({});setInitialCandidateIds({});setFavorites([]);setSlots(slotsFromIds([...games].sort((a,b)=>priority(b)-priority(a)).slice(0,4).map(g=>g.id)));setLayout('quad');setAudio('');setAuto(false);setSpoilers(false);setShowGameDayHeader(false);setVolume(70);setDefaultQuality('auto');setPlayback({defaultPlaying:true,overrides:{}});toast('Room reset. Saved feeds removed.');setModal(null);}}>Reset room and remove saved feeds</button></TabsContent>
    </Tabs>}

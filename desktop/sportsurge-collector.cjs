@@ -42,6 +42,7 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
   let started = false;
   let requestedPath = '';
   let rateLimitedUntil = 0;
+  let sourceRefreshMs = 5 * 60_000;
   const sourceSession = session.fromPartition('sportsurge-catalog');
   sourceSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   sourceSession.setPermissionCheckHandler(() => false);
@@ -130,6 +131,10 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
           const ack = await response.json();
           if (ack?.kind !== 'catalog-ack' || !Array.isArray(ack.skipDetailEventIds) ||
             !ack.skipDetailEventIds.every(id => typeof id === 'string')) throw new Error('parser-changed');
+          if (ack.sourceRefreshMs !== undefined) {
+            if (![60_000,300_000,600_000,900_000].includes(ack.sourceRefreshMs)) throw new Error('parser-changed');
+            sourceRefreshMs = ack.sourceRefreshMs;
+          }
           if (ack.skipDetailEventUrls !== undefined &&
             (!Array.isArray(ack.skipDetailEventUrls) ||
               !ack.skipDetailEventUrls.every(url => typeof url === 'string' && catalog.events.some(event => event.url === url))))
@@ -164,14 +169,13 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
     }
     if(timer)clearTimeout(timer);
     controller=new AbortController();
-    const delay=5*60_000;
     active=runSportsurgeSweep({read:document,send:catalog=>checkpoint(catalog,controller.signal),signal:controller.signal})
       .then(catalog=>{
         if(catalog.state.reason==='rate-limited')rateLimitedUntil=Math.max(rateLimitedUntil,Date.now()+5*60_000);
         return catalog;
       }).catch(()=>{}).finally(()=>{
         active=undefined;controller=undefined;
-        if(started&&!stopped)timer=setTimeout(requestSweep,Math.max(delay,rateLimitedUntil-Date.now()));
+        if(started&&!stopped)timer=setTimeout(requestSweep,Math.max(sourceRefreshMs,rateLimitedUntil-Date.now()));
       });
     return active;
   }
