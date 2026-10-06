@@ -70,6 +70,10 @@ function offlinePlayerFrame(source, frames) {
   return players.length === 1 ? players[0] : null;
 }
 
+function activatePublishedVipboxVideo() {
+  return false;
+}
+
 function belongsToEmbeddedServer(frame,serverUrl) {
   try {
     for(let current=frame;current;current=current.parent){
@@ -587,4 +591,4 @@ function createSportsurgeObserver({ controlToken, port = 0 }) {
   return { start, stop };
 }
 
-module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, aianimalvibesPlayer };
+module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedVipboxVideo, aianimalvibesPlayer };
