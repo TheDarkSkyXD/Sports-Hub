@@ -93,7 +93,7 @@ test('a failed source refresh leaves a proven live feed available',async()=>{
   }finally{await run.close();}
 });
 
-test('unchanged positive proof suppresses detail retry even after the old expiry window',async()=>{
+test('unchanged positive proof survives a scheduled detail retry',async()=>{
   const run=fixture('vipbox');
   try{
     await run.refresh();
@@ -104,7 +104,7 @@ test('unchanged positive proof suppresses detail retry even after the old expiry
     await run.refresh();
     assert.equal((await run.snapshot()).games[0].workingChoiceCount,1,'proven live route should remain working');
     assert.equal(run.probes.filter(value=>value==='111').length,1,'unchanged route needs one media check');
-    assert.equal(run.detailReads.length,initialReads,'proven route should not repeat its detail read');
+    assert.equal(run.detailReads.length,initialReads+1,'live detail is checked again after its interval');
   }finally{await run.close();}
 });
 
@@ -133,9 +133,11 @@ test('a same-ID replacement preserves an active viewer and reuses the new proven
     await run.coordinator.command({kind:'session',sessionId,generation:0,failure:true,retry:false});
     const reads=run.detailReads.filter(url=>url.endsWith('/new')).length;
     run.setClock(at+602000);await run.refresh();
-    assert.equal(run.detailReads.filter(url=>url.endsWith('/new')).length,reads,'a suffixed positive route must suppress its own unchanged detail read');
+    assert.equal(run.detailReads.filter(url=>url.endsWith('/new')).length,reads+1,
+      'the new live detail is checked again after its interval');
     const after=await run.snapshot();
     assert.equal(after.games[0].candidates.length,2,JSON.stringify(after.games[0].candidates));
     assert.ok(after.games[0].candidates.some(candidate=>candidate.id===newer.id));
+    assert.equal(after.games[0].candidates.find(candidate=>candidate.id===newer.id)?.availability.kind,'playable');
   }finally{await run.close();}
 });

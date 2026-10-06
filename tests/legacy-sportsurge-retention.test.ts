@@ -106,7 +106,7 @@ test('legacy Sportsurge restores unavailable published siblings after restart wi
   } finally {await run.close();}
 });
 
-test('legacy Sportsurge keeps complete live proof and collected evidence across 31 minutes and restart',async()=>{
+test('legacy Sportsurge keeps complete live proof while rereading detail after restart',async()=>{
   const run=fixture(true);
   try {
     await run.refresh();
@@ -120,14 +120,14 @@ test('legacy Sportsurge keeps complete live proof and collected evidence across 
     assert.equal(cold.sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind,'collected');
     assert.equal(cold.sources.find(row=>row.id===source.id)?.lastAttempt?.at,initial);
     assert.equal(cold.games.find(row=>row.gameId===game.id)?.candidates.length,3);
-    assert.equal(run.detailReads,1);
+    assert.equal(run.detailReads,1,'cold restore does not need a network detail read');
     run.releaseNetwork();
     await pendingRefresh;
     await until(async()=>{const rows=await run.choices();return rows.length===3&&
       rows.every(row=>row.availability.kind==='playable');},'restored three playable players');
     const afterRestart=await run.snapshot();
     assert.equal(afterRestart.sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind,'collected');
-    assert.equal(run.detailReads,1);
+    assert.equal(run.detailReads,2,'eligible live detail is checked again after its interval');
     assert.deepEqual(run.probes.sort(),['57561','57562','57563']);
   } finally {run.releaseNetwork();await run.close();}
 });

@@ -52,7 +52,7 @@ export type SeasonMembership = z.infer<typeof SeasonMembershipSchema>;
 export const ObservationSchema = z.object({
   id: z.string(), sourceId: z.string(), url: z.string(), title: z.string(),
   league: LeagueSchema.nullable(), teams: z.tuple([z.string(), z.string()]).nullable(),
-  kickoff: z.number().nullable(), rawTime: z.string(), observedAt: z.number(), parserVersion: z.union([z.literal(1),z.literal(2)]),
+  kickoff: z.number().nullable(), rawTime: z.string(), observedAt: z.number(), parserVersion: z.union([z.literal(1),z.literal(2),z.literal(3)]),
   legacyId: z.string().optional(),
   kickoffLineage:z.object({observedAt:z.number(),rawTime:z.string()}).optional(),
 });
@@ -89,7 +89,8 @@ export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
     eventUrl:z.string().url().max(2000),serverUrl:z.string().url().max(2000)}).strict(),
   z.object({provider:z.literal('tvapp'),gameId:z.string().regex(/^(?:ncaaf-)?\d{1,20}$/),
     eventUrl:z.string().url().max(2000),source:z.string().regex(/^[a-z0-9-]{1,32}$/),
-    sourceId:z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/),streamNo:z.number().int().min(1).max(100)}).strict(),
+    sourceId:z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/),streamNo:z.number().int().min(1).max(100),
+    kickoff:z.number().int(),title:z.string().min(1).max(200),teams:z.tuple([z.string().min(1),z.string().min(1)])}).strict(),
 ]);
 export type CandidateLocator = z.infer<typeof CandidateLocatorSchema>;
 export const CandidateSchema = CandidateSummarySchema.omit({availability:true}).extend({locator:CandidateLocatorSchema});

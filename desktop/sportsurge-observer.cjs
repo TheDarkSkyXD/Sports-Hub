@@ -13,6 +13,7 @@ const MAX_CONNECTS = 100;
 const MAX_FRAMES = 32;
 const SPORTSPATRIKA_MAX_FRAMES = 64;
 const NFLSTREAMS_MAX_FRAMES = 64;
+const TVAPP_EMBED_MAX_FRAMES = 64;
 const MAX_BYTES = 24 * 1024 * 1024;
 const blockedV4 = [
   [0x00000000,8],[0x0a000000,8],[0x64400000,10],[0x7f000000,8],
@@ -62,16 +63,37 @@ function isNetworkErrorPlayerState(state) {
 }
 
 function offlinePlayerFrame(source, frames) {
-  if (!['vipbox.fm','www.vipboxtv.sk','strikeout.im'].includes(new URL(source).hostname)) return null;
+  let sourceUrl;
+  try { sourceUrl = new URL(source); }
+  catch { return null; }
+  if (sourceUrl.protocol !== 'https:' || !(
+    sourceUrl.hostname === 'vipbox.fm' && /^\/live\/(?:nfl|ncaaf)\/[a-z0-9-]+$/.test(sourceUrl.pathname) ||
+    sourceUrl.hostname === 'strikeout.im' && /^\/(?:nfl|college-football)\/[1-9][0-9]*\/[a-z0-9-]+$/.test(sourceUrl.pathname) ||
+    sourceUrl.hostname === 'www.vipboxtv.sk'
+  )) return null;
   const players = frames.filter(frame => {
-    try { const url = new URL(frame.url); return url.protocol === 'https:' && url.pathname === '/sd0embed/NFL'; }
+    try {
+      const url = new URL(frame.url);
+      return url.protocol === 'https:' && url.pathname === '/sd0embed/NFL' &&
+        ['fallafar.me','posamari.me','dervlin.me','ninguno.cc','lonpapil.eu'].includes(url.hostname);
+    }
     catch { return false; }
   });
   return players.length === 1 ? players[0] : null;
 }
 
-function activatePublishedVipboxVideo() {
-  return false;
+function activatePublishedVipboxVideo(page = document, computedStyle = getComputedStyle) {
+  const videos = page.querySelectorAll('video');
+  const buttons = page.querySelectorAll('.jw-icon-playback[role="button"][aria-label="Play"]');
+  if (videos.length !== 1 || buttons.length !== 1) return false;
+  const video = videos[0];
+  if (!video.paused) return false;
+  const rect = video.getBoundingClientRect(), style = computedStyle(video);
+  if (rect.width < 240 || rect.height < 135 || style.display === 'none' || style.visibility === 'hidden') return false;
+  video.muted = true;
+  buttons[0].click();
+  void video.play().catch(() => {});
+  return true;
 }
 
 function belongsToEmbeddedServer(frame,serverUrl) {
@@ -88,6 +110,12 @@ function sportspatrikaEntry(value) {
   const url = publicUrl(value);
   return !!url && url.origin === 'https://embed.sportspatrika.com' && url.pathname === '/live/embed.php' &&
     /^\?ch=es[0-9]+$/.test(url.search);
+}
+
+function tvappEmbedEntry(value) {
+  const url = publicUrl(value);
+  return !!url && url.origin === 'https://embed.st' && !url.search && !url.port &&
+    /^\/embed\/[a-z0-9-]{1,32}\/[a-zA-Z0-9_-]{1,120}\/[1-9][0-9]{0,2}$/.test(url.pathname);
 }
 
 function aianimalvibesPlayer(value) {
@@ -384,7 +412,8 @@ function createObserverSlot(index) {
       current = { window, url, embeddedEventUrl, navigation, purpose, resolve, sockets: new Set(), requests: 0, proxyRequests: 0, tunnels: 0, bytes: 0,
         issuerRequests:0,
         frameLimit:embeddedEventUrl && new URL(embeddedEventUrl).hostname==='nflstreams.org' ? NFLSTREAMS_MAX_FRAMES :
-          sportspatrikaEntry(url) ? SPORTSPATRIKA_MAX_FRAMES : MAX_FRAMES,
+          sportspatrikaEntry(url) ? SPORTSPATRIKA_MAX_FRAMES :
+            tvappEmbedEntry(url) ? TVAPP_EMBED_MAX_FRAMES : MAX_FRAMES,
         deadline: Date.now()+OBSERVE_MS, probeKeys: new Set(), probeTimers: new Set(),
         timer: setTimeout(() => endActive(current,null),OBSERVE_MS) };
       active = current;
@@ -412,6 +441,19 @@ function createObserverSlot(index) {
               endActive(current,null);
             }
           }).catch(() => {});
+          if (!current.playerActivating && (
+            /^https:\/\/vipbox\.fm\/live\/nfl\/[a-z0-9-]+$/.test(current.url) ||
+            /^https:\/\/strikeout\.im\/nfl\/[1-9][0-9]*\/[a-z0-9-]+$/.test(current.url)
+          )) {
+            current.playerActivating = true;
+            void frame.executeJavaScript(`(${activatePublishedVipboxVideo.toString()})()`)
+              .then(activated => {
+                if (active !== current || frame.isDestroyed() || frame.url !== url ||
+                  !current.window.webContents.mainFrame.framesInSubtree.includes(frame)) return;
+                if (activated) { current.playerActivated = true; debug('activated published SD0 player'); }
+                else current.playerActivating = false;
+              }).catch(() => { if (active === current) current.playerActivating = false; });
+          }
         }
         const aianimalvibesFrames = frames.filter(frame => aianimalvibesPlayer(frame.url));
         if (aianimalvibesFrames.length > 1) return;

@@ -36,6 +36,8 @@ test('offline detection applies only to one named player under its known event-p
   assert.equal(offlinePlayerFrame('https://strikeout.im/college-football/2/northern-colorado-vs-montana-stream', [player, { ...player }]), null);
   assert.equal(offlinePlayerFrame('https://strikeout.im/college-football/2/northern-colorado-vs-montana-stream', [ad]), null);
   assert.equal(offlinePlayerFrame('https://strikeout.im/college-football/2/northern-colorado-vs-montana-stream', [{ url: 'http://fallafar.me/sd0embed/NFL' }]), null);
+  assert.equal(offlinePlayerFrame('https://strikeout.im/college-football/2/northern-colorado-vs-montana-stream', [{ url: 'https://ads.example/sd0embed/NFL' }]), null);
+  assert.equal(offlinePlayerFrame('https://vipbox.fm/ads/other-page', [player]), null);
 });
 
 test('the published SD0 Play control starts one visible paused video without clicking other controls', () => {

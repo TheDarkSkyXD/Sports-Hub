@@ -24,7 +24,7 @@ const PROBE_PRIORITY={forced:0,unknown:1,retry:2};
 const DECODED_STARTUP_WINDOW_MS=10*60_000;
 const LISTING_PARSER_VERSION=3;
 function usesBrowserProbe(candidate:Candidate):boolean {
-  return candidate.locator.provider==='event-page'||candidate.locator.provider==='sportsurge-v2';
+  return candidate.locator.provider==='event-page'||candidate.locator.provider==='tvapp'||candidate.locator.provider==='sportsurge-v2';
 }
 function detailGeneration(observation:Observation):string {
   return JSON.stringify([observation.sourceId,observation.url,observation.teams,observation.kickoff,observation.observedAt,observation.parserVersion]);
@@ -121,6 +121,7 @@ export class FootballCoordinator {
   private readonly parseListings: FootballDependencies['parseListings'];
   private readonly enrichObservation: FootballDependencies['enrichObservation'];
   private readonly compatiblePlayers: FootballDependencies['compatiblePlayers'];
+  private readonly tvappPlayers: FootballDependencies['tvappPlayers'];
   private readonly missingPlayerReason: FootballDependencies['missingPlayerReason'];
   private readonly probeCandidate: FootballDependencies['probeCandidate'];
   private readonly probeIdentity: NonNullable<FootballDependencies['probeIdentity']>;
@@ -138,6 +139,7 @@ export class FootballCoordinator {
     this.parseListings = dependencies.parseListings;
     this.enrichObservation = dependencies.enrichObservation;
     this.compatiblePlayers = dependencies.compatiblePlayers;
+    this.tvappPlayers = dependencies.tvappPlayers;
     this.missingPlayerReason = dependencies.missingPlayerReason;
     this.probeCandidate = dependencies.probeCandidate;
     this.probeIdentity = dependencies.probeIdentity ?? (locator => JSON.stringify(locator));
@@ -287,7 +289,8 @@ export class FootballCoordinator {
         .filter(row=>this.probeKey(row)===this.probeKey(candidate))].map(row=>[row.id,row]));
       const feeds=[...aliases.values()].flatMap(row=>{
         const sourceIds=row.sourceIds.filter(id=>this.sources.some(source=>source.id===id));
-        if(!sourceIds.length||!this.persistableLocator(row.locator)||row.locator.provider==='event-page'&&row.locator.gameId!==game.id)return [];
+        if(!sourceIds.length||!this.persistableLocator(row.locator)||
+          (row.locator.provider==='event-page'||row.locator.provider==='tvapp')&&row.locator.gameId!==game.id)return [];
         const feed:WorkingFeed={version:1,identityHash,candidate:{...row,sourceIds},owner,checkedAt:health.checkedAt,proof:health.proof};
         return workingFeedMatches(feed,game)?[feed]:[];
       });
@@ -311,7 +314,8 @@ export class FootballCoordinator {
         const sourceIds=feed.candidate.sourceIds.filter(id=>this.sources.some(source=>source.id===id));
         return (!game||game.lifecycle!=='final'&&!this.scheduleFresh(game)||workingFeedMatches(feed,game))&&sourceIds.length&&this.persistableLocator(feed.candidate.locator)&&this.identityHash(feed.candidate)===feed.identityHash&&
           feed.checkedAt<=this.now()+60_000&&feed.candidate.observedAt<=this.now()+60_000&&
-          (feed.candidate.locator.provider!=='event-page'||feed.candidate.locator.gameId===feed.candidate.gameId)?
+          (feed.candidate.locator.provider!=='event-page'&&feed.candidate.locator.provider!=='tvapp'||
+            feed.candidate.locator.gameId===feed.candidate.gameId)?
           [{...feed,candidate:{...feed.candidate,sourceIds}}]:[];
       });
       if(JSON.stringify(feeds)!==JSON.stringify(rows))this.replaceWorkingIdentity(first.candidate.gameId,first.identityHash,feeds);
@@ -771,7 +775,7 @@ export class FootballCoordinator {
       const byId=new Map((this.candidates.get(game.id)||[]).map(candidate=>[candidate.id,candidate]));
       for(const published of detail.players) {
         let player=published;
-        if(player.locator.provider==='event-page' &&
+        if((player.locator.provider==='event-page'||player.locator.provider==='tvapp') &&
           (player.locator.gameId!==game.id || player.locator.eventUrl!==observation.url))continue;
         const versionId=player.id+':'+createHash('sha256').update(JSON.stringify(player.locator)).digest('hex').slice(0,12);
         if(byId.has(versionId))player={...player,id:versionId};
@@ -839,13 +843,6 @@ export class FootballCoordinator {
         if(prior&&matchesDetail(prior,observation)&&prior.nextEligibleAt>this.now())return [];
         const game=rolloverGame||this.games.find(game=>game.id===(result.kind==='matched'?result.gameId:result.possibleGameIds[0]));
         if(!this.observationFeedEligible(observation))return [];
-        if(game&&prior?.outcome==='resolved'&&matchesDetail(prior,observation)) {
-          const liveCandidates=(this.candidates.get(game.id)||[]).filter(candidate=>this.retainLive(candidate)&&
-            this.availability(candidate).kind==='playable'&&candidate.sourceIds.includes(observation.sourceId));
-          const retained=prior.players.filter(player=>liveCandidates.some(candidate=>
-            JSON.stringify(player.locator)===JSON.stringify(candidate.locator)));
-          if(prior.players.length>0&&retained.length===prior.players.length)return [];
-        }
         return [{observation,viewed:Number(viewed.has(game?.id||'')),urgency:this.gameUrgency(game),
           kickoff:game?.date?Date.parse(game.date):Infinity,
           sourceRank:publishedPlayerCatalogIds.has(observation.sourceId)?0:observation.sourceId==='sportsurge'?1:2}];
@@ -868,9 +865,12 @@ export class FootballCoordinator {
         if(!this.observationFeedEligible(observation))return;
         const at=this.now();
         const rolloverGame=liveRolloverGame(original);
+        const playersFor=(id:string)=>observation.sourceId==='tvapp'&&this.tvappPlayers?
+          this.tvappPlayers(id,observation,html,signal):Promise.resolve(this.compatiblePlayers(id,observation,html));
         const rolloverPlayers=rolloverGame&&observation.kickoff===original.kickoff?
-          this.compatiblePlayers(rolloverGame.id,observation,html):[];
-        const publishedEventPage=rolloverPlayers.some(player=>player.locator.provider==='event-page'&&
+          await playersFor(rolloverGame.id):[];
+        const publishedEventPage=rolloverPlayers.some(player=>
+          (player.locator.provider==='event-page'||player.locator.provider==='tvapp')&&
           player.locator.gameId===rolloverGame?.id&&player.locator.eventUrl===original.url);
         if(publishedEventPage)observation={...observation,observedAt:at};
         const rawResult=matchObservation(observation,this.games,at);
@@ -878,8 +878,9 @@ export class FootballCoordinator {
         const game=rawResult.kind==='matched'?this.games.find(value=>value.id===rawResult.gameId):
           provisionalLiveChannel(observation,rawResult,freshGames,at)??undefined;
         const players=(this.feedGame(game)?
-          publishedEventPage?rolloverPlayers:this.compatiblePlayers(game.id,observation,html):[])
+          publishedEventPage?rolloverPlayers:await playersFor(game.id):[])
           .map(({id,label,locator})=>({id,label,locator}));
+        if(this.stopped||signal.aborted||!this.observationFeedEligible(original))return;
         const identity=detailIdentity(observation);
         const priorSuccess=evidence.get(original.id)?.lastSuccess;
         const lastSuccess=players.length?{identity,at,count:players.length}:

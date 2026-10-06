@@ -7,6 +7,7 @@ import { sportsurgeV2Provider } from './providers/sportsurge-v2.ts';
 import { wikisportProvider } from './providers/wikisport.ts';
 import { eventPageProbeIdentity, eventPageProvider } from './providers/event-page.ts';
 import { swacProvider } from './providers/swac.ts';
+import { tvappProvider } from './providers/tvapp.ts';
 export { persistableLocator } from './persistent-locator.ts';
 
 const streamcenter=streamcenterProvider();
@@ -15,6 +16,7 @@ const sportsurgeV2=sportsurgeV2Provider();
 const wikisport=wikisportProvider();
 const eventPage=eventPageProvider();
 const swac=swacProvider();
+const tvapp=tvappProvider();
 
 export function providerProbeIdentity(locator:CandidateLocator):string {
   return locator.provider==='event-page'?eventPageProbeIdentity(locator):JSON.stringify(locator);
@@ -29,6 +31,6 @@ export function openProvider(locator: CandidateLocator, signal: AbortSignal, pur
     case 'sportsurge-v2': return sportsurgeV2.open(locator,signal,purpose);
     case 'wikisport': return wikisport.open(locator,signal);
     case 'event-page': return eventPage.open(locator,signal,purpose);
-    case 'tvapp': throw new Error('TVApp source selection is pending');
+    case 'tvapp': return tvapp.open(locator,signal,purpose);
   }
 }

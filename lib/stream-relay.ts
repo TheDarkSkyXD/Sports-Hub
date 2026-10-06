@@ -195,7 +195,8 @@ export function rewritePlaylist(body:string,source:ProviderResource,grant:Stream
     nextIsPlaylist=false;
     const child=source.resolve(line.trim(),kind);
     if (!child) throw new Error('Unsupported stream resource');
-    const identity=kind==='media' && sequence!==undefined && !byteRange ? JSON.stringify([source.identity,'segment',String(sequence)]) : child.identity;
+    const identity=kind==='media' && sequence!==undefined && !byteRange ?
+      JSON.stringify([source.identity,'segment',String(sequence),child.identity]) : child.identity;
     if (kind==='media' && sequence!==undefined) sequence++;
     byteRange=false;
     return `/api/stream/media/${registerResource(grant,child,identity)}`;

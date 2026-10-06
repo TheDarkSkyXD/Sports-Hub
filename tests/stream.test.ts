@@ -14,7 +14,7 @@ const root='https://chatgpt.hereisman.net/playlist/57069/load-playlist';
 const variant='https://pl.playlist3.space/playlist/57069/proton1/caxi';
 const media=`https://proton1.2f4049362e3069c1dbb69a47b280e76a.r2.cloudflarestorage.com/scripts/NTcwNjk%3D/segment.txt?X-Amz-Signature=${'a'.repeat(64)}`;
 
-test('live relay keeps segment URLs stable while refreshing upstream signatures',async()=>{
+test('live relay preserves old segment URLs when upstream signatures refresh',async()=>{
   const owner=grant('rotating-live-signatures');
   const resource=(identity:string,kind:'playlist'|'media'='playlist'):ProviderResource=>({
     identity,kind,
@@ -27,12 +27,16 @@ test('live relay keeps segment URLs stable while refreshing upstream signatures'
   try {
     const first=tokens(rewritePlaylist(text(611,'old'),playlist,owner));
     const next=tokens(rewritePlaylist(text(612,'fresh'),playlist,owner));
-    assert.equal(next[0],first[1]);
+    assert.notEqual(next[0],first[1]);
     assert.notEqual(next[1],first[1]);
     const refreshed=registeredResource(first[1]);
     assert.ok(refreshed);
     const read=await refreshed.resource.read({signal:AbortSignal.timeout(1000)});
-    assert.equal(await new Response(read.body).text(),'https://provider.test/612.ts?sig=fresh');
+    assert.equal(await new Response(read.body).text(),'https://provider.test/612.ts?sig=old');
+    const fresh=registeredResource(next[0]);
+    assert.ok(fresh);
+    const freshRead=await fresh.resource.read({signal:AbortSignal.timeout(1000)});
+    assert.equal(await new Response(freshRead.body).text(),'https://provider.test/612.ts?sig=fresh');
     const other=tokens(rewritePlaylist(text(612,'fresh'),resource('https://provider.test/other.m3u8'),owner));
     assert.notEqual(other[0],next[0]);
     const ranged=tokens(rewritePlaylist('#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:612\n#EXTINF:4,\n#EXT-X-BYTERANGE:100@0\nshared.ts\n#EXTINF:4,\n#EXT-X-BYTERANGE:100\nshared.ts\n',playlist,owner));

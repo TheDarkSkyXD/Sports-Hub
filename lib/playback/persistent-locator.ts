@@ -15,6 +15,11 @@ function durableSportsurgeQuery(url: URL): boolean {
 
 export function persistableLocator(locator: CandidateLocator): boolean {
   if (locator.provider === 'event-page') return validEventPagePair(locator.eventUrl, locator.serverUrl);
+  if (locator.provider === 'tvapp') {
+    const url=sportsurgeUrl(locator.eventUrl);
+    return !!url&&url.href===locator.eventUrl&&url.hostname==='tvapp1.pk'&&!url.search&&!url.hash&&
+      /^\/watch\/[a-zA-Z0-9-]{1,120}$/.test(url.pathname);
+  }
   if (locator.provider !== 'sportsurge-v2') return true;
   const url = sportsurgeUrl(locator.url);
   return !!url && url.href === locator.url && !url.port && (!url.search || durableSportsurgeQuery(url)) && !url.hash && !url.pathname.includes('%') &&

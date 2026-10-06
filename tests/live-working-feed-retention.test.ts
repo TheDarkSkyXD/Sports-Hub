@@ -76,7 +76,7 @@ function fixture(upcoming = false, catalog = false) {
   };
 }
 
-test('live working alternatives survive refresh without viewing sessions or repeated detail fetches', async () => {
+test('live working alternatives survive scheduled detail rereads without viewing sessions or repeated media probes', async () => {
   const run = fixture();
   try {
     await run.refresh(at);
@@ -85,7 +85,8 @@ test('live working alternatives survive refresh without viewing sessions or repe
     run.hidePlayers();
     await run.refresh(at + 301000);
     assert.deepEqual((await run.snapshot()).games.map(row => row.candidates.filter(row => row.availability.kind === 'playable').length), [2, 2]);
-    assert.equal(run.detailReads(), 2, 'Working live routes should prevent redundant detail reads for their own observations');
+    assert.equal(run.detailReads(), 4, 'both live observations are reread after their interval');
+    assert.equal(run.checks(), 4, 'unchanged proven routes keep their media proof');
   } finally { await run.stop(); }
 });
 
