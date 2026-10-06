@@ -3,6 +3,7 @@ import { request } from 'node:https';
 import { isIP } from 'node:net';
 import { load } from 'cheerio';
 import { boundedText, ProviderDeferredError, sanitizedRead, type ProviderPlayback, type ProviderResource, type ResourceKind } from '../provider.ts';
+import { wrapDlivePixelResource } from './streameast-pixel.ts';
 
 export type Requester = (url: URL, signal: AbortSignal, headers: Headers, timeoutMs?: number) => Promise<Response>;
 
@@ -200,6 +201,9 @@ async function observedPublicRequest(request:PublicObservation, signal: AbortSig
   const media = sportsurgeUrl(value.url);
   const referer = sportsurgeUrl(value.referer);
   if (!media || !referer) throw new Error('Browser observation was unsafe');
+  const transport = 'transport' in value ? value.transport : undefined;
+  if (transport !== undefined && (request.kind !== 'streameast-server' || transport !== 'dlive-pixel-gzip-ts'))
+    throw new Error('Browser observation transport was invalid');
   const capability = value.capability;
   let closed = false;
   const requester:Requester = async (url, active, headers) => {
@@ -210,7 +214,8 @@ async function observedPublicRequest(request:PublicObservation, signal: AbortSig
       body:JSON.stringify({capability,url:url.href,range:headers.get('range') ?? undefined}),
     });
   };
-  return {root:resource(media,referer,'playlist',requester,value.userAgent),close(){
+  const root = resource(media,referer,'playlist',requester,value.userAgent);
+  return {root:transport === 'dlive-pixel-gzip-ts' ? wrapDlivePixelResource(root) : root,close(){
     if (closed) return;
     closed = true;
     void fetch(`${origin}/media/${capability}`,{method:'DELETE',redirect:'manual',
