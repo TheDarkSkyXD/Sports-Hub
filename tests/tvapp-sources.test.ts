@@ -5,6 +5,7 @@ import {matchObservation} from '../lib/football/domain/matching.ts';
 import type {Game} from '../lib/football/shared.ts';
 import {validEventPagePair} from '../lib/playback/providers/event-page-policy.ts';
 import {tvappProvider} from '../lib/playback/providers/tvapp.ts';
+import {tvappIdentity} from '../lib/playback/providers/tvapp-catalog.ts';
 import type {Requester} from '../lib/playback/providers/public-page.ts';
 
 const source=SOURCES.find(source=>source.id==='tvapp');
@@ -62,6 +63,33 @@ test('TVApp keeps a football matchup when the catalog also contains a standalone
     date:'2026-10-06T00:15:00Z',home:team('New Orleans Saints','espn:nfl:18'),
     away:team('Atlanta Falcons','espn:nfl:1'),status:'pre',lifecycle:'scheduled',detail:'Scheduled',redzone:false};
   assert.deepEqual(matchObservation(event,[game],at),{kind:'matched',gameId:'401872979'});
+});
+
+test('TVApp keeps tomorrow Southern Miss against Troy when the title uses Mississippi',()=>{
+  const at=Date.parse('2026-10-05T23:00:00Z');
+  const starts=Date.parse('2026-10-07T00:00:00Z');
+  const match={id:'live_cfb_troy-southern-miss-live-streaming-663788736',
+    title:'Troy Trojans vs Southern Mississippi Golden Eagles',category:'american-football',date:starts,
+    teams:{home:{name:'Southern Miss Golden Eagles'},away:{name:'Troy Trojans'}},
+    sources:[{source:'delta',id:'live_cfb_troy-southern-miss-live-streaming-663788736'}]};
+  const result=parseListings(source,JSON.stringify([match]),at);
+  assert.equal(result.outcome,'parsed');
+  assert.equal(result.observations.length,1);
+  const observation=result.observations[0];
+  assert.deepEqual(observation.teams,['Troy Trojans','Southern Mississippi Golden Eagles']);
+  assert.equal(observation.kickoff,starts);
+  const team=(id:string,name:string)=>({id,name,short:name,abbreviation:name.slice(0,3),color:'112233',score:null});
+  const game:Game={id:'ncaaf-401871090',league:'ncaaf',name:'Southern Miss Golden Eagles at Troy Trojans',
+    date:new Date(starts).toISOString(),home:team('espn:ncaaf:2653','Troy Trojans'),
+    away:team('espn:ncaaf:2572','Southern Miss Golden Eagles'),status:'pre',lifecycle:'scheduled',detail:'Scheduled',redzone:false};
+  assert.deepEqual(matchObservation(observation,[game],at),{kind:'matched',gameId:game.id});
+  assert.deepEqual(tvappIdentity(match),{
+    watchUrl:'https://tvapp1.pk/watch/663788736',title:match.title,
+    teams:['Troy Trojans','Southern Mississippi Golden Eagles'],kickoff:starts,sources:match.sources,
+  });
+  const conflicting={...match,teams:{home:{name:'Georgia Bulldogs'},away:{name:'Troy Trojans'}}};
+  assert.equal(parseListings(source,JSON.stringify([conflicting]),at).observations[0].teams,null);
+  assert.equal(tvappIdentity(conflicting),null);
 });
 
 test('TVApp rejects malformed matchup identifiers and dates despite standalone broadcasts',()=>{
