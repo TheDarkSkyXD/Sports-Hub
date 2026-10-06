@@ -110,3 +110,53 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} reuses
     assert.equal(final.events.some(event => event.id === 'nfl:10001'), false, 'finished event removal remains distinct from reuse');
   } finally { await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); }
 });
+
+for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discovers a newly published live feed after one check interval`, async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'browser-detail-refresh-'));
+  const surge = sourceId === 'sportsurge-v2';
+  let clock = at;
+  let published = 1;
+  const reads: string[] = [];
+  const coordinator = createFootballCoordinator(join(directory, 'state.sqlite'), {
+    now: () => clock, browserCollectorsAvailable: true,
+    sources: [{ id: sourceId, url: surge ? 'https://v2.sportsurge.net/watch-nfl-streams/' : 'https://v2.streameast.ga/nfl-streams/', family: sourceId, kind: 'browser-catalog' }],
+    readSchedule: async source => ({ games: source.id === 'nfl' ? [game(1)] : [], league: source.league, at: clock }),
+    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+  });
+  const sweep = async () => {
+    await coordinator.refresh(true); await drain();
+    return (surge ? runSportsurgeSweep : runStreameastSweep)({ now: () => clock, signal: new AbortController().signal,
+      send: async (catalog: unknown) => {
+        const command = CommandSchema.parse({ kind: surge ? 'sportsurge-catalog' : 'streameast-catalog', catalog: structuredClone(catalog) });
+        const ack = await coordinator.command(command);
+        assert.equal(ack.kind, 'catalog-ack', JSON.stringify(ack));
+        return ack;
+      },
+      read: async (url: string, page: string) => {
+        reads.push(page);
+        if (page === 'category') {
+          if (!url.includes('nfl')) return surge ? '<main id="match-list-container"><div class="watch-empty-state">No live or upcoming games</div></main>' : '<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">No CFB games available</h2></div>';
+          return surge ? `<main id="match-list-container"><a class="match-row" href="watch-10001-nfl-away-home-1/"><span class="match-row-team-name">Away 1</span><span class="match-row-team-name">Home 1</span><time class="match-time" data-timestamp="${at / 1000}"></time><span class="live-badge">Live</span>${published} Streams</a></main>` :
+            `<article class="m-card" data-match-id="10001" data-team-names="Away 1|Home 1" data-time="${at / 1000}"><a class="m-card__link" href="https://v2.streameast.ga/nfl/away-1-vs-home-1-${at / 1000}/"></a></article>`;
+        }
+        if (surge) return `<div class="stream-list">${Array.from({ length: published }, (_, server) => `<div class="stream-item" data-href="https://fixture.example/player/1/${server + 1}"><span class="stream-row-site-name">Server ${server + 1}</span><span class="stream-vote" id="stream-1${server + 1}"></span></div>`).join('')}</div>`;
+        if (page === 'server') return `<iframe src="https://streame.center/stream-east/ch1${url.slice(-1)}.php"></iframe>`;
+        return `<div class="stream-alt-list">${Array.from({ length: published }, (_, server) => `<a class="stream-alt-item" href="${url}${server + 1}"><span class="stream-alt-name">Free ${server + 1}</span><span class="stream-alt-free-badge">Free</span></a>`).join('')}</div>`;
+      },
+    });
+  };
+  try {
+    await sweep(); await drain();
+    const first = await coordinator.command({ kind: 'sources' });
+    assert.equal(first.kind, 'sources');
+    if (first.kind === 'sources') assert.equal(first.snapshot.games[0].workingChoiceCount, 1);
+    clock += 300000;
+    published = 2;
+    reads.length = 0;
+    await sweep(); await drain();
+    const second = await coordinator.command({ kind: 'sources' });
+    assert.equal(second.kind, 'sources');
+    if (second.kind === 'sources') assert.equal(second.snapshot.games[0].workingChoiceCount, 2);
+    assert.equal(reads.filter(page => page === 'detail').length, 1);
+  } finally { await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); }
+});
