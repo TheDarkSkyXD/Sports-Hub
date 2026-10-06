@@ -138,8 +138,13 @@ export function hlsUrl(url: URL, response: Response): boolean {
 
 export function resource(value: URL, referer: URL, kind: ResourceKind, requester: Requester, userAgent='Mozilla/5.0'): ProviderResource {
   let current = value;
+  const hockeySegment=/^\/([a-z]+-[a-z]+)\/[a-z0-9]{32}\/[1-9]\d*\.ts$/i.exec(value.pathname);
+  const hockeyCredentials=/^\?(?:e=\d{10}&st=[A-Za-z0-9_-]{22}|st=[A-Za-z0-9_-]{22}&e=\d{10})$/.test(value.search);
+  const identity=kind==='media'&&value.origin==='https://hls.hockey.do'&&!value.username&&!value.password&&
+    !value.port&&!value.hash&&hockeySegment?.[1].length===12&&hockeyCredentials?
+    `${value.origin}${value.pathname}`:value.href;
   return {
-    kind, identity: value.href,
+    kind, identity,
     async read({ signal, range }) {
       const readSignal = kind === 'playlist' ? AbortSignal.any([signal, AbortSignal.timeout(HEADER_WAIT_MS)]) : signal;
       const result = await get(current.href, readSignal, requester, referer, range,
