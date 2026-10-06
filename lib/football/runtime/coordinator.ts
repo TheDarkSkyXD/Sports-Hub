@@ -1115,6 +1115,7 @@ export class FootballCoordinator {
         const prior=stored.catalog.events.find(prior=>sameSportsurgeEvent(event,prior)&&prior.detail.kind==='collected');
         if(prior?.detail.kind!=='collected')continue;
         const detail=prior.detail;
+        if(this.now()-detail.at>=this.sourceRefreshMs)continue;
         if(!(this.candidates.get(gameId)||[]).some(candidate=>this.retainLive(candidate)&&
           this.availability(candidate).kind==='playable'&&candidate.sourceIds.includes('sportsurge-v2')&&
           detail.providers.some(provider=>candidate.locator.provider==='sportsurge-v2'&&candidate.locator.eventId===event.id&&
@@ -1141,6 +1142,7 @@ export class FootballCoordinator {
       for(const stored of history) {
         const prior=stored.catalog.events.find(prior=>sameStreameastEvent(event,prior)&&prior.detail.kind==='collected');
         if(prior?.detail.kind!=='collected')continue;
+        if(this.now()-prior.detail.at>=this.sourceRefreshMs)continue;
         const choices=streameastCandidates(prior,game.id);
         if(!(this.candidates.get(game.id)||[]).some(candidate=>this.retainLive(candidate)&&
           this.availability(candidate).kind==='playable'&&candidate.sourceIds.includes('streameast')&&
