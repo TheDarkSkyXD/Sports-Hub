@@ -83,6 +83,7 @@ const failureLabel:Record<NonNullable<NonNullable<SourcesSnapshot['sources'][num
 };
 const matchReasonLabel:Record<SourcesSnapshot['sources'][number]['unmatchedReasons'][number]['reason'],string>={
   'not-a-matchup':'No clear matchup','unknown-teams':'Teams not recognized','unverified-kickoff':'Kickoff not verified',
+  'unverified-contextual-kickoff':'Matchup date needs verification',
   'ambiguous-matchup':'Ambiguous matchup','conflicting-date':'Conflicting kickoff','finished-game':'Game finished',other:'Other matching reason',
 };
 const time=(value:number)=>new Date(value).toLocaleString();

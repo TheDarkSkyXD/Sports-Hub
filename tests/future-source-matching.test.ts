@@ -90,3 +90,53 @@ test('an undated contextual candidate cannot be promoted by a live source flag',
   const wrongDate = enrichObservation(row, detail.replace('1791331200', '1791417600'));
   assert.equal(matchObservation(wrongDate, [trojansGame], observedAt).kind, 'unmatched');
 });
+
+test('an undated matchup with two globally unique college names retains ordinary live promotion', () => {
+  const sourceRow = parseListings(source, listing, observedAt).observations[0];
+  const names: [string,string] = ['Southern Miss Golden Eagles', 'Troy Trojans'];
+  const row = { ...sourceRow, teams: names };
+  const preliminary = matchObservation(row, [trojansGame], observedAt);
+  assert.deepEqual(preliminary, { kind: 'unmatched', reason: 'unverified-kickoff', possibleGameIds: [trojansGame.id] });
+  assert.deepEqual(matchSourceLiveGame(preliminary, [trojansGame], kickoff - 10_000),
+    { kind: 'matched', gameId: trojansGame.id });
+});
+
+test('a tomorrow matchup automatically discovers newly published servers after the check interval', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'future-strikeout-retry-'));
+  let clock = observedAt;
+  let published = false;
+  let detailReads = 0;
+  const pending = detail.replace('</script>', '</script><p>The stream will be available shortly</p>')
+    .replace(/<button data-uri=[\s\S]*$/, '');
+  const coordinator = createFootballCoordinator(join(directory, 'state.sqlite'), {
+    now: () => clock,
+    schedules: [{ id: 'fbs', league: 'ncaaf', path: '/fixture', group: null }],
+    sources: [source],
+    readSchedule: async () => ({ games: [trojansGame], league: 'ncaaf', at: clock }),
+    readHtml: async url => {
+      if (url === source.url) return listing;
+      detailReads++;
+      return published ? detail : pending;
+    },
+    parseListings,
+    enrichObservation,
+    compatiblePlayers,
+    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+  });
+  const drain = async () => { for (let index = 0; index < 80; index++) await new Promise<void>(resolve => setImmediate(resolve)); };
+  try {
+    await coordinator.refresh(); await drain();
+    assert.equal(detailReads, 1);
+    published = true;
+    clock += 299_999;
+    await coordinator.command({ kind: 'sources' });
+    assert.equal(detailReads, 1);
+    clock += 2;
+    await coordinator.refresh(); await drain();
+    const reply = await coordinator.command({ kind: 'sources' });
+    assert.equal(reply.kind, 'sources');
+    if (reply.kind !== 'sources') throw new Error('Expected source snapshot');
+    assert.equal(detailReads, 2);
+    assert.equal(reply.snapshot.games.find(row => row.gameId === trojansGame.id)?.candidates.length, 3);
+  } finally { await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); }
+});

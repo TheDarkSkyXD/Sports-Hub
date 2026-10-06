@@ -47,13 +47,28 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
       return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[]};
     const [first,second]=observation.teams.map(normalizedName);
     if (!first || !second || first===second) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
-    const possible=prepared.filter(({game,home,away})=>{
+    const strict=prepared.filter(({game,home,away})=>{
       if (observation.league && game.league!==observation.league) return false;
       return home.has(first) && away.has(second) || home.has(second) && away.has(first);
     });
+    const anchored=(anchorName:string,otherName:string,anchorId:string,otherId:string):boolean=>{
+      const anchorOwners=collegeOwners.get(anchorName),otherOwners=collegeOwners.get(otherName);
+      const activeAnchor=liveOwners.get(`ncaaf:${anchorName}`),activeOther=liveOwners.get(`ncaaf:${otherName}`);
+      return !!anchorOwners&&anchorOwners.size===1&&anchorOwners.has(anchorId)&&
+        !!otherOwners&&otherOwners.size>1&&otherOwners.has(otherId)&&
+        !!activeAnchor&&activeAnchor.size===1&&activeAnchor.has(anchorId)&&
+        !!activeOther&&activeOther.has(otherId)&&[...activeOther].every(owner=>otherOwners.has(owner));
+    };
+    const contextual=observation.league==='nfl'?[]:prepared.filter(({game})=>{
+      if(game.league!=='ncaaf'||!collegeAliases.has(game.home.id||'')||!collegeAliases.has(game.away.id||''))return false;
+      const home=identity(game,game.home),away=identity(game,game.away);
+      return anchored(first,second,home,away)||anchored(second,first,away,home)||
+        anchored(first,second,away,home)||anchored(second,first,home,away);
+    });
+    const possible=[...new Map([...strict,...contextual].map(row=>[row.game.id,row])).values()];
     const ids=[...new Set(possible.map(({game})=>game.id))];
     if (observation.kickoff===null) return {kind:'unmatched',reason:!ids.length?'unknown-teams':
-      ids.length===1&&possible[0].game.lifecycle==='final'?'finished-game':'unverified-kickoff',possibleGameIds:ids};
+      ids.length===1&&possible[0].game.lifecycle==='final'?'finished-game':contextual.length?'unverified-contextual-kickoff':'unverified-kickoff',possibleGameIds:ids};
     const kickoff=observation.kickoff;
     const dated=possible.filter(({date})=>Number.isFinite(date) && Math.abs(date-kickoff)<=3*60*60_000);
     if (dated.length!==1) return {kind:'unmatched',reason:dated.length?'ambiguous-matchup':possible.length?'conflicting-date':'unknown-teams',possibleGameIds:ids};
@@ -67,6 +82,12 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
 
 export function matchObservation(observation: Observation, games: Game[], now: number): Match {
   return createObservationMatcher(games)(observation,now);
+}
+
+export function detailCandidateGameIds(result:Match):readonly string[] {
+  if(result.kind==='matched')return [result.gameId];
+  return result.reason==='unverified-kickoff'||result.reason==='unverified-contextual-kickoff'
+    ?result.possibleGameIds:[];
 }
 
 export function matchSourceLiveGame(result:Match,games:readonly Game[],now:number):Match {

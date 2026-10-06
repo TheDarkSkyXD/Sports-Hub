@@ -35,7 +35,7 @@ function publicObservationUrl(value:string,hosts:Set<string>):string|null {
 
 function sourceReason(reason:string):SourceMatchReason {
   switch(reason) {
-    case 'not-a-matchup': case 'unknown-teams': case 'unverified-kickoff':
+    case 'not-a-matchup': case 'unknown-teams': case 'unverified-kickoff': case 'unverified-contextual-kickoff':
     case 'ambiguous-matchup': case 'conflicting-date': case 'finished-game': return reason;
     default: return 'other';
   }

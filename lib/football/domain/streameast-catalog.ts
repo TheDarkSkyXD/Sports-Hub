@@ -106,7 +106,7 @@ export function streameastCandidates(event:StreameastCatalog['events'][number],g
 
 function publicReason(value:string):SourceMatchReason {
   switch(value) {
-    case 'not-a-matchup':case 'unknown-teams':case 'unverified-kickoff':case 'ambiguous-matchup':
+    case 'not-a-matchup':case 'unknown-teams':case 'unverified-kickoff':case 'unverified-contextual-kickoff':case 'ambiguous-matchup':
     case 'conflicting-date':case 'finished-game':return value;
     default:return 'other';
   }

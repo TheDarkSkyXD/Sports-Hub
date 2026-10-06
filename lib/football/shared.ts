@@ -133,7 +133,7 @@ export const DetailEvidenceSchema = z.discriminatedUnion('outcome',[
   z.object({outcome:z.literal('failed'),observationId:z.string(),generation:z.string(),at:z.number(),failure:SourceAttemptSchema.shape.failure.unwrap(),failures:z.number().int().nonnegative(),nextEligibleAt:z.number(),lastSuccess:LastDetailSuccessSchema.optional()}),
 ]);
 export type DetailEvidence = z.infer<typeof DetailEvidenceSchema>;
-export const SourceMatchReasonSchema=z.enum(['not-a-matchup','unknown-teams','unverified-kickoff',
+export const SourceMatchReasonSchema=z.enum(['not-a-matchup','unknown-teams','unverified-kickoff','unverified-contextual-kickoff',
   'ambiguous-matchup','conflicting-date','finished-game','other']);
 export type SourceMatchReason=z.infer<typeof SourceMatchReasonSchema>;
 export const SportsurgeFailureSchema=z.enum(['blocked','rate-limited','timeout','parser-changed','unavailable','invalid-detail-url','limit']);
