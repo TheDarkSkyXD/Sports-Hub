@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { COLLEGE_TEAM_CATALOG } from '../../football/domain/college-teams.generated.ts';
 
 const catalogTeamsSchema=z.object({home:z.object({name:z.string().min(1)}),away:z.object({name:z.string().min(1)})});
 export const TvappMatch=z.object({id:z.string().min(1),title:z.string().min(1),
@@ -8,6 +9,20 @@ export const TvappSourceRef=z.object({source:z.string().regex(/^[a-z0-9-]{1,32}$
 export const TvappDetailMatch=TvappMatch.extend({sources:z.array(TvappSourceRef).max(32)});
 export const TvappStream=z.object({id:TvappSourceRef.shape.id,source:TvappSourceRef.shape.source,
   streamNo:z.number().int().min(1).max(100),language:z.string().min(1),hd:z.boolean(),embedUrl:z.string().url()});
+
+const collegeOwnerByAlias=new Map<string,string|null>();
+const exactAlias=(name:string)=>name.toLowerCase().replace(/\s+/g,' ').trim();
+for(const team of COLLEGE_TEAM_CATALOG)for(const alias of team.aliases){
+  const name=exactAlias(alias);
+  const prior=collegeOwnerByAlias.get(name);
+  if(prior===undefined)collegeOwnerByAlias.set(name,team.id);
+  else if(prior!==team.id)collegeOwnerByAlias.set(name,null);
+}
+
+function sameUniqueCollegeOwner(left:string,right:string):boolean {
+  const owner=collegeOwnerByAlias.get(exactAlias(left));
+  return owner!==undefined&&owner!==null&&owner===collegeOwnerByAlias.get(exactAlias(right));
+}
 
 export function catalogTeams(title:string):[string,string]|null {
   const parts=title.split(/\s+(?:vs\.?|at|-)\s+/i).map(value=>value.trim());
@@ -20,7 +35,7 @@ export function preferredCatalogTeams(title:string,structured:[string,string]|nu
   const related=(left:string,right:string)=>{
     const a=left.toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
     const b=right.toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
-    return a.includes(b)||b.includes(a);
+    return a.includes(b)||b.includes(a)||sameUniqueCollegeOwner(left,right);
   };
   const aligned=related(titled[0],structured[0])&&related(titled[1],structured[1])||
     related(titled[0],structured[1])&&related(titled[1],structured[0]);
