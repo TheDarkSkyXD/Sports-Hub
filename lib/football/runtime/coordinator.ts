@@ -24,7 +24,8 @@ const PROBE_PRIORITY={forced:0,unknown:1,retry:2};
 const DECODED_STARTUP_WINDOW_MS=10*60_000;
 const LISTING_PARSER_VERSION=3;
 function usesBrowserProbe(candidate:Candidate):boolean {
-  return candidate.locator.provider==='event-page'||candidate.locator.provider==='tvapp'||candidate.locator.provider==='sportsurge-v2';
+  return candidate.locator.provider==='event-page'||candidate.locator.provider==='tvapp'||
+    candidate.locator.provider==='sportsurge-v2'||candidate.locator.provider==='streameast-server';
 }
 function detailGeneration(observation:Observation):string {
   return JSON.stringify([observation.sourceId,observation.url,observation.teams,observation.kickoff,observation.observedAt,observation.parserVersion]);
@@ -290,7 +291,8 @@ export class FootballCoordinator {
       const feeds=[...aliases.values()].flatMap(row=>{
         const sourceIds=row.sourceIds.filter(id=>this.sources.some(source=>source.id===id));
         if(!sourceIds.length||!this.persistableLocator(row.locator)||
-          (row.locator.provider==='event-page'||row.locator.provider==='tvapp')&&row.locator.gameId!==game.id)return [];
+          (row.locator.provider==='event-page'||row.locator.provider==='tvapp'||
+            row.locator.provider==='streameast-server')&&row.locator.gameId!==game.id)return [];
         const feed:WorkingFeed={version:1,identityHash,candidate:{...row,sourceIds},owner,checkedAt:health.checkedAt,proof:health.proof};
         return workingFeedMatches(feed,game)?[feed]:[];
       });
@@ -314,7 +316,8 @@ export class FootballCoordinator {
         const sourceIds=feed.candidate.sourceIds.filter(id=>this.sources.some(source=>source.id===id));
         return (!game||game.lifecycle!=='final'&&!this.scheduleFresh(game)||workingFeedMatches(feed,game))&&sourceIds.length&&this.persistableLocator(feed.candidate.locator)&&this.identityHash(feed.candidate)===feed.identityHash&&
           feed.checkedAt<=this.now()+60_000&&feed.candidate.observedAt<=this.now()+60_000&&
-          (feed.candidate.locator.provider!=='event-page'&&feed.candidate.locator.provider!=='tvapp'||
+          (feed.candidate.locator.provider!=='event-page'&&feed.candidate.locator.provider!=='tvapp'&&
+            feed.candidate.locator.provider!=='streameast-server'||
             feed.candidate.locator.gameId===feed.candidate.gameId)?
           [{...feed,candidate:{...feed.candidate,sourceIds}}]:[];
       });
@@ -775,7 +778,8 @@ export class FootballCoordinator {
       const byId=new Map((this.candidates.get(game.id)||[]).map(candidate=>[candidate.id,candidate]));
       for(const published of detail.players) {
         let player=published;
-        if((player.locator.provider==='event-page'||player.locator.provider==='tvapp') &&
+        if((player.locator.provider==='event-page'||player.locator.provider==='tvapp'||
+          player.locator.provider==='streameast-server') &&
           (player.locator.gameId!==game.id || player.locator.eventUrl!==observation.url))continue;
         const versionId=player.id+':'+createHash('sha256').update(JSON.stringify(player.locator)).digest('hex').slice(0,12);
         if(byId.has(versionId))player={...player,id:versionId};
@@ -879,6 +883,9 @@ export class FootballCoordinator {
           provisionalLiveChannel(observation,rawResult,freshGames,at)??undefined;
         const players=(this.feedGame(game)?
           publishedEventPage?rolloverPlayers:await playersFor(game.id):[])
+          .filter(player=>(player.locator.provider!=='event-page'&&player.locator.provider!=='tvapp'&&
+            player.locator.provider!=='streameast-server')||
+            player.locator.gameId===game?.id&&player.locator.eventUrl===observation.url)
           .map(({id,label,locator})=>({id,label,locator}));
         if(this.stopped||signal.aborted||!this.observationFeedEligible(original))return;
         const identity=detailIdentity(observation);
