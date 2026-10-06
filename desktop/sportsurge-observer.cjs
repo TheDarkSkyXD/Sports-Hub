@@ -132,6 +132,10 @@ function allowsSelectedStreameastNavigation(frame,target,current) {
   } catch{return false;}
 }
 
+function recognizedDlivePixelTransport(_evidence) {
+  return false;
+}
+
 function tvappEmbedEntry(value) {
   const url = publicUrl(value);
   return !!url && url.origin === 'https://embed.st' && !url.search && !url.port &&
@@ -722,4 +726,4 @@ function createSportsurgeObserver({ controlToken, port = 0 }) {
   return { start, stop };
 }
 
-module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedVipboxVideo, aianimalvibesPlayer, belongsToSelectedStreameastPlayer, allowsSelectedStreameastNavigation };
+module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedVipboxVideo, aianimalvibesPlayer, belongsToSelectedStreameastPlayer, allowsSelectedStreameastNavigation, recognizedDlivePixelTransport };
