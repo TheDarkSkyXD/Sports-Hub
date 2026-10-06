@@ -103,6 +103,22 @@ test('300 slow browser choices finish before failed feed retries while working f
   } finally { await run.stop(); }
 });
 
+test('new published choices are discovered at the interval while working proof stays cached', async () => {
+  const run = fixture({ count: 1 });
+  try {
+    await run.refresh();
+    const before = (await run.snapshot()).games[0].candidates[0].availability;
+    run.setCount(2);
+    await run.refresh(299_999);
+    assert.equal((await run.snapshot()).games[0].candidates.length, 1);
+    await run.refresh(300_001);
+    const after = (await run.snapshot()).games[0].candidates;
+    assert.equal(after.length, 2);
+    assert.deepEqual(after.find(row => row.id === 'route-000')?.availability, before);
+    assert.equal(run.calls.length, 2);
+  } finally { await run.stop(); }
+});
+
 test('working feeds retain their checked time while automatic and manual retries check only failed feeds', async () => {
   const run = fixture();
   try {
