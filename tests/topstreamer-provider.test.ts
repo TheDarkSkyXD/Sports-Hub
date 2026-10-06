@@ -17,7 +17,18 @@ const eventPage = `<link rel="canonical" href="${server.href}"><div class="playe
 const middlePage = `<script>var f=document.createElement('iframe');f.src = "${player.href}";document.body.appendChild(f);</script><noscript><iframe src="${player.href}"></iframe></noscript>`;
 const signal = () => new AbortController().signal;
 
-function fixtureRequester(input?: {snapshot?: string; segment?: string; gzip?: boolean; rotate?: boolean;
+function rollingSnapshot(number: number): string {
+  const lines=['#EXTM3U','#EXT-X-VERSION:6','#EXT-X-TARGETDURATION:10',
+    `#EXT-X-MEDIA-SEQUENCE:${100 + number}`,'#EXT-X-DISCONTINUITY-SEQUENCE:4','#EXT-X-INDEPENDENT-SEGMENTS'];
+  for (const letter of ['a','b','c','d','e'].slice(number,number+3)) {
+    lines.push('#EXTINF:6.000,',
+      `https://media.example/live/ephemeral/event/528k/segment_${letter}.ts?Expires=9999999999&KeyName=fixture&Signature=fixture-${letter}`);
+  }
+  return snapshot.replace(/var payload = [^;]+;/,
+    `var payload = ${JSON.stringify({name:'saints',renditions:{'3_saints':lines.join('\n')}})};`);
+}
+
+function fixtureRequester(input?: {snapshot?: string; segment?: string; gzip?: boolean; rotate?: boolean; rolling?: boolean;
   server?: URL; canonical?: string}) {
   const requests: {host: string; referer: string | null}[] = [];
   let snapshots = 0;
@@ -30,7 +41,8 @@ function fixtureRequester(input?: {snapshot?: string; segment?: string; gzip?: b
     if (url.href === middle.href) return new Response(middlePage,{headers:{'content-type':'text/html'}});
     if (url.href === player.href) {
       const number=snapshots++;
-      const body = (input?.snapshot ?? snapshot).replace('MEDIA-SEQUENCE:100',`MEDIA-SEQUENCE:${100 + number}`)
+      const body = (input?.rolling ? rollingSnapshot(number) : input?.snapshot ?? snapshot)
+        .replace('MEDIA-SEQUENCE:100',`MEDIA-SEQUENCE:${100 + number}`)
         .replace('segment_a.ts',input?.rotate && number > 1 ? 'segment_d.ts' : 'segment_a.ts');
       return new Response(input?.gzip ? gzipSync(body) : body,{headers:{'content-type':'text/html',
         ...(input?.gzip ? {'content-encoding':'gzip'} : {})}});
@@ -66,7 +78,7 @@ test('published Main 1 creates a playable HLS resource and refreshes the live re
     const second=await text((await variant.read({signal:signal()})).body);
     assert.match(first,/#EXT-X-MEDIA-SEQUENCE:101/);
     assert.match(second,/#EXT-X-MEDIA-SEQUENCE:102/);
-    assert.notEqual(variant.identity,firstIdentity);
+    assert.equal(variant.identity,firstIdentity);
     const segment=variant.resolve(first.split('\n').find(line=>line.includes('/segment_a.ts?')) ?? '', 'media');
     assert.ok(segment);
     const read=await segment.read({signal:signal()});
@@ -79,6 +91,31 @@ test('published Main 1 creates a playable HLS resource and refreshes the live re
     ]);
     assert.equal(requests.at(-1)?.referer,player.href);
   } finally { playback.close(); }
+});
+
+test('rolling Main 1 playlists keep relay URLs for overlapping segments', async () => {
+  const {requester}=fixtureRequester({rolling:true});
+  const playback=await publishedTopstreamerVideo(server,parent,signal(),requester);
+  assert.ok(playback);
+  const grant={sessionId:'topstreamer-rolling',candidateId:'main-1',generation:1,gameId:'401872979'};
+  try {
+    const variant=playback.root.resolve('3_saints.m3u8','playlist');
+    assert.ok(variant);
+    const first=rewritePlaylist(await text((await variant.read({signal:signal()})).body),variant,grant);
+    const second=rewritePlaylist(await text((await variant.read({signal:signal()})).body),variant,grant);
+    const tokens=(body:string)=>[...body.matchAll(/\/api\/stream\/media\/([a-f0-9]{48})/g)].map(match=>match[1]);
+    const before=tokens(first),after=tokens(second);
+    assert.equal(before.length,3);
+    assert.equal(after.length,3);
+    assert.equal(before[1],after[0]);
+    assert.equal(before[2],after[1]);
+    assert.notEqual(before[0],after[0]);
+    assert.notEqual(before[2],after[2]);
+    const overlap=registeredResource(before[1]);
+    assert.ok(overlap);
+    const media=await overlap.resource.read({signal:signal()});
+    assert.equal(media.status,200);
+  } finally {revokeSession(grant.sessionId);playback.close();}
 });
 
 test('published Main 1 route accepts only its own event-base canonical', async () => {
