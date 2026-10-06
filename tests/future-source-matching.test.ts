@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { compatiblePlayers, enrichObservation, parseListings, SOURCES } from '../lib/football/adapters/sources.ts';
-import { matchObservation } from '../lib/football/domain/matching.ts';
+import { matchObservation, matchSourceLiveGame } from '../lib/football/domain/matching.ts';
+import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 import type { Game } from '../lib/football/shared.ts';
 
 const observedAt = Date.parse('2026-10-05T23:00:00Z');
@@ -24,7 +28,7 @@ const vikings = team('espn:ncaaf:3237', 'Troy Vikings');
 const game = (id: string, home: Game['home']): Game => ({
   id, league: 'ncaaf', name: `${southernMiss.name} at ${home.name}`,
   date: new Date(kickoff).toISOString(), home, away: southernMiss,
-  status: 'pre', lifecycle: 'scheduled', detail: 'Scheduled', redzone: false,
+  status: 'pre', lifecycle: 'scheduled', detail: 'Scheduled', redzone: false, partitions: ['fbs'],
 });
 const trojansGame = game('ncaaf-401871090', trojans);
 
@@ -50,4 +54,39 @@ test('the same short Troy name refuses two dated games with the same opponent', 
   const observation = publishedObservation();
   const result = matchObservation(observation, [trojansGame, game('ncaaf-other-troy', vikings)], observedAt);
   assert.equal(result.kind, 'unmatched');
+});
+
+test('undated Strikeout listing fetches detail before matching and attaches only its three dated servers', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'future-strikeout-'));
+  const reads: string[] = [];
+  const coordinator = createFootballCoordinator(join(directory, 'state.sqlite'), {
+    now: () => observedAt,
+    schedules: [{ id: 'fbs', league: 'ncaaf', path: '/fixture', group: null }],
+    sources: [source],
+    readSchedule: async () => ({ games: [trojansGame], league: 'ncaaf', at: observedAt }),
+    readHtml: async url => { reads.push(url); return url === source.url ? listing : detail; },
+    parseListings,
+    enrichObservation,
+    compatiblePlayers,
+    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+  });
+  try {
+    await coordinator.refresh(true);
+    for (let index = 0; index < 80; index++) await new Promise<void>(resolve => setImmediate(resolve));
+    assert.ok(reads.includes(eventUrl), 'an undated contextual listing must receive its detail read');
+    const reply = await coordinator.command({ kind: 'sources' });
+    assert.equal(reply.kind, 'sources');
+    if (reply.kind !== 'sources') throw new Error('Expected source snapshot');
+    assert.equal(reply.snapshot.games.find(row => row.gameId === trojansGame.id)?.candidates.length, 3);
+  } finally { await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('an undated contextual candidate cannot be promoted by a live source flag', () => {
+  const row = parseListings(source, listing, observedAt).observations[0];
+  const preliminary = matchObservation(row, [trojansGame], observedAt);
+  assert.deepEqual(preliminary, { kind: 'unmatched', reason: 'unverified-contextual-kickoff',
+    possibleGameIds: [trojansGame.id] });
+  assert.deepEqual(matchSourceLiveGame(preliminary, [trojansGame], kickoff - 10_000), preliminary);
+  const wrongDate = enrichObservation(row, detail.replace('1791331200', '1791417600'));
+  assert.equal(matchObservation(wrongDate, [trojansGame], observedAt).kind, 'unmatched');
 });
