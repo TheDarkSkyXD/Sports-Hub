@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -234,6 +235,24 @@ test('schema-valid aliases with another team owner are discarded independently',
     coordinator = run.start(); await coordinator.refresh(true); await drain();
     assert.deepEqual((await snapshot(coordinator)).games[0].candidates.map(row => row.id), [feed.candidate.id]);
     assert.equal(run.readRows().length, 1);
+  } finally { await coordinator.stop(); run.cleanup(); }
+});
+
+test('a cached StreamEast server choice for another game is rejected on restart', async () => {
+  const run = fixture(); let coordinator = run.start();
+  try {
+    await coordinator.refresh(true); await drain(); await coordinator.stop();
+    const feed = run.readRows()[0];
+    const locator: CandidateLocator = { provider: 'streameast-server', gameId: '99999',
+      sourceEventId: 'nfl:46236', eventUrl: 'https://v2.streameast.ga/nfl/atlanta-falcons-vs-new-orleans-saints-1/',
+      serverId: '2' };
+    const candidate = { ...feed.candidate, id: 'wrong-game-server', locator };
+    const identityHash = createHash('sha256').update(JSON.stringify([candidate.gameId,JSON.stringify(locator)])).digest('hex');
+    run.sql('DELETE FROM working_feeds');
+    run.writeRows([{ ...feed, candidate, identityHash }]);
+    run.hide(); coordinator = run.start(); await coordinator.refresh(true); await drain();
+    assert.equal(run.readRows().filter(row => row.candidate.id === 'wrong-game-server').length, 0);
+    assert.equal((await snapshot(coordinator)).games[0].candidates.filter(row => row.id === 'wrong-game-server').length, 0);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 
