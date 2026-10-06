@@ -6,6 +6,7 @@ import { streamcenterProvider, streamcenterResource, validStreamcenterResourceUr
 import { parseStreamcenterPlayer } from '../lib/playback/providers/streamcenter-player.ts';
 import type { ProviderResource } from '../lib/playback/provider.ts';
 import { probeCandidate } from '../lib/playback/probe.ts';
+import { resource as publicPageResource } from '../lib/playback/providers/public-page.ts';
 import { expireIdleStreams, openGeneration, registeredResource, registerResource, resourceCount, revokeGeneration, revokeSession,
   rewritePlaylist, streamSignal, touchStreamSession, validByteRange } from '../lib/stream-relay.ts';
 
@@ -46,6 +47,72 @@ test('live relay preserves old segment URLs when upstream signatures refresh',as
     revokeGeneration(owner.sessionId,1);
     assert.equal(registeredResource(next[0]),null);
     assert.ok(registeredResource(newer[0]));
+  } finally {revokeSession(owner.sessionId);}
+});
+
+test('a published Hockey segment keeps its relay token when only validated e/st credentials rotate',async()=>{
+  const owner=grant('hockey-credential-rotation');
+  const root='https://hls.hockey.do/streamlist.m3u8?e=1791259999&path=stream-hlsab&sig=abcdef&v=1';
+  const oldSignature='AbCdEfGhIjKlMnOpQr1234';
+  const freshSignature='QwErTyUiOpAsDfGhJk5678';
+  const oldExpiry='1791259999',freshExpiry='1791260000';
+  const segmentPath='stream-hlsab/0123456789abcdef0123456789abcdef';
+  const segment=(number:number,signature:string,expiry:string,host='hls.hockey.do',path=segmentPath,extra='')=>
+    `https://${host}/${path}/${number}.ts?e=${expiry}&st=${signature}${extra}`;
+  const readUrls:string[]=[];
+  const requester=async (url:URL)=>{
+    readUrls.push(url.href);
+    return new Response(new Uint8Array([0x47,0x00,0x00]),
+      {status:200,headers:{'content-type':'video/mp2t'}});
+  };
+  const source=publicPageResource(new URL(root),new URL('https://fsportshdz.xyz/embed/game-live-streams.php'),
+    'playlist',requester);
+  const playlist=(sequence:number,signature:string,expiry:string)=>`#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:${sequence}\n`+
+    Array.from({length:10},(_,offset)=>`#EXTINF:4,\n${segment(sequence+offset,signature,expiry)}\n`).join('');
+  const tokens=(body:string)=>[...body.matchAll(/\/api\/stream\/media\/([a-f0-9]{48})/g)].map(match=>match[1]);
+  try {
+    const before=tokens(rewritePlaylist(playlist(2615,oldSignature,oldExpiry),source,owner));
+    const after=tokens(rewritePlaylist(playlist(2617,freshSignature,freshExpiry),source,owner));
+    assert.equal(before.length,10);
+    assert.equal(after.length,10);
+    for(let offset=0;offset<8;offset++)
+      assert.equal(after[offset],before[offset+2],`overlapping segment ${2617+offset} must keep its relay URL`);
+    assert.notEqual(after[8],before[8],'a new sequence must get a new relay URL');
+    const retained=registeredResource(before[2]);
+    assert.ok(retained);
+    await retained.resource.read({signal:AbortSignal.timeout(1000)});
+    assert.equal(readUrls.at(-1),segment(2617,freshSignature,freshExpiry),
+      'the stable relay URL must fetch with the latest public signature');
+    const reordered=segment(2617,freshSignature,freshExpiry).replace(
+      `?e=${freshExpiry}&st=${freshSignature}`,`?st=${freshSignature}&e=${freshExpiry}`);
+    const reorderedToken=tokens(rewritePlaylist(
+      `#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:2617\n#EXTINF:4,\n${reordered}\n`,source,owner));
+    assert.equal(reorderedToken[0],before[2],'either published query order must share the segment identity');
+    const otherRendition=publicPageResource(new URL(root.replace('/streamlist.m3u8','/anotherlist.m3u8')),
+      new URL('https://fsportshdz.xyz/embed/game-live-streams.php'),'playlist',requester);
+    const otherToken=tokens(rewritePlaylist(
+      `#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:2617\n#EXTINF:4,\n${segment(2617,freshSignature,freshExpiry)}\n`,
+      otherRendition,owner));
+    assert.notEqual(otherToken[0],before[2],'another playlist rendition owns a separate relay token');
+    for(const changed of [
+      segment(2617,freshSignature,freshExpiry,'hls.hockey.do','stream-hlsab/abcdef0123456789abcdef0123456789'),
+      segment(2617,freshSignature,freshExpiry,'other.hockey.do'),
+      segment(2617,freshSignature,freshExpiry,'hls.hockey.do','stream_hlsab/0123456789abcdef0123456789abcdef'),
+      segment(2617,freshSignature,freshExpiry,'hls.hockey.do',segmentPath,'&other=1'),
+      segment(2617,freshSignature,freshExpiry,'hls.hockey.do',segmentPath,'&e=1791259999'),
+      segment(2617,freshSignature,freshExpiry,'hls.hockey.do',segmentPath,'&st='+oldSignature),
+      segment(2617,freshSignature,freshExpiry).replace(`e=${freshExpiry}`,'e=bad'),
+      segment(2617,freshSignature,freshExpiry).replace('st='+freshSignature,'st=short'),
+      segment(2617,freshSignature,freshExpiry).replace('?e=','?%65='),
+      segment(2617,freshSignature,freshExpiry).replace('&st=','&%73t='),
+      segment(2617,freshSignature,freshExpiry).replace('?e=','?E='),
+      segment(2617,freshSignature,freshExpiry).replace('&st=','&ST='),
+      segment(2617,freshSignature,freshExpiry).replace('/2617.ts','/0.ts'),
+      segment(2617,freshSignature,freshExpiry).replace('/2617.ts','/2617.txt'),
+    ]) {
+      const distinct=tokens(rewritePlaylist(`#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:2617\n#EXTINF:4,\n${changed}\n`,source,owner));
+      assert.notEqual(distinct[0],before[2]);
+    }
   } finally {revokeSession(owner.sessionId);}
 });
 
