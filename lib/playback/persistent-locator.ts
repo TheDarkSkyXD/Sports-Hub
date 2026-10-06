@@ -1,6 +1,7 @@
 import type { CandidateLocator } from '../football/shared.ts';
 import { validEventPagePair } from './providers/event-page-policy.ts';
 import { sportsurgeUrl } from './providers/public-page.ts';
+import { streameastServerUrl } from './providers/streameast-server.ts';
 
 function durableSportsurgeQuery(url: URL): boolean {
   const params = url.searchParams;
@@ -15,6 +16,7 @@ function durableSportsurgeQuery(url: URL): boolean {
 
 export function persistableLocator(locator: CandidateLocator): boolean {
   if (locator.provider === 'event-page') return validEventPagePair(locator.eventUrl, locator.serverUrl);
+  if (locator.provider === 'streameast-server') return streameastServerUrl(locator)!==null;
   if (locator.provider === 'tvapp') {
     const url=sportsurgeUrl(locator.eventUrl);
     return !!url&&url.href===locator.eventUrl&&url.hostname==='tvapp1.pk'&&!url.search&&!url.hash&&

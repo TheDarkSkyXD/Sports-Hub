@@ -83,6 +83,9 @@ export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
   z.object({provider:z.literal('gooz'),playerId:z.string().regex(/^\d{1,20}$/)}),
   z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid()}),
   z.object({provider:z.literal('streameast'),channelId:z.string().regex(/^\d{1,4}$/)}),
+  z.object({provider:z.literal('streameast-server'),gameId:z.string().regex(/^(?:ncaaf-)?\d{1,20}$/),
+    sourceEventId:z.string().regex(/^(?:ncaaf|nfl):\d{1,12}$/),eventUrl:z.string().url().max(400),
+    serverId:z.string().regex(/^[1-9]\d{0,3}$/)}).strict(),
   z.object({provider:z.literal('sportsurge-v2'),eventId:z.string().regex(/^(?:ncaaf|nfl):\d{1,12}$/),providerId:z.string().min(1).max(100),url:z.string().url().max(2000)}),
   z.object({provider:z.literal('wikisport'),section:z.enum(['0nhl','strm']),playerId:z.string().regex(/^\d{1,4}$/)}),
   z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:ncaaf-)?\d{1,20}$/),
@@ -183,6 +186,7 @@ export const StreameastCategorySchema=z.discriminatedUnion('kind',[
 export const StreameastAvailabilitySchema=z.discriminatedUnion('kind',[
   z.object({kind:z.literal('free-channel'),channelId:z.string().regex(/^\d{1,4}$/)}).strict(),
   z.object({kind:z.literal('free-wikisport'),section:z.enum(['0nhl','strm']),playerId:z.string().regex(/^\d{1,4}$/)}).strict(),
+  z.object({kind:z.literal('free-page')}).strict(),
   z.object({kind:z.literal('free-unsupported')}).strict(),
   z.object({kind:z.literal('free-unresolved')}).strict(),
   z.object({kind:z.literal('premium')}).strict(),

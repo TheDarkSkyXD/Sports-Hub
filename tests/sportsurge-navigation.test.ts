@@ -30,6 +30,21 @@ test('StreamEast handoff rejects another game, origin, private address, or extra
   assert.equal(allow(canonical),false);
 });
 
+test('a selected numeric StreamEast server permits only its exact SSO handoff',()=>{
+  const selected='https://v2.streameast.ga/nfl/atlanta-falcons-vs-new-orleans-saints-1/2';
+  const selectedPath=new URL(selected).pathname;
+  const selectedHandoff=`https://auth.streamea.st/SsoHandoff.php?${new URLSearchParams({h:'v2.streameast.ga',p:selectedPath})}`;
+  const selectedConnect=`https://v2.streameast.ga/connect.php?${new URLSearchParams({redirect:selectedPath})}`;
+  assert.equal(createNavigationPolicy(selected)(selectedHandoff),false,'unselected generic pages cannot use numeric SSO');
+  assert.equal(createNavigationPolicy(selected,true)(selectedHandoff.replace('%2F2','%2F3')),false,
+    'the first handoff must keep the selected numeric server');
+  const allow=createNavigationPolicy(selected,true);
+  for(const url of [selected,selectedHandoff,selectedConnect,selected])assert.equal(allow(url),true,url);
+  assert.equal(allow(`${selected}/`),false,'server route cannot become an event root');
+  assert.equal(allow(selected.replace(/2$/,'3')),false,'server choice cannot change');
+  assert.equal(allow(selectedHandoff.replace('%2F2','%2F3')),false,'handoff path cannot change');
+});
+
 test('published Sportsurge redirects allow one canonical hop and repeated hooks',()=>{
   const pairs=[
     ['https://dudestream1.com/mawhgte57fdt5rnb67','https://dudestream1.com/nfl2/'],

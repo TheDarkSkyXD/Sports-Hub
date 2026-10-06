@@ -1,10 +1,11 @@
-const { BrowserWindow, session } = require('electron');
+const { BrowserWindow, session, webFrameMain } = require('electron');
 const { randomUUID, timingSafeEqual } = require('node:crypto');
 const { lookup } = require('node:dns/promises');
 const http = require('node:http');
 const net = require('node:net');
 const { createObservedMedia } = require('./observed-media.cjs');
 const { handleCertificateIssuerRequest } = require('./certificate-issuer-proxy.cjs');
+const { eventUrl:streameastEventUrl,serverUrl:streameastServerUrl,publishedFreePlayer } = require('./streameast-catalog.cjs');
 
 const OBSERVE_MS = 20000;
 const OBSERVER_SLOTS = 4;
@@ -112,6 +113,25 @@ function sportspatrikaEntry(value) {
     /^\?ch=es[0-9]+$/.test(url.search);
 }
 
+function belongsToSelectedStreameastPlayer(frame,current) {
+  if(!current.selection?.playerUrl||!current.selection.playerFrame||!frame)return false;
+  try {
+    const main=current.window.webContents.mainFrame;
+    let root=frame;
+    while(root.parent&&root.parent!==main)root=root.parent;
+    return root===current.selection.playerFrame&&root.parent===main&&
+      root.url===current.selection.playerUrl&&main.framesInSubtree.includes(root);
+  } catch{return false;}
+}
+
+function allowsSelectedStreameastNavigation(frame,target,current) {
+  try {
+    if(frame.parent!==current.window.webContents.mainFrame)return true;
+    return target===current.selection?.playerUrl &&
+      (!current.selection.playerFrame||frame===current.selection.playerFrame);
+  } catch{return false;}
+}
+
 function tvappEmbedEntry(value) {
   const url = publicUrl(value);
   return !!url && url.origin === 'https://embed.st' && !url.search && !url.port &&
@@ -124,10 +144,12 @@ function aianimalvibesPlayer(value) {
     /^\/football\/[0-9]{1,10}$/.test(url.pathname) && !url.search && !url.port;
 }
 
-function createNavigationPolicy(value) {
+function createNavigationPolicy(value,allowStreameastServer=false) {
   const initial = new URL(value);
   const event = ['https://streameast.ga','https://v2.streameast.ga'].includes(initial.origin) &&
-    !initial.search && !initial.hash && /^\/(?:cfb|nfl)\/[a-z0-9]+(?:-[a-z0-9]+)*\/$/.test(initial.pathname);
+    !initial.search && !initial.hash &&
+    ( /^\/(?:cfb|nfl)\/[a-z0-9]+(?:-[a-z0-9]+)*\/$/.test(initial.pathname) ||
+      allowStreameastServer && /^\/(?:cfb|nfl)\/[a-z0-9]+(?:-[a-z0-9]+)*\/\d{1,4}$/.test(initial.pathname));
   const canonical = event ? `https://v2.streameast.ga${initial.pathname}` : null;
   const mygoodstreamShort = initial.origin === 'https://mygoodstream.pw' &&
     /^\/short\/[A-Za-z0-9]{8,32}$/.test(initial.pathname);
@@ -286,6 +308,14 @@ function createObserverSlot(index) {
 
   sourceSession.webRequest.onBeforeRequest((details,callback) => {
     const current = active;
+    if(current?.selection && details.resourceType==='subFrame'){
+      let parent='';
+      try {parent=details.frame?.parent?.url||'';}catch{}
+      if(!current.selection.playerUrl||parent===current.url && details.url!==current.selection.playerUrl){
+        callback({cancel:true});
+        return;
+      }
+    }
     if(current?.embeddedEventUrl && details.resourceType==='subFrame'){
       let parent='';
       try { parent=details.frame?.parent?.url||''; } catch {}
@@ -332,6 +362,10 @@ function createObserverSlot(index) {
     const isHls = /\.m3u8(?:$|[?#])/i.test(details.url) || /(?:application\/(?:vnd\.apple\.mpegurl|x-mpegurl)|audio\/(?:mpegurl|x-mpegurl))/i.test(contentType);
     if (active && candidate?.operation===active && details.statusCode >= 200 && details.statusCode < 300 && isHls) {
       const current = active;
+      if(current.selection&&!belongsToSelectedStreameastPlayer(candidate.frame,current)){
+        callback({cancel:false});
+        return;
+      }
       if(current.embeddedEventUrl && !belongsToEmbeddedServer(candidate.frame,current.url)){
         callback({cancel:false});
         return;
@@ -371,6 +405,7 @@ function createObserverSlot(index) {
             const visible = results.filter((result,index) => result.status === 'fulfilled' && result.value &&
               !frames[index].isDestroyed() && frames[index].url === urls[index] &&
               current.window.webContents.mainFrame.framesInSubtree.includes(frames[index]) &&
+              (!current.selection || belongsToSelectedStreameastPlayer(frames[index],current)) &&
               (!current.embeddedEventUrl || belongsToEmbeddedServer(frames[index],current.url)));
             if (visible.length === 1) { endActive(current,{ url: candidate.url, referer: refererUrl.href,
               userAgent: candidate.userAgent,requestReferer:candidate.requestReferer,origin:candidate.origin }); return; }
@@ -385,7 +420,7 @@ function createObserverSlot(index) {
     }
     callback({ cancel: false });
   });
-  function observe(url,purpose,embeddedEventUrl) {
+  function observe(url,purpose,embeddedEventUrl,selection) {
     if (active) return null;
     const window = new BrowserWindow({ show: false, webPreferences: {
       partition, contextIsolation: true, sandbox: true,
@@ -393,13 +428,17 @@ function createObserverSlot(index) {
     } });
     window.webContents.setAudioMuted(true);
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    const navigation = createNavigationPolicy(embeddedEventUrl||url);
+    const navigation = createNavigationPolicy(embeddedEventUrl||url,!!selection);
     for (const name of ['will-navigate','will-redirect']) window.webContents.on(name,(event,target) => {
       if (event.isMainFrame !== false && !navigation(event.url || target)) {
         const blocked = publicUrl(event.url || target);
         debug('navigation rejected',blocked?.origin,blocked?.pathname);
         event.preventDefault();
       }
+    });
+    if(selection)window.webContents.on('will-frame-navigate',event=>{
+      if(event.isMainFrame||!event.frame)return;
+      if(!current||!allowsSelectedStreameastNavigation(event.frame,event.url,current))event.preventDefault();
     });
     window.webContents.on('login',(event,_details,authInfo,callback) => {
       debug('login',authInfo.isProxy,authInfo.host);
@@ -409,7 +448,7 @@ function createObserverSlot(index) {
     });
     let current;
     const promise = new Promise(resolve => {
-      current = { window, url, embeddedEventUrl, navigation, purpose, resolve, sockets: new Set(), requests: 0, proxyRequests: 0, tunnels: 0, bytes: 0,
+      current = { window, url, embeddedEventUrl, selection, navigation, purpose, resolve, sockets: new Set(), requests: 0, proxyRequests: 0, tunnels: 0, bytes: 0,
         issuerRequests:0,
         frameLimit:embeddedEventUrl && new URL(embeddedEventUrl).hostname==='nflstreams.org' ? NFLSTREAMS_MAX_FRAMES :
           sportspatrikaEntry(url) ? SPORTSPATRIKA_MAX_FRAMES :
@@ -492,6 +531,41 @@ function createObserverSlot(index) {
         try { frames = window.webContents.mainFrame.framesInSubtree.length; }
         catch { endActive(current,null); return; }
         if (frames > current.frameLimit) { debug('too many frames',frames); endActive(current,null); }
+      });
+      if(selection)window.webContents.on('did-frame-navigate',(_event,navigatedUrl,_code,_status,isMainFrame,processId,routingId)=>{
+        if(active!==current||isMainFrame||!current.selection.playerUrl||
+          navigatedUrl!==current.selection.playerUrl)return;
+        const frame=webFrameMain.fromId(processId,routingId);
+        try {
+          const main=window.webContents.mainFrame;
+          if(!frame||frame.parent!==main||current.selection.playerFrame||
+            main.framesInSubtree.filter(item=>item.parent===main&&item.url===navigatedUrl).length!==1){
+            endActive(current,null);return;
+          }
+          current.selection.playerFrame=frame;
+        } catch {endActive(current,null);}
+      });
+      if(selection)window.webContents.on('dom-ready',()=>{
+        if(active!==current||window.webContents.getURL()!==url||current.selection.playerUrl)return;
+        void window.webContents.mainFrame.executeJavaScript('document.documentElement.outerHTML').then(html=>{
+          if(active!==current||window.webContents.getURL()!==url)return;
+          const event={id:selection.sourceEventId,url:selection.eventUrl};
+          const player=publishedFreePlayer(html,event,url);
+          if(player.kind!=='page'){endActive(current,null);return;}
+          current.selection.playerUrl=player.url;
+          const expected=JSON.stringify(player.url),page=JSON.stringify(url);
+          return window.webContents.mainFrame.executeJavaScript(`(() => {
+            if(location.href!==${page})return false;
+            const roots=document.querySelectorAll('#se-player-root.se-player');
+            if(roots.length!==1)return false;
+            const frames=roots[0].querySelectorAll(':scope > iframe[src]');
+            if(frames.length!==1||frames[0].src!==${expected})return false;
+            for(const frame of document.querySelectorAll('iframe'))if(frame!==frames[0])frame.remove();
+            const selected=frames[0].cloneNode(false);
+            frames[0].replaceWith(selected);
+            return true;
+          })()`).then(valid=>{if(active===current&&!valid)endActive(current,null);});
+        }).catch(()=>{if(active===current)endActive(current,null);});
       });
       if(embeddedEventUrl)window.webContents.on('dom-ready',()=>{
         if(active!==current||window.webContents.getURL()!==embeddedEventUrl)return;
@@ -579,20 +653,35 @@ function createSportsurgeObserver({ controlToken, port = 0 }) {
       const purpose = input?.purpose === undefined ? 'playback' : input.purpose;
       const embeddedEvent = input?.embeddedEventUrl === undefined ? undefined :
         typeof input.embeddedEventUrl === 'string' && publicUrl(input.embeddedEventUrl);
+      const rawSelection=input?.selection;
+      let selection;
+      if(rawSelection?.kind==='streameast-server'&&
+        typeof rawSelection.eventUrl==='string'&&typeof rawSelection.sourceEventId==='string'&&
+        typeof rawSelection.serverId==='string'){
+        const match=/^(ncaaf|nfl):(\d{1,12})$/.exec(rawSelection.sourceEventId);
+        const league=match?.[1];
+        const sourceEvent={id:rawSelection.sourceEventId,url:rawSelection.eventUrl,league};
+        const original=league&&streameastEventUrl(rawSelection.eventUrl,league);
+        const server=original&&streameastServerUrl(`${original}${rawSelection.serverId}`,sourceEvent);
+        if(original===rawSelection.eventUrl&&server?.url===url?.href&&server.id===rawSelection.serverId)
+          selection={kind:'streameast-server',eventUrl:original,sourceEventId:sourceEvent.id,
+            serverId:server.id};
+      }
       if (!url || purpose !== 'probe' && purpose !== 'playback' ||
         input?.embeddedEventUrl !== undefined && !embeddedEvent ||
+        rawSelection!==undefined && !selection || selection && embeddedEvent ||
         embeddedEvent && !(
           embeddedEvent.hostname==='nflstreams.org'&&url.hostname==='piratecat.store'||
           embeddedEvent.hostname==='ms.buffstream.io'&&url.hostname==='embedsports.me')) {
         response.writeHead(400); response.end(); return;
       }
       for (const slot of slots) {
-        operation = slot.observe(url.href,purpose,embeddedEvent?.href);
+        operation = slot.observe(url.href,purpose,embeddedEvent?.href,selection);
         if (operation) break;
       }
       if (!operation && purpose === 'playback') {
         const victim = slots.find(slot => slot.preemptProbe());
-        if (victim) operation = victim.observe(url.href,purpose,embeddedEvent?.href);
+        if (victim) operation = victim.observe(url.href,purpose,embeddedEvent?.href,selection);
       }
       if (!operation) { response.writeHead(429); response.end(); return; }
       await pinnedAddress((embeddedEvent||url).hostname,() => !closed);
@@ -633,4 +722,4 @@ function createSportsurgeObserver({ controlToken, port = 0 }) {
   return { start, stop };
 }
 
-module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedVipboxVideo, aianimalvibesPlayer };
+module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedVipboxVideo, aianimalvibesPlayer, belongsToSelectedStreameastPlayer, allowsSelectedStreameastNavigation };

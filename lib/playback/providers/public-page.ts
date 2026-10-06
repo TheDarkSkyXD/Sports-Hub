@@ -160,7 +160,12 @@ export function resource(value: URL, referer: URL, kind: ResourceKind, requester
   };
 }
 
-export async function observedPublicPage(destination: URL, signal: AbortSignal, purpose: 'playback' | 'probe',embeddedEvent?:URL): Promise<ProviderPlayback | null> {
+type PublicObservation={kind:'page';destination:URL;embeddedEvent?:URL}|{kind:'streameast-server';
+  serverUrl:URL;eventUrl:URL;sourceEventId:string;serverId:string};
+
+async function observedPublicRequest(request:PublicObservation, signal: AbortSignal,
+  purpose: 'playback' | 'probe'): Promise<ProviderPlayback | null> {
+  const destination=request.kind==='page'?request.destination:request.serverUrl;
   const origin = process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN;
   const token = process.env.SUNDAY_ROOM_CONTROL_TOKEN;
   if (!origin || !token || !/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(origin)) {
@@ -171,7 +176,10 @@ export async function observedPublicPage(destination: URL, signal: AbortSignal, 
     method: 'POST', cache: 'no-store', redirect: 'manual',
     signal: AbortSignal.any([signal, AbortSignal.timeout(25000)]),
     headers: { 'Content-Type': 'application/json', 'x-sunday-control-token': token },
-    body: JSON.stringify({ url: destination.href, purpose,embeddedEventUrl:embeddedEvent?.href }),
+    body: JSON.stringify(request.kind==='page' ?
+      {url:destination.href,purpose,embeddedEventUrl:request.embeddedEvent?.href} :
+      {url:destination.href,purpose,selection:{kind:'streameast-server',eventUrl:request.eventUrl.href,
+        sourceEventId:request.sourceEventId,serverId:request.serverId}}),
   });
   if (response.status === 404) { await response.body?.cancel(); return null; }
   if (!response.ok) {
@@ -203,6 +211,16 @@ export async function observedPublicPage(destination: URL, signal: AbortSignal, 
     void fetch(`${origin}/media/${capability}`,{method:'DELETE',redirect:'manual',
       signal:AbortSignal.timeout(5000),headers:{'x-sunday-control-token':token}}).then(response=>response.body?.cancel()).catch(()=>{});
   }};
+}
+
+export function observedPublicPage(destination: URL, signal: AbortSignal,
+  purpose: 'playback' | 'probe',embeddedEvent?:URL): Promise<ProviderPlayback | null> {
+  return observedPublicRequest({kind:'page',destination,embeddedEvent},signal,purpose);
+}
+
+export function observedStreameastServerPage(choice:{serverUrl:URL;eventUrl:URL;sourceEventId:string;serverId:string},
+  signal:AbortSignal,purpose:'playback'|'probe'):Promise<ProviderPlayback|null> {
+  return observedPublicRequest({kind:'streameast-server',...choice},signal,purpose);
 }
 
 export async function publishedPublicVideo(destination: URL, parent: URL, signal: AbortSignal,

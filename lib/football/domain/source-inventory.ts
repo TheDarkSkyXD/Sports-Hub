@@ -256,7 +256,10 @@ export function sourceInventory(input:Input):SourcesSnapshot {
               event.detail.servers.some(server=>server.availability.kind==='free-channel'&&
                 candidate.locator.provider==='streameast'&&candidate.locator.channelId===server.availability.channelId||
                 server.availability.kind==='free-wikisport'&&candidate.locator.provider==='wikisport'&&
-                candidate.locator.section===server.availability.section&&candidate.locator.playerId===server.availability.playerId))
+                candidate.locator.section===server.availability.section&&candidate.locator.playerId===server.availability.playerId||
+                server.availability.kind==='free-page'&&candidate.locator.provider==='streameast-server'&&
+                candidate.locator.sourceEventId===event.id&&candidate.locator.eventUrl===event.url&&
+                candidate.locator.serverId===server.id))
             .map(candidate=>candidate.id)};
       const publishedEvidence:LinkEvidence=catalogEvidence.kind==='collected'&&!catalogEvidence.candidateIds.length?
         {kind:'missing',checkedAt:catalogEvidence.checkedAt,
@@ -341,7 +344,10 @@ export function sourceInventory(input:Input):SourcesSnapshot {
           (server.availability.kind==='free-channel'&&candidate.locator.provider==='streameast'&&
             candidate.locator.channelId===server.availability.channelId||
             server.availability.kind==='free-wikisport'&&candidate.locator.provider==='wikisport'&&
-            candidate.locator.section===server.availability.section&&candidate.locator.playerId===server.availability.playerId));
+            candidate.locator.section===server.availability.section&&candidate.locator.playerId===server.availability.playerId||
+            server.availability.kind==='free-page'&&candidate.locator.provider==='streameast-server'&&
+            candidate.locator.sourceEventId===event.id&&candidate.locator.eventUrl===event.url&&
+            candidate.locator.serverId===server.id));
         if(!directChoice)continue;
         for(const route of freshCandidates.filter(candidate=>currentSurgeRoute(candidate,server.url))) {
           sharedRoutes.push({id:`${game.id}:${directChoice.id}:${route.id}`,candidateIds:[directChoice.id,route.id],
