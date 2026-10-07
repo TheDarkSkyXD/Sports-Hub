@@ -21,7 +21,7 @@ async function drain() {
   for (let index = 0; index < 40; index++) await new Promise<void>(resolve => setImmediate(resolve));
 }
 
-function fixture(options: { game?: Game; count?: number } = {}) {
+function fixture(options: { game?: Game; count?: number; persistable?: boolean } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'working-feed-rechecks-'));
   const path = join(directory, 'state.sqlite');
   let clock = at;
@@ -42,6 +42,7 @@ function fixture(options: { game?: Game; count?: number } = {}) {
       kickoff: Date.parse(game.date!), rawTime: '', observedAt: clock, parserVersion: 2,
     }] }),
     enrichObservation: value => value,
+    persistableLocator: () => options.persistable ?? true,
     compatiblePlayers: () => Array.from({ length: options.count ?? 1 }, (_, index) => ({
       id: `route-${index}`, label: `Route ${index}`, locator: { provider: 'gooz' as const, playerId: String(index + 100) },
     })),
@@ -116,6 +117,24 @@ test('a due working feed is rechecked at five minutes while playback stays on it
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
       { kind: 'playable', proof: 'media', checkedAt: at + 300_000 });
     assert.equal(run.rows().length, 1);
+  } finally { await run.stop(coordinator); }
+});
+
+test('a playable route without durable proof is still rechecked at the saved interval', async () => {
+  const run = fixture({ persistable: false });
+  const coordinator = run.start();
+  try {
+    await run.refresh(coordinator, 0);
+    assert.equal(run.rows().length, 0);
+    assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
+      { kind: 'playable', proof: 'media', checkedAt: at });
+    await run.refresh(coordinator, 299_999);
+    assert.deepEqual(run.calls, ['100']);
+    await run.refresh(coordinator, 300_000);
+    assert.deepEqual(run.calls, ['100', '100']);
+    assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
+      { kind: 'playable', proof: 'media', checkedAt: at + 300_000 });
+    assert.equal(run.rows().length, 0);
   } finally { await run.stop(coordinator); }
 });
 
