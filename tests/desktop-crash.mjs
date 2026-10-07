@@ -6,13 +6,12 @@ import { _electron as electron } from 'playwright';
 import { prepareDevelopmentElectron } from '../scripts/electron-runtime.mjs';
 
 const profile = await mkdtemp(path.join(tmpdir(), 'sunday-desktop-crash-'));
-const dev = process.argv.includes('--dev');
 let app;
 try {
   app = await electron.launch({
     executablePath: await prepareDevelopmentElectron(),
     args: [path.resolve('desktop/main.cjs'), `--user-data-dir=${profile}`],
-    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')), ...(dev ? { SUNDAY_ROOM_FORCE_DEV: '1' } : {}) },
+    env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
     timeout: 120000,
   });
   const page = await app.firstWindow();
@@ -22,7 +21,7 @@ try {
   const mainPid = await app.evaluate(() => process.pid);
   assert.ok(pid);
   assert.ok(mainPid);
-  console.log(`${dev ? 'Development' : 'Production'} Electron launch PID ${pid}; main PID ${mainPid}; local origin ${origin}`);
+  console.log(`Development Electron launch PID ${pid}; main PID ${mainPid}; local origin ${origin}`);
   process.kill(mainPid, 'SIGKILL');
   let stopped = false;
   for (let attempt = 0; attempt < 20; attempt++) {
