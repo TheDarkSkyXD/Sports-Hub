@@ -238,3 +238,69 @@ test('failed cleanup exits with code 1 and does not install a downloaded update'
     assert.equal(room.installAttempts(), 0);
   } finally { room.dispose(); }
 });
+
+test('permanent local server startup failure shows an error and exits after cleanup', async () => {
+  const userData = mkdtempSync(path.join(tmpdir(), 'sunday-desktop-startup-'));
+  const events: string[] = [];
+  let exited = false;
+  let windows = 0;
+  const app = Object.assign(new EventEmitter(), {
+    isPackaged: true,
+    setName() {},
+    setAppUserModelId() {},
+    getPath: () => userData,
+    requestSingleInstanceLock: () => true,
+    whenReady: () => Promise.resolve(),
+    quit() {
+      let prevented = false;
+      app.emit('before-quit', { preventDefault() { prevented = true; } });
+      if (!prevented) { exited = true; events.push('exit'); }
+    },
+    exit() { exited = true; events.push('exit'); },
+  });
+  class Window {
+    constructor() { windows++; }
+  }
+  const observer = {
+    start: async () => 'http://127.0.0.1:49301',
+    stop() { events.push('observer stopped'); },
+  };
+  const server = {
+    start: async () => { throw new Error('server launch failed'); },
+    beginStop() { events.push('server admission stopped'); },
+    async stop() { events.push('server stopped'); },
+  };
+  const dependency = (name: string) => {
+    if (name === 'electron') return {
+      app, autoUpdater: new EventEmitter(), BrowserWindow: Window,
+      dialog: { showErrorBox(title: string, message: string) { events.push(`dialog: ${title}: ${message}`); } },
+      ipcMain: { handle() {} }, shell: { openExternal: async () => {} },
+      powerMonitor: new EventEmitter(), Notification: { isSupported: () => false },
+    };
+    if (name === './port.cjs') return { localServerPort: async () => 49300 };
+    if (name === './local-server.cjs') return { createLocalServer: () => server };
+    if (name === './sportsurge-observer.cjs') return { createSportsurgeObserver: () => observer };
+    if (name === './sportsurge-collector.cjs') return { createSportsurgeCollector: () => { throw new Error('collector started before server'); } };
+    if (name === './streameast-collector.cjs') return { createStreameastCollector: () => { throw new Error('collector started before server'); } };
+    if (name === './nsis-updater.cjs') return { DesktopNsisUpdater: class {} };
+    if (name === './update.cjs') return { CH: {}, createUpdateService() {}, selectUpdateFeedUrl() {} };
+    return require(name);
+  };
+  const source = readFileSync(path.resolve('desktop/main.cjs'), 'utf8');
+  const boot = runInNewContext(`(function(require, __dirname, process, fetch, AbortSignal, console) { ${source}\n})`, {
+    setImmediate, setTimeout, clearTimeout, setInterval, clearInterval, URL,
+  });
+  try {
+    boot(dependency, path.resolve('desktop'), {
+      platform: 'win32', resourcesPath: userData, execPath: 'Sunday Room.exe', env: {},
+    }, async () => ({ ok: true }), AbortSignal, console);
+    for (let attempt = 0; attempt < 20 && !exited; attempt++) await settle();
+    assert.equal(exited, true, 'startup failure releases the single-instance owner');
+    assert.equal(windows, 0, 'a broken server never loads the room');
+    assert.deepEqual(events.filter(event => !event.startsWith('dialog: ')), [
+      'server admission stopped', 'observer stopped', 'server stopped', 'exit',
+    ]);
+    assert.equal(events.filter(event => event.startsWith('dialog: ')).length, 1);
+    assert.match(events.find(event => event.startsWith('dialog: ')) ?? '', /Sunday Room could not start.*server launch failed/i);
+  } finally { rmSync(userData, { recursive: true, force: true }); }
+});
