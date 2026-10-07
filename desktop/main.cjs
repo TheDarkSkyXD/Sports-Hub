@@ -1,4 +1,4 @@
-const { app, autoUpdater, BrowserWindow, ipcMain, shell, powerMonitor, Notification } = require('electron');
+const { app, autoUpdater, BrowserWindow, dialog, ipcMain, shell, powerMonitor, Notification } = require('electron');
 const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -65,6 +65,7 @@ const root = app.isPackaged ? path.join(process.resourcesPath,'server') : path.r
 const logDir = app.isPackaged ? path.join(app.getPath('userData'),'logs') : path.join(root,'.desktop-runtime');
 let win;
 let localServer;
+let localServerReady = false;
 let origin;
 let sportsurgeCollector;
 let sportsurgeObserver;
@@ -110,6 +111,7 @@ async function startServer(observerOrigin) {
     onHealthy:restoreMainFrame,
   });
   await localServer.start();
+  localServerReady = true;
 }
 
 app.whenReady().then(async () => {
@@ -200,19 +202,29 @@ app.whenReady().then(async () => {
   ipcMain.handle(CH.setPreferences,update.invoke('setPreferences'));
   update.start();
   await win.loadURL(origin).catch(() => { mainFrameFailed = true; });
-}).catch(error => {
-  fs.mkdirSync(logDir,{recursive:true});
-  fs.appendFileSync(path.join(logDir,'startup.log'),String(error)+'\n');
-  app.quit();
+}).catch(async error => {
+  try {
+    fs.mkdirSync(logDir,{recursive:true});
+    fs.appendFileSync(path.join(logDir,'startup.log'),String(error)+'\n');
+  } catch {}
+  try { dialog.showErrorBox('Sunday Room could not start',String(error)); } catch {}
+  try { await stopApplicationWork(); }
+  catch (cleanupError) {
+    try { fs.appendFileSync(path.join(logDir,'startup.log'),`Shutdown failed: ${cleanupError}\n`); } catch {}
+  }
+  runtimeStop = { kind: 'exiting' };
+  app.exit(1);
 });
 app.on('window-all-closed',() => app.quit());
 async function stopServer() {
   if (!localServer) return;
-  try {
-    await fetch(`${origin}/api/internal/pipeline`,{
-      method:'POST',headers:{'x-sunday-control-token':controlToken},signal:AbortSignal.timeout(5000),
-    });
-  } catch {}
+  if (localServerReady) {
+    try {
+      await fetch(`${origin}/api/internal/pipeline`,{
+        method:'POST',headers:{'x-sunday-control-token':controlToken},signal:AbortSignal.timeout(5000),
+      });
+    } catch {}
+  }
   await localServer.stop();
 }
 
