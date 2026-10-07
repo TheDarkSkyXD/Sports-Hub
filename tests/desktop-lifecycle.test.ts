@@ -8,13 +8,19 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 
 const require = createRequire(import.meta.url);
+const { DesktopNsisUpdater } = require('../desktop/nsis-updater.cjs');
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 
-async function desktop(options: { observerStopFails?: boolean } = {}) {
+async function desktop(options: { stopFailures?: readonly string[]; observerStopGate?: Promise<void>;
+  downloadedUpdate?: boolean } = {}) {
   const userData = mkdtempSync(path.join(tmpdir(), 'sunday-desktop-lifecycle-'));
   const windows: FakeWindow[] = [];
   const running = new Set(['server', 'sportsurge', 'observer', 'streameast']);
+  const stopAttempts: string[] = [];
+  let installPreparation: (() => Promise<void>) | undefined;
+  const updaters: FakeUpdater[] = [];
   let exited = false;
+  let exitCode: number | undefined;
 
   class FakeWindow extends EventEmitter {
     visible = false;
@@ -25,6 +31,7 @@ async function desktop(options: { observerStopFails?: boolean } = {}) {
       mainFrame: { url: '' },
       setWindowOpenHandler() {},
       send() {},
+      executeJavaScript: async () => {},
     });
     constructor() { super(); windows.push(this); }
     async loadURL(url: string) { this.webContents.mainFrame.url = url; }
@@ -54,25 +61,41 @@ async function desktop(options: { observerStopFails?: boolean } = {}) {
     getVersion: () => '1.0.10',
     requestSingleInstanceLock: () => true,
     whenReady: () => Promise.resolve(),
+    onQuit(handler: (code: number) => void) { app.on('quit', handler); },
     quit() {
       let prevented = false;
       app.emit('before-quit', { preventDefault() { prevented = true; } });
       if (prevented) return;
       exited = true;
+      exitCode = 0;
+      app.emit('quit', 0);
       app.emit('will-quit');
     },
-    exit() { exited = true; },
+    exit(code = 0) { exited = true; exitCode = code; app.emit('quit', code); },
   });
   const service = (name: string) => ({
     start: async () => 'http://127.0.0.1:4132',
-    beginStop() {},
+    beginStop() { stopAttempts.push('admission'); },
     requestSweep() {},
     async stop() {
-      if (name === 'observer' && options.observerStopFails) throw new Error('observer cleanup failed');
+      stopAttempts.push(name);
+      if (name === 'observer') await options.observerStopGate;
+      if (options.stopFailures?.includes(name)) throw new Error(`${name} cleanup failed`);
       running.delete(name);
     },
   });
-  class FakeUpdater { setFeedURL() {} }
+  class FakeUpdater {
+    app = app;
+    autoInstallOnAppQuit = false;
+    quitHandlerAdded = false;
+    quitAndInstallCalled = false;
+    installAttempts = 0;
+    _logger = { error() {} };
+    constructor() { updaters.push(this); }
+    setFeedURL() {}
+    async install() { this.installAttempts++; return true; }
+    addQuitHandler() { DesktopNsisUpdater.prototype.addQuitHandler.call(this); }
+  }
   const dependency = (name: string) => {
     if (name === 'electron') return {
       app, autoUpdater: new EventEmitter(), BrowserWindow: FakeWindow,
@@ -88,7 +111,11 @@ async function desktop(options: { observerStopFails?: boolean } = {}) {
     if (name === './update.cjs') return {
       CH: { get: 'get', check: 'check', download: 'download', install: 'install', setSource: 'source', setPreferences: 'preferences' },
       selectUpdateFeedUrl: () => 'https://updates.example.invalid/',
-      createUpdateService: () => ({ start() {}, stop() {}, invoke: () => () => {}, snapshot: () => ({ state: { kind: 'idle' } }) }),
+      createUpdateService: ({ prepareInstall }: { prepareInstall: () => Promise<void> }) => {
+        installPreparation = prepareInstall;
+        return { start() { if (options.downloadedUpdate) updaters.at(-1)?.addQuitHandler(); }, stop() {},
+          invoke: () => () => {}, snapshot: () => ({ state: { kind: 'idle' } }) };
+      },
     };
     return require(name);
   };
@@ -105,7 +132,10 @@ async function desktop(options: { observerStopFails?: boolean } = {}) {
   assert.ok(window, 'the production entry point opened a desktop window');
   assert.equal(window.visible, true);
   return {
-    app, window, running, hasExited: () => exited,
+    app, window, running, stopAttempts, hasExited: () => exited, exitCode: () => exitCode,
+    installAttempts: () => updaters.at(-1)?.installAttempts,
+    shutdownLog: () => readFileSync(path.join(userData, 'logs', 'startup.log'), 'utf8'),
+    prepareInstall: () => { assert.ok(installPreparation); return installPreparation(); },
     dispose: () => rmSync(userData, { recursive: true, force: true }),
   };
 }
@@ -131,12 +161,80 @@ test('closing the desktop stops its services and exits', async () => {
 });
 
 test('closing the desktop still stops the server and exits when observer cleanup fails', async () => {
-  const room = await desktop({ observerStopFails: true });
+  const room = await desktop({ stopFailures: ['observer'] });
   try {
     room.window.close();
     await settle();
     assert.equal(room.running.has('server'), false, 'observer failure must not leave the local server running');
     assert.equal(room.running.has('streameast'), false, 'observer failure must not skip the remaining collector');
     assert.equal(room.hasExited(), true, 'a failed cleanup must not retain a headless single-instance owner');
+  } finally { room.dispose(); }
+});
+
+test('shutdown attempts every service and logs each failure before exiting', async () => {
+  const room = await desktop({ stopFailures: ['sportsurge', 'observer', 'streameast'] });
+  try {
+    room.window.close();
+    await settle();
+    assert.deepEqual(room.stopAttempts, ['admission', 'sportsurge', 'observer', 'streameast', 'server']);
+    assert.equal(room.running.has('server'), false);
+    assert.equal(room.hasExited(), true);
+    const log = room.shutdownLog();
+    for (const name of ['sportsurge', 'observer', 'streameast'])
+      assert.match(log, new RegExp(`${name} cleanup failed`));
+  } finally { room.dispose(); }
+});
+
+test('repeated quit events share one cleanup while the observer is stopping', async () => {
+  let releaseObserver = () => {};
+  const observerStopGate = new Promise<void>(resolve => { releaseObserver = resolve; });
+  const room = await desktop({ observerStopGate });
+  try {
+    room.window.close();
+    await settle();
+    assert.deepEqual(room.stopAttempts, ['admission', 'sportsurge', 'observer']);
+    room.app.quit();
+    room.app.emit('window-all-closed');
+    assert.equal(room.hasExited(), false);
+    assert.deepEqual(room.stopAttempts, ['admission', 'sportsurge', 'observer']);
+    releaseObserver();
+    await settle();
+    assert.deepEqual(room.stopAttempts, ['admission', 'sportsurge', 'observer', 'streameast', 'server']);
+    assert.equal(room.hasExited(), true);
+  } finally { releaseObserver(); room.dispose(); }
+});
+
+test('explicit install preparation rejects cleanup failure and keeps the window open', async () => {
+  const room = await desktop({ stopFailures: ['observer'] });
+  try {
+    await assert.rejects(room.prepareInstall(), /observer cleanup failed/);
+    assert.deepEqual(room.stopAttempts, ['admission', 'sportsurge', 'observer', 'streameast', 'server']);
+    assert.equal(room.running.has('server'), false);
+    assert.equal(room.window.visible, true);
+    assert.equal(room.hasExited(), false);
+  } finally { room.dispose(); }
+});
+
+test('normal close permits an already downloaded update after cleanup succeeds', async () => {
+  const room = await desktop({ downloadedUpdate: true });
+  try {
+    room.window.close();
+    await settle();
+    assert.equal(room.running.size, 0);
+    assert.equal(room.hasExited(), true);
+    assert.equal(room.exitCode(), 0);
+    assert.equal(room.installAttempts(), 1);
+  } finally { room.dispose(); }
+});
+
+test('failed cleanup exits with code 1 and does not install a downloaded update', async () => {
+  const room = await desktop({ downloadedUpdate: true, stopFailures: ['observer'] });
+  try {
+    room.window.close();
+    await settle();
+    assert.equal(room.running.has('server'), false);
+    assert.equal(room.hasExited(), true);
+    assert.equal(room.exitCode(), 1);
+    assert.equal(room.installAttempts(), 0);
   } finally { room.dispose(); }
 });

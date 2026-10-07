@@ -76,7 +76,12 @@ let mainFrameFailed = false;
 let reloadingMainFrame = false;
 const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) app.quit();
-app.on('second-instance',() => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+app.on('second-instance',() => {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+});
 
 function trusted(event) {
   if (!win || win.isDestroyed()) return false;
@@ -242,13 +247,21 @@ async function waitForUpdateScreen() {
 function stopApplicationWork() {
   if (runtimeStop.kind === 'stopped') return Promise.resolve();
   if (runtimeStop.kind === 'stopping') return runtimeStop.done;
-  const done = (async () => {
-    localServer?.beginStop();
-    sportsurgeCollector?.stop();
-    await sportsurgeObserver?.stop();
-    streameastCollector?.stop();
-    await stopServer();
-  })();
+  const done = Promise.resolve().then(async () => {
+    const failures = [];
+    for (const [name, action] of [
+      ['local server admission', () => localServer?.beginStop()],
+      ['Sportsurge collector', () => sportsurgeCollector?.stop()],
+      ['Sportsurge observer', () => sportsurgeObserver?.stop()],
+      ['StreamEast collector', () => streameastCollector?.stop()],
+      ['local server', () => stopServer()],
+    ]) {
+      try { await action(); }
+      catch (error) { failures.push({ name, error }); }
+    }
+    if (failures.length) throw new AggregateError(failures.map(item => item.error),
+      `Desktop cleanup failed: ${failures.map(item => `${item.name}: ${String(item.error)}`).join('; ')}`);
+  });
   runtimeStop = { kind: 'stopping', done };
   void done.then(
     () => { runtimeStop = { kind: 'stopped' }; },
@@ -273,6 +286,8 @@ app.on('before-quit',event => {
       fs.mkdirSync(logDir,{recursive:true});
       fs.appendFileSync(path.join(logDir,'startup.log'),`Shutdown failed: ${String(error)}\n`);
     } catch {}
+    runtimeStop = { kind: 'exiting' };
+    app.exit(1);
   });
 });
 autoUpdater.on('before-quit-for-update', () => {
