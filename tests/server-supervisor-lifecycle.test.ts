@@ -72,4 +72,41 @@ test('hung supervisor tree killer reaches a bounded failure without a clean stop
   assert.equal(killer.killCalls, 1, 'the stalled helper is terminated by its deadline');
   assert.equal(room.next.directKills, 0);
   assert.deepEqual(room.exitCodes, []);
+  assert.doesNotThrow(() => killer.emit('error', new Error('late helper error')));
+});
+
+test('supervisor reports a clean stop only after tree kill and owned exit', async () => {
+  const killer = new EventEmitter();
+  const room = supervisor(killer);
+  room.disconnect();
+  killer.emit('exit', 0);
+  await settle();
+  assert.deepEqual(room.exitCodes, []);
+  room.next.exitCode = 0;
+  room.next.emit('exit', 0);
+  await settle();
+  assert.deepEqual(room.exitCodes, [0]);
+});
+
+test('a later direct child exit remains a failure after tree kill failed', async () => {
+  const killer = new EventEmitter();
+  const room = supervisor(killer);
+  room.disconnect();
+  killer.emit('error', new Error('injected taskkill failure'));
+  await settle();
+  room.next.exitCode = 0;
+  room.next.emit('exit', 0);
+  assert.deepEqual(room.exitCodes, [1]);
+});
+
+test('a successful tree command and later Next exit reports a clean stop', async () => {
+  const killer = new EventEmitter();
+  const room = supervisor(killer, { setTimeout: fastTimeout });
+  room.disconnect();
+  killer.emit('exit', 0);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.deepEqual(room.exitCodes, []);
+  room.next.exitCode = 0;
+  room.next.emit('exit', 0);
+  assert.deepEqual(room.exitCodes, [0]);
 });

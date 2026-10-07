@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
+import { HEAD } from '../app/api/internal/ready/route.ts';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve('.');
@@ -88,7 +89,26 @@ test('failed Windows tree kill keeps the owned supervisor for a later stop', asy
   } finally { room.service.beginStop(); room.dispose(); }
 });
 
-test('a hung Windows tree kill rejects within its deadline and retains ownership', async () => {
+test('a later stop never targets the PID of a supervisor that exited after failed tree kill', async () => {
+  const child = new Child();
+  let killCalls = 0;
+  const room = localServer({ spawn(command) {
+    if (command !== 'taskkill.exe') return child;
+    killCalls++;
+    const killer = new EventEmitter();
+    setImmediate(() => killer.emit('exit', 1));
+    return killer;
+  } });
+  void room.service.start().catch(() => {});
+  try {
+    await assert.rejects(within(room.service.stop()), /kill|terminat|exit|stop/i);
+    child.exit(0);
+    await assert.rejects(within(room.service.stop()), /without tree kill evidence/i);
+    assert.equal(killCalls, 1, 'the exited supervisor PID is never used again');
+  } finally { room.service.beginStop(); room.dispose(); }
+});
+
+test('a successful tree command and later owned exit complete cleanup without another PID kill', async () => {
   const child = new Child();
   let killCalls = 0;
   const room = localServer({
@@ -96,7 +116,31 @@ test('a hung Windows tree kill rejects within its deadline and retains ownership
     spawn(command) {
       if (command !== 'taskkill.exe') return child;
       killCalls++;
-      return new EventEmitter();
+      const killer = new EventEmitter();
+      setImmediate(() => killer.emit('exit', 0));
+      return killer;
+    },
+  });
+  void room.service.start().catch(() => {});
+  try {
+    await assert.rejects(within(room.service.stop()), /timed out|timeout/i);
+    child.exit(0);
+    await within(room.service.stop());
+    assert.equal(killCalls, 1);
+  } finally { room.service.beginStop(); room.dispose(); }
+});
+
+test('a hung Windows tree kill rejects within its deadline and retains ownership', async () => {
+  const child = new Child();
+  let killCalls = 0;
+  let lastKiller: EventEmitter | undefined;
+  const room = localServer({
+    timers: { setTimeout: fastTimeout },
+    spawn(command) {
+      if (command !== 'taskkill.exe') return child;
+      killCalls++;
+      lastKiller = new EventEmitter();
+      return lastKiller;
     },
   });
   void room.service.start().catch(() => {});
@@ -105,6 +149,60 @@ test('a hung Windows tree kill rejects within its deadline and retains ownership
     assert.equal(child.exitCode, null);
     await assert.rejects(within(room.service.stop()), /kill|terminat|timeout|stop/i);
     assert.equal(killCalls, 2, 'the owned supervisor remained available for retry');
+    assert.ok(lastKiller);
+    assert.doesNotThrow(() => lastKiller.emit('error', new Error('late helper error')));
+  } finally { room.service.beginStop(); room.dispose(); }
+});
+
+test('failed health replacement retries the same live supervisor before spawning a successor', async () => {
+  const first = new Child();
+  const second = new Child();
+  second.pid = 830002;
+  let supervisorSpawns = 0;
+  let instanceId = '';
+  let healthy = true;
+  let activeKills = 0;
+  let maxActiveKills = 0;
+  const killedPids: string[] = [];
+  let replacementStarted = () => {};
+  const replacement = new Promise<void>(resolve => { replacementStarted = resolve; });
+  const room = localServer({
+    timers: { setTimeout: fastTimeout },
+    fetch: async () => healthy || supervisorSpawns > 1
+      ? new Response(null, { status: 204, headers: { 'x-sunday-server-instance-id': instanceId } })
+      : new Response(null, { status: 503 }),
+    spawn(command, args, options) {
+      if (command === 'taskkill.exe') {
+        killedPids.push(args[1]);
+        activeKills++;
+        maxActiveKills = Math.max(maxActiveKills, activeKills);
+        const attempt = killedPids.length;
+        const killer = new EventEmitter();
+        setImmediate(() => {
+          activeKills--;
+          killer.emit('exit', attempt === 1 ? 1 : 0);
+          if (attempt === 2) setImmediate(() => first.exit(0));
+        });
+        return killer;
+      }
+      supervisorSpawns++;
+      instanceId = options.env.SUNDAY_ROOM_SERVER_INSTANCE_ID ?? '';
+      if (supervisorSpawns === 2) replacementStarted();
+      return supervisorSpawns === 1 ? first : second;
+    },
+  });
+  try {
+    await within(room.service.start());
+    healthy = false;
+    await room.service.checkNow();
+    await room.service.checkNow();
+    await room.service.checkNow();
+    assert.equal(killedPids.length, 1);
+    assert.equal(first.exitCode, null, 'the failed kill left the first supervisor live');
+    await within(replacement, 200);
+    assert.deepEqual(killedPids, [String(first.pid), String(first.pid)]);
+    assert.equal(maxActiveKills, 1, 'tree termination attempts do not overlap');
+    assert.equal(supervisorSpawns, 2, 'one verified cleanup starts one replacement');
   } finally { room.service.beginStop(); room.dispose(); }
 });
 
@@ -180,3 +278,29 @@ for (const scenario of ['foreign 200', 'old instance', 'owned instance'] as cons
     }
   });
 }
+
+test('the readiness route returns its instance only to the desktop control token', () => {
+  const previousToken = process.env.SUNDAY_ROOM_CONTROL_TOKEN;
+  const previousInstance = process.env.SUNDAY_ROOM_SERVER_INSTANCE_ID;
+  process.env.SUNDAY_ROOM_CONTROL_TOKEN = 'test-control-token';
+  process.env.SUNDAY_ROOM_SERVER_INSTANCE_ID = 'owned-instance';
+  try {
+    const wrong = HEAD(new Request('http://127.0.0.1/api/internal/ready', {
+      method: 'HEAD', headers: { 'x-sunday-control-token': 'wrong-token' },
+    }));
+    assert.equal(wrong.status, 404);
+    assert.equal(wrong.headers.get('x-sunday-server-instance-id'), null);
+
+    const owned = HEAD(new Request('http://127.0.0.1/api/internal/ready', {
+      method: 'HEAD', headers: { 'x-sunday-control-token': 'test-control-token' },
+    }));
+    assert.equal(owned.status, 204);
+    assert.equal(owned.headers.get('x-sunday-server-instance-id'), 'owned-instance');
+    assert.equal(owned.headers.get('cache-control'), 'no-store');
+  } finally {
+    if (previousToken === undefined) delete process.env.SUNDAY_ROOM_CONTROL_TOKEN;
+    else process.env.SUNDAY_ROOM_CONTROL_TOKEN = previousToken;
+    if (previousInstance === undefined) delete process.env.SUNDAY_ROOM_SERVER_INSTANCE_ID;
+    else process.env.SUNDAY_ROOM_SERVER_INSTANCE_ID = previousInstance;
+  }
+});
