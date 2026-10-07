@@ -10,7 +10,7 @@ import { provisionalLiveChannel, resolvedLiveChannelMatch } from '../domain/live
 import { catalogDecision, sameSportsurgeEvent, sanitizeSportsurgeCatalog, sportsurgeCandidates, sportsurgeObservation } from '../domain/sportsurge-catalog.ts';
 import { sameStreameastEvent, sanitizeStreameastCatalog, streameastDecision, streameastObservation, streameastCandidates, verifiedStreameastMatch } from '../domain/streameast-catalog.ts';
 import type { Recovery } from '../domain/lifecycle.ts';
-import type { FootballDependencies, FootballRepository } from '../domain/ports.ts';
+import type { CandidateProbeResult, FootballDependencies, FootballRepository } from '../domain/ports.ts';
 import { candidateSummary, type Board, type Candidate, type CandidateAvailability, type Command, type DetailEvidence, type Game, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourceEventBinding, type SourcesSnapshot, type StreameastCatalog, type SportsurgeCatalog } from '../shared.ts';
 
 type RecoveryPhase = {kind:'cycling'} | {kind:'exhausted';until:number;knownIds:string[]};
@@ -19,6 +19,7 @@ type ProbePhase = {kind:'queued';since:number}|{kind:'active';since:number};
 type ProbeJob = {key:string;candidate:Candidate;controller:AbortController;priority:'forced'|'unknown'|'retry';revision:number;phase:ProbePhase;promise?:Promise<void>};
 type TerminalHealth = Extract<CandidateAvailability,{kind:'playable'|'unavailable'}>;
 const PROBE_LIMIT=4;
+const PROBE_TIMEOUT_MS=65_000;
 const PROBE_QUEUE_LIMIT=256;
 const PROBE_PRIORITY={forced:0,unknown:1,retry:2};
 const DECODED_STARTUP_WINDOW_MS=10*60_000;
@@ -584,6 +585,31 @@ export class FootballCoordinator {
       (rank.get(left.key)??Infinity)-(rank.get(right.key)??Infinity));
     this.probePump??=setImmediate(()=>{this.probePump=undefined;this.pumpProbes();});
   }
+  private runProbe(job:ProbeJob):Promise<CandidateProbeResult> {
+    const canceled:CandidateProbeResult={kind:'deferred',retryAfterMs:2000};
+    if(job.controller.signal.aborted)return Promise.resolve(canceled);
+    const deadline=new AbortController();
+    const signal=AbortSignal.any([job.controller.signal,deadline.signal]);
+    return new Promise(resolve=>{
+      let settled=false;
+      const finish=(result:CandidateProbeResult)=>{
+        if(settled)return;
+        settled=true;
+        clearTimeout(timer);
+        job.controller.signal.removeEventListener('abort',onAbort);
+        resolve(result);
+      };
+      const onAbort=()=>finish(canceled);
+      const timer=setTimeout(()=>{
+        finish({kind:'unavailable',reason:'timeout'});
+        deadline.abort();
+      },PROBE_TIMEOUT_MS);
+      job.controller.signal.addEventListener('abort',onAbort,{once:true});
+      void Promise.resolve().then(()=>job.controller.signal.aborted ? canceled :
+        this.probeCandidate(job.candidate.locator,signal))
+        .then(finish,()=>finish({kind:'unavailable',reason:'upstream'}));
+    });
+  }
   private pumpProbes():void {
     if(this.activeProbes.size===PROBE_LIMIT&&![...this.activeProbes.values()].some(job=>!usesBrowserProbe(job.candidate)||job.controller.signal.aborted)) {
       const demand=this.probeDemand();
@@ -617,7 +643,7 @@ export class FootballCoordinator {
       this.revision++;
       this.probeAdmissions++;
       if(demand.size&&!demand.has(job.candidate.gameId))this.backgroundCursor++;
-      job.promise=Promise.resolve().then(()=>this.probeCandidate(job.candidate.locator,job.controller.signal)).then(result=>{
+      job.promise=this.runProbe(job).then(result=>{
         if(this.stopped||job.controller.signal.aborted||this.activeProbes.get(job.key)!==job||!this.currentProbeCandidate(job)||
           job.revision!==(this.healthRevision.get(job.key)||0))return;
         const checkedAt=this.now();

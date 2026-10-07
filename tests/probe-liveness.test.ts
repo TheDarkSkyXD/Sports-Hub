@@ -64,14 +64,18 @@ async function withFakeDeadline(run:(advance:(ms:number)=>void)=>Promise<void>) 
   finally {AbortSignal.timeout=original;mock.timers.reset();}
 }
 
-test('four stalled probes time out, free a slot, and use the saved five-minute retry',async()=>{
+for(const reactsToAbort of [false,true])test(reactsToAbort ?
+  'the probe deadline publishes timeout before an abort-driven defer result' :
+  'four stalled probes time out, free a slot, and use the saved five-minute retry',async()=>{
   const held:Array<ReturnType<typeof hold>>=[],started:string[]=[];
-  const run=fixture(5,async locator=>{
+  const run=fixture(5,async (locator,signal)=>{
     assert.equal(locator.provider,'gooz');
     if(locator.provider!=='gooz')throw new Error('Expected gooz');
     started.push(locator.playerId);
     if(started.length===5)return {kind:'playable',proof:'media'};
-    const gate=hold();held.push(gate);return gate.promise;
+    const gate=hold();held.push(gate);
+    if(reactsToAbort)signal.addEventListener('abort',()=>gate.release({kind:'deferred',retryAfterMs:30_000}),{once:true});
+    return gate.promise;
   });
   try {
     await withFakeDeadline(async advance=>{

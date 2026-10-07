@@ -187,17 +187,34 @@ async function checkPlaylist(resource: ProviderResource, signal: AbortSignal, bu
 
 export async function probeCandidate(locator: CandidateLocator, signal: AbortSignal,
   opener: typeof openProvider = openProvider): Promise<CandidateProbeResult> {
-  const timeout = AbortSignal.timeout(65000);
-  const boundedSignal = AbortSignal.any([signal,timeout]);
+  if (signal.aborted) return {kind:'deferred',retryAfterMs:2000};
   let playback: ProviderPlayback | undefined;
+  const closePlayback = () => {
+    const opened = playback;
+    playback = undefined;
+    opened?.close();
+  };
+  let onAbort = () => {};
+  const canceled = new Promise<CandidateProbeResult>(resolve => {
+    onAbort = () => resolve({kind:'deferred',retryAfterMs:2000});
+  });
+  signal.addEventListener('abort',onAbort,{once:true});
   try {
-    playback = await opener(locator,boundedSignal,'probe');
-    await checkPlaylist(playback.root,boundedSignal,{bytes:0,playlists:0},new Set());
-    return {kind:'playable',proof:'media'};
+    const work = async (): Promise<CandidateProbeResult> => {
+      playback = await opener(locator,signal,'probe');
+      if (signal.aborted) { closePlayback(); signal.throwIfAborted(); }
+      await checkPlaylist(playback.root,signal,{bytes:0,playlists:0},new Set());
+      signal.throwIfAborted();
+      return {kind:'playable',proof:'media'};
+    };
+    return await Promise.race([work(),canceled]);
   } catch (error) {
     if (signal.aborted) return {kind:'deferred',retryAfterMs:2000};
     if (error instanceof ProviderDeferredError) return {kind:'deferred',retryAfterMs:error.retryAfterMs};
-    if (timeout.aborted || error instanceof Error && error.name==='TimeoutError') return {kind:'unavailable',reason:'timeout'};
+    if (error instanceof Error && error.name==='TimeoutError') return {kind:'unavailable',reason:'timeout'};
     return {kind:'unavailable',reason:error instanceof ProbeFailure ? error.reason : 'upstream'};
-  } finally { playback?.close(); }
+  } finally {
+    signal.removeEventListener('abort',onAbort);
+    closePlayback();
+  }
 }
