@@ -461,11 +461,15 @@ function createObserverSlot(index) {
               return;
             }
             if (Date.now()+500 < current.deadline) {
-              const timer = setTimeout(() => { current.probeTimers.delete(timer); void probe(); },500);
+              const timer = setTimeout(() => { current.probeTimers.delete(timer); runProbe(); },500);
               current.probeTimers.add(timer);
             }
           };
-          void probe();
+          const runProbe = () => { void probe().catch(error => {
+            debug('media probe failed',error?.message);
+            endActive(current,null);
+          }); };
+          runProbe();
         }
       }
     }

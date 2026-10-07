@@ -184,3 +184,43 @@ test('permanent native cleanup failures keep the media partition count bounded',
     media.stop();
   }
 });
+
+test('a timed out native cleanup stays quarantined after its late completion', async () => {
+  let created = 0;
+  let clearAuthCalls = 0;
+  let releaseCleanup: (() => void) | undefined;
+  const stalledCleanup = new Promise<void>(resolve => { releaseCleanup = resolve; });
+  const media = createObservedMedia({
+    pinAddress: async () => ({ address: '93.184.216.34', family: 4 }),
+    validateUrl: sportsurgeUrl,
+    sessions: { fromPartition: () => {
+      const first = ++created === 1;
+      return {
+        setPermissionRequestHandler() {}, setPermissionCheckHandler() {},
+        webRequest: { onBeforeRequest() {} },
+        async setProxy() {},
+        closeAllConnections: () => first ? stalledCleanup : Promise.resolve(),
+        async clearAuthCache() { if (first) clearAuthCalls++; },
+      };
+    } },
+  });
+  try {
+    const first = await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' });
+    assert.ok(first);
+    media.close(first);
+    for (let index = 0; index < 31; index++) {
+      const occupied = await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' });
+      assert.ok(occupied);
+    }
+    await new Promise(resolve => setTimeout(resolve, 5100));
+    assert.equal(await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' }), null);
+    releaseCleanup?.();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(clearAuthCalls, 0);
+    assert.equal(await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' }), null);
+    assert.equal(created, 32);
+  } finally {
+    media.stop();
+    releaseCleanup?.();
+  }
+});

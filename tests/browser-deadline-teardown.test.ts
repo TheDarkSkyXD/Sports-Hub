@@ -81,12 +81,12 @@ test('a destroyed Sportsurge window settles its deadline and the next sweep crea
     clearTimeout: (id: number) => timers.delete(id),
   });
   const createCollector = Reflect.get(exported.exports, 'createSportsurgeCollector');
-  const collector = createCollector({ origin: 'http://127.0.0.1:1', controlToken: 'unused', readyTimeoutMs: 30 });
+  const collector = createCollector({ origin: 'http://127.0.0.1:1', controlToken: 'unused', readyTimeoutMs: 1000 });
   try {
     const first = collector.requestSweep();
     await started;
     windows[0].destroy();
-    const deadline = [...timers.values()].find(timer => timer.ms === 30);
+    const deadline = [...timers.values()].find(timer => timer.ms > 0 && timer.ms <= 1000);
     assert.ok(deadline);
     assert.doesNotThrow(() => deadline.work());
     await Promise.race([

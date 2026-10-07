@@ -14,16 +14,21 @@ function pause(ms, signal) {
   });
 }
 async function beforeDeadline(promise, deadline, signal, current) {
+  if (signal.aborted) throw new Error('unavailable');
   const remaining=deadline-Date.now();
   if (remaining<=0) throw new Error('timeout');
   let timer;
   let onAbort;
+  const stop = () => {
+    try { if (!current.isDestroyed()) current.webContents.stop(); }
+    catch {}
+  };
   try {
     return await Promise.race([
       promise,
       new Promise((_,reject) => {
-        timer=setTimeout(() => { current.webContents.stop(); reject(new Error('timeout')); },remaining);
-        onAbort=() => { current.webContents.stop(); reject(new Error('unavailable')); };
+        timer=setTimeout(() => { stop(); reject(new Error('timeout')); },remaining);
+        onAbort=() => { stop(); reject(new Error('unavailable')); };
         signal.addEventListener('abort',onAbort,{once:true});
       }),
     ]);
