@@ -358,7 +358,7 @@ function CollectorHistory({source,snapshot,league,now}:{source:Source;snapshot:S
   const current=runs.current;
   const lastComplete=runs.lastComplete?.runId===current?.runId?null:runs.lastComplete;
   const previous=runs.previous?.runId===current?.runId||runs.previous?.runId===lastComplete?.runId?null:runs.previous;
-  const renderRun=(slot:'current'|'lastComplete'|'previous')=>isSportsurge?
+  const renderRun=(slot:'current'|'previous')=>isSportsurge?
     snapshot.sportsurgeV2[slot]&&<SportsurgeRun run={snapshot.sportsurgeV2[slot]} league={league} snapshot={snapshot} now={now}
       isCurrent={slot==='current'} links={source.links}/>:snapshot.streameast[slot]&&
       <StreameastRun run={snapshot.streameast[slot]} league={league} snapshot={snapshot} now={now}
@@ -373,12 +373,6 @@ function CollectorHistory({source,snapshot,league,now}:{source:Source;snapshot:S
         <h4>Latest {leagueName[league]} collection</h4>
         {current?<><p>Checkpoint {time(current.receivedAt)} · {age(current.receivedAt,snapshot.at)}</p>{renderRun('current')}</>:
           <p>No collection checkpoint recorded yet.</p>}
-      </div>
-      <div className="source-settings-history-section">
-        <h4>Last saved full scan</h4>
-        {lastComplete?<><p>Finished {time(lastComplete.receivedAt)} · {age(lastComplete.receivedAt,snapshot.at)}</p>
-          <details className="source-settings-history-details"><summary>View saved scan details</summary>{renderRun('lastComplete')}</details></>:
-          current?.state.kind==='complete'?<p>The latest recorded collection is complete.</p>:<p>No complete collection saved yet.</p>}
       </div>
     </div>
     {previous&&<details className="source-settings-history-details source-settings-previous">
