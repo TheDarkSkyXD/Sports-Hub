@@ -59,11 +59,10 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 git clone https://github.com/markybuilds/Sports-Hub.git
 cd Sports-Hub
 npm ci
-npm run build
 npm run desktop
 ```
 
-After the first installation and build, Windows users can double-click **[Start Sunday Room.cmd](Start%20Sunday%20Room.cmd)** in the project folder.
+After installing dependencies, Windows users can double-click **[Start Sunday Room.cmd](Start%20Sunday%20Room.cmd)** in the project folder.
 
 The launcher starts Electron and its own local Next.js server on `127.0.0.1`. It uses port `51931` when available and selects another local port when that port is occupied or reserved. Keep the project folder and dependencies in place; this is a source-based launcher, not a packaged installer.
 
@@ -194,24 +193,18 @@ Run `npm run storybook:check` after adding a component. It follows static import
 ### Desktop development
 
 ```sh
-npm run build
 npm run desktop
 ```
 
-The desktop shell uses the production build when `.next/BUILD_ID` exists and falls back to a development server otherwise. For a fresh production build, close the viewer, rebuild, and launch it again. A browser dev server on port 3001 can run independently of the desktop server, which prefers port 51931.
+The desktop shell always starts a development server from source. Save changes to see them in the app. Local development and Electron tests do not need a production build or `dist-electron`. A browser dev server on port 3001 can run independently of the desktop server, which prefers port 51931.
+
+Run `npm run desktop:smoke` to check the source Electron window and game-data API with a separate profile.
 
 ### Windows installer
 
-Build the installer on Windows after installing dependencies:
+CI builds the Windows installer from the same source used for local development. It runs `npm run desktop:smoke:packaged` against an isolated package, checks that its version matches the checkout, and requires the game schedule to load. Artifact-dependent updater tests run only when CI sets `SUNDAY_ROOM_RELEASE_DIR`.
 
-```sh
-npm ci
-npm run build
-npm run desktop:package
-npm run desktop:smoke
-```
-
-The installer is `dist-electron/Sunday-Room-<version>-Setup-x64.exe`. The smoke check launches the unpacked executable and checks the local page, preload bridge, static files, and an API route. The installed app runs its bundled Next.js server without a separate Node.js installation. Its logs are in the `logs` folder under the Electron user data directory.
+The installer is `dist-electron/Sunday-Room-<version>-Setup-x64.exe`. The installed app runs its bundled Next.js server without a separate Node.js installation. Its logs are in the `logs` folder under the Electron user data directory.
 
 The `Electron release` workflow builds and tests the Windows installer on pull requests to `main`, manual runs, and `v*` tags. Manual runs store an Actions artifact. A tag must match the version in `package.json`, such as `v1.0.0`; after the packaged app passes its smoke check, the workflow creates a draft GitHub release with the installer. Review and publish that draft in GitHub when ready. A draft is invisible to the updater, so a release that is never published is never offered. The installer is unsigned.
 
@@ -222,9 +215,10 @@ The `Electron release` workflow builds and tests the Windows installer on pull r
 | `npm run dev` | Start the local Next.js development server |
 | `npm run build` | Compile and type-check the production app |
 | `npm run start` | Serve the production browser build |
-| `npm run desktop` | Open Electron and its local server |
+| `npm run desktop` | Open Electron from source with its development server |
 | `npm run desktop:package` | Build the Windows x64 NSIS installer from the compiled app |
-| `npm run desktop:smoke` | Check the packaged Windows executable |
+| `npm run desktop:smoke` | Check the source Electron window and game-data API |
+| `npm run desktop:smoke:packaged` | Verify an isolated release package in CI |
 | `npm run typecheck` | Check TypeScript without emitting files |
 | `npm run storybook` | Open the component catalog on port 6006 |
 | `npm run storybook:check` | Check story coverage for components used by the app |
@@ -272,9 +266,8 @@ Sports-Hub/
 npm test
 npm run typecheck
 npm run lint
-npm run build
+npm run desktop:smoke
 npm run storybook:check
-npm run build-storybook
 ```
 
 The automated tests cover source extraction, dated matching, ambiguous listings, overlapping college schedules, season membership, persisted final deadlines, session isolation, relay restrictions, and worker ownership.
@@ -291,10 +284,9 @@ npm run test:player
 
 The browser check generates a local HLS fixture with two resolutions and plays four real video elements. It checks focused and room playback, audio focus, volume, quality changes, fullscreen, and mobile layout. Screenshots and results are saved in `work/player-verification/`. Windows uses installed Microsoft Edge. On other systems, run `npx playwright install chromium` first. Set `PLAYER_BASE_URL` to test another local port or `PLAYER_BROWSER_CHANNEL` to select another installed browser.
 
-To run the same checks in the Electron app, build it first:
+To run the same checks in the source Electron app:
 
 ```sh
-npm run build
 npm run test:player:desktop
 ```
 
@@ -322,7 +314,7 @@ Use `developer` for ongoing work and `main` for the published baseline. Keep cha
 | **Scores differ from the video clock** | Data and broadcasts have different delays. Use spoiler-free mode; direct feeds can be delayed within their buffer. |
 | **Electron cannot be found** | Run `npm ci`. If the binary download was skipped, run `node node_modules/electron/install.js`. |
 | **The desktop window will not start** | Check `.desktop-runtime/server.log` and, if present, `.desktop-runtime/startup.log` for a source checkout. For an installed app, check `logs/server.log` and `logs/startup.log` under the Electron user data directory. The viewer tries another local port when 51931 is occupied or reserved. |
-| **The viewer shows an older build** | Close the viewer, run `npm run build`, and relaunch. |
+| **The viewer shows older code** | Check out the intended source branch and relaunch with `npm run desktop`. |
 | **Room preferences are unexpected** | Open **Room settings** → **Reset room and remove saved feeds** to clear saved choices and feed links. |
 
 ## Scope and availability

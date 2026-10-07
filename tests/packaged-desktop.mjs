@@ -1,22 +1,28 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright';
-import { listPackage } from '@electron/asar';
+import { extractFile, listPackage } from '@electron/asar';
 import { assertDesktopBranding } from './desktop-branding.mjs';
 
-const unpackedPath = path.resolve('dist-electron/win-unpacked');
+const unpackedPath = path.resolve(process.argv[2] ?? 'dist-electron/win-unpacked');
 assert.ok(existsSync(path.join(unpackedPath, 'Sunday Room.exe')), `Missing packaged app: ${unpackedPath}`);
+const expectedVersion = JSON.parse(await readFile('package.json', 'utf8')).version;
+const packagedVersion = JSON.parse(extractFile(path.join(unpackedPath, 'resources/app.asar'), 'package.json').toString()).version;
+assert.equal(packagedVersion, expectedVersion, 'Packaged app is stale. Rebuild it before verification.');
+const serverVersion = JSON.parse(await readFile(path.join(unpackedPath, 'resources/server/package.json'), 'utf8')).version;
+assert.equal(serverVersion, expectedVersion, 'Packaged server is stale. Rebuild it before verification.');
 
 const scratch = await mkdtemp(path.join(tmpdir(), 'sunday-room-packaged-'));
-const appPath = unpackedPath;
+const appPath = path.join(scratch, 'app');
 const executablePath = path.join(appPath, 'Sunday Room.exe');
 let desktop;
 let origin;
 let passed = false;
 try {
+  await cp(unpackedPath, appPath, { recursive: true, dereference: true });
   assert.ok(existsSync(path.join(appPath, 'resources/server/node_modules/next/package.json')), 'Traced Next.js dependency is absent from packaged resources');
   assert.ok(!existsSync(path.join(appPath, 'resources/server/dist-electron')),
     'Packaged server resources must not embed a previous build output');
@@ -104,6 +110,7 @@ assert.ok(updaterLoads.ok, `the packaged app cannot load electron-updater: ${upd
 assert.ok(updaterLoads.hasNsisUpdater,
   'electron-updater must export NsisUpdater, which is what main.cjs constructs');
   assert.equal(typeof updateStatus.currentVersion, 'string');
+  assert.equal(updateStatus.currentVersion, expectedVersion);
   assert.match(updateStatus.source.url, /^https:\/\/github\.com\/[^/]+\/[^/]+\/releases\/latest\/download$/,
   'the packaged app must report the feed URL it checks');
 assert.equal(updateStatus.source.editable, false,
@@ -116,8 +123,8 @@ assert.ok(['hourly', 'daily', 'weekly'].includes(updateStatus.preferences.checkF
   `the schedule must be a preset, got: ${updateStatus.preferences.checkFrequency}`);
   const runtime = await desktop.evaluate(({ app }) => ({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, executablePath: process.execPath }));
   assert.equal(runtime.packaged, true);
-  assert.equal(path.normalize(runtime.executablePath), path.join(unpackedPath, 'Sunday Room.exe'),
-    'Packaged verification must reuse the build executable instead of launching a new Temp copy');
+  assert.equal(path.normalize(runtime.executablePath), executablePath,
+    'Packaged verification must run outside the checkout so dependencies cannot fall back to node_modules');
   assert.equal(path.normalize(runtime.resourcesPath), path.normalize(path.join(path.dirname(executablePath), 'resources')));
   console.log(`Packaged verification executable: ${runtime.executablePath}`);
   await assertDesktopBranding(desktop, path.resolve('work/electron-release/branding'));
@@ -130,8 +137,20 @@ assert.ok(['hourly', 'daily', 'weekly'].includes(updateStatus.preferences.checkF
   const faviconResponse = await page.request.get(`${origin}/favicon.svg`);
   assert.equal(faviconResponse.status(), 200);
 
-  const gamesResponse = await page.request.get(`${origin}/api/games`);
-  assert.equal(gamesResponse.status(), 200);
+  let board;
+  const scheduleDeadline = Date.now() + 120_000;
+  do {
+    const gamesResponse = await page.request.get(`${origin}/api/games`, { timeout: 15_000 });
+    board = await gamesResponse.json();
+    assert.equal(gamesResponse.status(), 200, `Packaged game data must load: ${JSON.stringify(board)}`);
+    assert.ok(Array.isArray(board.games), 'Packaged game data must contain a games array');
+    if (board.scheduleState === 'ready') break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  } while (Date.now() < scheduleDeadline);
+  assert.equal(board.scheduleState, 'ready', 'Packaged game schedule must finish loading');
+  assert.ok(Object.values(board.leagues).some(league => typeof league.scoresAt === 'string'),
+    'Packaged schedule must retrieve data from at least one league');
+  console.log(`Packaged schedule ready with ${board.games.length} games.`);
   const apiResponse = await page.request.post(`${origin}/api/playback`, { data: { kind: 'open', gameId: '' } });
   assert.equal(apiResponse.status(), 400);
   assert.deepEqual(await apiResponse.json(), { error: 'Invalid playback request.' });

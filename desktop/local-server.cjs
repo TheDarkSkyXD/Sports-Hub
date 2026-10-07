@@ -7,7 +7,6 @@ const retryDelays = [1000, 2000, 5000, 10000, 30000];
 const healthIntervalMs = 5000;
 
 function createLocalServer({ root, origin, port, userData, controlToken, observerOrigin, packaged = false, logDir = path.join(root, '.desktop-runtime'), onReady, onHealthy }) {
-  const production = packaged || (process.env.SUNDAY_ROOM_FORCE_DEV !== '1' && fs.existsSync(path.join(root, '.next', 'BUILD_ID')));
   fs.mkdirSync(logDir, { recursive: true });
   const logPath = path.join(logDir, 'server.log');
   let owned;
@@ -221,7 +220,7 @@ function createLocalServer({ root, origin, port, userData, controlToken, observe
       target = spawn(process.execPath, [
         path.join(__dirname, 'server-supervisor.cjs'),
         serverTarget,
-        packaged ? 'standalone' : production ? 'start' : 'dev', String(port),
+        packaged ? 'standalone' : 'dev', String(port),
       ], {
         cwd: root, windowsHide: true,
         env: { ...process.env, NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA ?? '1', ELECTRON_RUN_AS_NODE: '1', SUNDAY_ROOM_DESKTOP: '1', SUNDAY_ROOM_BROWSER_COLLECTORS: '1', SUNDAY_ROOM_DATA_DIR: userData,

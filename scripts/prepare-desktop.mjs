@@ -11,12 +11,9 @@ await mkdir(path.join(standalone, '.next'), { recursive: true });
 await cp(staticFiles, path.join(standalone, '.next/static'), { recursive: true, force: true });
 await cp(path.resolve('public'), path.join(standalone, 'public'), { recursive: true, force: true });
 
-// The server starts this TypeScript worker by an absolute path, outside Next's
-// bundled route modules. Its source is traced above; its package imports need
-// their own runtime dependency trees in the standalone server.
 const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));
 const packages = lock.packages;
-const pending = ['node_modules/cheerio', 'node_modules/zod'];
+const pending = ['node_modules/cheerio', 'node_modules/zod', 'node_modules/sharp'];
 const copied = new Set();
 function resolveDependency(parent, name) {
   for (let current = parent; ; current = current.slice(0, current.lastIndexOf('/node_modules/'))) {
@@ -39,7 +36,17 @@ while (pending.length) {
   await mkdir(path.dirname(destination), { recursive: true });
   await cp(source, destination, { recursive: true, force: true });
   const dependencies = { ...packages[entry].dependencies, ...packages[entry].optionalDependencies };
-  for (const name of Object.keys(dependencies)) pending.push(resolveDependency(entry, name));
+  for (const name of Object.keys(dependencies)) {
+    const dependency = resolveDependency(entry, name);
+    if (Object.hasOwn(packages[entry].optionalDependencies ?? {}, name)) {
+      const installed = await stat(path.resolve(dependency)).catch(error => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (!installed) continue;
+    }
+    pending.push(dependency);
+  }
 }
 await stat(path.join(standalone, 'lib/football/runtime/worker.ts'));
 await stat(path.join(standalone, 'lib/football/runtime/composition.ts'));

@@ -40,6 +40,8 @@ jobs:
       - run: npm run desktop:branding
       - run: npm run desktop:package
       - run: node --experimental-strip-types --test tests/updater-feed.test.ts
+        env:
+          SUNDAY_ROOM_RELEASE_DIR: dist-electron
       - name: Report the signing state of the installer
         shell: pwsh
         run: |
@@ -61,7 +63,7 @@ jobs:
       - run: node tests/installer-path.mjs
       - run: node tests/installer-instdir.mjs
       - run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/installer-shortcuts.ps1
-      - run: npm run desktop:smoke
+      - run: npm run desktop:smoke:packaged
       - uses: actions/upload-artifact@v7
         with:
           name: sunday-room-windows-installer
