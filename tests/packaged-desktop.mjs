@@ -138,7 +138,7 @@ assert.ok(['hourly', 'daily', 'weekly'].includes(updateStatus.preferences.checkF
   assert.equal(faviconResponse.status(), 200);
 
   let board;
-  const scheduleDeadline = Date.now() + 30_000;
+  const scheduleDeadline = Date.now() + 120_000;
   do {
     const gamesResponse = await page.request.get(`${origin}/api/games`, { timeout: 15_000 });
     board = await gamesResponse.json();
@@ -148,6 +148,8 @@ assert.ok(['hourly', 'daily', 'weekly'].includes(updateStatus.preferences.checkF
     await new Promise(resolve => setTimeout(resolve, 250));
   } while (Date.now() < scheduleDeadline);
   assert.equal(board.scheduleState, 'ready', 'Packaged game schedule must finish loading');
+  assert.ok(Object.values(board.leagues).some(league => typeof league.scoresAt === 'string'),
+    'Packaged schedule must retrieve data from at least one league');
   console.log(`Packaged schedule ready with ${board.games.length} games.`);
   const apiResponse = await page.request.post(`${origin}/api/playback`, { data: { kind: 'open', gameId: '' } });
   assert.equal(apiResponse.status(), 400);
