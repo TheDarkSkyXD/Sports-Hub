@@ -84,7 +84,7 @@ function fixture(options: { count?: number; slow?: boolean; secondGame?: boolean
   };
 }
 
-test('300 slow browser choices finish before failed feed retries while working feeds stay cached', async () => {
+test('300 slow browser choices qualify before maintenance and remain selectable during rechecks', async () => {
   const run = fixture({ count: 300, slow: true, recoverFailures: true });
   try {
     await run.refresh();
@@ -93,17 +93,21 @@ test('300 slow browser choices finish before failed feed retries while working f
     const firstRetry = run.calls.findIndex((row, index) => run.calls.slice(0, index)
       .some(previous => JSON.stringify(previous) === JSON.stringify(row)));
     assert.ok(firstRetry >= 300, 'retry work must not run ahead of never-checked feeds');
+    const opened = await run.coordinator.command({ kind: 'open', gameId: game.id, manual: false });
+    assert.equal(opened.kind, 'playback', 'a working route remains selectable while maintenance probes are pending');
     for (let elapsed = 26 * 60_000 + 20_000; elapsed <= 45 * 60_000; elapsed += 20_000) await run.refresh(elapsed);
     const candidates = (await run.snapshot()).games[0].candidates;
     assert.equal(candidates.length, 300);
-    assert.equal(candidates.filter(row => row.availability.kind === 'playable').length, 300);
-    assert.equal(run.calls.length, 450);
+    assert.ok(candidates.filter(row => row.availability.kind === 'playable').length > 150,
+      'failed routes make progress alongside working rechecks');
+    const checksAt45 = run.calls.length;
+    assert.ok(checksAt45 > 300);
     await run.refresh(50 * 60_000);
-    assert.equal(run.calls.length, 450, 'working feeds must remain cached after recovery');
+    assert.ok(run.calls.length > checksAt45, 'due maintenance keeps checking after initial qualification');
   } finally { await run.stop(); }
 });
 
-test('new published choices are discovered at the interval while working proof stays cached', async () => {
+test('new published choices are discovered while working proof is refreshed at the interval', async () => {
   const run = fixture({ count: 1 });
   try {
     await run.refresh();
@@ -114,30 +118,35 @@ test('new published choices are discovered at the interval while working proof s
     await run.refresh(300_001);
     const after = (await run.snapshot()).games[0].candidates;
     assert.equal(after.length, 2);
-    assert.deepEqual(after.find(row => row.id === 'route-000')?.availability, before);
-    assert.equal(run.calls.length, 2);
+    assert.deepEqual(before, { kind: 'playable', proof: 'media', checkedAt: at });
+    assert.deepEqual(after.find(row => row.id === 'route-000')?.availability,
+      { kind: 'playable', proof: 'media', checkedAt: at + 300_001 });
+    assert.equal(run.calls.length, 3);
   } finally { await run.stop(); }
 });
 
-test('working feeds retain their checked time while automatic and manual retries check only failed feeds', async () => {
+test('automatic working rechecks and manual failed-feed retries use their own cadence', async () => {
   const run = fixture();
   try {
     await run.refresh();
     const before = (await run.snapshot()).games[0].candidates;
     await run.refresh(11 * 60_000);
     const after = (await run.snapshot()).games[0].candidates;
-    assert.deepEqual(after.find(row => row.id === 'route-000')?.availability, before.find(row => row.id === 'route-000')?.availability);
+    assert.deepEqual(before.find(row => row.id === 'route-000')?.availability,
+      { kind: 'playable', proof: 'media', checkedAt: at });
+    assert.deepEqual(after.find(row => row.id === 'route-000')?.availability,
+      { kind: 'playable', proof: 'media', checkedAt: at + 11 * 60_000 });
     assert.equal(after.find(row => row.id === 'route-001')?.availability.kind, 'unavailable');
-    assert.equal(run.calls.length, 3);
+    assert.equal(run.calls.length, 4);
     assert.equal((await run.coordinator.command({ kind: 'open', gameId: game.id, manual: false })).kind, 'playback');
     await run.coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: true });
     await drain();
-    assert.equal(run.calls.length, 4);
-    assert.equal(run.calls[3].provider === 'gooz' && run.calls[3].playerId, '11');
+    assert.equal(run.calls.length, 5);
+    assert.equal(run.calls[4].provider === 'gooz' && run.calls[4].playerId, '11');
     await run.refresh(31 * 60_000);
     assert.deepEqual((await run.snapshot()).games[0].candidates.find(row => row.id === 'route-000')?.availability,
-      before.find(row => row.id === 'route-000')?.availability);
-    assert.equal(run.calls.length, 5);
+      { kind: 'playable', proof: 'media', checkedAt: at + 31 * 60_000 });
+    assert.equal(run.calls.length, 7);
   } finally { await run.stop(); }
 });
 

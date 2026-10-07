@@ -85,7 +85,7 @@ for(const allPlayable of [false,true])test(`LiveTV restores two published feeds 
     await until(async()=>(await choices()).length===2&&
       (await snapshot()).sources[0].links[0]?.evidence.kind==='collected','both published feeds restored');
     assert.equal(detailReads,3,'published detail is checked again after evidence expiry');
-    assert.equal(probes.filter(channel=>channel==='3081333').length,1);
+    assert.equal(probes.filter(channel=>channel==='3081333').length,allPlayable?1:2);
     if(allPlayable)assert.deepEqual(probes.sort(),['3081333','3082009']);
   } finally {release?.();await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });

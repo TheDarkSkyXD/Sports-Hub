@@ -121,8 +121,9 @@ test('old live and scheduled working choices are visible before schedule refresh
       assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0], before);
       assert.equal(run.probes.length, 1);
       await coordinator.refresh(true); await drain();
-      assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0], before);
-      assert.equal(run.probes.length, 1);
+      assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0],
+        { ...before, availability: { kind: 'playable', proof: 'media', checkedAt: at + 31 * 60_000 } });
+      assert.equal(run.probes.length, 2);
     } finally { await coordinator.stop(); run.cleanup(); }
   }
 });
@@ -196,7 +197,7 @@ test('stale saved proof excludes unverified sibling routes and yesterday live ga
     assert.equal(run.probes.length, 2);
     run.hide(); await coordinator.refresh(true); await drain();
     assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
-    assert.equal(run.probes.length, 2);
+    assert.equal(run.probes.length, 3);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 
@@ -269,7 +270,7 @@ test('changed teams discard cached proof while date-only rescheduling preserves 
       if (!changeTeams) {
         run.setGames([{ ...changed, date: '2026-10-05T17:00:00Z' }]); await coordinator.refresh(true); await drain();
         assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
-        assert.equal(run.probes.length, 1);
+        assert.equal(run.probes.length, 2);
       }
     } finally { await coordinator.stop(); run.cleanup(); }
   }
@@ -350,8 +351,11 @@ test('an aged scheduled working route and its changed-locator alias both survive
     assert.equal(run.readRows().length, 2);
     await coordinator.stop(); run.hide(); run.setClock(at + 40 * 60_000);
     coordinator = run.start(); await coordinator.refresh(true); await drain();
-    assert.deepEqual((await snapshot(coordinator)).games[0].candidates, before);
-    assert.equal(run.probes.length, 2);
+    const after = (await snapshot(coordinator)).games[0].candidates;
+    assert.deepEqual(after.map(row => row.id), before.map(row => row.id));
+    assert.deepEqual(after.map(row => row.availability),
+      Array.from({ length: 2 }, () => ({ kind: 'playable', proof: 'media', checkedAt: at + 40 * 60_000 })));
+    assert.equal(run.probes.length, 5);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 
@@ -412,7 +416,7 @@ test('a failed startup schedule keeps stale working choices visible with durable
     assert.equal(run.readRows().length, 1);
     run.setScheduleFailure(false); await coordinator.refresh(true); await drain();
     assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
-    assert.equal(run.probes.length, 1);
+    assert.equal(run.probes.length, 2);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 

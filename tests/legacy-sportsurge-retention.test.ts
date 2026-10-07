@@ -85,11 +85,11 @@ test('legacy Sportsurge rereads a live page with missing playable siblings after
       (await run.snapshot()).sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind==='collected',
     'fresh detail with all three published players');
     assert.equal((await run.choices()).length,3);
-    assert.deepEqual(run.probes.sort(),['57561','57562','57563']);
+    assert.deepEqual(run.probes.sort(),['57561','57561','57562','57563']);
   } finally {await run.close();}
 });
 
-test('legacy Sportsurge restores unavailable published siblings after restart without rechecking working media',async()=>{
+test('legacy Sportsurge restores unavailable published siblings and rechecks working media after restart',async()=>{
   const run=fixture(false);
   try {
     await run.refresh();
@@ -102,7 +102,7 @@ test('legacy Sportsurge restores unavailable published siblings after restart wi
     await until(async()=>run.detailReads===2&&(await run.choices()).length===3,
       'three published players restored after restart');
     assert.equal((await run.snapshot()).sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind,'collected');
-    assert.equal(run.probes.filter(id=>id==='57561').length,1);
+    assert.equal(run.probes.filter(id=>id==='57561').length,2);
   } finally {await run.close();}
 });
 

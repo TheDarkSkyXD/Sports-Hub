@@ -153,7 +153,7 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
     assert.equal(first.snapshot.games[0].workingChoiceCount, 1);
     const firstCandidateId = first.snapshot.games[0].candidates[0].id;
     const firstAvailability = first.snapshot.games[0].candidates[0].availability;
-    assert.equal(firstAvailability.kind, 'playable');
+    assert.deepEqual(firstAvailability, { kind: 'playable', proof: 'media', checkedAt: at });
     assert.equal((await coordinator.command({ kind: 'set-feed-check-interval', minutes: 1 })).kind, 'board');
     clock += 60000;
     published = 2;
@@ -163,7 +163,8 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
     assert.equal(second.kind, 'sources');
     if (second.kind === 'sources') {
       assert.equal(second.snapshot.games[0].workingChoiceCount, 2);
-      assert.deepEqual(second.snapshot.games[0].candidates.find(candidate => candidate.id === firstCandidateId)?.availability, firstAvailability);
+      assert.deepEqual(second.snapshot.games[0].candidates.find(candidate => candidate.id === firstCandidateId)?.availability,
+        { kind: 'playable', proof: 'media', checkedAt: at + 60_000 });
     }
     assert.equal(reads.filter(page => page === 'detail').length, 1);
   } finally { await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); }

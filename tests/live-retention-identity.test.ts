@@ -93,7 +93,7 @@ test('a failed source refresh leaves a proven live feed available',async()=>{
   }finally{await run.close();}
 });
 
-test('unchanged positive proof survives a scheduled detail retry',async()=>{
+test('unchanged positive proof survives a scheduled detail retry and media recheck',async()=>{
   const run=fixture('vipbox');
   try{
     await run.refresh();
@@ -103,7 +103,7 @@ test('unchanged positive proof survives a scheduled detail retry',async()=>{
     run.setClock(at+31*60000);
     await run.refresh();
     assert.equal((await run.snapshot()).games[0].workingChoiceCount,1,'proven live route should remain working');
-    assert.equal(run.probes.filter(value=>value==='111').length,1,'unchanged route needs one media check');
+    assert.equal(run.probes.filter(value=>value==='111').length,2,'unchanged route is rechecked at its interval');
     assert.equal(run.detailReads.length,initialReads+1,'live detail is checked again after its interval');
   }finally{await run.close();}
 });

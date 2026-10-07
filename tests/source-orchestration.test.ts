@@ -96,7 +96,8 @@ test('live games receive probe slots until an explicit scheduled check takes pri
     assert.deepEqual(calls,['41','42','43','1']);
     for(const job of pending.splice(0,4))job.resolve();
     await until(8);
-    assert.deepEqual(calls.slice(4),['44','45','46','11']);
+    assert.deepEqual(calls.slice(4,7),['44','45','46']);
+    assert.ok(['11','21'].includes(calls[7]), 'a scheduled game receives the background slot');
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:['scheduled-3'],retry:false}),{kind:'ok'});
     pending.shift()?.resolve();
     await until(9);
