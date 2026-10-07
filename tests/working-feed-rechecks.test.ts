@@ -26,6 +26,8 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
   const path = join(directory, 'state.sqlite');
   let clock = at;
   let game = options.game ?? live;
+  let listed = true;
+  let playersPublished = true;
   let holdRechecks = false;
   const nextResult: CandidateProbeResult = { kind: 'playable', proof: 'media' };
   const calls: string[] = [];
@@ -36,16 +38,16 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
     sources: [{ id: 'fixture', url: 'https://fixture.example/list', family: 'fixture' }],
     readSchedule: async () => ({ games: [game], league: 'nfl', at: clock }),
     readHtml: async () => '<main>fixture</main>',
-    parseListings: () => ({ outcome: 'parsed', observations: [{
+    parseListings: () => ({ outcome: listed ? 'parsed' : 'empty', observations: listed ? [{
       id: 'event-10001', sourceId: 'fixture', url: 'https://fixture.example/event/10001',
       title: game.name, league: 'nfl', teams: [game.away.name, game.home.name],
       kickoff: Date.parse(game.date!), rawTime: '', observedAt: clock, parserVersion: 2,
-    }] }),
+    }] : [] }),
     enrichObservation: value => value,
     persistableLocator: () => options.persistable ?? true,
-    compatiblePlayers: () => Array.from({ length: options.count ?? 1 }, (_, index) => ({
+    compatiblePlayers: () => playersPublished ? Array.from({ length: options.count ?? 1 }, (_, index) => ({
       id: `route-${index}`, label: `Route ${index}`, locator: { provider: 'gooz' as const, playerId: String(index + 100) },
-    })),
+    })) : [],
     probeCandidate: locator => {
       assert.ok(locator.provider === 'gooz', 'Expected gooz locator');
       calls.push(locator.playerId);
@@ -70,7 +72,9 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
   return {
     calls, pending, rows, snapshot, start,
     hold: () => { holdRechecks = true; },
+    hidePublication: () => { listed = false; playersPublished = false; },
     setGame: (value: Game) => { game = value; },
+    setClock: (elapsed: number) => { clock = at + elapsed; },
     async refresh(coordinator: ReturnType<typeof start>, elapsed: number) {
       clock = at + elapsed;
       await coordinator.refresh(true);
@@ -134,6 +138,93 @@ test('a playable route without durable proof is still rechecked at the saved int
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
       { kind: 'playable', proof: 'media', checkedAt: at + 300_000 });
     assert.equal(run.rows().length, 0);
+  } finally { await run.stop(coordinator); }
+});
+
+for (const daysUntilKickoff of [0, 1]) for (const phase of ['queued', 'active', 'deferred'] as const)
+  test(`an unpersisted scheduled route stays selectable after publication disappears during ${phase} recheck on day ${daysUntilKickoff}`, async () => {
+    const scheduled: Game = { ...live, lifecycle: 'scheduled', status: 'pre',
+      date: new Date(at + (daysUntilKickoff * 24 + 1) * 60 * 60_000).toISOString() };
+    const run = fixture({ game: scheduled, count: 6, persistable: false });
+    const coordinator = run.start();
+    try {
+      await run.refresh(coordinator, 0);
+      assert.equal(run.rows().length, 0);
+      assert.equal((await run.snapshot(coordinator)).games[0].workingChoiceCount, 6);
+      run.hold();
+      await run.refresh(coordinator, 300_000);
+      assert.equal(run.pending.size, 4);
+      const targetRoute = phase === 'queued' ? 'route-4' : 'route-0';
+      if (phase === 'deferred') {
+        run.release('100', { kind: 'deferred', retryAfterMs: 30_000 });
+        await drain();
+      }
+      const viewer = await coordinator.command({ kind: 'open', gameId: live.id, manual: false, initialCandidateId: 'route-1' });
+      assert.ok(viewer.kind === 'playback');
+      for (let elapsed = 360_000; elapsed <= 31 * 60_000; elapsed += 60_000) {
+        run.setClock(elapsed);
+        const heartbeat = await coordinator.command({ kind: 'authorize', sessionId: viewer.playback.session.id,
+          candidateId: 'route-1', generation: 0 });
+        assert.equal(heartbeat.kind, 'authorized');
+      }
+      run.hidePublication();
+      await run.refresh(coordinator, 31 * 60_000);
+      const candidate = (await run.snapshot(coordinator)).games[0]?.candidates.find(row => row.id === targetRoute);
+      assert.deepEqual(candidate?.availability, { kind: 'playable', proof: 'media', checkedAt: at });
+      const continuing = await coordinator.command({ kind: 'session', sessionId: viewer.playback.session.id,
+        generation: 0, failure: false, retry: false });
+      assert.ok(continuing.kind === 'session');
+      assert.equal(continuing.session.candidateId, 'route-1');
+      assert.equal(continuing.candidates.find(row => row.id === targetRoute)?.availability.kind, 'playable');
+      const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false, initialCandidateId: targetRoute });
+      assert.ok(opened.kind === 'playback');
+      assert.equal(opened.playback.session.candidateId, targetRoute);
+      const reply = await coordinator.command({ kind: 'session', sessionId: opened.playback.session.id,
+        generation: 0, failure: false, retry: false });
+      assert.ok(reply.kind === 'session');
+      assert.equal(reply.candidates.find(row => row.id === targetRoute)?.availability.kind, 'playable');
+    } finally { await run.stop(coordinator); }
+  });
+
+for (const daysUntilKickoff of [0, 1]) test(`an idle unpersisted working route stays selectable after its ${daysUntilKickoff ? 'tomorrow' : 'today'} listing disappears`, async () => {
+  const scheduled: Game = { ...live, lifecycle: 'scheduled', status: 'pre',
+    date: new Date(at + (daysUntilKickoff * 24 + 1) * 60 * 60_000).toISOString() };
+  const run = fixture({ game: scheduled, persistable: false });
+  const coordinator = run.start();
+  try {
+    await run.refresh(coordinator, 0);
+    assert.equal(run.rows().length, 0);
+    run.hold();
+    await run.refresh(coordinator, 300_000);
+    assert.equal(run.pending.size, 1);
+    run.hidePublication();
+    await run.refresh(coordinator, 31 * 60_000);
+    assert.deepEqual((await run.snapshot(coordinator)).games[0]?.candidates.find(row => row.id === 'route-0')?.availability,
+      { kind: 'playable', proof: 'media', checkedAt: at });
+    const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false,
+      initialCandidateId: 'route-0' });
+    assert.equal(opened.kind, 'playback');
+  } finally { await run.stop(coordinator); }
+});
+
+test('a conclusive negative removes an unpersisted scheduled route from playable choices', async () => {
+  const scheduled: Game = { ...live, lifecycle: 'scheduled', status: 'pre',
+    date: new Date(at + 25 * 60 * 60_000).toISOString() };
+  const run = fixture({ game: scheduled, persistable: false });
+  const coordinator = run.start();
+  try {
+    await run.refresh(coordinator, 0);
+    const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false });
+    assert.ok(opened.kind === 'playback');
+    run.hold();
+    await run.refresh(coordinator, 300_000);
+    run.release('100', { kind: 'unavailable', reason: 'invalid-media' });
+    await drain();
+    assert.equal((await run.snapshot(coordinator)).games[0].workingChoiceCount, 0);
+    assert.equal((await coordinator.command({ kind: 'open', gameId: live.id, manual: false })).kind, 'error');
+    const continuing = await coordinator.command({ kind: 'session', sessionId: opened.playback.session.id,
+      generation: 0, failure: false, retry: false });
+    if (continuing.kind === 'session') assert.equal(continuing.candidates.some(row => row.availability.kind === 'playable'), false);
   } finally { await run.stop(coordinator); }
 });
 
