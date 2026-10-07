@@ -206,6 +206,49 @@ test('failed health replacement retries the same live supervisor before spawning
   } finally { room.service.beginStop(); room.dispose(); }
 });
 
+test('late owned exit after successful tree command starts one replacement', async () => {
+  const first = new Child();
+  const second = new Child();
+  second.pid = 830002;
+  let supervisorSpawns = 0;
+  let instanceId = '';
+  let healthy = true;
+  let killCalls = 0;
+  let replacementStarted = () => {};
+  const replacement = new Promise<void>(resolve => { replacementStarted = resolve; });
+  const room = localServer({
+    timers: { setTimeout: fastTimeout },
+    fetch: async () => healthy || supervisorSpawns > 1
+      ? new Response(null, { status: 204, headers: { 'x-sunday-server-instance-id': instanceId } })
+      : new Response(null, { status: 503 }),
+    spawn(command, _args, options) {
+      if (command === 'taskkill.exe') {
+        killCalls++;
+        const killer = new EventEmitter();
+        setImmediate(() => killer.emit('exit', 0));
+        return killer;
+      }
+      supervisorSpawns++;
+      instanceId = options.env.SUNDAY_ROOM_SERVER_INSTANCE_ID ?? '';
+      if (supervisorSpawns === 2) replacementStarted();
+      return supervisorSpawns === 1 ? first : second;
+    },
+  });
+  try {
+    await within(room.service.start());
+    healthy = false;
+    await room.service.checkNow();
+    await room.service.checkNow();
+    await room.service.checkNow();
+    assert.equal(killCalls, 1);
+    assert.equal(first.exitCode, null, 'the tree command completed before the owned exit');
+    first.exit(0);
+    await within(replacement, 200);
+    assert.equal(killCalls, 1, 'the exited supervisor PID is not killed again');
+    assert.equal(supervisorSpawns, 2);
+  } finally { room.service.beginStop(); room.dispose(); }
+});
+
 test('startup rejects after its absolute deadline when readiness never settles', async () => {
   const child = new Child();
   const room = localServer({
