@@ -1,4 +1,4 @@
-const { app, autoUpdater, BrowserWindow, ipcMain, shell, powerMonitor, Notification } = require('electron');
+const { app, autoUpdater, BrowserWindow, dialog, ipcMain, shell, powerMonitor, Notification } = require('electron');
 const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -65,6 +65,7 @@ const root = app.isPackaged ? path.join(process.resourcesPath,'server') : path.r
 const logDir = app.isPackaged ? path.join(app.getPath('userData'),'logs') : path.join(root,'.desktop-runtime');
 let win;
 let localServer;
+let localServerReady = false;
 let origin;
 let sportsurgeCollector;
 let sportsurgeObserver;
@@ -76,7 +77,12 @@ let mainFrameFailed = false;
 let reloadingMainFrame = false;
 const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) app.quit();
-app.on('second-instance',() => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+app.on('second-instance',() => {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+});
 
 function trusted(event) {
   if (!win || win.isDestroyed()) return false;
@@ -105,6 +111,7 @@ async function startServer(observerOrigin) {
     onHealthy:restoreMainFrame,
   });
   await localServer.start();
+  localServerReady = true;
 }
 
 app.whenReady().then(async () => {
@@ -195,19 +202,29 @@ app.whenReady().then(async () => {
   ipcMain.handle(CH.setPreferences,update.invoke('setPreferences'));
   update.start();
   await win.loadURL(origin).catch(() => { mainFrameFailed = true; });
-}).catch(error => {
-  fs.mkdirSync(logDir,{recursive:true});
-  fs.appendFileSync(path.join(logDir,'startup.log'),String(error)+'\n');
-  app.quit();
+}).catch(async error => {
+  try {
+    fs.mkdirSync(logDir,{recursive:true});
+    fs.appendFileSync(path.join(logDir,'startup.log'),String(error)+'\n');
+  } catch {}
+  try { dialog.showErrorBox('Sunday Room could not start',String(error)); } catch {}
+  try { await stopApplicationWork(); }
+  catch (cleanupError) {
+    try { fs.appendFileSync(path.join(logDir,'startup.log'),`Shutdown failed: ${cleanupError}\n`); } catch {}
+  }
+  runtimeStop = { kind: 'exiting' };
+  app.exit(1);
 });
 app.on('window-all-closed',() => app.quit());
 async function stopServer() {
   if (!localServer) return;
-  try {
-    await fetch(`${origin}/api/internal/pipeline`,{
-      method:'POST',headers:{'x-sunday-control-token':controlToken},signal:AbortSignal.timeout(5000),
-    });
-  } catch {}
+  if (localServerReady) {
+    try {
+      await fetch(`${origin}/api/internal/pipeline`,{
+        method:'POST',headers:{'x-sunday-control-token':controlToken},signal:AbortSignal.timeout(5000),
+      });
+    } catch {}
+  }
   await localServer.stop();
 }
 
@@ -242,13 +259,21 @@ async function waitForUpdateScreen() {
 function stopApplicationWork() {
   if (runtimeStop.kind === 'stopped') return Promise.resolve();
   if (runtimeStop.kind === 'stopping') return runtimeStop.done;
-  const done = (async () => {
-    localServer?.beginStop();
-    sportsurgeCollector?.stop();
-    await sportsurgeObserver?.stop();
-    streameastCollector?.stop();
-    await stopServer();
-  })();
+  const done = Promise.resolve().then(async () => {
+    const failures = [];
+    for (const [name, action] of [
+      ['local server admission', () => localServer?.beginStop()],
+      ['Sportsurge collector', () => sportsurgeCollector?.stop()],
+      ['Sportsurge observer', () => sportsurgeObserver?.stop()],
+      ['StreamEast collector', () => streameastCollector?.stop()],
+      ['local server', () => stopServer()],
+    ]) {
+      try { await action(); }
+      catch (error) { failures.push({ name, error }); }
+    }
+    if (failures.length) throw new AggregateError(failures.map(item => item.error),
+      `Desktop cleanup failed: ${failures.map(item => `${item.name}: ${String(item.error)}`).join('; ')}`);
+  });
   runtimeStop = { kind: 'stopping', done };
   void done.then(
     () => { runtimeStop = { kind: 'stopped' }; },
@@ -273,6 +298,8 @@ app.on('before-quit',event => {
       fs.mkdirSync(logDir,{recursive:true});
       fs.appendFileSync(path.join(logDir,'startup.log'),`Shutdown failed: ${String(error)}\n`);
     } catch {}
+    runtimeStop = { kind: 'exiting' };
+    app.exit(1);
   });
 });
 autoUpdater.on('before-quit-for-update', () => {

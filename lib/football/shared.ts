@@ -26,10 +26,13 @@ export const GameSchema = z.discriminatedUnion('lifecycle',[ScheduledGameSchema,
 export const LeagueFeedSchema = z.object({ week: z.number().optional(), scoresAt: z.string().nullable(), sourceAt: z.string().nullable(), errors: z.array(z.string()) });
 export const FinishedGameRetentionMinutesSchema = z.number().int().min(5).max(10080);
 export const DEFAULT_FINISHED_GAME_RETENTION_MINUTES = 1440;
+export const FeedCheckIntervalMinutesSchema = z.number().int().refine(minutes=>[1,5,10,15].includes(minutes));
+export const DEFAULT_FEED_CHECK_INTERVAL_MINUTES = 5;
 export const BoardSchema = z.object({
   schemaVersion: z.literal(2), revision: z.number().int().nonnegative(), games: z.array(GameSchema), updatedAt: z.string(),
   scheduleState: z.enum(['loading','ready']),
   finishedGameRetentionMinutes: FinishedGameRetentionMinutesSchema.default(DEFAULT_FINISHED_GAME_RETENTION_MINUTES),
+  feedCheckIntervalMinutes: FeedCheckIntervalMinutesSchema.default(DEFAULT_FEED_CHECK_INTERVAL_MINUTES),
   leagues: z.object({ nfl: LeagueFeedSchema, ncaaf: LeagueFeedSchema }), aliases: z.record(z.string()),
 });
 export type Team = z.infer<typeof TeamSchema>;
@@ -49,7 +52,7 @@ export type SeasonMembership = z.infer<typeof SeasonMembershipSchema>;
 export const ObservationSchema = z.object({
   id: z.string(), sourceId: z.string(), url: z.string(), title: z.string(),
   league: LeagueSchema.nullable(), teams: z.tuple([z.string(), z.string()]).nullable(),
-  kickoff: z.number().nullable(), rawTime: z.string(), observedAt: z.number(), parserVersion: z.union([z.literal(1),z.literal(2)]),
+  kickoff: z.number().nullable(), rawTime: z.string(), observedAt: z.number(), parserVersion: z.union([z.literal(1),z.literal(2),z.literal(3)]),
   legacyId: z.string().optional(),
   kickoffLineage:z.object({observedAt:z.number(),rawTime:z.string()}).optional(),
 });
@@ -80,10 +83,17 @@ export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
   z.object({provider:z.literal('gooz'),playerId:z.string().regex(/^\d{1,20}$/)}),
   z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid()}),
   z.object({provider:z.literal('streameast'),channelId:z.string().regex(/^\d{1,4}$/)}),
+  z.object({provider:z.literal('streameast-server'),gameId:z.string().regex(/^(?:ncaaf-)?\d{1,20}$/),
+    sourceEventId:z.string().regex(/^(?:ncaaf|nfl):\d{1,12}$/),eventUrl:z.string().url().max(400),
+    serverId:z.string().regex(/^[1-9]\d{0,3}$/)}).strict(),
   z.object({provider:z.literal('sportsurge-v2'),eventId:z.string().regex(/^(?:ncaaf|nfl):\d{1,12}$/),providerId:z.string().min(1).max(100),url:z.string().url().max(2000)}),
   z.object({provider:z.literal('wikisport'),section:z.enum(['0nhl','strm']),playerId:z.string().regex(/^\d{1,4}$/)}),
   z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:ncaaf-)?\d{1,20}$/),
     eventUrl:z.string().url().max(2000),serverUrl:z.string().url().max(2000)}).strict(),
+  z.object({provider:z.literal('tvapp'),gameId:z.string().regex(/^(?:ncaaf-)?\d{1,20}$/),
+    eventUrl:z.string().url().max(2000),source:z.string().regex(/^[a-z0-9-]{1,32}$/),
+    sourceId:z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/),streamNo:z.number().int().min(1).max(100),
+    kickoff:z.number().int(),title:z.string().min(1).max(200),teams:z.tuple([z.string().min(1),z.string().min(1)])}).strict(),
 ]);
 export type CandidateLocator = z.infer<typeof CandidateLocatorSchema>;
 export const CandidateSchema = CandidateSummarySchema.omit({availability:true}).extend({locator:CandidateLocatorSchema});
@@ -123,7 +133,7 @@ export const DetailEvidenceSchema = z.discriminatedUnion('outcome',[
   z.object({outcome:z.literal('failed'),observationId:z.string(),generation:z.string(),at:z.number(),failure:SourceAttemptSchema.shape.failure.unwrap(),failures:z.number().int().nonnegative(),nextEligibleAt:z.number(),lastSuccess:LastDetailSuccessSchema.optional()}),
 ]);
 export type DetailEvidence = z.infer<typeof DetailEvidenceSchema>;
-export const SourceMatchReasonSchema=z.enum(['not-a-matchup','unknown-teams','unverified-kickoff',
+export const SourceMatchReasonSchema=z.enum(['not-a-matchup','unknown-teams','unverified-kickoff','unverified-contextual-kickoff',
   'ambiguous-matchup','conflicting-date','finished-game','other']);
 export type SourceMatchReason=z.infer<typeof SourceMatchReasonSchema>;
 export const SportsurgeFailureSchema=z.enum(['blocked','rate-limited','timeout','parser-changed','unavailable','invalid-detail-url','limit']);
@@ -176,6 +186,7 @@ export const StreameastCategorySchema=z.discriminatedUnion('kind',[
 export const StreameastAvailabilitySchema=z.discriminatedUnion('kind',[
   z.object({kind:z.literal('free-channel'),channelId:z.string().regex(/^\d{1,4}$/)}).strict(),
   z.object({kind:z.literal('free-wikisport'),section:z.enum(['0nhl','strm']),playerId:z.string().regex(/^\d{1,4}$/)}).strict(),
+  z.object({kind:z.literal('free-page')}).strict(),
   z.object({kind:z.literal('free-unsupported')}).strict(),
   z.object({kind:z.literal('free-unresolved')}).strict(),
   z.object({kind:z.literal('premium')}).strict(),
@@ -293,6 +304,7 @@ export type SourcesSnapshot = z.infer<typeof SourcesSnapshotSchema>;
 export const CommandSchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('board')}),
   z.object({kind:z.literal('set-retention'),minutes:FinishedGameRetentionMinutesSchema}),
+  z.object({kind:z.literal('set-feed-check-interval'),minutes:FeedCheckIntervalMinutesSchema}),
   z.object({kind:z.literal('sources')}),
   z.object({kind:z.literal('check-sources'),gameIds:z.array(z.string().min(1).max(100)).min(1).max(4),retry:z.boolean().default(false)}),
   z.object({kind:z.literal('open'),gameId:z.string().min(1).max(100),manual:z.boolean().default(false),requestId:z.string().uuid().optional(),initialCandidateId:z.string().min(1).max(100).optional()}),
@@ -313,7 +325,7 @@ export const ReplySchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('session'),session:SessionSchema,candidates:z.array(CandidateSummarySchema)}),
   z.object({kind:z.literal('authorized'),candidate:CandidateSchema,session:SessionSchema}),
   z.object({kind:z.literal('ok')}),
-  z.object({kind:z.literal('catalog-ack'),skipDetailEventIds:z.array(z.string()),skipDetailEventUrls:z.array(z.string().url()).optional(),reuseDetails:z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('catalog-ack'),skipDetailEventIds:z.array(z.string()),sourceRefreshMs:z.number().int().refine(milliseconds=>[60_000,300_000,600_000,900_000].includes(milliseconds)).optional(),skipDetailEventUrls:z.array(z.string().url()).optional(),reuseDetails:z.discriminatedUnion('kind',[
     z.object({kind:z.literal('sportsurge-v2'),events:z.array(SportsurgeEventSchema)}),
     z.object({kind:z.literal('streameast'),events:z.array(StreameastEventSchema)}),
   ]).optional()}),

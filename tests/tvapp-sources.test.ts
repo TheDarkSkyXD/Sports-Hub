@@ -1,7 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {SOURCES,compatiblePlayers,enrichObservation,parseListings} from '../lib/football/adapters/sources.ts';
+import {SOURCES,compatiblePlayers,enrichObservation,parseListings,tvappPlayers} from '../lib/football/adapters/sources.ts';
+import {matchObservation} from '../lib/football/domain/matching.ts';
+import type {Game} from '../lib/football/shared.ts';
 import {validEventPagePair} from '../lib/playback/providers/event-page-policy.ts';
+import {tvappProvider} from '../lib/playback/providers/tvapp.ts';
+import {tvappIdentity} from '../lib/playback/providers/tvapp-catalog.ts';
+import type {Requester} from '../lib/playback/providers/public-page.ts';
 
 const source=SOURCES.find(source=>source.id==='tvapp');
 assert.ok(source);
@@ -37,4 +42,153 @@ test('TVApp candidates require catalog timing, the same matchup and a free publi
   assert.deepEqual(compatiblePlayers('ncaaf-401858472',{...observation,sourceId:'methstreams'},html),[]);
   for(const value of [url.replace('2498915','9999999'),url.replace('tvapp1.pk','tvapp1.pk.attacker.test'),`${url}?channel=1`,`${url}#player`,url.replace('https:','http:')])
     assert.equal(validEventPagePair(url,value),false,value);
+});
+
+test('TVApp keeps a football matchup when the catalog also contains a standalone broadcast',()=>{
+  const at=Date.parse('2026-10-05T19:00:00Z');
+  const starts=Date.parse('2026-10-06T00:15:00Z');
+  const broadcast={id:'live-event_manningcast-live-stream',title:'ManningCast',category:'american-football',
+    date:starts,teams:null};
+  const matchup={id:'new-orleans-saints-vs-atlanta-falcons-2475437',
+    title:'New Orleans Saints vs Atlanta Falcons',category:'american-football',date:starts,
+    teams:{home:{name:'New Orleans Saints'},away:{name:'Atlanta Falcons'}}};
+  const result=parseListings(source,JSON.stringify([broadcast,matchup]),at);
+  assert.equal(result.outcome,'parsed');
+  assert.equal(result.observations.length,1);
+  const event=result.observations[0];
+  assert.equal(event.url,'https://tvapp1.pk/watch/2475437');
+  assert.deepEqual(event.teams,['New Orleans Saints','Atlanta Falcons']);
+  const team=(name:string,id:string)=>({name,id,short:name,abbreviation:name.slice(0,3),color:'112233',score:'0'});
+  const game:Game={id:'401872979',league:'nfl',name:'Atlanta Falcons at New Orleans Saints',
+    date:'2026-10-06T00:15:00Z',home:team('New Orleans Saints','espn:nfl:18'),
+    away:team('Atlanta Falcons','espn:nfl:1'),status:'pre',lifecycle:'scheduled',detail:'Scheduled',redzone:false};
+  assert.deepEqual(matchObservation(event,[game],at),{kind:'matched',gameId:'401872979'});
+});
+
+test('TVApp keeps tomorrow Southern Miss against Troy when the title uses Mississippi',()=>{
+  const at=Date.parse('2026-10-05T23:00:00Z');
+  const starts=Date.parse('2026-10-07T00:00:00Z');
+  const match={id:'live_cfb_troy-southern-miss-live-streaming-663788736',
+    title:'Troy Trojans vs Southern Mississippi Golden Eagles',category:'american-football',date:starts,
+    teams:{home:{name:'Southern Miss Golden Eagles'},away:{name:'Troy Trojans'}},
+    sources:[{source:'delta',id:'live_cfb_troy-southern-miss-live-streaming-663788736'}]};
+  const result=parseListings(source,JSON.stringify([match]),at);
+  assert.equal(result.outcome,'parsed');
+  assert.equal(result.observations.length,1);
+  const observation=result.observations[0];
+  assert.deepEqual(observation.teams,['Troy Trojans','Southern Mississippi Golden Eagles']);
+  assert.equal(observation.kickoff,starts);
+  const team=(id:string,name:string)=>({id,name,short:name,abbreviation:name.slice(0,3),color:'112233',score:null});
+  const game:Game={id:'ncaaf-401871090',league:'ncaaf',name:'Southern Miss Golden Eagles at Troy Trojans',
+    date:new Date(starts).toISOString(),home:team('espn:ncaaf:2653','Troy Trojans'),
+    away:team('espn:ncaaf:2572','Southern Miss Golden Eagles'),status:'pre',lifecycle:'scheduled',detail:'Scheduled',redzone:false};
+  assert.deepEqual(matchObservation(observation,[game],at),{kind:'matched',gameId:game.id});
+  assert.deepEqual(tvappIdentity(match),{
+    watchUrl:'https://tvapp1.pk/watch/663788736',title:match.title,
+    teams:['Troy Trojans','Southern Mississippi Golden Eagles'],kickoff:starts,sources:match.sources,
+  });
+  const conflicting={...match,teams:{home:{name:'Georgia Bulldogs'},away:{name:'Troy Trojans'}}};
+  assert.equal(parseListings(source,JSON.stringify([conflicting]),at).observations[0].teams,null);
+  assert.equal(tvappIdentity(conflicting),null);
+});
+
+test('TVApp rejects malformed matchup identifiers and dates despite standalone broadcasts',()=>{
+  const at=Date.parse('2026-10-05T19:00:00Z');
+  const broadcast={id:'live-event_manningcast-live-stream',title:'ManningCast',category:'american-football',
+    date:Date.parse('2026-10-06T00:15:00Z'),teams:null};
+  const matchup={id:'new-orleans-saints-vs-atlanta-falcons',title:'New Orleans Saints vs Atlanta Falcons',
+    category:'american-football',date:broadcast.date,
+    teams:{home:{name:'New Orleans Saints'},away:{name:'Atlanta Falcons'}}};
+  assert.equal(parseListings(source,JSON.stringify([broadcast,matchup]),at).outcome,'parser-changed');
+  assert.equal(parseListings(source,JSON.stringify([{...broadcast,date:0},matchup]),at).outcome,'parser-changed');
+});
+
+test('TVApp exposes each published match source with a stable source identity',async()=>{
+  const at=Date.parse('2026-10-05T19:00:00Z');
+  const starts=Date.parse('2026-10-06T00:15:00Z');
+  const match={id:'new-orleans-saints-vs-atlanta-falcons-2475437',title:'New Orleans Saints vs Atlanta Falcons',
+    category:'american-football',date:starts,teams:{home:{name:'New Orleans Saints'},away:{name:'Atlanta Falcons'}},
+    sources:[
+      {source:'admin',id:'ppv-atlanta-falcons-at-new-orleans-saints'},
+      {source:'delta',id:'live_nfl_saints-falcons-live-streaming-663788304'},
+      {source:'golf',id:'1936'},
+      {source:'hotel',id:'atlanta-falcons-vs-new-orleans-saints-nfl-1791245700'},
+    ]};
+  const event=parseListings(source,JSON.stringify([match]),at).observations[0];
+  assert.ok(event);
+  const watch='https://tvapp1.pk/watch/2475437';
+  const page=`<link rel="canonical" href="${watch}"><meta property="og:url" content="${watch}">
+    <meta property="og:title" content="${match.title} - Live Stream Free in HD | TheTVApp">
+    <meta name="description" content="Watch ${match.title} live stream free in HD on TheTVApp.">
+    <div id="player-frame"></div>`;
+  const rows=match.sources.flatMap(item=>{
+    const count=item.source==='delta'?5:item.source==='admin'||item.source==='golf'?2:1;
+    return Array.from({length:count},(_,index)=>({id:item.id,source:item.source,streamNo:index+1,
+      language:'English',hd:!['admin','golf'].includes(item.source)||index===0,
+      embedUrl:`https://embed.st/embed/${item.source}/${item.id}/${index+1}`}));
+  });
+  const read=async(address:string)=>address.endsWith('/matches/sport/american-football')?
+    JSON.stringify([match]):JSON.stringify(rows.filter(row=>address.endsWith(`/streams/${row.source}/${row.id}`)));
+  const candidates=await tvappPlayers('401872979',event,page,new AbortController().signal,read);
+  assert.equal(candidates.length,10);
+  assert.equal(new Set(candidates.map(row=>row.id)).size,10);
+  assert.ok(candidates.every(row=>row.locator.provider==='tvapp'&&row.locator.eventUrl===watch));
+  assert.ok(candidates.some(row=>row.locator.provider==='tvapp'&&row.locator.source==='golf'&&
+    row.locator.sourceId==='1936'&&row.locator.streamNo===2&&row.label==='TVApp · Premium 2 SD'));
+  assert.equal(candidates.find(row=>row.locator.provider==='tvapp'&&row.locator.source==='hotel')?.label,
+    'TVApp · Premium 8 HD');
+  assert.ok(candidates.every(row=>JSON.stringify(row.locator).includes('embed.st')===false));
+});
+
+test('TVApp playback accepts the same normalized title-only matchup as discovery',async()=>{
+  const match={...listing,title:'Illinois  vs Purdue',teams:null};
+  const event=parseListings(source,JSON.stringify([match]),kickoff).observations[0];
+  assert.ok(event);
+  const stream={id:match.sources[0].id,source:'delta',streamNo:1,language:'English',hd:true,
+    embedUrl:`https://embed.st/embed/delta/${match.sources[0].id}/1`};
+  const read=async(address:string)=>JSON.stringify(address.includes('/matches/')?[match]:[stream]);
+  const rows=await tvappPlayers('ncaaf-401858472',event,html,new AbortController().signal,read);
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].locator.provider,'tvapp');
+  const requests:string[]=[];
+  const requester:Requester=async address=>new Response(await read(address.href),
+    {headers:{'content-type':'application/json'}});
+  const playback={root:{kind:'playlist' as const,identity:'fixture',
+    async read(){return {status:200 as const,body:null,contentType:'application/vnd.apple.mpegurl'};},
+    resolve(){return null;}},close(){}};
+  const provider=tvappProvider(requester,async destination=>{requests.push(destination.href);return playback;});
+  await provider.open(rows[0].locator,new AbortController().signal,'probe');
+  assert.deepEqual(requests,[stream.embedUrl]);
+});
+
+test('TVApp does not resolve incomplete source results after cancellation',async()=>{
+  const controller=new AbortController();
+  let enterStream=()=>{};
+  const entered=new Promise<void>(resolve=>{enterStream=resolve;});
+  let release=(value:string)=>{void value;};
+  const streamResponse=new Promise<string>(resolve=>{release=resolve;});
+  const read=async(address:string)=>{
+    if(address.includes('/matches/'))return JSON.stringify([listing]);
+    enterStream();
+    return streamResponse;
+  };
+  const pending=tvappPlayers('ncaaf-401858472',observation,html,controller.signal,read);
+  await entered;
+  controller.abort();
+  release(JSON.stringify([{id:listing.sources[0].id,source:'delta',streamNo:1,language:'English',hd:true,
+    embedUrl:`https://embed.st/embed/delta/${listing.sources[0].id}/1`}]));
+  await assert.rejects(pending,error=>error instanceof Error&&error.name==='AbortError');
+});
+
+test('TVApp retries when any published source endpoint fails',async()=>{
+  const second={source:'golf',id:'1936'};
+  const match={...listing,sources:[...listing.sources,second]};
+  const read=async(address:string)=>{
+    if(address.includes('/matches/'))return JSON.stringify([match]);
+    if(address.endsWith('/golf/1936'))throw new Error('temporary source outage');
+    return JSON.stringify([{id:listing.sources[0].id,source:'delta',streamNo:1,language:'English',hd:true,
+      embedUrl:`https://embed.st/embed/delta/${listing.sources[0].id}/1`}]);
+  };
+  await assert.rejects(tvappPlayers('ncaaf-401858472',observation,html,new AbortController().signal,read),
+    /temporary source outage/);
 });

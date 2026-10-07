@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { confirmedFinishedBoundEvent, confirmedFinishedGameId, createObservationMatcher, matchObservation, matchSourceLiveGame, mergeSchedulePartitions, normalizedName } from '../domain/matching.ts';
+import { confirmedFinishedBoundEvent, confirmedFinishedGameId, createObservationMatcher, detailCandidateGameIds, matchObservation, matchSourceLiveGame, mergeSchedulePartitions, normalizedName } from '../domain/matching.ts';
 import { SESSION_LEASE_MS, compareCandidates, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
 import { sourceInventory } from '../domain/source-inventory.ts';
 import { feedCalendarDay, feedEligible } from '../domain/feed-eligibility.ts';
@@ -7,24 +7,29 @@ import { cachedFeedEligible, workingFeedMatches, workingFeedOwner, type WorkingF
 import { persistableLocator } from '../../playback/persistent-locator.ts';
 import { SOURCE_REFRESH_MS, detailIdentity, retryDeadline, sourceFailure } from '../domain/source-policy.ts';
 import { provisionalLiveChannel, resolvedLiveChannelMatch } from '../domain/live-channel.ts';
-import { catalogDecision, sameSportsurgeEvent, sanitizeSportsurgeCatalog, sportsurgeCandidates, sportsurgeObservation } from '../domain/sportsurge-catalog.ts';
-import { sameStreameastEvent, sanitizeStreameastCatalog, streameastDecision, streameastObservation, streameastCandidates, verifiedStreameastMatch } from '../domain/streameast-catalog.ts';
+import { catalogDecision, sameSportsurgeEvent, sanitizeSportsurgeCatalog, sportsurgeCandidates, sportsurgeCatalogView, sportsurgeEventCandidate, sportsurgeObservation } from '../domain/sportsurge-catalog.ts';
+import { sameStreameastEvent, sanitizeStreameastCatalog, streameastDecision, streameastObservation, streameastCandidates, streameastCatalogView, verifiedStreameastMatch } from '../domain/streameast-catalog.ts';
 import type { Recovery } from '../domain/lifecycle.ts';
-import type { FootballDependencies, FootballRepository } from '../domain/ports.ts';
+import type { CandidateProbeResult, FootballDependencies, FootballRepository } from '../domain/ports.ts';
 import { candidateSummary, type Board, type Candidate, type CandidateAvailability, type Command, type DetailEvidence, type Game, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourceEventBinding, type SourcesSnapshot, type StreameastCatalog, type SportsurgeCatalog } from '../shared.ts';
 
 type RecoveryPhase = {kind:'cycling'} | {kind:'exhausted';until:number;knownIds:string[]};
-type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;phase:RecoveryPhase;requestId?:string;decodedGeneration?:number};
+type FeedOwner = WorkingFeed['owner'];
+type SelectionOwner = {key:string;owner:FeedOwner};
+type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;phase:RecoveryPhase;requestId?:string;decodedGeneration?:number;selection?:SelectionOwner};
 type ProbePhase = {kind:'queued';since:number}|{kind:'active';since:number};
-type ProbeJob = {key:string;candidate:Candidate;controller:AbortController;priority:'forced'|'unknown';revision:number;phase:ProbePhase;promise?:Promise<void>};
-type TerminalHealth = Extract<CandidateAvailability,{kind:'playable'|'unavailable'}>;
+type ProbeWork = {priority:'forced'|'unknown'|'retry'}|{priority:'recheck';expectedCheckedAt:number};
+type ProbeJob = ProbeWork & {key:string;candidate:Candidate;owner:FeedOwner;controller:AbortController;revision:number;phase:ProbePhase;promise?:Promise<void>};
+type TerminalHealth = (Extract<CandidateAvailability,{kind:'playable'}> & {owner:FeedOwner}) | Extract<CandidateAvailability,{kind:'unavailable'}>;
 const PROBE_LIMIT=4;
+const PROBE_TIMEOUT_MS=65_000;
 const PROBE_QUEUE_LIMIT=256;
+const PROBE_PRIORITY={forced:0,unknown:1,retry:2,recheck:2};
 const DECODED_STARTUP_WINDOW_MS=10*60_000;
-const MEDIA_RETRY_DELAY_MS=SOURCE_REFRESH_MS;
 const LISTING_PARSER_VERSION=3;
 function usesBrowserProbe(candidate:Candidate):boolean {
-  return candidate.locator.provider==='event-page'||candidate.locator.provider==='sportsurge-v2';
+  return candidate.locator.provider==='event-page'||candidate.locator.provider==='tvapp'||
+    candidate.locator.provider==='sportsurge-v2'||candidate.locator.provider==='streameast-server';
 }
 function detailGeneration(observation:Observation):string {
   return JSON.stringify([observation.sourceId,observation.url,observation.teams,observation.kickoff,observation.observedAt,observation.parserVersion]);
@@ -106,6 +111,7 @@ export class FootballCoordinator {
   private activeProbes=new Map<string,ProbeJob>();
   private deferredProbes=new Map<string,{since:number;until:number;timer:ReturnType<typeof setTimeout>;candidate:Candidate}>();
   private browserProbeAfter=0;
+  private sourceRefreshMs=SOURCE_REFRESH_MS;
   private checkTargets=new Map<string,number>();
   private probeAdmissions=0;
   private probePump:ReturnType<typeof setImmediate>|undefined;
@@ -120,6 +126,7 @@ export class FootballCoordinator {
   private readonly parseListings: FootballDependencies['parseListings'];
   private readonly enrichObservation: FootballDependencies['enrichObservation'];
   private readonly compatiblePlayers: FootballDependencies['compatiblePlayers'];
+  private readonly tvappPlayers: FootballDependencies['tvappPlayers'];
   private readonly missingPlayerReason: FootballDependencies['missingPlayerReason'];
   private readonly probeCandidate: FootballDependencies['probeCandidate'];
   private readonly probeIdentity: NonNullable<FootballDependencies['probeIdentity']>;
@@ -137,6 +144,7 @@ export class FootballCoordinator {
     this.parseListings = dependencies.parseListings;
     this.enrichObservation = dependencies.enrichObservation;
     this.compatiblePlayers = dependencies.compatiblePlayers;
+    this.tvappPlayers = dependencies.tvappPlayers;
     this.missingPlayerReason = dependencies.missingPlayerReason;
     this.probeCandidate = dependencies.probeCandidate;
     this.probeIdentity = dependencies.probeIdentity ?? (locator => JSON.stringify(locator));
@@ -144,6 +152,7 @@ export class FootballCoordinator {
     this.retryAfterMs = dependencies.retryAfterMs;
     this.id = dependencies.id;
     this.store = dependencies.store;
+    this.sourceRefreshMs=this.store.feedCheckIntervalMinutes()*60_000;
     for(const feed of this.store.workingFeeds())this.workingFeeds.set(this.workingKey(feed.candidate),feed);
     this.rebuild();
   }
@@ -172,6 +181,16 @@ export class FootballCoordinator {
       };
       return {...current,home:team(current.home),away:team(current.away)};
     });
+    for(const [gameId,health] of this.terminalByGame) {
+      const game=this.games.find(row=>row.id===gameId);
+      if(!this.feedGame(game))continue;
+      for(const [key,value] of health)if(value.kind==='playable'&&
+        !workingFeedMatches({candidate:{gameId},owner:value.owner},game)) {
+        health.delete(key);
+        this.healthRevision.set(key,(this.healthRevision.get(key)||0)+1);
+        this.decoded.delete(key);
+      }
+    }
     this.restoreWorkingFeeds();
     const match=createObservationMatcher(this.games);
     for (const observation of this.store.observations())
@@ -255,11 +274,29 @@ export class FootballCoordinator {
   }
   private observationFeedEligible(observation:Observation):boolean {
     const result=createObservationMatcher(this.games,'inventory-live')(observation,this.now());
-    const ids=result.kind==='matched'?[result.gameId]:result.reason==='unverified-kickoff'?result.possibleGameIds:[];
+    const ids=detailCandidateGameIds(result);
     return ids.some(id=>this.feedGame(this.games.find(game=>game.id===id)));
   }
   private terminal(candidate:Candidate):TerminalHealth|undefined {
     return this.terminalByGame.get(candidate.gameId)?.get(this.probeKey(candidate));
+  }
+  private gameOwner(game:Game):FeedOwner {
+    return workingFeedOwner(game,game.partitions?.length?game.partitions:
+      this.schedules.filter(source=>source.league===game.league).map(source=>source.id));
+  }
+  private ownedCandidate(candidate:Candidate,owner:FeedOwner):boolean {
+    const game=this.games.find(row=>row.id===candidate.gameId);
+    return !!game&&workingFeedMatches({candidate,owner},game)&&
+      candidate.sourceIds.some(id=>this.sources.some(source=>source.id===id))&&
+      (candidate.locator.provider!=='event-page'&&candidate.locator.provider!=='tvapp'&&
+        candidate.locator.provider!=='streameast-server'||candidate.locator.gameId===game.id);
+  }
+  private selectionOwner(candidate:Candidate):SelectionOwner|undefined {
+    const health=this.terminal(candidate);
+    return health?.kind==='playable'?{key:this.probeKey(candidate),owner:health.owner}:undefined;
+  }
+  private currentSelection(candidate:Candidate,selection:SelectionOwner|undefined):boolean {
+    return !!selection&&selection.key===this.probeKey(candidate)&&this.ownedCandidate(candidate,selection.owner);
   }
   private workingKey(candidate:Candidate):string {
     return JSON.stringify([candidate.gameId,candidate.id]);
@@ -279,13 +316,14 @@ export class FootballCoordinator {
       if(health?.kind!=='playable'||!this.feedGame(game))return;
       const identityHash=this.identityHash(candidate);
       const saved=[...this.workingFeeds.values()].filter(feed=>feed.candidate.gameId===game.id&&feed.identityHash===identityHash);
-      const owner=saved[0]?.owner||workingFeedOwner(game,game.partitions?.length?game.partitions:
-        this.schedules.filter(source=>source.league===game.league).map(source=>source.id));
+      const owner=health.owner;
       const aliases=new Map([...saved.map(feed=>feed.candidate),...(this.candidates.get(game.id)||[])
         .filter(row=>this.probeKey(row)===this.probeKey(candidate))].map(row=>[row.id,row]));
       const feeds=[...aliases.values()].flatMap(row=>{
         const sourceIds=row.sourceIds.filter(id=>this.sources.some(source=>source.id===id));
-        if(!sourceIds.length||!this.persistableLocator(row.locator)||row.locator.provider==='event-page'&&row.locator.gameId!==game.id)return [];
+        if(!sourceIds.length||!this.persistableLocator(row.locator)||
+          (row.locator.provider==='event-page'||row.locator.provider==='tvapp'||
+            row.locator.provider==='streameast-server')&&row.locator.gameId!==game.id)return [];
         const feed:WorkingFeed={version:1,identityHash,candidate:{...row,sourceIds},owner,checkedAt:health.checkedAt,proof:health.proof};
         return workingFeedMatches(feed,game)?[feed]:[];
       });
@@ -294,6 +332,25 @@ export class FootballCoordinator {
     } catch(error) {this.errors.set('working-feed-cache',errorCode(error));}
   }
   private restoreWorkingFeeds():void {
+    if(!this.workingFeeds.size)return;
+    const surge=this.store.sportsurgeCatalog().current;
+    const surgeAssignments=surge?sportsurgeCatalogView(surge,this.games,this.now()).games:[];
+    const east=this.store.streameastCatalog();
+    const eastAssignments=east.current?streameastCatalogView(east.current,this.games,this.now()).games:[];
+    const eastEvents=[east.current,east.previous,east.lastComplete].flatMap(value=>value?.catalog.events||[]);
+    const reassigned=(candidate:Candidate):boolean=>{
+      if(surge&&candidate.locator.provider==='sportsurge-v2')return surge.catalog.events.some(event=>
+        surge.catalog.categories[event.league].kind==='collected'&&sportsurgeEventCandidate(candidate,event)&&
+        surgeAssignments.some(row=>row.id===event.id&&row.url===event.url&&row.gameId!==null&&row.gameId!==candidate.gameId));
+      if(!east.current||!candidate.sourceIds.includes('streameast'))return false;
+      return east.current.catalog.events.some(event=>{
+        if(east.current?.catalog.categories[event.league].kind!=='collected')return false;
+        const gameId=eastAssignments.find(row=>row.id===event.id&&row.url===event.url)?.gameId;
+        return !!gameId&&gameId!==candidate.gameId&&eastEvents.some(prior=>
+          prior.id===event.id&&prior.url===event.url&&streameastCandidates(prior,candidate.gameId).some(row=>
+            row.id===candidate.id&&JSON.stringify(row.locator)===JSON.stringify(candidate.locator)));
+      });
+    };
     const groups=new Map<string,WorkingFeed[]>();
     for(const feed of this.workingFeeds.values()) {
       const key=JSON.stringify([feed.candidate.gameId,feed.identityHash]);
@@ -307,17 +364,23 @@ export class FootballCoordinator {
       const finished=(this.finalDeadlines.get(first.candidate.gameId)??game?.graceEndsAt??Infinity)<=this.now();
       const feeds=absent||finished?[]:rows.flatMap(feed=>{
         const sourceIds=feed.candidate.sourceIds.filter(id=>this.sources.some(source=>source.id===id));
-        return (!game||game.lifecycle!=='final'&&!this.scheduleFresh(game)||workingFeedMatches(feed,game))&&sourceIds.length&&this.persistableLocator(feed.candidate.locator)&&this.identityHash(feed.candidate)===feed.identityHash&&
+        return (!game||game.lifecycle!=='final'&&!this.scheduleFresh(game)||workingFeedMatches(feed,game))&&
+          !reassigned(feed.candidate)&&sourceIds.length&&this.persistableLocator(feed.candidate.locator)&&this.identityHash(feed.candidate)===feed.identityHash&&
           feed.checkedAt<=this.now()+60_000&&feed.candidate.observedAt<=this.now()+60_000&&
-          (feed.candidate.locator.provider!=='event-page'||feed.candidate.locator.gameId===feed.candidate.gameId)?
+          (feed.candidate.locator.provider!=='event-page'&&feed.candidate.locator.provider!=='tvapp'&&
+            feed.candidate.locator.provider!=='streameast-server'||
+            feed.candidate.locator.gameId===feed.candidate.gameId)?
           [{...feed,candidate:{...feed.candidate,sourceIds}}]:[];
       });
       if(JSON.stringify(feeds)!==JSON.stringify(rows))this.replaceWorkingIdentity(first.candidate.gameId,first.identityHash,feeds);
       if(!feeds.length) {
         const key=this.probeKey(first.candidate);
-        if(this.terminal(first.candidate)?.kind==='playable')this.terminalByGame.get(first.candidate.gameId)?.delete(key);
+        const terminal=this.terminal(first.candidate);
+        if(terminal?.kind==='playable'&&terminal.checkedAt<=first.checkedAt&&
+          JSON.stringify(terminal.owner)===JSON.stringify(first.owner))this.terminalByGame.get(first.candidate.gameId)?.delete(key);
         const candidates=this.candidates.get(first.candidate.gameId)||[];
-        this.candidates.set(first.candidate.gameId,candidates.filter(candidate=>this.identityHash(candidate)!==first.identityHash));
+        if(this.terminal(first.candidate)?.kind!=='playable')
+          this.candidates.set(first.candidate.gameId,candidates.filter(candidate=>this.identityHash(candidate)!==first.identityHash));
         continue;
       }
       if(!game)continue;
@@ -327,7 +390,7 @@ export class FootballCoordinator {
         if(terminal?.kind==='unavailable')continue;
         const health=this.terminalByGame.get(game.id)||new Map<string,TerminalHealth>();
         if(!terminal||terminal.checkedAt<feed.checkedAt)
-          health.set(this.probeKey(feed.candidate),{kind:'playable',checkedAt:feed.checkedAt,proof:feed.proof});
+          health.set(this.probeKey(feed.candidate),{kind:'playable',checkedAt:feed.checkedAt,proof:feed.proof,owner:feed.owner});
         this.terminalByGame.set(game.id,health);
         const candidates=this.candidates.get(game.id)||[];
         const current=candidates.find(candidate=>candidate.id===feed.candidate.id);
@@ -342,19 +405,45 @@ export class FootballCoordinator {
       if(JSON.stringify(feeds)!==JSON.stringify(rows))this.replaceWorkingIdentity(first.candidate.gameId,first.identityHash,feeds);
     }
   }
-  private retainedWorking(candidate:Candidate):boolean {
-    const feed=this.workingFeeds.get(this.workingKey(candidate));
+  private retainedPlayable(candidate:Candidate):boolean {
+    const health=this.terminal(candidate);
     const game=this.games.find(game=>game.id===candidate.gameId);
-    return !!feed&&!!game&&workingFeedMatches(feed,game)&&
-      (this.feedGame(game)||cachedFeedEligible(feed,game,this.now()))&&
-      JSON.stringify(feed.candidate.locator)===JSON.stringify(candidate.locator)&&this.terminal(candidate)?.kind==='playable';
+    return health?.kind==='playable'&&!!game&&this.ownedCandidate(candidate,health.owner)&&
+      (this.feedGame(game)||cachedFeedEligible({candidate,owner:health.owner},game,this.now()))&&
+      candidate.observedAt<=this.now()+60_000&&health.checkedAt<=this.now()+60_000;
   }
   private recordTerminal(candidate:Candidate,value:TerminalHealth):void {
-    if(value.kind==='unavailable')this.replaceWorkingIdentity(candidate.gameId,this.identityHash(candidate),[]);
     const rows=this.terminalByGame.get(candidate.gameId)||new Map<string,TerminalHealth>();
     rows.set(this.probeKey(candidate),value);
     this.terminalByGame.set(candidate.gameId,rows);
     if(value.kind==='playable')this.persistWorkingIdentity(candidate);
+    else try {
+      this.replaceWorkingIdentity(candidate.gameId,this.identityHash(candidate),[]);
+      this.errors.delete('working-feed-cache');
+    } catch(error) {this.errors.set('working-feed-cache',errorCode(error));}
+  }
+  private retireReassignedCandidates(candidates:Candidate[]):void {
+    const identities=new Map(candidates.map(candidate=>[this.probeKey(candidate),candidate]));
+    if(!identities.size)return;
+    for(const [gameId,rows] of this.candidates)
+      this.candidates.set(gameId,rows.filter(candidate=>!identities.has(this.probeKey(candidate))));
+    for(const [key,candidate] of identities) {
+      this.terminalByGame.get(candidate.gameId)?.delete(key);
+      this.healthRevision.set(key,(this.healthRevision.get(key)||0)+1);
+      this.decoded.delete(key);
+      this.probeQueue=this.probeQueue.filter(job=>job.key!==key);
+      this.activeProbes.get(key)?.controller.abort();
+      const deferred=this.deferredProbes.get(key);
+      if(deferred){clearTimeout(deferred.timer);this.deferredProbes.delete(key);}
+      for(const owned of this.sessions.values())if(owned.value.gameId===candidate.gameId&&owned.selection?.key===key)
+        owned.selection=undefined;
+      const identityHash=this.identityHash(candidate);
+      if([...this.workingFeeds.values()].some(feed=>feed.candidate.gameId===candidate.gameId&&
+        feed.identityHash===identityHash))try {
+        this.replaceWorkingIdentity(candidate.gameId,identityHash,[]);
+      } catch(error) {this.errors.set('working-feed-cache',errorCode(error));}
+    }
+    this.revision++;
   }
   private forgetGameProof(gameId:string):void {
     if((this.finalDeadlines.get(gameId)??Infinity)<=this.now()) {
@@ -366,14 +455,9 @@ export class FootballCoordinator {
     for(const key of this.healthRevision.keys())if(key.startsWith(prefix))this.healthRevision.delete(key);
     for(const key of this.decoded.keys())if(key.startsWith(prefix))this.decoded.delete(key);
   }
-  private retainLive(candidate:Candidate):boolean {
-    const game=this.games.find(game=>game.id===candidate.gameId);
-    return !!game&&game.lifecycle==='live'&&game.finalObservedAt===undefined&&this.scheduleFresh(game)&&
-      this.terminal(candidate)?.kind==='playable';
-  }
   private currentCandidate(candidate:Candidate):boolean {
     return candidate.observedAt<=this.now()+60_000&&
-      (this.now()-candidate.observedAt<30*60_000||this.retainLive(candidate)||this.retainedWorking(candidate));
+      (this.now()-candidate.observedAt<30*60_000||this.retainedPlayable(candidate));
   }
   private listingPending(url:string):boolean {
     return [...this.pendingListings.values()].includes(new URL(url).hostname);
@@ -387,7 +471,7 @@ export class FootballCoordinator {
       if(sourceFailure(error)==='rate-limited') {
         const delay=this.retryAfterMs(error);
         this.hostCooldowns.set(new URL(url).hostname,Math.max(this.hostRetryAt(url),
-          retryDeadline(this.now(),delay)));
+          retryDeadline(this.now(),Math.max(SOURCE_REFRESH_MS,delay),this.sourceRefreshMs)));
       }
       throw error;
     });
@@ -403,10 +487,28 @@ export class FootballCoordinator {
       (this.candidates.get(game.id)||[]).some(candidate=>this.probeKey(candidate)===job.key &&
         this.currentCandidate(candidate));
   }
+  private workingRecheckDue(candidate:Candidate,checkedAt:number,now:number):boolean {
+    const health=this.terminal(candidate);
+    return this.currentProbeCandidate({key:this.probeKey(candidate),candidate})&&
+      health?.kind==='playable'&&health.checkedAt===checkedAt&&now>=checkedAt+this.sourceRefreshMs;
+  }
+  private currentProbeJob(job:ProbeJob,queued:boolean):boolean {
+    if(!this.currentProbeCandidate(job)||!this.ownedCandidate(job.candidate,job.owner))return false;
+    if(job.priority!=='recheck')return true;
+    const health=this.terminal(job.candidate);
+    return health?.kind==='playable'&&health.checkedAt===job.expectedCheckedAt&&
+      (!queued||this.now()>=job.expectedCheckedAt+this.sourceRefreshMs);
+  }
+  private maintenanceDue(job:ProbeWork & {candidate:Candidate}):number {
+    if(job.priority==='recheck')return job.expectedCheckedAt+this.sourceRefreshMs;
+    const health=this.terminal(job.candidate);
+    return health?.kind==='unavailable'?health.retryAt:Infinity;
+  }
   private availability(candidate:Candidate):CandidateAvailability {
     const key=this.probeKey(candidate);
     const health=this.terminal(candidate);
-    if(health?.kind==='playable')return health;
+    if(health?.kind==='playable')return this.retainedPlayable(candidate)?
+      {kind:'playable',proof:health.proof,checkedAt:health.checkedAt}:{kind:'unknown'};
     const active=this.activeProbes.get(key);
     if(active)return {kind:'checking',progress:{kind:'active',since:active.phase.since}};
     const queued=this.probeQueue.find(job=>job.key===key);
@@ -417,11 +519,10 @@ export class FootballCoordinator {
     return {kind:'unknown'};
   }
   private selectable(candidate:Candidate):boolean {
-    return (this.feedGame(this.games.find(game=>game.id===candidate.gameId))||this.retainedWorking(candidate))&&
-      this.currentCandidate(candidate) && this.availability(candidate).kind==='playable';
+    return this.currentCandidate(candidate)&&this.retainedPlayable(candidate);
   }
   private visibleListedCandidate(candidate:Candidate):boolean {
-    return this.feedGame(this.games.find(game=>game.id===candidate.gameId))||this.retainedWorking(candidate);
+    return this.feedGame(this.games.find(game=>game.id===candidate.gameId))||this.retainedPlayable(candidate);
   }
   private candidateSummary(candidate:Candidate) {return candidateSummary(candidate,this.availability(candidate));}
   private rankCandidates(left:Candidate,right:Candidate):number {
@@ -447,8 +548,8 @@ export class FootballCoordinator {
     }
     for(const [observation,controller] of this.detailControllers)
       if(!this.observationFeedEligible(observation))controller.abort();
-    this.probeQueue=this.probeQueue.filter(job=>this.currentProbeCandidate(job));
-    for(const job of this.activeProbes.values())if(!this.currentProbeCandidate(job))job.controller.abort();
+    this.probeQueue=this.probeQueue.filter(job=>this.currentProbeJob(job,true));
+    for(const job of this.activeProbes.values())if(!this.currentProbeJob(job,false))job.controller.abort();
     for(const gameId of this.terminalByGame.keys()) {
       const game=this.games.find(row=>row.id===gameId);
       const owned=[...this.sessions.values()].some(session=>session.value.gameId===gameId&&
@@ -484,14 +585,13 @@ export class FootballCoordinator {
     }
     for(const [gameId,requestedAt] of this.checkTargets)if(now-requestedAt>90_000)this.checkTargets.delete(gameId);
     while(this.checkTargets.size>16)this.checkTargets.delete(this.checkTargets.keys().next().value!);
+    if(retry)for(const job of this.probeQueue)if(job.priority==='retry'&&gameIds.includes(job.candidate.gameId)) {
+      job.priority='forced';
+      this.terminalByGame.get(job.candidate.gameId)?.delete(job.key);
+      this.revision++;
+    }
     const queued=new Set(this.probeQueue.map(job=>job.key));
-    const hasPlayable=(candidate:Candidate):boolean=>{
-      const key=this.probeKey(candidate);
-      const health=this.terminal(candidate);
-      const deferred=this.deferredProbes.get(key);
-      return !this.activeProbes.has(key)&&!queued.has(key)&&(!deferred||deferred.until<=now)&&
-        health?.kind==='playable';
-    };
+    const hasPlayable=(candidate:Candidate):boolean=>this.terminal(candidate)?.kind==='playable';
     const demand=this.probeDemand();
     const eligible=this.games.filter(game=>this.feedGame(game)).map(game=>({
       gameId:game.id,urgency:this.gameUrgency(game),kickoff:game.date?Date.parse(game.date):Infinity,
@@ -523,6 +623,8 @@ export class FootballCoordinator {
     }
     const unknown:Candidate[]=[];
     const forced:Candidate[]=[];
+    const retries:Candidate[]=[];
+    const rechecks:Array<{candidate:Candidate;priority:'recheck';expectedCheckedAt:number}>=[];
     const seen=new Set<string>();
     for(const candidate of ordered) {
       const key=this.probeKey(candidate);
@@ -532,39 +634,82 @@ export class FootballCoordinator {
       const prior=this.terminal(candidate);
       if(prior?.kind==='unavailable') {
         if(force)forced.push(candidate);
-      } else if(!prior)unknown.push(candidate);
+        else if(now>=prior.retryAt)retries.push(candidate);
+      } else if(prior?.kind==='playable') {
+        if(this.workingRecheckDue(candidate,prior.checkedAt,now))rechecks.push({candidate,priority:'recheck',expectedCheckedAt:prior.checkedAt});
+      } else unknown.push(candidate);
     }
-    const additions=[...forced.map(candidate=>({candidate,priority:'forced' as const})),
-      ...unknown.map(candidate=>({candidate,priority:'unknown' as const}))];
-    for(const {candidate,priority} of additions) {
+    const maintenance:Array<ProbeWork & {candidate:Candidate}>=[...rechecks,...retries.map(candidate=>({candidate,priority:'retry' as const}))];
+    maintenance.sort((left,right)=>this.maintenanceDue(left)-this.maintenanceDue(right));
+    const additions:Array<ProbeWork & {candidate:Candidate}>=[...forced.map(candidate=>({candidate,priority:'forced'} as const)),
+      ...unknown.map(candidate=>({candidate,priority:'unknown'} as const)),...maintenance];
+    for(const work of additions) {
+      const {candidate,priority}=work;
       if(this.probeQueue.length>=PROBE_QUEUE_LIMIT) {
-        const demanded=priority!=='forced'&&demand.has(candidate.gameId);
-        const approaching=priority!=='forced'&&!demanded&&nearKickoff.has(candidate.gameId);
-        const directReplacement=priority!=='forced'&&!usesBrowserProbe(candidate)?this.probeQueue.findLastIndex(job=>
-          job.priority===priority&&usesBrowserProbe(job.candidate)&&
-          demand.has(job.candidate.gameId)===demand.has(candidate.gameId)&&
-          (urgencyByGame.get(job.candidate.gameId)??2)>=(urgencyByGame.get(candidate.gameId)??2)):-1;
-        if(priority!=='forced'&&!demanded&&!approaching&&directReplacement<0)continue;
-        const displaced=directReplacement>=0?directReplacement:demanded||approaching?this.probeQueue.findLastIndex(job=>job.priority!=='forced'&&
-          !demand.has(job.candidate.gameId)&&(!approaching||!nearKickoff.has(job.candidate.gameId))):
-          this.probeQueue.findLastIndex(job=>job.priority!=='forced');
-        if(displaced<0)continue;
-        if(demanded&&!demand.has(this.probeQueue[displaced].candidate.gameId)&&
-          this.probeQueue.filter(job=>!demand.has(job.candidate.gameId)).length<=1)continue;
-        this.probeQueue.splice(displaced,1);
+        const maintenanceReplacement=this.probeQueue.reduce((latest,job,index)=>
+          (job.priority==='retry'||job.priority==='recheck')&&
+          (latest<0||this.maintenanceDue(job)>=this.maintenanceDue(this.probeQueue[latest]))?index:latest,-1);
+        if(priority==='retry'||priority==='recheck') {
+          if(maintenanceReplacement<0||this.maintenanceDue(work)>=this.maintenanceDue(this.probeQueue[maintenanceReplacement]))continue;
+          this.probeQueue.splice(maintenanceReplacement,1);
+        } else {
+          const demanded=priority!=='forced'&&demand.has(candidate.gameId);
+          const approaching=priority!=='forced'&&!demanded&&nearKickoff.has(candidate.gameId);
+          const directReplacement=priority!=='forced'&&!usesBrowserProbe(candidate)?this.probeQueue.findLastIndex(job=>
+            job.priority===priority&&usesBrowserProbe(job.candidate)&&
+            demand.has(job.candidate.gameId)===demand.has(candidate.gameId)&&
+            (urgencyByGame.get(job.candidate.gameId)??2)>=(urgencyByGame.get(candidate.gameId)??2)):-1;
+          if(maintenanceReplacement<0&&priority!=='forced'&&!demanded&&!approaching&&directReplacement<0)continue;
+          const displaced=maintenanceReplacement>=0?maintenanceReplacement:directReplacement>=0?directReplacement:demanded||approaching?this.probeQueue.findLastIndex(job=>job.priority!=='forced'&&
+            !demand.has(job.candidate.gameId)&&(!approaching||!nearKickoff.has(job.candidate.gameId))):
+            this.probeQueue.findLastIndex(job=>job.priority!=='forced');
+          if(displaced<0)continue;
+          if(maintenanceReplacement<0&&demanded&&!demand.has(this.probeQueue[displaced].candidate.gameId)&&
+            this.probeQueue.filter(job=>!demand.has(job.candidate.gameId)).length<=1)continue;
+          this.probeQueue.splice(displaced,1);
+        }
       }
       const key=this.probeKey(candidate);
       if(priority==='forced')this.terminalByGame.get(candidate.gameId)?.delete(key);
-      this.probeQueue.push({key,candidate,controller:new AbortController(),priority,revision:this.healthRevision.get(key)||0,phase:{kind:'queued',since:now}});
+      const game=this.games.find(row=>row.id===candidate.gameId);
+      if(!game)continue;
+      const prior=this.terminal(candidate);
+      const owner=prior?.kind==='playable'?prior.owner:this.gameOwner(game);
+      this.probeQueue.push({...work,key,owner,controller:new AbortController(),revision:this.healthRevision.get(key)||0,phase:{kind:'queued',since:now}});
       this.revision++;
     }
     const rank=new Map(ordered.map((candidate,index)=>[this.probeKey(candidate),index]));
-    const priorityRank={forced:0,unknown:1};
-    this.probeQueue.sort((left,right)=>priorityRank[left.priority]-priorityRank[right.priority]||
+    this.probeQueue.sort((left,right)=>PROBE_PRIORITY[left.priority]-PROBE_PRIORITY[right.priority]||
+      (PROBE_PRIORITY[left.priority]===2?this.maintenanceDue(left)-this.maintenanceDue(right):0)||
       (urgencyByGame.get(left.candidate.gameId)??2)-(urgencyByGame.get(right.candidate.gameId)??2)||
       Number(usesBrowserProbe(left.candidate))-Number(usesBrowserProbe(right.candidate))||
       (rank.get(left.key)??Infinity)-(rank.get(right.key)??Infinity));
     this.probePump??=setImmediate(()=>{this.probePump=undefined;this.pumpProbes();});
+  }
+  private runProbe(job:ProbeJob):Promise<CandidateProbeResult> {
+    const canceled:CandidateProbeResult={kind:'deferred',retryAfterMs:2000};
+    if(job.controller.signal.aborted)return Promise.resolve(canceled);
+    const deadline=new AbortController();
+    const signal=AbortSignal.any([job.controller.signal,deadline.signal]);
+    return new Promise(resolve=>{
+      let settled=false;
+      const finish=(result:CandidateProbeResult)=>{
+        if(settled)return;
+        settled=true;
+        clearTimeout(timer);
+        job.controller.signal.removeEventListener('abort',onAbort);
+        resolve(result);
+      };
+      const onAbort=()=>finish(canceled);
+      const timer=setTimeout(()=>{
+        finish({kind:'unavailable',reason:'timeout'});
+        deadline.abort();
+      },PROBE_TIMEOUT_MS);
+      job.controller.signal.addEventListener('abort',onAbort,{once:true});
+      void Promise.resolve().then(()=>job.controller.signal.aborted ? canceled :
+        this.probeCandidate(job.candidate.locator,signal))
+        .then(finish,()=>finish({kind:'unavailable',reason:'upstream'}));
+    });
   }
   private pumpProbes():void {
     if(this.activeProbes.size===PROBE_LIMIT&&![...this.activeProbes.values()].some(job=>!usesBrowserProbe(job.candidate)||job.controller.signal.aborted)) {
@@ -574,7 +719,7 @@ export class FootballCoordinator {
       const direct=[nextDemand,nextBackground].find(job=>job&&!usesBrowserProbe(job.candidate));
       if(direct) {
         const browser=[...this.activeProbes.values()].filter(job=>usesBrowserProbe(job.candidate)&&
-          !job.controller.signal.aborted&&(job.priority!=='forced'||direct.priority==='forced'));
+          !job.controller.signal.aborted&&PROBE_PRIORITY[job.priority]>=PROBE_PRIORITY[direct.priority]);
         const replaceable=browser.find(job=>!demand.has(job.candidate.gameId))||
           (demand.has(direct.candidate.gameId)?browser[0]:undefined);
         replaceable?.controller.abort();
@@ -584,23 +729,31 @@ export class FootballCoordinator {
       const demand=this.probeDemand();
       const backgroundTurn=this.probeAdmissions%4===3;
       const ready=(job:ProbeJob)=>!usesBrowserProbe(job.candidate)||this.now()>=this.browserProbeAfter;
-      const preferred=this.probeQueue.findIndex(job=>ready(job)&&(backgroundTurn?!demand.has(job.candidate.gameId):demand.has(job.candidate.gameId)));
-      const next=preferred<0?this.probeQueue.findIndex(ready):preferred;
+      const firstReady=this.probeQueue.find(ready);
+      if(!firstReady)break;
+      const eligible=(job:ProbeJob)=>ready(job)&&PROBE_PRIORITY[job.priority]===PROBE_PRIORITY[firstReady.priority];
+      const preferred=this.probeQueue.findIndex(job=>eligible(job)&&(backgroundTurn?!demand.has(job.candidate.gameId):demand.has(job.candidate.gameId)));
+      const next=preferred<0?this.probeQueue.findIndex(eligible):preferred;
       if(next<0)break;
       const [job]=this.probeQueue.splice(next,1);
-      if(!this.currentProbeCandidate(job)||this.terminal(job.candidate))continue;
+      const terminal=this.terminal(job.candidate);
+      if(job.revision!==(this.healthRevision.get(job.key)||0)||!this.currentProbeJob(job,true))continue;
+      if(job.priority!=='recheck') {
+        if(terminal?.kind==='playable'||terminal&&job.priority!=='retry')continue;
+        if(terminal)this.terminalByGame.get(job.candidate.gameId)?.delete(job.key);
+      }
       this.activeProbes.set(job.key,job);
       job.phase={kind:'active',since:this.now()};
       this.revision++;
       this.probeAdmissions++;
       if(demand.size&&!demand.has(job.candidate.gameId))this.backgroundCursor++;
-      job.promise=Promise.resolve().then(()=>this.probeCandidate(job.candidate.locator,job.controller.signal)).then(result=>{
-        if(this.stopped||job.controller.signal.aborted||this.activeProbes.get(job.key)!==job||!this.currentProbeCandidate(job)||
+      job.promise=this.runProbe(job).then(result=>{
+        if(this.stopped||job.controller.signal.aborted||this.activeProbes.get(job.key)!==job||!this.currentProbeJob(job,false)||
           job.revision!==(this.healthRevision.get(job.key)||0))return;
         const checkedAt=this.now();
-        if(result.kind==='playable')this.recordTerminal(job.candidate,{kind:'playable',proof:result.proof,checkedAt});
+        if(result.kind==='playable')this.recordTerminal(job.candidate,{kind:'playable',proof:result.proof,checkedAt,owner:job.owner});
         else if(result.kind==='unavailable') {
-          this.recordTerminal(job.candidate,{kind:'unavailable',reason:result.reason,checkedAt,retryAt:checkedAt+MEDIA_RETRY_DELAY_MS});
+          this.recordTerminal(job.candidate,{kind:'unavailable',reason:result.reason,checkedAt,retryAt:checkedAt+this.sourceRefreshMs});
           this.projectCandidates();
         }
         else {
@@ -614,10 +767,10 @@ export class FootballCoordinator {
         }
         this.revision++;
       }).catch(()=>{
-        if(this.stopped||job.controller.signal.aborted||this.activeProbes.get(job.key)!==job||!this.currentProbeCandidate(job)||
+        if(this.stopped||job.controller.signal.aborted||this.activeProbes.get(job.key)!==job||!this.currentProbeJob(job,false)||
           job.revision!==(this.healthRevision.get(job.key)||0))return;
         const checkedAt=this.now();
-        this.recordTerminal(job.candidate,{kind:'unavailable',reason:'upstream',checkedAt,retryAt:checkedAt+MEDIA_RETRY_DELAY_MS});
+        this.recordTerminal(job.candidate,{kind:'unavailable',reason:'upstream',checkedAt,retryAt:checkedAt+this.sourceRefreshMs});
         this.projectCandidates();
         this.revision++;
       }).finally(()=>{
@@ -686,7 +839,7 @@ export class FootballCoordinator {
         });
         const failures=result.outcome==='parser-changed'?(previous?.failures||0)+1:
           result.outcome==='unsupported'?(previous?.failures||0):0;
-        const nextEligibleAt=result.outcome==='unsupported'?Number.MAX_SAFE_INTEGER:retryDeadline(at);
+        const nextEligibleAt=result.outcome==='unsupported'?Number.MAX_SAFE_INTEGER:retryDeadline(at,0,this.sourceRefreshMs);
         const match=createObservationMatcher(this.games);
         const admitted=accepted.map(observation=>{
           const result=match(observation,at);
@@ -707,7 +860,7 @@ export class FootballCoordinator {
         const at=this.now();
         const failures=(previous?.failures||0)+1;
         this.store.saveListingAttempt(source.id,{at,outcome:'failed',failure:sourceFailure(error),count:0,failures,parserVersion:source.parserVersion??LISTING_PARSER_VERSION,
-          nextEligibleAt:Math.max(this.hostRetryAt(source.url),retryDeadline(at,this.retryAfterMs(error)))},[]);
+          nextEligibleAt:Math.max(this.hostRetryAt(source.url),retryDeadline(at,this.retryAfterMs(error),this.sourceRefreshMs))},[]);
       } finally {
         this.pendingListings.delete(source.id);
         this.revision++;
@@ -738,7 +891,7 @@ export class FootballCoordinator {
     for(const [gameId,rows] of this.candidates)
       this.candidates.set(gameId,rows.filter(candidate=>!priorDetailIds.has(candidate.id)||
         selectedActive.has(`${gameId}:${candidate.id}`)||selectedDuringGrace.has(`${gameId}:${candidate.id}`)||
-        !changedIdentityIds.has(candidate.id)&&this.retainLive(candidate)||this.retainedWorking(candidate)));
+        !changedIdentityIds.has(candidate.id)&&this.retainedPlayable(candidate)));
     this.detailCandidateIds.clear();
     for(const rows of this.candidates.values())
       for(const candidate of rows)if(priorDetailIds.has(candidate.id))this.detailCandidateIds.add(candidate.id);
@@ -755,14 +908,15 @@ export class FootballCoordinator {
       const byId=new Map((this.candidates.get(game.id)||[]).map(candidate=>[candidate.id,candidate]));
       for(const published of detail.players) {
         let player=published;
-        if(player.locator.provider==='event-page' &&
+        if((player.locator.provider==='event-page'||player.locator.provider==='tvapp'||
+          player.locator.provider==='streameast-server') &&
           (player.locator.gameId!==game.id || player.locator.eventUrl!==observation.url))continue;
         const versionId=player.id+':'+createHash('sha256').update(JSON.stringify(player.locator)).digest('hex').slice(0,12);
         if(byId.has(versionId))player={...player,id:versionId};
         let previous=byId.get(player.id);
         if(previous&&JSON.stringify(previous.locator)!==JSON.stringify(player.locator)) {
           if(detail.at<=previous.observedAt)continue;
-          if(byId.has(versionId)||this.retainLive(previous)||this.retainedWorking(previous)||selectedActive.has(`${game.id}:${previous.id}`))
+          if(byId.has(versionId)||this.retainedPlayable(previous)||selectedActive.has(`${game.id}:${previous.id}`))
             player={...player,id:versionId};
           previous=byId.get(player.id);
           if(previous&&JSON.stringify(previous.locator)!==JSON.stringify(player.locator))previous=undefined;
@@ -818,18 +972,12 @@ export class FootballCoordinator {
           this.hostRetryAt(observation.url)>this.now()||this.listingPending(observation.url))return [];
         const result=match(observation,this.now());
         const rolloverGame=result.kind==='unmatched'&&result.reason==='stale-observation'?liveRolloverGame(observation):undefined;
-        if(result.kind!=='matched'&&!(result.reason==='unverified-kickoff'&&result.possibleGameIds.length>0)&&!rolloverGame)return [];
+        const detailIds=detailCandidateGameIds(result);
+        if(!detailIds.length&&!rolloverGame)return [];
         const prior=evidence.get(observation.id);
         if(prior&&matchesDetail(prior,observation)&&prior.nextEligibleAt>this.now())return [];
-        const game=rolloverGame||this.games.find(game=>game.id===(result.kind==='matched'?result.gameId:result.possibleGameIds[0]));
-        if(!this.observationFeedEligible(observation))return [];
-        if(game&&prior?.outcome==='resolved'&&matchesDetail(prior,observation)) {
-          const liveCandidates=(this.candidates.get(game.id)||[]).filter(candidate=>this.retainLive(candidate)&&
-            this.availability(candidate).kind==='playable'&&candidate.sourceIds.includes(observation.sourceId));
-          const retained=prior.players.filter(player=>liveCandidates.some(candidate=>
-            JSON.stringify(player.locator)===JSON.stringify(candidate.locator)));
-          if(prior.players.length>0&&retained.length===prior.players.length)return [];
-        }
+        const game=rolloverGame||this.games.find(game=>detailIds.some(id=>id===game.id)&&this.feedGame(game));
+        if(!game||!this.observationFeedEligible(observation))return [];
         return [{observation,viewed:Number(viewed.has(game?.id||'')),urgency:this.gameUrgency(game),
           kickoff:game?.date?Date.parse(game.date):Infinity,
           sourceRank:publishedPlayerCatalogIds.has(observation.sourceId)?0:observation.sourceId==='sportsurge'?1:2}];
@@ -852,9 +1000,12 @@ export class FootballCoordinator {
         if(!this.observationFeedEligible(observation))return;
         const at=this.now();
         const rolloverGame=liveRolloverGame(original);
+        const playersFor=(id:string)=>observation.sourceId==='tvapp'&&this.tvappPlayers?
+          this.tvappPlayers(id,observation,html,signal):Promise.resolve(this.compatiblePlayers(id,observation,html));
         const rolloverPlayers=rolloverGame&&observation.kickoff===original.kickoff?
-          this.compatiblePlayers(rolloverGame.id,observation,html):[];
-        const publishedEventPage=rolloverPlayers.some(player=>player.locator.provider==='event-page'&&
+          await playersFor(rolloverGame.id):[];
+        const publishedEventPage=rolloverPlayers.some(player=>
+          (player.locator.provider==='event-page'||player.locator.provider==='tvapp')&&
           player.locator.gameId===rolloverGame?.id&&player.locator.eventUrl===original.url);
         if(publishedEventPage)observation={...observation,observedAt:at};
         const rawResult=matchObservation(observation,this.games,at);
@@ -862,18 +1013,22 @@ export class FootballCoordinator {
         const game=rawResult.kind==='matched'?this.games.find(value=>value.id===rawResult.gameId):
           provisionalLiveChannel(observation,rawResult,freshGames,at)??undefined;
         const players=(this.feedGame(game)?
-          publishedEventPage?rolloverPlayers:this.compatiblePlayers(game.id,observation,html):[])
+          publishedEventPage?rolloverPlayers:await playersFor(game.id):[])
+          .filter(player=>(player.locator.provider!=='event-page'&&player.locator.provider!=='tvapp'&&
+            player.locator.provider!=='streameast-server')||
+            player.locator.gameId===game?.id&&player.locator.eventUrl===observation.url)
           .map(({id,label,locator})=>({id,label,locator}));
+        if(this.stopped||signal.aborted||!this.observationFeedEligible(original))return;
         const identity=detailIdentity(observation);
         const priorSuccess=evidence.get(original.id)?.lastSuccess;
         const lastSuccess=players.length?{identity,at,count:players.length}:
           priorSuccess?.identity===identity?priorSuccess:undefined;
         const detail:DetailEvidence=players.length?
           {outcome:'resolved',observationId:observation.id,generation:detailGeneration(observation),identity,at,
-            players,nextEligibleAt:retryDeadline(at),lastSuccess}:
+            players,nextEligibleAt:retryDeadline(at,0,this.sourceRefreshMs),lastSuccess}:
           {outcome:'unresolved',observationId:observation.id,generation:detailGeneration(observation),at,
             reason:rawResult.kind==='unmatched'&&rawResult.reason==='conflicting-date'?'conflicting-game':
-              this.missingPlayerReason(observation,html),failures:0,nextEligibleAt:retryDeadline(at),lastSuccess};
+              this.missingPlayerReason(observation,html),failures:0,nextEligibleAt:retryDeadline(at,0,this.sourceRefreshMs),lastSuccess};
         const current=this.store.observations().find(row=>row.id===original.id);
         if(!current||detailGeneration(current)!==detailGeneration(original)||
           confirmedFinishedGameId(original,this.games,at)||confirmedFinishedGameId(observation,this.games,at))return;
@@ -890,7 +1045,7 @@ export class FootballCoordinator {
         const at=this.now();
         const lastSuccess=prior?.lastSuccess?.identity===detailIdentity(original)?prior.lastSuccess:undefined;
         const common={observationId:original.id,generation:detailGeneration(original),at,failures,
-          nextEligibleAt:Math.max(this.hostRetryAt(original.url),retryDeadline(at,this.retryAfterMs(error))),lastSuccess};
+          nextEligibleAt:Math.max(this.hostRetryAt(original.url),retryDeadline(at,this.retryAfterMs(error),this.sourceRefreshMs)),lastSuccess};
         const detail:DetailEvidence=error instanceof Error&&error.message==='parser-changed'?
           {...common,outcome:'unresolved',reason:'parser-changed'}:
           {...common,outcome:'failed',failure:sourceFailure(error)};
@@ -955,7 +1110,7 @@ export class FootballCoordinator {
       ]).concat(this.errors.has('working-feed-cache')?['Working feeds could not be saved for the next restart.']:[])};
     };
     const now = this.now();
-    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs'])},games:this.games.filter(game => {
+    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),feedCheckIntervalMinutes:this.store.feedCheckIntervalMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs'])},games:this.games.filter(game => {
       if(game.lifecycle==='final')return now<game.graceEndsAt;
       return (game.partitions || []).some(key => now-(this.store.partition(key)?.at || 0)<24*3600000) ||
         game.finalObservedAt !== undefined || (this.candidates.get(game.id)||[]).some(candidate=>this.selectable(candidate)) ||
@@ -988,7 +1143,7 @@ export class FootballCoordinator {
     const game=this.games.find(game=>game.id===session.gameId);
     return {kind:'session',session,candidates:(this.candidates.get(session.gameId) || [])
       .filter(candidate => candidate.id===session.candidateId ||
-        (this.currentCandidate(candidate)&&(this.feedGame(game)||this.retainedWorking(candidate))))
+        (this.currentCandidate(candidate)&&(this.feedGame(game)||this.retainedPlayable(candidate))))
       .sort((a,b)=>this.rankCandidates(a,b)).map(candidate=>this.candidateSummary(candidate))};
   }
   private reconcileStreameastCandidates(): void {
@@ -997,10 +1152,12 @@ export class FootballCoordinator {
     const current=stored.current?.catalog;
     const catalogs=[...(current?.state.kind==='complete'?[]:stored.lastComplete?[stored.lastComplete.catalog]:[]),...(current?[current]:[])];
     if(!catalogs.length)return;
+    const currentUrls=new Set(current?.events.map(event=>event.url)||[]);
     const now=this.now();
     const match=createObservationMatcher(this.games);
     const currentListed=new Set<string>();
     for(const catalog of catalogs)for(const event of catalog.events) {
+      if(catalog!==current&&currentUrls.has(event.url))continue;
       const category=catalog.categories[event.league];
       if(category.kind!=='collected')continue;
       const raw=match(streameastObservation(event,category.at),now);
@@ -1011,13 +1168,13 @@ export class FootballCoordinator {
       if(event.detail.kind!=='collected'||now-event.detail.at>=30*60000)continue;
       const previous=this.candidates.get(game.id)||[];
       const selected=this.pinnedCandidateIds(game.id,now);
-      const retained=previous.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id)||this.retainLive(candidate)||this.retainedWorking(candidate));
+      const retained=previous.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id)||this.retainedPlayable(candidate));
       this.candidates.set(game.id,[...new Map([...retained,...streameastCandidates(event,game.id)]
         .map(candidate=>[candidate.id,candidate] as const)).values()]);
     }
     if(current?.state.kind==='complete')for(const [gameId,prior] of this.candidates)if(!currentListed.has(gameId)) {
       const selected=this.pinnedCandidateIds(gameId,now);
-      this.candidates.set(gameId,prior.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id)||this.retainLive(candidate)||this.retainedWorking(candidate)));
+      this.candidates.set(gameId,prior.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id)||this.retainedPlayable(candidate)));
     }
   }
   private pinnedCandidateIds(gameId:string,now=this.now()):Set<string> {
@@ -1034,7 +1191,15 @@ export class FootballCoordinator {
   private reconcileSportsurgeCandidates():void {
     if(!this.sources.some(source=>source.id==='sportsurge-v2'))return;
     const stored=this.store.sportsurgeCatalog();
-    const next=sportsurgeCandidates({...stored,games:this.games,now:this.now()});
+    const current=stored.current;
+    const assignments=current?sportsurgeCatalogView(current,this.games,this.now()).games.flatMap(row=>{
+      const event=current.catalog.events.find(event=>event.id===row.id&&event.url===row.url);
+      return row.gameId!==null&&event&&current.catalog.categories[event.league].kind==='collected'?
+        [{event,gameId:row.gameId}]:[];
+    }):[];
+    const reassigned=(candidate:Candidate)=>assignments.some(({event,gameId})=>
+      gameId!==candidate.gameId&&sportsurgeEventCandidate(candidate,event));
+    const next=sportsurgeCandidates({...stored,games:this.games,now:this.now()}).filter(candidate=>!reassigned(candidate));
     const byGame=new Map<string,Candidate[]>();
     for(const candidate of next) {
       const game=this.games.find(item=>item.id===candidate.gameId);
@@ -1045,12 +1210,13 @@ export class FootballCoordinator {
     }
     for(const [gameId,prior] of this.candidates) {
       const retained=prior.filter(candidate=>!candidate.sourceIds.includes('sportsurge-v2') ||
-        this.pinnedCandidateIds(gameId).has(candidate.id)||this.retainLive(candidate)||this.retainedWorking(candidate));
+        this.pinnedCandidateIds(gameId).has(candidate.id)||this.retainedPlayable(candidate));
       const replacement=byGame.get(gameId)||[];
       this.candidates.set(gameId,[...new Map([...retained,...replacement].map(candidate=>[candidate.id,candidate])).values()]);
       byGame.delete(gameId);
     }
     for(const [gameId,rows] of byGame)this.candidates.set(gameId,rows);
+    this.retireReassignedCandidates([...this.candidates.values()].flatMap(rows=>rows.filter(reassigned)));
   }
   private sourcesSnapshot(): SourcesSnapshot {
     const at=this.now();
@@ -1058,7 +1224,7 @@ export class FootballCoordinator {
     const freshGameIds=new Set(this.games.filter(game=>this.feedGame(game)).map(game=>game.id));
     const eligibleGameIds=new Set(this.games.filter(game=>{
       const candidates=this.candidates.get(game.id)||[];
-      return freshGameIds.has(game.id)||candidates.some(candidate=>this.retainedWorking(candidate));
+      return freshGameIds.has(game.id)||candidates.some(candidate=>this.retainedPlayable(candidate));
     }).map(game=>game.id));
     const cache=this.inventoryCache;
     if (cache?.revision===this.revision && at-cache.at<15_000 && day===cache.day&&
@@ -1070,7 +1236,7 @@ export class FootballCoordinator {
     const lastDiscoveryAt=Object.values(attempts).length ? Math.max(...Object.values(attempts).map(item=>item.at)) : null;
     const availableCandidates=new Map([...this.candidates].filter(([gameId])=>eligibleGameIds.has(gameId))
       .map(([gameId,rows])=>[gameId,rows.filter(candidate=>
-        freshGameIds.has(gameId)||this.retainedWorking(candidate))]));
+        freshGameIds.has(gameId)||this.retainedPlayable(candidate))]));
     const snapshot=sourceInventory({at,revision:this.revision,lastDiscoveryAt,sources:this.sources,browserCollectorsAvailable:this.browserCollectorsAvailable,
       observations:this.store.observations(),games:this.games,visibleGameIds:eligibleGameIds,freshGameIds,candidates:availableCandidates,attempts,
       sourceEventBindings:this.store.sourceEventBindings(),
@@ -1098,7 +1264,8 @@ export class FootballCoordinator {
         const prior=stored.catalog.events.find(prior=>sameSportsurgeEvent(event,prior)&&prior.detail.kind==='collected');
         if(prior?.detail.kind!=='collected')continue;
         const detail=prior.detail;
-        if(!(this.candidates.get(gameId)||[]).some(candidate=>this.retainLive(candidate)&&
+        if(this.now()-detail.at>=this.sourceRefreshMs)continue;
+        if(!(this.candidates.get(gameId)||[]).some(candidate=>this.retainedPlayable(candidate)&&
           this.availability(candidate).kind==='playable'&&candidate.sourceIds.includes('sportsurge-v2')&&
           detail.providers.some(provider=>candidate.locator.provider==='sportsurge-v2'&&candidate.locator.eventId===event.id&&
             candidate.locator.providerId===provider.id&&provider.destination.kind==='link'&&candidate.locator.url===provider.destination.url)))continue;
@@ -1124,8 +1291,9 @@ export class FootballCoordinator {
       for(const stored of history) {
         const prior=stored.catalog.events.find(prior=>sameStreameastEvent(event,prior)&&prior.detail.kind==='collected');
         if(prior?.detail.kind!=='collected')continue;
+        if(this.now()-prior.detail.at>=this.sourceRefreshMs)continue;
         const choices=streameastCandidates(prior,game.id);
-        if(!(this.candidates.get(game.id)||[]).some(candidate=>this.retainLive(candidate)&&
+        if(!(this.candidates.get(game.id)||[]).some(candidate=>this.retainedPlayable(candidate)&&
           this.availability(candidate).kind==='playable'&&candidate.sourceIds.includes('streameast')&&
           choices.some(choice=>choice.id===candidate.id&&JSON.stringify(choice.locator)===JSON.stringify(candidate.locator))))continue;
         const detail=prior.detail;
@@ -1156,7 +1324,7 @@ export class FootballCoordinator {
       const skipDetailEventUrls=excluded.filter(event=>!skipDetailEventIds.includes(event.id)).map(event=>event.url);
       const reuseDetails=this.sportsurgeReuse(catalog);
       const decision=catalogDecision(this.store.sportsurgeCatalog().current,catalog);
-      if (decision==='replay') {this.reconcileSportsurgeCandidates();this.reconcileProbeJobs();this.checkSources([],false);return {kind:'catalog-ack',skipDetailEventIds,...(skipDetailEventUrls.length?{skipDetailEventUrls}:{}),...(reuseDetails?{reuseDetails}:{})};}
+      if (decision==='replay') {this.reconcileSportsurgeCandidates();this.reconcileProbeJobs();this.checkSources([],false);return {kind:'catalog-ack',sourceRefreshMs:this.sourceRefreshMs,skipDetailEventIds,...(skipDetailEventUrls.length?{skipDetailEventUrls}:{}),...(reuseDetails?{reuseDetails}:{})};}
       if (decision==='rejected') return {kind:'error',status:409,message:'Sportsurge catalog checkpoint is obsolete.'};
       const receivedAt=this.now();
       const match=createObservationMatcher(this.games);
@@ -1179,7 +1347,7 @@ export class FootballCoordinator {
       this.reconcileProbeJobs();
       this.checkSources([],false);
       this.revision++;
-      return {kind:'catalog-ack',skipDetailEventIds,...(skipDetailEventUrls.length?{skipDetailEventUrls}:{}),...(reuseDetails?{reuseDetails}:{})};
+      return {kind:'catalog-ack',sourceRefreshMs:this.sourceRefreshMs,skipDetailEventIds,...(skipDetailEventUrls.length?{skipDetailEventUrls}:{}),...(reuseDetails?{reuseDetails}:{})};
     }
     if (command.kind==='streameast-catalog') {
       const catalog=sanitizeStreameastCatalog(command.catalog,this.now(),Object.values(this.store.streameastCatalog()).flatMap(stored=>stored?[stored]:[]));
@@ -1191,14 +1359,14 @@ export class FootballCoordinator {
         const raw=createObservationMatcher(this.games)(observation,this.now());
         const result=verifiedStreameastMatch(event,raw,this.games.find(game=>game.id===(raw.kind==='matched'?raw.gameId:'')));
         return !!confirmedFinishedGameId(observation,this.games,this.now(),expected)||
-          (result.kind==='matched'?!this.feedGame(this.games.find(game=>game.id===result.gameId)):
-            result.reason!=='unverified-kickoff'||!this.observationFeedEligible(observation));
+          !detailCandidateGameIds(result).length||!this.observationFeedEligible(observation);
       }).map(event=>event.id);
       const reuseDetails=this.streameastReuse(catalog);
       const decision=streameastDecision(this.store.streameastCatalog().current,catalog);
-      if(decision==='replay'){this.reconcileStreameastCandidates();this.reconcileProbeJobs();this.checkSources([],false);return {kind:'catalog-ack',skipDetailEventIds,...(reuseDetails?{reuseDetails}:{})};}
+      if(decision==='replay'){this.reconcileStreameastCandidates();this.reconcileProbeJobs();this.checkSources([],false);return {kind:'catalog-ack',sourceRefreshMs:this.sourceRefreshMs,skipDetailEventIds,...(reuseDetails?{reuseDetails}:{})};}
       if(decision==='rejected')return {kind:'error',status:409,message:'StreamEast catalog checkpoint is obsolete.'};
       const receivedAt=this.now();
+      const oldEvents=Object.values(this.store.streameastCatalog()).flatMap(stored=>stored?.catalog.events||[]);
       const match=createObservationMatcher(this.games);
       const observations=catalog.events.filter(event=>!skipDetailEventIds.includes(event.id)).map(event=>{
         const category=catalog.categories[event.league];
@@ -1213,12 +1381,39 @@ export class FootballCoordinator {
       });
       this.store.saveStreameastCatalog({catalog,receivedAt},visible);
       this.reconcileStreameastCandidates();
+      this.retireReassignedCandidates(visible.flatMap(({observation,result})=>{
+        if(result.kind!=='matched')return [];
+        const event=catalog.events.find(row=>row.url===observation.url);
+        if(!event||catalog.categories[event.league].kind!=='collected')return [];
+        const prior=oldEvents.filter(row=>row.id===event.id&&row.url===event.url);
+        return [...this.candidates].flatMap(([gameId,rows])=>gameId===result.gameId?[]:
+          rows.filter(candidate=>candidate.sourceIds.includes('streameast')&&prior.some(row=>
+            streameastCandidates(row,gameId).some(previous=>previous.id===candidate.id&&
+              JSON.stringify(previous.locator)===JSON.stringify(candidate.locator)))));
+      }));
       this.reconcileProbeJobs();
       this.checkSources([],false);
       this.revision++;
-      return {kind:'catalog-ack',skipDetailEventIds,...(reuseDetails?{reuseDetails}:{})};
+      return {kind:'catalog-ack',sourceRefreshMs:this.sourceRefreshMs,skipDetailEventIds,...(reuseDetails?{reuseDetails}:{})};
     }
     if (command.kind==='refresh') { await this.refresh(true); return {kind:'ok'}; }
+    if (command.kind==='set-feed-check-interval') {
+      this.store.setFeedCheckIntervalMinutes(command.minutes);
+      this.sourceRefreshMs=command.minutes*60_000;
+      for(const health of this.terminalByGame.values())for(const [key,value] of health)
+        if(value.kind==='unavailable')health.set(key,{...value,retryAt:value.checkedAt+this.sourceRefreshMs});
+      const now=this.now();
+      this.probeQueue=this.probeQueue.filter(job=>{
+        const terminal=this.terminal(job.candidate);
+        return job.priority==='recheck'?this.currentProbeJob(job,true):
+          job.priority!=='retry'||terminal?.kind!=='unavailable'||now>=terminal.retryAt;
+      });
+      this.revision++;
+      this.checkSources([],false);
+      this.requestResolution();
+      void this.refresh(true);
+      return {kind:'board',board:this.board()};
+    }
     if (command.kind==='set-retention') {
       this.store.setFinishedGameRetentionMinutes(command.minutes);
       this.cleanedFinals.clear();
@@ -1274,7 +1469,9 @@ export class FootballCoordinator {
       const session: Session = game.lifecycle==='final' ?
         {id:this.id(),gameId,candidateId,generation:0,state:'draining',graceEndsAt:game.graceEndsAt} :
         {id:this.id(),gameId,candidateId,generation:0,state:'active',graceEndsAt:null};
-      this.sessions.set(session.id,{value:session,lastSeen:this.now(),refreshes:0,drainRefreshes:0,phase:{kind:'cycling'},requestId:command.requestId,recovery:{attempted:[],cooled:{},failures:{},cycleStartedAt:this.now()}});
+      this.sessions.set(session.id,{value:session,lastSeen:this.now(),refreshes:0,drainRefreshes:0,phase:{kind:'cycling'},requestId:command.requestId,
+        selection:initialCandidate?this.selectionOwner(initialCandidate):undefined,
+        recovery:{attempted:[],cooled:{},failures:{},cycleStartedAt:this.now()}});
       if(game.lifecycle!=='final')this.checkSources([gameId],false);
       return {kind:'playback',playback:{session,candidates:candidates.map(candidate=>this.candidateSummary(candidate))}};
     }
@@ -1293,11 +1490,13 @@ export class FootballCoordinator {
         return {kind:'error',status:410,message:'Stream generation expired.'};
       const candidate=candidates.find(row=>row.id===command.candidateId);
       if(!candidate)return {kind:'error',status:410,message:'Stream generation expired.'};
+      const selection=owned.selection;
+      if(!selection||!this.currentSelection(candidate,selection))return {kind:'error',status:410,message:'Stream generation expired.'};
       if(owned.decodedGeneration===command.generation)return {kind:'ok'};
       owned.decodedGeneration=command.generation;
       const key=this.probeKey(candidate),at=this.now();
       this.healthRevision.set(key,(this.healthRevision.get(key)||0)+1);
-      this.recordTerminal(candidate,{kind:'playable',proof:'decoded',checkedAt:at});
+      this.recordTerminal(candidate,{kind:'playable',proof:'decoded',checkedAt:at,owner:selection.owner});
       this.probeQueue=this.probeQueue.filter(job=>job.key!==key);
       const deferred=this.deferredProbes.get(key);
       if(deferred){clearTimeout(deferred.timer);this.deferredProbes.delete(key);}
@@ -1314,6 +1513,7 @@ export class FootballCoordinator {
       if(!alternative)return {kind:'error',status:503,message:'Checking the next available stream.',retryAfter:this.now()+1000};
       session.candidateId=alternative.id;
       session.generation++;
+      owned.selection=this.selectionOwner(alternative);
       owned.refreshes=0;
       owned.recovery={attempted:[],cooled:{},failures:{},cycleStartedAt:this.now()};
       owned.phase={kind:'cycling'};
@@ -1322,25 +1522,28 @@ export class FootballCoordinator {
     if (session.state==='draining') {
       owned.phase={kind:'cycling'};
       if(command.candidateId&&command.candidateId!==session.candidateId) {
-        if(!candidates.some(candidate=>candidate.id===command.candidateId&&this.selectable(candidate)))
+        const selected=candidates.find(candidate=>candidate.id===command.candidateId&&this.selectable(candidate));
+        if(!selected)
           return {kind:'error',status:404,message:'This server is no longer verified playable.'};
         session.candidateId=command.candidateId;
         session.generation++;
+        owned.selection=this.selectionOwner(selected);
         owned.drainRefreshes=0;
         return this.sessionReply(session);
       }
       if(command.failure&&session.candidateId!=='manual') {
         const failed=candidates.find(candidate=>candidate.id===session.candidateId);
-        if(failed) {
+        if(failed&&this.currentSelection(failed,owned.selection)) {
           const key=this.probeKey(failed),at=this.now();
           this.healthRevision.set(key,(this.healthRevision.get(key)||0)+1);
-          this.recordTerminal(failed,{kind:'unavailable',reason:'playback',checkedAt:at,retryAt:at+MEDIA_RETRY_DELAY_MS});
+          this.recordTerminal(failed,{kind:'unavailable',reason:'playback',checkedAt:at,retryAt:at+this.sourceRefreshMs});
           this.decoded.delete(key);
         }
         const next=candidates.filter(candidate=>this.selectable(candidate)).sort((a,b)=>this.rankCandidates(a,b))[0];
         if(next) {
           session.candidateId=next.id;
           session.generation++;
+          owned.selection=this.selectionOwner(next);
           owned.drainRefreshes=0;
           return this.sessionReply(session);
         }
@@ -1361,9 +1564,11 @@ export class FootballCoordinator {
     }
     if (session.candidateId==='manual') return this.sessionReply(session);
     if (command.candidateId && command.candidateId!==session.candidateId) {
-      if (!candidates.some(candidate=>candidate.id===command.candidateId && this.selectable(candidate))) return {kind:'error',status:404,message:'This server is no longer verified playable.'};
+      const selected=candidates.find(candidate=>candidate.id===command.candidateId&&this.selectable(candidate));
+      if (!selected) return {kind:'error',status:404,message:'This server is no longer verified playable.'};
       session.candidateId=command.candidateId;
       session.generation++;
+      owned.selection=this.selectionOwner(selected);
       owned.refreshes=0;
       owned.recovery={...owned.recovery,attempted:[],cycleStartedAt:this.now()};
       owned.phase={kind:'cycling'};
@@ -1388,6 +1593,7 @@ export class FootballCoordinator {
         owned.phase={kind:'cycling'};
         session.candidateId=next.id;
         session.generation++;
+        owned.selection=this.selectionOwner(next);
         return this.sessionReply(session);
       }
       if (this.now()>=phase.until) owned.phase={kind:'exhausted',until:Math.min(...fresh.map(candidate=>Math.max(this.now()+1000,owned.recovery.cooled[candidate.id]||this.now()+30000)),this.now()+30000),knownIds:fresh.map(candidate=>candidate.id)};
@@ -1395,10 +1601,10 @@ export class FootballCoordinator {
     }
     if (command.failure) {
       const failed=candidates.find(candidate=>candidate.id===session.candidateId);
-      if(failed){
+      if(failed&&this.currentSelection(failed,owned.selection)){
         const key=this.probeKey(failed),at=this.now();
         this.healthRevision.set(key,(this.healthRevision.get(key)||0)+1);
-        this.recordTerminal(failed,{kind:'unavailable',reason:'playback',checkedAt:at,retryAt:at+MEDIA_RETRY_DELAY_MS});
+        this.recordTerminal(failed,{kind:'unavailable',reason:'playback',checkedAt:at,retryAt:at+this.sourceRefreshMs});
         this.decoded.delete(key);
         this.projectCandidates();
         this.revision++;
@@ -1413,6 +1619,7 @@ export class FootballCoordinator {
         return {kind:'error',status:503,message:'Checking the next available stream.',retryAfter:owned.phase.until};
       }
       session.candidateId=next.id; session.generation++;
+      owned.selection=this.selectionOwner(next);
     }
     return this.sessionReply(session);
   }

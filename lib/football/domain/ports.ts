@@ -15,6 +15,8 @@ export type ListingResult = { observations: Observation[]; outcome: 'parsed' | '
 export interface FootballRepository {
   finishedGameRetentionMinutes(): number;
   setFinishedGameRetentionMinutes(minutes:number):void;
+  feedCheckIntervalMinutes():number;
+  setFeedCheckIntervalMinutes(minutes:number):void;
   workingFeeds(): WorkingFeed[];
   replaceWorkingIdentity(gameId:string,identityHash:string,feeds:readonly WorkingFeed[]):void;
   removeWorkingGames(gameIds:readonly string[]):void;
@@ -53,6 +55,7 @@ export type FootballDependencies = {
   parseListings: (source: ListingSource, html: string, now: number) => ListingResult;
   enrichObservation: (observation: Observation, html: string) => Observation;
   compatiblePlayers: (gameId: string, observation: Observation, html: string) => ResolvedPlayer[];
+  tvappPlayers?: (gameId:string,observation:Observation,html:string,signal:AbortSignal)=>Promise<ResolvedPlayer[]>;
   missingPlayerReason: (observation: Observation, html: string) => MissingPlayerReason;
   probeCandidate: (locator: CandidateLocator, signal: AbortSignal) => Promise<CandidateProbeResult>;
   probeIdentity?: (locator: CandidateLocator) => string;

@@ -94,6 +94,9 @@ export function streameastCandidates(event:StreameastCatalog['events'][number],g
     } else if(availability.kind==='free-wikisport') {
       locator={provider:'wikisport',section:availability.section,playerId:availability.playerId};
       id=`wikisport:${availability.section}:${availability.playerId}`;
+    } else if(availability.kind==='free-page') {
+      locator={provider:'streameast-server',gameId,sourceEventId:event.id,eventUrl:event.url,serverId:server.id};
+      id=`streameast-server:${event.id}:${server.id}`;
     } else return [];
     if(seen.has(id))return [];
     seen.add(id);
@@ -103,7 +106,7 @@ export function streameastCandidates(event:StreameastCatalog['events'][number],g
 
 function publicReason(value:string):SourceMatchReason {
   switch(value) {
-    case 'not-a-matchup':case 'unknown-teams':case 'unverified-kickoff':case 'ambiguous-matchup':
+    case 'not-a-matchup':case 'unknown-teams':case 'unverified-kickoff':case 'unverified-contextual-kickoff':case 'ambiguous-matchup':
     case 'conflicting-date':case 'finished-game':return value;
     default:return 'other';
   }

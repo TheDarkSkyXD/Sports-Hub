@@ -115,3 +115,98 @@ test('live NCAA and NFL games retain and check every safe Sportsurge route acros
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('Sportsurge rechecks working and failed feeds every five minutes for a scheduled game', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sportsurge-fresh-recovery-'));
+  const store = new FootballStore(join(dir, 'state.sqlite'));
+  const scheduled: Game = { ...game('nfl'), status: 'pre', lifecycle: 'scheduled', date: new Date(at + 3 * 60 * 60_000).toISOString() };
+  let clock = at + 60_000;
+  store.savePartition('nfl', { games: [scheduled], at: clock });
+  const calls = new Map<string, number>();
+  const callCounts = () => ['nfl-row-1', 'nfl-row-2', 'nfl-row-3'].map(id => calls.get(id) || 0);
+  const coordinator = new FootballCoordinator({
+    store, now: () => clock, id: () => runId,
+    schedules: [{ id: 'nfl', league: 'nfl', path: '', group: null }],
+    sources: [{ id: 'sportsurge-v2', url: 'https://v2.sportsurge.net/watch-nfl-streams/', family: 'sportsurge', kind: 'browser-catalog' }],
+    readSchedule: async () => ({ games: [scheduled], league: 'nfl', at: clock }),
+    readSeasonMembership: async () => { throw new Error('unused'); },
+    readHtml: async () => { throw new Error('unused'); },
+    parseListings: () => ({ observations: [], outcome: 'empty' }),
+    enrichObservation: observation => observation,
+    compatiblePlayers: () => [],
+    retryAfterMs: () => 0,
+    probeCandidate: async locator => {
+      if (locator.provider !== 'sportsurge-v2') throw new Error('Unexpected provider');
+      const count = (calls.get(locator.providerId) || 0) + 1;
+      calls.set(locator.providerId, count);
+      return locator.providerId === 'nfl-row-1' || count >= (locator.providerId === 'nfl-row-2' ? 2 : 3)
+        ? { kind: 'playable', proof: 'media' }
+        : { kind: 'unavailable', reason: 'upstream' };
+    },
+  });
+  const advance = (elapsed: number) => {
+    clock = at + elapsed;
+    store.savePartition('nfl', { games: [scheduled], at: clock });
+  };
+  const checkpoint = (sequence: number, observedAt: number): SportsurgeCatalog => ({
+    runId, sequence, startedAt: at, state: { kind: 'collecting' },
+    categories: { ncaaf: { kind: 'collected', at }, nfl: { kind: 'collected', at } },
+    events: [{ ...event('nfl', 3, observedAt), sourceStatus: 'upcoming', kickoff: Date.parse(scheduled.date || '') }],
+    rejectedGames: [], catalogIssues: [],
+  });
+  const publish = async (catalog: SportsurgeCatalog) => {
+    assert.equal((await coordinator.command({ kind: 'sportsurge-catalog', catalog })).kind, 'catalog-ack');
+    for (let turn = 0; turn < 30; turn++) await new Promise<void>(resolve => setImmediate(resolve));
+  };
+  const row = async () => {
+    const reply = await coordinator.command({ kind: 'sources' });
+    assert.equal(reply.kind, 'sources');
+    if (reply.kind !== 'sources') throw new Error('Expected sources');
+    const result = reply.snapshot.games.find(row => row.gameId === scheduled.id);
+    assert.ok(result);
+    return result;
+  };
+  try {
+    advance(60_000);
+    const initial = checkpoint(0, at);
+    await publish(initial);
+    const first = await row();
+    assert.equal(first.candidates.length, 3);
+    assert.equal(first.workingChoiceCount, 1);
+    assert.deepEqual(first.candidates.map(candidate => [candidate.label, candidate.availability.kind]), [
+      ['Sportsurge v2 · Server 1', 'playable'], ['Sportsurge v2 · Server 2', 'unavailable'], ['Sportsurge v2 · Server 3', 'unavailable'],
+    ]);
+    const working = first.candidates.find(candidate => candidate.label === 'Sportsurge v2 · Server 1');
+    assert.ok(working);
+
+    advance(6 * 60_000);
+    await publish(initial);
+    const recovered = await row();
+    assert.equal(recovered.workingChoiceCount, 2, 'working feeds must recover after the failed check cooldown');
+    assert.deepEqual(callCounts(), [2, 2, 2]);
+    assert.deepEqual(recovered.candidates.find(candidate => candidate.id === working.id)?.availability,
+      { kind: 'playable', proof: 'media', checkedAt: at + 6 * 60_000 });
+
+    advance(7 * 60_000);
+    const beforeCooldown = checkpoint(1, clock);
+    await publish(beforeCooldown);
+    assert.equal((await row()).workingChoiceCount, 2);
+    assert.deepEqual(callCounts(), [2, 2, 2], 'new source evidence must respect the saved check interval');
+
+    advance(11 * 60_000);
+    const latest = checkpoint(2, clock);
+    await publish(latest);
+    const complete = await row();
+    assert.equal(complete.candidates.length, 3);
+    assert.equal(complete.workingChoiceCount, 3);
+    assert.deepEqual(callCounts(), [3, 3, 3]);
+    assert.deepEqual(complete.candidates.find(candidate => candidate.id === working.id)?.availability,
+      { kind: 'playable', proof: 'media', checkedAt: at + 11 * 60_000 });
+    await publish(latest);
+    assert.equal((await row()).workingChoiceCount, 3);
+    assert.deepEqual(callCounts(), [3, 3, 3], 'replays and inventory reads must preserve completed checks');
+  } finally {
+    await coordinator.stop();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

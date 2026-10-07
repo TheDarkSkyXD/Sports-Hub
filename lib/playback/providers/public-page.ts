@@ -3,6 +3,7 @@ import { request } from 'node:https';
 import { isIP } from 'node:net';
 import { load } from 'cheerio';
 import { boundedText, ProviderDeferredError, sanitizedRead, type ProviderPlayback, type ProviderResource, type ResourceKind } from '../provider.ts';
+import { wrapDlivePixelResource } from './streameast-pixel.ts';
 
 export type Requester = (url: URL, signal: AbortSignal, headers: Headers, timeoutMs?: number) => Promise<Response>;
 
@@ -138,8 +139,13 @@ export function hlsUrl(url: URL, response: Response): boolean {
 
 export function resource(value: URL, referer: URL, kind: ResourceKind, requester: Requester, userAgent='Mozilla/5.0'): ProviderResource {
   let current = value;
+  const hockeySegment=/^\/([a-z]+-[a-z]+)\/[a-z0-9]{32}\/[1-9]\d*\.ts$/i.exec(value.pathname);
+  const hockeyCredentials=/^\?(?:e=\d{10}&st=[A-Za-z0-9_-]{22}|st=[A-Za-z0-9_-]{22}&e=\d{10})$/.test(value.search);
+  const identity=kind==='media'&&value.origin==='https://hls.hockey.do'&&!value.username&&!value.password&&
+    !value.port&&!value.hash&&hockeySegment?.[1].length===12&&hockeyCredentials?
+    `${value.origin}${value.pathname}`:value.href;
   return {
-    kind, identity: value.href,
+    kind, identity,
     async read({ signal, range }) {
       const readSignal = kind === 'playlist' ? AbortSignal.any([signal, AbortSignal.timeout(HEADER_WAIT_MS)]) : signal;
       const result = await get(current.href, readSignal, requester, referer, range,
@@ -160,7 +166,12 @@ export function resource(value: URL, referer: URL, kind: ResourceKind, requester
   };
 }
 
-export async function observedPublicPage(destination: URL, signal: AbortSignal, purpose: 'playback' | 'probe',embeddedEvent?:URL): Promise<ProviderPlayback | null> {
+type PublicObservation={kind:'page';destination:URL;embeddedEvent?:URL}|{kind:'streameast-server';
+  serverUrl:URL;eventUrl:URL;sourceEventId:string;serverId:string};
+
+async function observedPublicRequest(request:PublicObservation, signal: AbortSignal,
+  purpose: 'playback' | 'probe'): Promise<ProviderPlayback | null> {
+  const destination=request.kind==='page'?request.destination:request.serverUrl;
   const origin = process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN;
   const token = process.env.SUNDAY_ROOM_CONTROL_TOKEN;
   if (!origin || !token || !/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(origin)) {
@@ -171,7 +182,10 @@ export async function observedPublicPage(destination: URL, signal: AbortSignal, 
     method: 'POST', cache: 'no-store', redirect: 'manual',
     signal: AbortSignal.any([signal, AbortSignal.timeout(25000)]),
     headers: { 'Content-Type': 'application/json', 'x-sunday-control-token': token },
-    body: JSON.stringify({ url: destination.href, purpose,embeddedEventUrl:embeddedEvent?.href }),
+    body: JSON.stringify(request.kind==='page' ?
+      {url:destination.href,purpose,embeddedEventUrl:request.embeddedEvent?.href} :
+      {url:destination.href,purpose,selection:{kind:'streameast-server',eventUrl:request.eventUrl.href,
+        sourceEventId:request.sourceEventId,serverId:request.serverId}}),
   });
   if (response.status === 404) { await response.body?.cancel(); return null; }
   if (!response.ok) {
@@ -187,6 +201,9 @@ export async function observedPublicPage(destination: URL, signal: AbortSignal, 
   const media = sportsurgeUrl(value.url);
   const referer = sportsurgeUrl(value.referer);
   if (!media || !referer) throw new Error('Browser observation was unsafe');
+  const transport = 'transport' in value ? value.transport : undefined;
+  if (transport !== undefined && (request.kind !== 'streameast-server' || transport !== 'dlive-pixel-gzip-ts'))
+    throw new Error('Browser observation transport was invalid');
   const capability = value.capability;
   let closed = false;
   const requester:Requester = async (url, active, headers) => {
@@ -197,12 +214,23 @@ export async function observedPublicPage(destination: URL, signal: AbortSignal, 
       body:JSON.stringify({capability,url:url.href,range:headers.get('range') ?? undefined}),
     });
   };
-  return {root:resource(media,referer,'playlist',requester,value.userAgent),close(){
+  const root = resource(media,referer,'playlist',requester,value.userAgent);
+  return {root:transport === 'dlive-pixel-gzip-ts' ? wrapDlivePixelResource(root) : root,close(){
     if (closed) return;
     closed = true;
     void fetch(`${origin}/media/${capability}`,{method:'DELETE',redirect:'manual',
       signal:AbortSignal.timeout(5000),headers:{'x-sunday-control-token':token}}).then(response=>response.body?.cancel()).catch(()=>{});
   }};
+}
+
+export function observedPublicPage(destination: URL, signal: AbortSignal,
+  purpose: 'playback' | 'probe',embeddedEvent?:URL): Promise<ProviderPlayback | null> {
+  return observedPublicRequest({kind:'page',destination,embeddedEvent},signal,purpose);
+}
+
+export function observedStreameastServerPage(choice:{serverUrl:URL;eventUrl:URL;sourceEventId:string;serverId:string},
+  signal:AbortSignal,purpose:'playback'|'probe'):Promise<ProviderPlayback|null> {
+  return observedPublicRequest({kind:'streameast-server',...choice},signal,purpose);
 }
 
 export async function publishedPublicVideo(destination: URL, parent: URL, signal: AbortSignal,

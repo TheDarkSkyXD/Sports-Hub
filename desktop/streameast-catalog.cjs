@@ -42,6 +42,44 @@ function freePlayer(html) {
   return matches.length===1?matches[0]:{kind:'unsupported'};
 }
 
+function publishedFreePlayer(html,event,selectedUrl) {
+  const $=load(html);
+  const selected=serverUrl(selectedUrl,event);
+  const sourceId=event.id.split(':')[1];
+  const board=$('.se-board[data-match-id]');
+  const active=$('.stream-alt-list a.stream-alt-item.active');
+  const root=$('#se-player-root.se-player');
+  const frame=root.children('iframe[src]');
+  if(!selected||!$('.streameast-video-page').length||
+    board.length!==1||board.attr('data-match-id')!==sourceId||root.length!==1||
+    active.length!==1||active.hasClass('stream-alt-item-pro')||active.find('.stream-alt-pro-icon').length||
+    active.find('.stream-alt-free-badge').length!==1||
+    serverUrl(active.attr('href')||'',event)?.url!==selectedUrl||frame.length!==1)
+    return {kind:'unsupported'};
+  let url;
+  try {url=new URL(frame.attr('src'));}
+  catch{return {kind:'unsupported'};}
+  if(url.protocol!=='https:'||url.username||url.password||url.port||url.search||url.hash||
+    url.href.length>400)return {kind:'unsupported'};
+  if(url.origin==='https://streame.center') {
+    const channel=CHANNEL_PATH.exec(url.pathname);
+    if(channel)return {kind:'channel',id:channel[1],url:url.href};
+  }
+  if(url.origin==='https://wikisport.info') {
+    const player=/^\/(0nhl|strm)\/(\d{1,4})\.php$/.exec(url.pathname);
+    if(player)return {kind:'wikisport',section:player[1],id:player[2],url:url.href};
+  }
+  const supported=url.origin==='https://dlive.sx'&&/^\/stream\/stream-\d{1,4}\.php$/.test(url.pathname)||
+    url.origin==='https://flyembed.click'&&/^\/embed\/\d{1,4}\.php$/.test(url.pathname)||
+    url.origin==='https://fsportshdz.xyz'&&/^\/embed\/[a-z0-9]+(?:-[a-z0-9]+)*-live-streams\.php$/.test(url.pathname);
+  return supported?{kind:'page',url:url.href}:{kind:'unsupported'};
+}
+
+function serverPlayer(html,event,selectedUrl) {
+  return load(html)('.streameast-video-page').length ?
+    publishedFreePlayer(html,event,selectedUrl) : freePlayer(html);
+}
+
 function parseCategory(html,league) {
   const $=load(html);
   const cards=$('.m-card');
@@ -111,6 +149,7 @@ function parseDetail(html,event,at,freePages) {
     const result=freePages.get(link.url);
     const availability=result?.kind==='channel' ? {kind:'free-channel',channelId:result.id} :
       result?.kind==='wikisport' ? {kind:'free-wikisport',section:result.section,playerId:result.id} :
+      result?.kind==='page' ? {kind:'free-page'} :
       result?.kind==='unsupported' ? {kind:'free-unsupported'} : {kind:'free-unresolved'};
     servers.push({id:link.id,label,url:link.url,availability});
   }
@@ -133,4 +172,4 @@ function activeFreeServerUrl(html,event) {
   return link ? link.url : null;
 }
 
-module.exports={ORIGIN,CATEGORY_URLS,MAX_PAGE_BYTES,MAX_CHECKPOINT_BYTES,eventUrl,serverUrl,freePlayer,parseCategory,parseDetail,freeServerUrls,activeFreeServerUrl};
+module.exports={ORIGIN,CATEGORY_URLS,MAX_PAGE_BYTES,MAX_CHECKPOINT_BYTES,eventUrl,serverUrl,freePlayer,publishedFreePlayer,serverPlayer,parseCategory,parseDetail,freeServerUrls,activeFreeServerUrl};

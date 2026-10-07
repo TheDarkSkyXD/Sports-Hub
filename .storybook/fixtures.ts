@@ -45,7 +45,7 @@ const team = (id: string, name: string, short: string, abbreviation: string, col
   ({ id, name, short, abbreviation, color, score, record: '2-1' });
 
 export const productBoard: Board = {
-  schemaVersion: 2, revision: 1, updatedAt: new Date(now).toISOString(), scheduleState: 'ready', aliases: {}, finishedGameRetentionMinutes:DEFAULT_FINISHED_GAME_RETENTION_MINUTES,
+  schemaVersion: 2, revision: 1, updatedAt: new Date(now).toISOString(), scheduleState: 'ready', aliases: {}, finishedGameRetentionMinutes:DEFAULT_FINISHED_GAME_RETENTION_MINUTES, feedCheckIntervalMinutes:5,
   leagues: {
     nfl: { week: 4, scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
     ncaaf: { week: 5, scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },

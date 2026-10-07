@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 import type { FootballDependencies, ListingSource } from '../lib/football/domain/ports.ts';
 import type { Game, Observation, SportsurgeCatalog, StreameastCatalog } from '../lib/football/shared.ts';
@@ -46,7 +47,7 @@ function fixture(games:Game[],sources:ListingSource[],overrides:Partial<Omit<Foo
     probeCandidate:async()=>({kind:'playable',proof:'media'}),
     ...overrides,
   });
-  return {coordinator,close:async()=>{await coordinator.stop();rmSync(dir,{recursive:true,force:true});}};
+  return {coordinator,path:join(dir,'state.sqlite'),close:async()=>{await coordinator.stop();rmSync(dir,{recursive:true,force:true});}};
 }
 
 test('a fast listing publishes a working live choice while another listing is pending',async()=>{
@@ -121,6 +122,65 @@ test('a busy browser observer defers the browser queue while direct checks still
     await new Promise<void>(resolve=>setTimeout(resolve,2100));
     await until(()=>recovered>0,'the existing deferred timers should resume browser checks after capacity returns');
   } finally {lateDirect.release();await close();}
+});
+
+test('published StreamEast server pages share the browser probe backoff',async()=>{
+  const live=game(0,0,'live');
+  let starts=0;
+  const {coordinator,close}=fixture([live],[source('streameast')],{
+    compatiblePlayers:(gameId,listing)=>Array.from({length:6},(_,index)=>({
+      id:`streameast-server-${index+1}`,label:`Server ${index+1}`,
+      locator:{provider:'streameast-server',gameId,sourceEventId:'nfl:46236',
+        eventUrl:listing.url,serverId:String(index+1)} as const,
+    })),
+    probeCandidate:async()=>{starts++;return {kind:'deferred',retryAfterMs:2000};},
+  });
+  try {
+    await coordinator.refresh(true);
+    await until(()=>starts>=4,'the first four browser checks should start');
+    for(let turn=0;turn<30;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(starts,4,'remaining server pages must wait for the browser backoff');
+  } finally {await close();}
+});
+
+test('a game-bound StreamEast server choice cannot be attached to another game',async()=>{
+  const live=game(0,0,'live');
+  let probes=0;
+  const {coordinator,close}=fixture([live],[source('streameast')],{
+    compatiblePlayers:(_gameId,listing)=>[{id:'other-game-server',label:'Server 2',
+      locator:{provider:'streameast-server',gameId:'99999',sourceEventId:'nfl:46236',
+        eventUrl:listing.url,serverId:'2'}}],
+    probeCandidate:async()=>{probes++;return {kind:'playable',proof:'media'};},
+  });
+  try {
+    await coordinator.refresh(true);
+    for(let turn=0;turn<30;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
+    const reply=await coordinator.command({kind:'sources'});
+    assert.equal(reply.kind,'sources');
+    if(reply.kind==='sources')assert.equal(reply.snapshot.games.flatMap(row=>row.candidates).length,0);
+    assert.equal(probes,0);
+  } finally {await close();}
+});
+
+test('a scheduled StreamEast server choice cannot be attached to another game',async()=>{
+  const scheduled=game(0,30,'scheduled');
+  let probes=0,reads=0;
+  const {coordinator,path,close}=fixture([scheduled],[source('streameast')],{
+    compatiblePlayers:(_gameId,listing)=>{reads++;return [{id:'other-game-server',label:'Server 2',
+      locator:{provider:'streameast-server',gameId:'99999',sourceEventId:'nfl:46236',
+        eventUrl:listing.url,serverId:'2'}}];},
+    probeCandidate:async()=>{probes++;return {kind:'playable',proof:'media'};},
+  });
+  try {
+    await coordinator.refresh(true);
+    await until(()=>reads>0,'the scheduled game detail should be read');
+    const db=new DatabaseSync(path,{readOnly:true});
+    const details=db.prepare('SELECT payload FROM details').all().map(row=>JSON.parse(String(row.payload)));
+    db.close();
+    assert.equal(details.length,1);
+    assert.equal(details[0].players?.length||0,0);
+    assert.equal(probes,0);
+  } finally {await close();}
 });
 
 test('six minutes of fresh scores retain working choices and saved proof survives a score outage',async()=>{

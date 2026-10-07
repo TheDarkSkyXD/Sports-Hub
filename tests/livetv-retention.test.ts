@@ -69,7 +69,7 @@ for(const allPlayable of [false,true])test(`LiveTV restores two published feeds 
     clock+=60_000;
     await coordinator.refresh(true);
     if(!allPlayable)await until(async()=>detailReads===2,'partial listing retried at five minutes');
-    assert.equal(detailReads,allPlayable?1:2);
+    assert.equal(detailReads,2,'published detail is checked again after five minutes');
     clock+=31*60_000;
     await coordinator.stop();
     barrier=new Promise<void>(resolve=>{release=resolve;});
@@ -84,8 +84,8 @@ for(const allPlayable of [false,true])test(`LiveTV restores two published feeds 
     await refresh;
     await until(async()=>(await choices()).length===2&&
       (await snapshot()).sources[0].links[0]?.evidence.kind==='collected','both published feeds restored');
-    assert.equal(detailReads,allPlayable?1:3);
-    assert.equal(probes.filter(channel=>channel==='3081333').length,1);
+    assert.equal(detailReads,3,'published detail is checked again after evidence expiry');
+    assert.equal(probes.filter(channel=>channel==='3081333').length,allPlayable?1:2);
     if(allPlayable)assert.deepEqual(probes.sort(),['3081333','3082009']);
   } finally {release?.();await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });

@@ -6,6 +6,9 @@ const { handleCertificateIssuerRequest } = require('./certificate-issuer-proxy.c
 
 const MAX_BYTES = 64 * 1024 * 1024;
 const IDLE_MS = 5 * 60000;
+const CLEANUP_DEADLINE_MS = 5000;
+const CLEANUP_RETRY_MS = 100;
+const CLEANUP_PASSES = 3;
 
 function allowedMediaUrl(value, validateUrl) {
   const url = typeof value === 'string' && validateUrl(value);
@@ -23,6 +26,50 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
   const capabilities = new Map();
   const partitions = [];
   const partitionPrefix = `observed-media-${randomUUID()}`;
+  let stopped = false;
+
+  function cleaning(partition, generation) {
+    return partition.state === 'cleaning' && partition.generation === generation;
+  }
+
+  function quarantine(partition, generation, error) {
+    if (!cleaning(partition, generation)) return;
+    partition.state = 'quarantined';
+    clearTimeout(partition.retryTimer);
+    clearTimeout(partition.deadlineTimer);
+    console.error('Observed media session cleanup failed:', error);
+  }
+
+  async function cleanupPartition(partition, generation, pass) {
+    if (!cleaning(partition, generation)) return;
+    try {
+      await partition.session.closeAllConnections();
+      if (!cleaning(partition, generation)) return;
+      await partition.session.clearAuthCache();
+      if (!cleaning(partition, generation)) return;
+      clearTimeout(partition.deadlineTimer);
+      partition.state = 'free';
+    } catch (error) {
+      if (!cleaning(partition, generation)) return;
+      if (pass >= CLEANUP_PASSES) { quarantine(partition, generation, error); return; }
+      const remaining = partition.cleanupDeadline - Date.now();
+      if (remaining <= 0) { quarantine(partition, generation, error); return; }
+      partition.retryTimer = setTimeout(() => {
+        partition.retryTimer = null;
+        void cleanupPartition(partition, generation, pass + 1);
+      }, Math.min(CLEANUP_RETRY_MS, remaining));
+      partition.retryTimer.unref();
+    }
+  }
+
+  function beginCleanup(partition, generation) {
+    partition.state = 'cleaning';
+    partition.cleanupDeadline = Date.now() + CLEANUP_DEADLINE_MS;
+    partition.deadlineTimer = setTimeout(() =>
+      quarantine(partition, generation, new Error('cleanup timed out')), CLEANUP_DEADLINE_MS);
+    partition.deadlineTimer.unref();
+    void cleanupPartition(partition, generation, 1);
+  }
 
   function close(id) {
     const entry = capabilities.get(id);
@@ -32,8 +79,7 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     for (const request of entry.requests) request.abort();
     for (const socket of entry.sockets) socket.destroy();
     entry.proxy.close(() => {});
-    void entry.session.closeAllConnections().then(() => entry.session.clearAuthCache())
-      .then(() => { entry.partition.busy = false; }).catch(() => {});
+    beginCleanup(entry.partition, entry.generation);
   }
 
   function touch(entry) {
@@ -43,20 +89,23 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
   }
 
   async function register({ url, userAgent, origin, requestReferer }) {
+    if (stopped) return null;
     const root = validateUrl(url);
     if (!root) throw new Error('Observed media URL is invalid');
-    let partition = partitions.find(item => !item.busy);
+    let partition = partitions.find(item => item.state === 'free');
     if (!partition) {
       if (partitions.length >= 32) return null;
-      partition = { session: sessions.fromPartition(`${partitionPrefix}-${partitions.length}`), busy: false };
+      partition = { session: sessions.fromPartition(`${partitionPrefix}-${partitions.length}`),
+        state: 'free', generation: 0, retryTimer: null, deadlineTimer: null };
       partitions.push(partition);
     }
-    partition.busy = true;
+    partition.state = 'leased';
+    const generation = ++partition.generation;
     const id = randomUUID();
     const secret = randomUUID();
     const authorization = Buffer.from(`Basic ${Buffer.from(`media:${secret}`).toString('base64')}`);
     const mediaSession = partition.session;
-    const entry = { id, partition,
+    const entry = { id, partition, generation,
       session: mediaSession, sockets: new Set(), requests: new Set(), proxy: null, timer: null, issuerRequests: 0,
       headers: { 'User-Agent': userAgent, Accept: '*/*', ...(origin ? { Origin: origin } : {}),
         ...(requestReferer ? { Referer: requestReferer } : {}) }, secret };
@@ -108,7 +157,9 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     capabilities.set(id, entry);
     try {
       await new Promise((resolve, reject) => { proxy.once('error', reject); proxy.listen(0, '127.0.0.1', resolve); });
+      if (stopped || !capabilities.has(id)) return null;
       await mediaSession.setProxy({ mode: 'fixed_servers', proxyRules: `http://127.0.0.1:${proxy.address().port}`, proxyBypassRules: '<-loopback>' });
+      if (stopped || !capabilities.has(id)) return null;
       touch(entry);
       return id;
     } catch (error) { close(id); throw error; }
@@ -172,7 +223,17 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     request.end();
   }
 
-  return { register, read, close, stop() { for (const id of capabilities.keys()) close(id); } };
+  return { register, read, close, stop() {
+    if (stopped) return;
+    stopped = true;
+    for (const id of capabilities.keys()) close(id);
+    for (const partition of partitions) {
+      if (partition.state !== 'cleaning') continue;
+      clearTimeout(partition.retryTimer);
+      clearTimeout(partition.deadlineTimer);
+      partition.state = 'quarantined';
+    }
+  } };
 }
 
 module.exports = { createObservedMedia, allowedMediaUrl };

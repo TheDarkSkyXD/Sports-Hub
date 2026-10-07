@@ -1,0 +1,103 @@
+# Football source audit on October 5, 2026
+
+All 19 registered sources were checked for catalog parsing, game identity, player extraction, and the latest available playback results. The production fixes are loaded in the open Electron app.
+
+Today's NFL game is Atlanta Falcons at New Orleans Saints, ESPN ID `401872979`. Kickoff is October 5 at 7:15 p.m. America/Chicago. Tomorrow's college game is Southern Miss at Troy, ESPN ID `ncaaf-401871090`.
+
+The app snapshot at October 6, 00:29 UTC has 79 verified working choices for Falcons at Saints across twelve sources. Four candidates are still checking. Tomorrow's two published candidates failed their latest media checks. These counts describe this snapshot, not a promise that an external stream stays online. The earlier October 5, 23:20 UTC snapshot had 28 working choices.
+
+| Source | Catalog and matching result | Playback result or remaining limit |
+| --- | --- | --- |
+| Sportsurge legacy | Matches today's NFL game and extracts all five published HTTPS players. | Five working choices. |
+| Crackstreams college | Parses the catalog. Its dated games are from October 3. | No verified match in today's or tomorrow's window. |
+| Buffstream college | Parses 144 links, including duplicate matchup routes. The listing has no dates. | No verified current matchup. |
+| LiveTV | Matches today's NFL game. Eight players appeared during the audit and were collected automatically. | Eight working choices. |
+| VIPBox college | Fixed recognition of the canonical site's explicit empty schedule. | No published college games on this schedule. |
+| VIPBox NFL | Matches the standard and Peyton/Eli broadcasts. Fixed the broadcast prefix being treated as a team name. | All seven published choices have media proof. A selected HD feed also played in the main app. |
+| VIPBoxTV college | Recognizes the published empty schedule. | No published college games. |
+| Strikeout NFL | Matches the standard and Peyton/Eli broadcasts after the prefix fix. | All seven published choices have media proof. |
+| Strikeout college | Parses Southern Miss versus Troy and extracts three player routes. | The short name Troy matches both Trojans and Vikings in the team catalog. The source lacks a full identifier, so the app does not attach an uncertain feed. |
+| NFLStreams | Matches today's NFL game. Fixed an accidental 22-character limit that rejected all six Saints player identifiers. | Five working choices. One other link failed its latest playback check. |
+| StreamEast | Matches today's NFL game. A player appeared during the audit and was collected automatically. | One working choice. |
+| Buffstream NFL | Parses the matchup pages and player links. Kickoff includes a time but no date. | Two candidates are checking after admission within the existing near-kickoff window. |
+| Methstreams | Matches today's NFL game and tomorrow's college game. Extracts all 12 NFL routes and one college route. | Six working choices in this snapshot. Main 1's sustained playback defect is described below. |
+| Crackstreams ST | Matches the same two games and extracts their published routes. | Six working choices. Shares the Methstreams embed destinations. |
+| TVApp | Fixed a standalone ManningCast broadcast aborting the catalog. The current catalog produces 66 game observations. Ten distinct non-PPV players are collected for today's game. | Seven working choices, three failed checks, and one check in progress, including the retained watch-page candidate. Golf/2 decoded frames advanced across a 103-second observation in the main app. |
+| PPV | Parses the catalog and verifies today's NFL matchup. | One choice has media proof. The ordinary page check did not establish decoded video. |
+| Streamcenter | Parses the currently empty catalog. | No published event cards. |
+| Sportsurge v2 | Matches today's NFL game. Collects every published HTTPS provider row. Two HTTP rows are excluded by the existing policy. | Twenty-six working choices, two failed checks, and one check in progress. |
+| SWAC TV | Parses five free events and verifies their game identities. Their games are on October 10. | No games in the current check window. |
+
+The retry interval is restored to five minutes. The existing settings retain working proof, retry failed candidates automatically, and stop checks when a game finishes. The user's finished-game retention preference remains 30 minutes.
+
+The initial source fixes and subsequent retry, player-activation, TVApp-choice, and Main 1 changes have regressions reproduced before production fixes. The final applicable suite passes 443 tests. ESLint, TypeScript, and the production build pass. The pre-existing packaged-installer check is excluded because the local installer version is 1.0.6 and the project version is 1.0.10; this task does not rebuild that installer. An earlier unrestricted run reproduced that mismatch.
+
+`scripts/audit-source-health.mjs` reads the running app without modifying it. It validates both API snapshots and reports every registered source, eligible game, match count, and playback state. The local audit captures are retained in `.desktop-runtime/all-source-health-before.json`, `.desktop-runtime/all-source-health-after.json`, and the three `.desktop-runtime/audit-*` directories. Captures are local because provider pages may contain temporary tokens.
+
+To repeat the app snapshot, supply its actual loopback origin.
+
+```powershell
+node --experimental-strip-types scripts/audit-source-health.mjs --origin=http://127.0.0.1:51931
+```
+
+## Follow-up on the reported unavailable feeds
+
+The user reported 60 unavailable or checking choices across eight source families. Comparing the actual source players with the app found a local network blocker and separate app defects. The earlier failed checks did not establish that those source feeds were offline.
+
+At the user's request, Portmaster's core service was stopped and disabled, and its Windows startup value was removed. A separate OS check confirmed no Portmaster processes remained. Before this change, `embed.st` and `embedindia.st` resolved to Portmaster sinkhole addresses. Afterward, they resolved to public addresses. With the saved five-minute interval unchanged and no manual retry, the app recovered from 28 to 53 working choices, then reached 59 during the next automatic checks.
+
+All fourteen reported VIPBox and Strikeout choices played on their source websites after Portmaster stopped. Each advanced roughly ten seconds and decoded more than 100 frames. The app observer still failed because it never activated their published SD0 Play control. The fix targets one visible paused video and its unique Play control under the verified source player. The same observer probe changed from a 20-second failure to supported media in about four seconds. The Peyton/Eli alternate also passed.
+
+Methstreams and Crackstreams Main 1 use a virtual playlist in their browser player. Their published HTML also contains current HLS renditions with ordinary HTTPS segments. The new adapter reads those bounded snapshots, refreshes each rendition, and retains the existing public DNS and media request guards. The app's selected `/main/1` URL publishes the base event URL as its canonical. The adapter now validates that relationship instead of requiring identical paths. The exact persisted game locator passed the media probe in 2.6 seconds. Three earlier live reads advanced playlist sequences and returned valid MPEG-TS bytes.
+
+Concurrent playlist refreshes must not retarget an already issued segment token. The relay now includes the child's resource identity in that token's lookup key. Regression coverage verifies overlapping snapshots and preserves both old and fresh signed resource destinations. The first adapter version also fingerprinted the whole rendition in its identity. Real app instrumentation showed that this changed overlapping segment paths on every refresh, causing HLS media-sequence errors and a fatal reset after 51 seconds. Rendition identity must remain stable while the live sequence advances.
+
+TVApp's watch page publishes eleven buttons, including its PPV backup. Its catalog and stream APIs publish ten distinct non-PPV source tuples. The old adapter collapsed those choices into one watch-page candidate. The new source locators identify each published tuple without persisting an embed URL. Opening a locator revalidates the current game, kickoff, source membership, and stream API response. A separate ordinary browser check proved the golf/2 source played.
+
+TVApp discovery and playback share normalized catalog identity validation. A failed stream API prevents an incomplete source list from being cached as complete. Cancellation is checked again before saving detail evidence. The observer's higher frame limit applies only to exact TVApp embed routes. The actual app database records ten resolved players. The main app kept golf/2 selected for 150.5 seconds. Two playback samples 103.5 seconds apart both had readyState 4 at 1280 by 720, with decoded frames increasing from 2,592 to 8,905.
+
+The coordinator previously skipped detail discovery forever once all existing feeds had working proof. It now repeats discovery after the selected interval, allowing newly published players to appear. A regression starts with one working feed, publishes another, and verifies discovery at five minutes while retaining the first feed's original media proof. Retention tests preserve cold restore, active selection, and no repeated media probe assertions while allowing scheduled detail reads.
+
+Future ad-shaped Main 1 snapshots remain unsupported and fail closed. The inspected snapshots contained only content segments. An external source may also remain unavailable before kickoff or fail later. Counts are observations at the stated times.
+
+The final Main 1 check ran in the rebuilt main app at 1920 by 1080. From 00:40:14 to 00:44:08 UTC, decoded frames increased from 23 to 7,044. The selected source and session generation stayed unchanged. HLS reported no errors and the player did not restart. The stable-identity fix therefore passed 234 seconds of actual playback after the earlier 51-second fatal reset.
+
+At 00:42:36 UTC, the saved five-minute interval was active and the app had 82 verified NFL choices. Eight current candidates still reported an upstream failure. All nineteen registered sources remained covered by the audit. The final Portmaster OS check again found its service stopped and disabled, no startup value, and no running Portmaster processes.
+
+## Follow-up on missing server choices
+
+At 01:10 UTC, the matched StreamEast page for Atlanta Falcons versus New Orleans Saints published five free server links, numbered 1 through 5. The app's stored detail contained all five rows, but only server 1 resolved to a supported channel. Servers 2 through 5 were classified as unsupported. A fresh category check at 01:01 UTC still reused detail collected at 00:02 UTC.
+
+Both StreamEast and Sportsurge v2 had a second discovery cache beyond the ordinary adapter cache. Their browser collectors accepted retained detail whenever any existing candidate had working media proof. That froze the server list indefinitely while category timestamps continued to advance. Each reuse path now expires at the saved check interval, measured from the original detail timestamp. The working candidate retains its media proof while the collector reads the detail again.
+
+The regression uses the real coordinator acknowledgement and desktop sweep. It publishes another feed while keeping the category identity unchanged. Without the age guards, both sources fail with one working choice where two are expected. With the guards, both collect the new choice and retain the original candidate's entire availability record. Coverage also changes the interval to one minute and checks repeated five-minute detail reads.
+
+The app's matched Buffstream [Falcons page](https://ms.buffstream.io/nfl-streams/atlanta-falcons-live-stream) and [Saints page](https://ms.buffstream.io/nfl-streams/new-orleans-saints-live-stream) each publish one distinct embedsports.me route. A separate Electron browser read followed both to their nested SD0 players. At 8, 15, and 20 seconds, both videos remained at readyState 0, time 0, and zero decoded frames. Neither player exposed an additional server selector or produced an HLS response. These measurements do not support adding invented stream-3 or stream-4 routes or marking those blank players as working.
+
+Those StreamEast servers published Dlive, Flyembed, and Fsportshdz player roots. The old free-player parser supported only channel and Wikisport routes. Cold observation also rejected the site's normal SSO handoff for a numeric server URL. The original Dlive and Flyembed players navigated into advertisements after publishing HLS. Cancelling navigation of the exact selected player root preserves its video without accepting unrelated page frames.
+
+A guarded website check showed the matched NFL game on the original server 2 at 1280 by 720 and original server 4 at 1152 by 648. The original server 3 decoded video at 1920 by 1080, but its screenshot showed an MLB ALDS broadcast. The page's separate Saints-Falcons score banner did not establish that its video showed that game. Media availability and verified broadcast identity are separate observations.
+
+The original server 5's screenshot also showed Falcons-Saints on TSN at 1920 by 1080. A focused follow-up advanced from 599 to 1,338 decoded frames and from 10.26 to 22.59 seconds, with readyState 4 throughout. Original server 2 advanced from 154 to 529 frames. Original server 3 advanced from 658 to 1,416 frames while showing the wrong broadcast.
+
+At 01:46 UTC, the source changed its free list to four servers: channel 30, Dlive stream 44, Fsportshdz's Saints player, and Dlive stream 111. The Flyembed MLB player disappeared, and the numeric fifth choice became premium. The rebuilt app automatically collected all four currently free choices. Server 1 retained its channel identity and decoded at 1280 by 720 in the main app, advancing from 948 to 3,940 frames across approximately 100 seconds.
+
+New server locators retain the matched game, source event, event URL, and published server number. They do not retain an iframe or media URL. Opening a locator revalidates the exact event board, active free server, and declared player root after the permitted SSO handoff. Browser media capture stays within that root's current frame subtree. Browser scheduling and both live and saved scheduled details reject choices belonging to another game; cached working feeds also reject a locator with a different game ID.
+
+Cloudflare rate limits appeared during collection. The collector preserved the known working choice and retried automatically after five minutes. An isolated check of current server 4 completed in twelve seconds with the default limits. Its observer found media, its playlist and segment returned HTTP 200, and the segment then failed media validation. A second check identified a 3.6 MB PNG response with no transport-stream signature in its first 4 KiB. A corrected website check nevertheless decoded the actual Falcons-Saints broadcast at 1920 by 1080, advancing from 208 to 953 frames. The response established a player compatibility defect rather than an offline broadcast.
+
+Current server 3 first decoded briefly in the main app before falling back. Instrumentation captured a fatal HLS media-sequence mismatch when overlapping segments received different relay URLs. Two upstream playlist reads established that six overlapping segment paths stayed identical while their `e` and `st` credentials rotated. The fix canonicalizes media identity only for the validated `hls.hockey.do` segment route and signing fields. Fetches retain the complete latest signed URL. Unknown query keys, alternate hosts, malformed paths, and distinct renditions retain separate identities.
+
+The rebuilt app then kept current server 3 selected at 1152 by 648. From 02:20:13.670 to 02:23:15.052 UTC, decoded frames increased from 171 to 5,606 and video time advanced from 33.66 to 215.04 seconds. The live sequence advanced from 2,763 to 2,810 without a fatal HLS error. The screenshot shows Falcons-Saints on TSN. This verifies approximately 181 seconds of actual playback after the earlier failure within seconds of a playlist refresh. A later main-window check still showed readyState 4, video time 975.59 seconds, and 28,400 decoded frames.
+
+Current server 4's complete published player script configures JW Player with a custom `LiveLoader`. The declared playlist matches the actual decoded player's HLS request, excluding its cachebuster. One guarded playlist and first-segment read identified the precise transform: a valid RGB8 PNG, 512 by 2,563 pixels, with no data after IEND. Its decoded pixels start with `TIKTIKPX` and contain a 3,936,200-byte gzip payload. Decompressing that payload yields 3,946,496 bytes with aligned MPEG-TS synchronization. The first segment is a signed cross-host public CDN resource published by the validated playlist. This establishes a missing app transport transform rather than an offline stream. The diagnostic stores metadata only, without raw media, signed URLs, or credentials.
+
+A second current segment verified that the project's existing Sharp dependency produces the same decoded video hash as the published PNG row-filter algorithm. Electron now issues a private transport tag only for the selected published Dlive root and its current Dembed frame, matching the configured JW file and actual `LiveLoader` function identity. The provider accepts that tag only for a StreamEast server observation. Its resource decorator decodes the measured RGB8 PNG pixel-gzip format before either the media probe or relay receives bytes. It validates the PNG envelope and checksums, marker, payload length, and every MPEG-TS packet boundary. Decoder input, pixels, and output each have a 16 MiB limit. Unsupported ranges fail without issuing an upstream range read. Ordinary source resources and the guarded, revocable HTTPS broker retain their existing behavior.
+
+Review found that real fragments contain over 400 IDAT chunks, exceeding the first decoder's 256-chunk limit. The added regression failed before the bounded limit was corrected. The final focused suite passes twelve tests, including many chunks, malformed data, oversize input and decompression, cancellation, transport isolation, and capability revocation. Default-limit real probes then passed both current Dlive choices: server 4 returned 4,045,760 decoded bytes and server 2 returned 1,846,912 decoded bytes, both as `video/mp2t`. The existing `probeCandidate` returned playable for each. One preceding server 4 observation stopped without supported media; the next succeeded, and no frame-limit defect was established. The ordinary 32-frame limit remains unchanged.
+
+The final suite passes all 468 applicable tests. Its four coordinator regressions first produced three passes and one failure after the partial fix, then four passes and zero failures after the scheduled-detail guard. The signed-segment regression first failed and then passed. It verifies eight overlapping relay URLs, refreshed fetch credentials, and rejection of unsupported signing formats. The original Dlive checks produced two passes and five failures before the fix; all twelve expanded Dlive checks pass afterward. ESLint, TypeScript, and the production build also pass. The same pre-existing stale installer check remains excluded.
+
+After the final rebuild, Electron automatically queued current servers 2 and 4 and verified their decoded media without a manual retry. At 02:55:44 UTC, all four StreamEast choices were playable and the matched game had 85 working choices. The saved interval remained five minutes, and all nineteen registered sources remained in the snapshot. The user's original VIPBox Video 2 HD selection also decoded at 1280 by 720 after restart.
+
+The main app then sustained current server 4 at 1920 by 1080 for 113.312 seconds between recorded samples. Decoded frames increased from 1,747 to 8,538, video time from 29.41 to 142.72 seconds, and the live sequence from 25,389 to 25,408. Current server 2 sustained 1280 by 720 for 112.238 seconds: frames increased from 798 to 4,161, video time from 26.53 to 138.76 seconds, and sequence from 24,691 to 24,711. Neither player reported a fatal HLS error. Both screenshots show the actual Falcons-Saints broadcast. The player was then returned to the user's original VIPBox choice.

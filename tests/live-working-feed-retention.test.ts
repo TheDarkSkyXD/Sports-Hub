@@ -76,7 +76,7 @@ function fixture(upcoming = false, catalog = false) {
   };
 }
 
-test('live working alternatives survive refresh without viewing sessions or repeated detail fetches', async () => {
+test('live working alternatives survive scheduled detail rereads and media rechecks without viewing sessions', async () => {
   const run = fixture();
   try {
     await run.refresh(at);
@@ -85,11 +85,12 @@ test('live working alternatives survive refresh without viewing sessions or repe
     run.hidePlayers();
     await run.refresh(at + 301000);
     assert.deepEqual((await run.snapshot()).games.map(row => row.candidates.filter(row => row.availability.kind === 'playable').length), [2, 2]);
-    assert.equal(run.detailReads(), 2, 'Working live routes should prevent redundant detail reads for their own observations');
+    assert.equal(run.detailReads(), 4, 'both live observations are reread after their interval');
+    assert.equal(run.checks(), 8, 'each proven route is rechecked at the saved interval');
   } finally { await run.stop(); }
 });
 
-test('a proven live route outlives its listing age without another media check', async () => {
+test('a proven live route outlives its listing age and receives a scheduled media recheck', async () => {
   const run = fixture();
   try {
     await run.refresh(at);
@@ -98,7 +99,7 @@ test('a proven live route outlives its listing age without another media check',
     await run.refresh(at + 31 * 60000);
     assert.deepEqual((await run.snapshot()).games.map(row => row.candidates.length), [2, 2]);
     assert.deepEqual((await run.snapshot()).games.map(row => row.workingChoiceCount), [2, 2]);
-    assert.equal(run.checks(), 4, 'Unchanged proven routes should not be probed again');
+    assert.equal(run.checks(), 8, 'aged retained routes are rechecked once when due');
   } finally { await run.stop(); }
 });
 
@@ -148,8 +149,8 @@ test('working upcoming choices survive expired listings while the game remains e
     const snapshot = await run.snapshot();
     assert.deepEqual(snapshot.games.map(row => row.workingChoiceCount), [2, 2]);
     assert.deepEqual(snapshot.games.flatMap(row => row.candidates.map(candidate => candidate.availability)),
-      Array.from({ length: 4 }, () => ({ kind: 'playable', checkedAt: at, proof: 'media' })));
-    assert.equal(run.checks(), 4);
+      Array.from({ length: 4 }, () => ({ kind: 'playable', checkedAt: at + 31 * 60000, proof: 'media' })));
+    assert.equal(run.checks(), 8);
   } finally { await run.stop(); }
 });
 

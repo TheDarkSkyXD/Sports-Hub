@@ -7,6 +7,7 @@ import { parsePlayers } from '../../sunday.ts';
 import { parseStreamcenterPlayer } from '../../playback/providers/streamcenter-player.ts';
 import { validEventPagePair } from '../../playback/providers/event-page-policy.ts';
 import { SWAC_CATALOG_URL, parseSwacEvent, swacApiUrl, swacProgramId, swacProgramUrl } from '../../playback/providers/swac-catalog.ts';
+import { TvappMatch, catalogTeams, preferredCatalogTeams, tvappIdentity, tvappStreams } from '../../playback/providers/tvapp-catalog.ts';
 import {enrichLiveTvObservation,liveTvPlayers,parseLiveTvListings} from './livetv.ts';
 import {nflstreamsPlayers,parseNflstreamsListings} from './nflstreams.ts';
 import {buffstreamPlayers} from './buffstream.ts';
@@ -31,7 +32,7 @@ export const SOURCES = [
   {id:'buffstream-nfl',url:'https://ms.buffstream.io/nfl-streams-live-31',family:'buffstream'},
   {id:'methstreams',url:'https://methstreams.st/NFL',family:'event'},
   {id:'crackstreams-st',name:'Crackstreams NFL',url:'https://crackstreams.st/NFL',family:'event'},
-  {id:'tvapp',name:'TVApp',url:TVAPP_API,family:'tvapp',kind:'catalog',publicUrls:[
+  {id:'tvapp',name:'TVApp',url:TVAPP_API,family:'tvapp',kind:'catalog',parserVersion:4,publicUrls:[
     'https://tvapp1.pk/cfb-streams','https://tvapp1.pk/nfl-streams',
     'https://thetvapp67.st/cfb-streams','https://thetvapp67.st/nfl-streams',
   ]},
@@ -43,6 +44,10 @@ export const SOURCES = [
   {id:'swac',name:'SWAC TV',url:SWAC_CATALOG_URL,family:'swac',kind:'catalog',publicUrls:['https://tv.swac.org/']},
 ] as const;
 const vipboxSourceIds = new Set<string>(SOURCES.filter(source => source.family === 'vipbox').map(source => source.id));
+function vipboxMatchupTitle(sourceId:string,title:string):string {
+  return sourceId==='vipbox-nfl'||sourceId==='strikeout-nfl'
+    ?title.replace(/^MNF with Peyton and Eli-/,''):title;
+}
 export class SourceFetchError extends Error {
   readonly retryAfterMs?: number;
   constructor(message:string,retryAfterMs?:number) { super(message); this.retryAfterMs=retryAfterMs; }
@@ -147,11 +152,6 @@ export function parseKickoff(raw: string): number | null {
   return matches.length === 1 ? matches[0] : null;
 }
 
-const CatalogTeams = z.object({home:z.object({name:z.string().min(1)}),away:z.object({name:z.string().min(1)})});
-const TvappMatch = z.object({
-  id:z.string().min(1),title:z.string().min(1),category:z.literal('american-football'),
-  date:z.number().int(),teams:CatalogTeams.nullish(),
-});
 const PpvEvent = z.object({
   id:z.number().int().positive(),name:z.string().min(1),tag:z.string(),
   uri_name:z.string(),starts_at:z.number().int(),
@@ -159,25 +159,6 @@ const PpvEvent = z.object({
 const PpvCatalog = z.object({
   success:z.literal(true),streams:z.array(z.object({category:z.string(),streams:z.array(z.unknown())})),
 });
-
-function catalogTeams(title: string): [string,string] | null {
-  const parts = title.split(/\s+(?:vs\.?|at|-)\s+/i).map(value => value.trim());
-  return parts.length === 2 && parts.every(Boolean) ? [parts[0],parts[1]] : null;
-}
-
-function preferredCatalogTeams(title: string, structured: [string,string] | null): [string,string] | null {
-  const titled = catalogTeams(title);
-  if (!structured || !titled) return titled || structured;
-  const related = (left: string, right: string) => {
-    const a = left.toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
-    const b = right.toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
-    return a.includes(b) || b.includes(a);
-  };
-  const aligned = related(titled[0],structured[0]) && related(titled[1],structured[1]) ||
-    related(titled[0],structured[1]) && related(titled[1],structured[0]);
-  if (!aligned) return null;
-  return titled.join('').length > structured.join('').length ? titled : structured;
-}
 
 function parseCatalog(source: ListingSource, body: string, now: number): ReturnType<typeof parseListings> {
   let input: unknown;
@@ -209,17 +190,18 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
       if (match.id === 'ppv-nfl-network' && match.title === 'NFL Network' && match.date === 0) continue;
       if (match.date < Date.UTC(2000,0,1) || match.date >= Date.UTC(2100,0,1)) return invalid();
       if (match.date > now+7*86400000) continue;
-      const slug = match.id.startsWith('ppv-') || /^\d+$/.test(match.id) ? match.id : /-(\d+)$/.exec(match.id)?.[1];
-      if (!slug || !/^[a-zA-Z0-9-]{1,120}$/.test(slug)) return invalid();
-      const url = `https://tvapp1.pk/watch/${slug}`;
       const title = match.title.replace(/\s+/g,' ').trim();
       const structured: [string,string] | null = match.teams
         ? [match.teams.home.name.trim(),match.teams.away.name.trim()]
         : null;
       const teams = preferredCatalogTeams(title,structured);
+      if (!teams && !catalogTeams(title)) continue;
+      const slug = match.id.startsWith('ppv-') || /^\d+$/.test(match.id) ? match.id : /-(\d+)$/.exec(match.id)?.[1];
+      if (!slug || !/^[a-zA-Z0-9-]{1,120}$/.test(slug)) return invalid();
+      const url = `https://tvapp1.pk/watch/${slug}`;
       const rawTime = new Date(match.date).toISOString();
       if (!add({id:`${source.id}:${digest(match.id)}`,sourceId:source.id,url,title,teams,
-        league:null,kickoff:match.date,rawTime,observedAt:now,parserVersion:2})) return invalid();
+        league:null,kickoff:match.date,rawTime,observedAt:now,parserVersion:3})) return invalid();
     }
   } else if (source.family === 'ppv') {
     const result = PpvCatalog.safeParse(input);
@@ -282,7 +264,8 @@ export function parseListings(source: ListingSource, html: string, now: number):
     const textTime = /\d{4}-\d{2}-\d{2}(?:,\s*[a-z]+)?(?:\s*-\s*|[ T])\d{1,2}:\d{2}\s*(?:AM|PM)?\s*ET\b/i.exec(title)?.[0] || '';
     const cleaned = title.replace(textTime,'').replace(/\d{1,2}:\d{2}\s*UTC.*$/i,'')
       .replace(/(?:Live)?Watch\s*→?\s*$/i,'').replace(/^\s*(?:\d{1,2}:\d{2}\s*)?/,'').replace(/\s*\bCH\s*\d+\s*$/i,'');
-    const pair = cleaned.split(/\s+(?:vs\.?|versus|at|@)\s+/i).map(value => value.replace(/^#?\d+\s+/,'').trim());
+    const matchupTitle = vipboxMatchupTitle(source.id,cleaned);
+    const pair = matchupTitle.split(/\s+(?:vs\.?|versus|at|@)\s+/i).map(value => value.replace(/^#?\d+\s+/,'').trim());
     const structuredNames = source.family === 'event'
       ? anchor.find('.ev-side .nm-l').map((_i,node) => $(node).text().trim()).get() : [];
     const rowTeams = source.family === 'buffstream' ? container.find('a[href]').toArray().flatMap(node => {
@@ -320,11 +303,14 @@ export function parseListings(source: ListingSource, html: string, now: number):
         kickoff:conflictingTimeIds.has(id) ? null : previous.kickoff ?? kickoff});
       return;
     }
-    observations.set(id,{id,sourceId:source.id,url,title:teams ? teams.join(' vs ') : title,teams,league,rawTime,kickoff,observedAt:now,parserVersion:2,legacyId:numeric ? `${numeric[1] === 'cfb' ? 'ncaaf-' : ''}source-${numeric[2]}` : undefined});
+    observations.set(id,{id,sourceId:source.id,url,title:matchupTitle!==cleaned ? cleaned : teams ? teams.join(' vs ') : title,teams,league,rawTime,kickoff,observedAt:now,parserVersion:2,legacyId:numeric ? `${numeric[1] === 'cfb' ? 'ncaaf-' : ''}source-${numeric[2]}` : undefined});
   });
   const values = [...observations.values()];
   const knownEmpty = /no matches available right now|sorry, no games scheduled on this date|no (?:live )?(?:games|events) (?:available|scheduled|found)/i.test($('body').text());
-  return {observations:values,outcome:values.length ? 'parsed' : knownEmpty ? 'empty' : source.family === 'unknown' ? 'unsupported' : 'parser-changed'};
+  const vipboxCollegeEmpty = source.id==='vipbox-cfb' && $('meta[property="og:url"]').first().attr('content')===source.url &&
+    (/^No Match'?s Today for NCAAF$/i.test($('h3.card-header').first().text().replace(/\s+/g,' ').trim()) ||
+      /Not able to find any match\/event on NCAAF today\./i.test($('body').text()));
+  return {observations:values,outcome:values.length ? 'parsed' : knownEmpty||vipboxCollegeEmpty ? 'empty' : source.family === 'unknown' ? 'unsupported' : 'parser-changed'};
 }
 
 const streamcenterLink = /^\/api\/stream-link\/iframe\/event-espn-league-football-college-football-(\d{5,12})\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/;
@@ -394,7 +380,7 @@ function vipboxPageTeams(sourceId:string,html:string):[string,string] | null {
   const matchup = sourceId.startsWith('vipbox-') ? /^(.*?) Streaming Online$/i.exec(title)?.[1] :
     sourceId.startsWith('vipboxtv-') ? /^Watch (.*?) Online$/i.exec(title)?.[1] :
     sourceId.startsWith('strikeout-') ? /^Live (.*?) Streams Online$/i.exec(title)?.[1] : undefined;
-  const teams = matchup?.split(/\s+vs\.?\s+/i).map(value=>value.trim());
+  const teams = matchup ? vipboxMatchupTitle(sourceId,matchup).split(/\s+vs\.?\s+/i).map(value=>value.trim()) : null;
   return teams?.length === 2 && teams.every(Boolean) ? [teams[0],teams[1]] : null;
 }
 
@@ -535,4 +521,41 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
     return [...pages.values(),...generic];
   }
   return goozPlayers(html);
+}
+
+export async function tvappPlayers(gameId:string,observation:Observation,html:string,_signal:AbortSignal,
+  _read:(url:string,signal:AbortSignal)=>Promise<string>=readPage):Promise<ResolvedPlayer[]> {
+  if(observation.sourceId!=='tvapp'||!observation.teams||observation.kickoff===null||
+    compatiblePlayers(gameId,observation,html).length!==1)return [];
+  const teams=observation.teams,kickoff=observation.kickoff;
+  const signal=_signal,read=_read;
+  const catalog:unknown=JSON.parse(await read(TVAPP_API,signal));
+  if(!Array.isArray(catalog))throw new Error('parser-changed');
+  const matching=catalog.flatMap(value=>{
+    const event=tvappIdentity(value);
+    return event&&event.watchUrl===observation.url&&event.title===observation.title&&
+      event.kickoff===kickoff&&event.teams.join('|')===teams.join('|')?[event]:[];
+  });
+  if(matching.length!==1)return [];
+  const refs=matching[0].sources;
+  if(new Set(refs.map(ref=>`${ref.source}:${ref.id}`)).size!==refs.length)return [];
+  const streams=(await Promise.all(refs.map(async ref=>{
+    const rows:unknown=JSON.parse(await read(`https://api-backups.handleapi.win/streams/${ref.source}/${ref.id}`,signal));
+    const parsed=tvappStreams(rows,ref.source,ref.id);
+    if(!parsed)throw new Error('parser-changed');
+    return parsed;
+  }))).flat();
+  signal.throwIfAborted();
+  const seen=new Set<string>();
+  let hdCount=0,sdCount=0;
+  return [...streams.filter(row=>row.hd),...streams.filter(row=>!row.hd)].flatMap(row=>{
+    const key=`${row.source}:${row.id}:${row.streamNo}`;
+    if(seen.has(key))return [];
+    seen.add(key);
+    return [{id:`tvapp:${digest(JSON.stringify([gameId,observation.url,key]))}`,
+      label:`TVApp · Premium ${row.hd?++hdCount:++sdCount} ${row.hd?'HD':'SD'}`,
+      locator:{provider:'tvapp' as const,gameId,eventUrl:observation.url,
+        source:row.source,sourceId:row.id,streamNo:row.streamNo,
+        kickoff,title:observation.title,teams}}];
+  });
 }

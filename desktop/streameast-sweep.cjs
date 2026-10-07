@@ -1,5 +1,5 @@
 const { randomUUID } = require('node:crypto');
-const { CATEGORY_URLS,parseCategory,parseDetail,freeServerUrls,activeFreeServerUrl,freePlayer } = require('./streameast-catalog.cjs');
+const { CATEGORY_URLS,parseCategory,parseDetail,freeServerUrls,activeFreeServerUrl,serverPlayer } = require('./streameast-catalog.cjs');
 
 function failure(error) {
   return ['blocked','timeout','parser-changed','unavailable','limit','rate-limited'].includes(error?.message) ? error.message : 'unavailable';
@@ -86,7 +86,7 @@ async function runStreameastSweep({read,send,signal,now=Date.now,runId=randomUUI
     let serverUrls;
     try {
       const active=activeFreeServerUrl(html,event);
-      if(active)freePages.set(active,freePlayer(html));
+      if(active)freePages.set(active,serverPlayer(html,event,active));
       serverUrls=freeServerUrls(html,event);
     } catch(error) {
       event.detail={kind:'failed',at:now(),reason:failure(error)};
@@ -106,7 +106,7 @@ async function runStreameastSweep({read,send,signal,now=Date.now,runId=randomUUI
           return rateLimited();
         }
         freePages.set(url,{kind:'unknown'});eventUnresolvedRead=true;
-      } else freePages.set(url,freePlayer(serverRead.page));
+      } else freePages.set(url,serverPlayer(serverRead.page,event,url));
     }
     try {event.detail=parseDetail(html,event,now(),freePages);}
     catch(error){event.detail={kind:'failed',at:now(),reason:failure(error)};}

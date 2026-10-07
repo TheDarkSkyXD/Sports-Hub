@@ -1,11 +1,11 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { DEFAULT_FINISHED_GAME_RETENTION_MINUTES, FinishedGameRetentionMinutesSchema, DetailEvidenceSchema, GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema, SourceEventBindingSchema, StoredSportsurgeCatalogSchema, StoredStreameastCatalogSchema } from '../shared.ts';
+import { DEFAULT_FEED_CHECK_INTERVAL_MINUTES, DEFAULT_FINISHED_GAME_RETENTION_MINUTES, FeedCheckIntervalMinutesSchema, FinishedGameRetentionMinutesSchema, DetailEvidenceSchema, GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema, SourceEventBindingSchema, StoredSportsurgeCatalogSchema, StoredStreameastCatalogSchema } from '../shared.ts';
 import type { CollectionAttempt, DetailEvidence, Game, Match, Observation, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
 import { recordFinal } from '../domain/lifecycle.ts';
 import { confirmedFinishedBoundEvent, confirmedFinishedGameId } from '../domain/matching.ts';
-import { retryDeadline } from '../domain/source-policy.ts';
+import { SOURCE_REFRESH_MS, rebaseRetryDeadline, retryDeadline } from '../domain/source-policy.ts';
 import { WorkingFeedSchema, type WorkingFeed } from '../domain/working-feed.ts';
 
 const PartitionSchema = z.object({games:z.array(GameSchema),at:z.number(),week:z.number().optional()});
@@ -61,6 +61,51 @@ export class FootballStore {
       this.db.exec('ALTER TABLE source_catalogs ADD COLUMN previous_payload TEXT');
     if (!this.db.prepare("SELECT id FROM settings WHERE id='finishedGameRetentionMinutes'").get())
       this.setFinishedGameRetentionMinutes(DEFAULT_FINISHED_GAME_RETENTION_MINUTES);
+    this.db.prepare("INSERT OR IGNORE INTO settings VALUES ('feedCheckIntervalMinutes',?)")
+      .run(JSON.stringify(DEFAULT_FEED_CHECK_INTERVAL_MINUTES));
+  }
+  feedCheckIntervalMinutes():number {
+    const row=this.db.prepare("SELECT payload FROM settings WHERE id='feedCheckIntervalMinutes'").get();
+    return FeedCheckIntervalMinutesSchema.parse(typeof row?.payload==='string'?JSON.parse(row.payload):DEFAULT_FEED_CHECK_INTERVAL_MINUTES);
+  }
+  setFeedCheckIntervalMinutes(value:number):void {
+    const minutes=FeedCheckIntervalMinutesSchema.parse(value);
+    const previous=this.feedCheckIntervalMinutes();
+    if(previous===minutes)return;
+    const previousMs=previous*60_000;
+    const nextMs=minutes*60_000;
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const rebaseAttempt=(table:'sources'|'catalog_attempts',key:'id'|'rowid')=>{
+        const update=this.db.prepare(`UPDATE ${table} SET payload=? WHERE ${key}=?`);
+        for(const row of this.db.prepare(`SELECT ${key},payload FROM ${table}`).all()) {
+          if(typeof row.payload!=='string'||(typeof row[key]!=='string'&&typeof row[key]!=='number'))continue;
+          const payload=JSON.parse(row.payload);
+          const parsed=SourceAttemptSchema.safeParse(payload);
+          if(!parsed.success||parsed.data.nextEligibleAt===undefined||parsed.data.outcome==='unsupported')continue;
+          const attempt=parsed.data;
+          const currentDeadline=attempt.nextEligibleAt;
+          if(currentDeadline===undefined)continue;
+          const nextEligibleAt=rebaseRetryDeadline(attempt.at,currentDeadline,previousMs,nextMs,attempt.failure==='rate-limited');
+          update.run(JSON.stringify({...payload,nextEligibleAt}),row[key]);
+        }
+      };
+      rebaseAttempt('sources','id');
+      rebaseAttempt('catalog_attempts','rowid');
+      const updateDetail=this.db.prepare('UPDATE details SET payload=? WHERE observation_id=?');
+      for(const row of this.db.prepare('SELECT observation_id,payload FROM details').all()) {
+        if(typeof row.observation_id!=='string'||typeof row.payload!=='string')continue;
+        const parsed=DetailEvidenceSchema.safeParse(JSON.parse(row.payload));
+        if(!parsed.success)continue;
+        const detail=parsed.data;
+        const nextEligibleAt=rebaseRetryDeadline(detail.at,detail.nextEligibleAt,previousMs,nextMs,
+          detail.outcome==='failed'&&detail.failure==='rate-limited');
+        updateDetail.run(JSON.stringify({...detail,nextEligibleAt}),row.observation_id);
+      }
+      this.db.prepare("INSERT INTO settings VALUES ('feedCheckIntervalMinutes',?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload")
+        .run(JSON.stringify(minutes));
+      this.db.exec('COMMIT');
+    } catch(error) {this.db.exec('ROLLBACK');throw error;}
   }
   finishedGameRetentionMinutes():number {
     const row=this.db.prepare("SELECT payload FROM settings WHERE id='finishedGameRetentionMinutes'").get();
@@ -267,7 +312,7 @@ export class FootballStore {
       }
       failures=outcome==='parsed'?0:failures+1;
       const attempt=SourceAttemptSchema.parse({at:category.at,outcome,count,failure,failures,
-        nextEligibleAt:retryDeadline(category.at)});
+        nextEligibleAt:retryDeadline(category.at,failure==='rate-limited'?SOURCE_REFRESH_MS:0,this.feedCheckIntervalMinutes()*60_000)});
       const payload=JSON.stringify({...attempt,catalogReason:category.kind==='failed'?category.reason:undefined});
       if(insert.run(sourceId,league,category.at,outcome,payload).changes)
         diagnostic.run(`${sourceId}:${league}`,category.at,outcome,count,category.kind==='failed'?category.reason:null);

@@ -4,7 +4,8 @@ import test from 'node:test';
 import { load } from 'cheerio';
 
 const require = createRequire(import.meta.url);
-const { isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame } = require('../desktop/sportsurge-observer.cjs');
+const { isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame,
+  activatePublishedVipboxVideo } = require('../desktop/sportsurge-observer.cjs');
 
 const offlineHtml = `<html><head><title>Stream is Offline</title></head><body>
 <div class="banner-container"><span class="status-text">Offline</span>
@@ -35,6 +36,32 @@ test('offline detection applies only to one named player under its known event-p
   assert.equal(offlinePlayerFrame('https://strikeout.im/college-football/2/northern-colorado-vs-montana-stream', [player, { ...player }]), null);
   assert.equal(offlinePlayerFrame('https://strikeout.im/college-football/2/northern-colorado-vs-montana-stream', [ad]), null);
   assert.equal(offlinePlayerFrame('https://strikeout.im/college-football/2/northern-colorado-vs-montana-stream', [{ url: 'http://fallafar.me/sd0embed/NFL' }]), null);
+  assert.equal(offlinePlayerFrame('https://strikeout.im/college-football/2/northern-colorado-vs-montana-stream', [{ url: 'https://ads.example/sd0embed/NFL' }]), null);
+  assert.equal(offlinePlayerFrame('https://vipbox.fm/ads/other-page', [player]), null);
+});
+
+test('the published SD0 Play control starts one visible paused video without clicking other controls', () => {
+  let clicks=0,plays=0;
+  const video={paused:true,muted:false,getBoundingClientRect:()=>({width:913,height:514}),play(){plays++;return Promise.resolve();}};
+  const button={click(){clicks++;}};
+  const page={querySelectorAll(selector:string){
+    if(selector==='video')return [video];
+    if(selector.includes('jw-icon-playback'))return [button];
+    return [];
+  }};
+  const style=()=>({display:'block',visibility:'visible'});
+  assert.equal(activatePublishedVipboxVideo(page,style),true);
+  assert.equal(video.muted,true);
+  assert.equal(clicks,1);
+  assert.equal(plays,1);
+  assert.equal(activatePublishedVipboxVideo({...page,querySelectorAll(selector:string){
+    if(selector==='video')return [video];
+    if(selector.includes('jw-icon-playback'))return [button,button];
+    return [];
+  }},style),false);
+  assert.equal(activatePublishedVipboxVideo(page,()=>({display:'none',visibility:'visible'})),false);
+  assert.equal(clicks,1);
+  assert.equal(plays,1);
 });
 
 test('the named SD0 network-error page ends observation only for its visible completed error state', () => {

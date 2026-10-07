@@ -42,3 +42,32 @@ for (const name of ['sportsurge', 'streameast']) for (const [kind, reason, delay
     assert.equal(timers.size, 0);
   } finally { release?.(); collector.stop(); }
 });
+
+for(const name of ['sportsurge','streameast'])for(const [reason,delay] of [[undefined,60_000],['rate-limited',300_000]] as const)
+test(`${name} applies the checkpoint interval with ${reason||'success'}`,async()=>{
+  const file=resolve(`desktop/${name}-collector.cjs`), require=createRequire(file);
+  const clock=0;
+  let timerId=0;
+  const timers=new Map<number,{at:number;work:()=>void}>();
+  const setTimer=(work:()=>void,ms:number)=>{const id=++timerId;timers.set(id,{at:clock+ms,work});return id;};
+  const exported={exports:{}};
+  const sweepName=name==='sportsurge'?'runSportsurgeSweep':'runStreameastSweep';
+  const createName=name==='sportsurge'?'createSportsurgeCollector':'createStreameastCollector';
+  const session={setPermissionRequestHandler(){},setPermissionCheckHandler(){},on(){}};
+  runInNewContext(readFileSync(file,'utf8'),{module:exported,
+    require:(id:string)=>id==='electron'?{session:{fromPartition:()=>session}}:
+      id===`./${name}-sweep.cjs`?{[sweepName]:async({send}:{send:(catalog:object)=>Promise<unknown>})=>{
+        await send({runId:'fixture',sequence:0,events:[]});return {state:{kind:reason?'partial':'complete',reason}};
+      }}:require(id),
+    fetch:async()=>Response.json({kind:'catalog-ack',skipDetailEventIds:[],sourceRefreshMs:60_000}),
+    Buffer,AbortSignal,AbortController,Date:{now:()=>clock},
+    setTimeout:setTimer,clearTimeout:(id:number)=>timers.delete(id),
+  });
+  const create=Reflect.get(exported.exports,createName);
+  const collector=create({origin:'http://127.0.0.1:1',controlToken:'unused'});
+  try {
+    collector.start();
+    await collector.requestSweep();
+    assert.deepEqual([...timers.values()].map(timer=>timer.at),[delay]);
+  } finally {collector.stop();}
+});

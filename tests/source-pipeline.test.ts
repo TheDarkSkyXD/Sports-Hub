@@ -589,10 +589,10 @@ test('accepted browser categories record one durable attempt and replay adds non
     events:[],rejectedGames:[],
   };
   try{
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:sportsurge}),{kind:'catalog-ack',skipDetailEventIds:[]});
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:sportsurge}),{kind:'catalog-ack',skipDetailEventIds:[]});
-    assert.deepEqual(await coordinator.command({kind:'streameast-catalog',catalog:streameast}),{kind:'catalog-ack',skipDetailEventIds:[]});
-    assert.deepEqual(await coordinator.command({kind:'streameast-catalog',catalog:streameast}),{kind:'catalog-ack',skipDetailEventIds:[]});
+    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:sportsurge}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
+    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:sportsurge}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
+    assert.deepEqual(await coordinator.command({kind:'streameast-catalog',catalog:streameast}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
+    assert.deepEqual(await coordinator.command({kind:'streameast-catalog',catalog:streameast}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
     const reply=await coordinator.command({kind:'sources'});
     assert.equal(reply.kind,'sources');
     if(reply.kind==='sources'){

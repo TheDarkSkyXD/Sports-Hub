@@ -2,6 +2,7 @@ import type { CandidateLocator } from '../../football/shared.ts';
 import type { PlaybackProvider, ProviderPlayback } from '../provider.ts';
 import { validEventPagePair } from './event-page-policy.ts';
 import { observedPublicPage, publishedPublicVideo } from './public-page.ts';
+import { publishedTopstreamerVideo } from './topstreamer.ts';
 
 type EventPageLocator = Extract<CandidateLocator,{provider:'event-page'}>;
 type OpenPage = (destination:URL,signal:AbortSignal,purpose:'playback'|'probe',embeddedEvent?:URL)=>Promise<ProviderPlayback|null>;
@@ -21,6 +22,14 @@ export function eventPageProvider(openPage:OpenPage=observedPublicPage):Playback
     if (new URL(locator.eventUrl).hostname==='ppv.st') {
       try {
         const staticPlayback=await publishedPublicVideo(new URL(locator.serverUrl),new URL(locator.eventUrl),signal);
+        if (staticPlayback) return staticPlayback;
+      } catch(error) { if(signal.aborted) throw error; }
+    }
+    const eventHost=new URL(locator.eventUrl).hostname;
+    if ((eventHost==='methstreams.st'||eventHost==='crackstreams.st')&&
+      new URL(locator.serverUrl).hostname==='fxtrend.st') {
+      try {
+        const staticPlayback=await publishedTopstreamerVideo(new URL(locator.serverUrl),new URL(locator.eventUrl),signal);
         if (staticPlayback) return staticPlayback;
       } catch(error) { if(signal.aborted) throw error; }
     }

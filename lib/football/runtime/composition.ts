@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { FootballStore } from '../adapters/store.ts';
 import { SCHEDULES, readSchedule, readSeasonMembership } from '../adapters/schedule.ts';
-import { SOURCES, SourceFetchError, compatiblePlayers, enrichObservation, missingPlayerReason, parseListings, readHtml } from '../adapters/sources.ts';
+import { SOURCES, SourceFetchError, compatiblePlayers, enrichObservation, missingPlayerReason, parseListings, readHtml, tvappPlayers } from '../adapters/sources.ts';
 import type { FootballDependencies } from '../domain/ports.ts';
 import { FootballCoordinator } from './coordinator.ts';
 import { probeCandidate, probeIdentity } from '../../playback/probe.ts';
@@ -23,6 +23,7 @@ export function createFootballCoordinator(path: string, options: Overrides = {})
       parseListings:options.parseListings ?? parseListings,
       enrichObservation:options.enrichObservation ?? enrichObservation,
       compatiblePlayers:options.compatiblePlayers ?? compatiblePlayers,
+      tvappPlayers:options.tvappPlayers ?? tvappPlayers,
       missingPlayerReason:options.missingPlayerReason ?? missingPlayerReason,
       probeCandidate:options.probeCandidate ?? probeCandidate,
       probeIdentity:options.probeIdentity ?? probeIdentity,

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -120,8 +121,9 @@ test('old live and scheduled working choices are visible before schedule refresh
       assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0], before);
       assert.equal(run.probes.length, 1);
       await coordinator.refresh(true); await drain();
-      assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0], before);
-      assert.equal(run.probes.length, 1);
+      assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0],
+        { ...before, availability: { kind: 'playable', proof: 'media', checkedAt: at + 31 * 60_000 } });
+      assert.equal(run.probes.length, 2);
     } finally { await coordinator.stop(); run.cleanup(); }
   }
 });
@@ -195,7 +197,7 @@ test('stale saved proof excludes unverified sibling routes and yesterday live ga
     assert.equal(run.probes.length, 2);
     run.hide(); await coordinator.refresh(true); await drain();
     assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
-    assert.equal(run.probes.length, 2);
+    assert.equal(run.probes.length, 3);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 
@@ -237,6 +239,24 @@ test('schema-valid aliases with another team owner are discarded independently',
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 
+test('a cached StreamEast server choice for another game is rejected on restart', async () => {
+  const run = fixture(); let coordinator = run.start();
+  try {
+    await coordinator.refresh(true); await drain(); await coordinator.stop();
+    const feed = run.readRows()[0];
+    const locator: CandidateLocator = { provider: 'streameast-server', gameId: '99999',
+      sourceEventId: 'nfl:46236', eventUrl: 'https://v2.streameast.ga/nfl/atlanta-falcons-vs-new-orleans-saints-1/',
+      serverId: '2' };
+    const candidate = { ...feed.candidate, id: 'wrong-game-server', locator };
+    const identityHash = createHash('sha256').update(JSON.stringify([candidate.gameId,JSON.stringify(locator)])).digest('hex');
+    run.sql('DELETE FROM working_feeds');
+    run.writeRows([{ ...feed, candidate, identityHash }]);
+    run.hide(); coordinator = run.start(); await coordinator.refresh(true); await drain();
+    assert.equal(run.readRows().filter(row => row.candidate.id === 'wrong-game-server').length, 0);
+    assert.equal((await snapshot(coordinator)).games[0].candidates.filter(row => row.id === 'wrong-game-server').length, 0);
+  } finally { await coordinator.stop(); run.cleanup(); }
+});
+
 test('changed teams discard cached proof while date-only rescheduling preserves it outside and back inside the window', async () => {
   for (const changeTeams of [false, true]) {
     const run = fixture(); let coordinator = run.start();
@@ -250,7 +270,7 @@ test('changed teams discard cached proof while date-only rescheduling preserves 
       if (!changeTeams) {
         run.setGames([{ ...changed, date: '2026-10-05T17:00:00Z' }]); await coordinator.refresh(true); await drain();
         assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
-        assert.equal(run.probes.length, 1);
+        assert.equal(run.probes.length, 2);
       }
     } finally { await coordinator.stop(); run.cleanup(); }
   }
@@ -331,8 +351,11 @@ test('an aged scheduled working route and its changed-locator alias both survive
     assert.equal(run.readRows().length, 2);
     await coordinator.stop(); run.hide(); run.setClock(at + 40 * 60_000);
     coordinator = run.start(); await coordinator.refresh(true); await drain();
-    assert.deepEqual((await snapshot(coordinator)).games[0].candidates, before);
-    assert.equal(run.probes.length, 2);
+    const after = (await snapshot(coordinator)).games[0].candidates;
+    assert.deepEqual(after.map(row => row.id), before.map(row => row.id));
+    assert.deepEqual(after.map(row => row.availability),
+      Array.from({ length: 2 }, () => ({ kind: 'playable', proof: 'media', checkedAt: at + 40 * 60_000 })));
+    assert.equal(run.probes.length, 5);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 
@@ -393,7 +416,7 @@ test('a failed startup schedule keeps stale working choices visible with durable
     assert.equal(run.readRows().length, 1);
     run.setScheduleFailure(false); await coordinator.refresh(true); await drain();
     assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
-    assert.equal(run.probes.length, 1);
+    assert.equal(run.probes.length, 2);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 
