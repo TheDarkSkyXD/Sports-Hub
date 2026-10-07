@@ -387,7 +387,7 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
         <div><strong>{countLabel(scoped?.workingChoices??0,!!scoped?.unclassifiedGames.length)}</strong><span>Available feeds</span></div>
       </div>
       {(scoped?.unclassifiedGames.length??0)>0&&<p className="source-inventory-scope-note" role="note">{scoped?.unclassifiedGames.length} {scoped?.unclassifiedGames.length===1?'game could':'games could'} not be assigned to a league from the current board. Counts may be incomplete; open Games for unclassified details.</p>}
-      <details className="source-inventory-explainer"><summary>How these counts work</summary><p>Available feeds passed a media or playback check. Each game shows its pending and failed checks in the feed check results. New or changed feeds get one check. A playback failure marks a feed unavailable. Multiple entries can reach the same server.</p></details>
+      <details className="source-inventory-explainer"><summary>How these counts work</summary><p>Available feeds passed a media or playback check. Each game shows its pending and failed checks in the feed check results. New feeds are checked before use. Working and failed feeds are rechecked at your chosen interval. Working feeds stay available while rechecks run. A failed check or playback failure marks a feed unavailable. Multiple entries can reach the same server.</p></details>
       <div className="source-inventory-views" role="group" aria-label="Inventory view">
         <button type="button" aria-pressed={view==='sources'} onClick={()=>setView('sources')}>Sources</button>
         <button type="button" aria-pressed={view==='games'} onClick={()=>setView('games')}>Games</button>

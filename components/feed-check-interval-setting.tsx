@@ -12,7 +12,7 @@ export function FeedCheckIntervalSetting({minutes,disabled,onChange}:Props) {
   const [error,setError]=useState('');
   return <div className="quality-setting">
     <strong id="feed-check-interval-label">Feed check interval</strong>
-    <p>Check sources for today&apos;s, tomorrow&apos;s, and live games again at this interval. Working feeds stay cached, and finished games stop automatic checks. Browser collectors pick up changes on their next scan. Longer provider cooldowns still apply.</p>
+    <p>Discover new feeds and recheck working and failed feeds for today&apos;s, tomorrow&apos;s, and live games at this interval. Working feeds stay available while rechecks run. Finished games stop automatic checks. Longer provider cooldowns still apply.</p>
     <Select value={String(minutes)} disabled={disabled||saving} onValueChange={value=>{
       const parsed=FeedCheckIntervalMinutesSchema.safeParse(Number(value));
       if(!parsed.success)return;

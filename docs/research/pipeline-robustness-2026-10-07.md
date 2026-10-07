@@ -33,3 +33,15 @@ Two independent design candidates and a separate judge selected coordinator dead
 ## Limits
 
 Successful media checks describe measured upstream availability. Scheduled or externally unavailable feeds can remain unavailable. Permanent native cleanup failure intentionally quarantines a slot; unlimited recovery would require unsafe reuse or unbounded sessions. Failed operating-system tree termination remains an explicit failure rather than a claim that descendants are gone. The Windows process-tree behavior was verified locally; the portable branch does not establish an equivalent tree guarantee.
+
+## Follow-up: periodic working feed checks
+
+The next runtime inspection found five cached working choices with checks 54 to 444 minutes old despite the five-minute setting. `FootballCoordinator` skipped playable candidates both when it queued probes and when it admitted them. Discovery and failed-feed retries continued, but idle working routes never received another media check.
+
+Working routes now enter the existing bounded queue when their proof reaches the saved interval. Working rechecks and failed retries share maintenance priority and due-time ordering. A pending or deferred recheck retains playable proof. A conclusive failure removes durable aliases and starts automatic retry. Newer decoded playback evidence cancels obsolete work. Rechecks also cover proof that could not be persisted. Current game identity, fresh schedules, and the today, tomorrow, and live window remain admission requirements; final games receive no new checks.
+
+Regression commits `b1d1521` and `9cd119b` precede the production fix. Nine new cases cover due checks, non-durable proof, failure and recovery, deferral, decoded evidence, interval changes and restart, a full maintenance queue, and finished games. Existing tests were updated where they explicitly expected the old permanent exemption. The combined follow-up run passed all 528 applicable tests. Full ESLint, TypeScript, and the production build passed. Reproduce the suite with `node --experimental-strip-types --test --test-skip-pattern 'a packaged build produces an update record and installer without a blockmap' tests/*.test.ts`; the installer exclusion above still applies.
+
+Before restart, an ordinary close removed all 11 recorded app-owned processes. The updated app started after zero active app processes and returned visible and focused native state. With no manual retry or interval change, all three retained aged Sportsurge routes received newer checks: one remained playable and two became unavailable. Two old TVApp candidates were absent from the refreshed inventory and are not counted as recheck evidence. The Sources screenshot confirms the updated explanation and unchanged five-minute setting. Local evidence is under `.desktop-runtime/working-rechecks/`.
+
+The interval controls eligibility, not a guaranteed completion deadline. Initial discovery, provider cooldowns, and the existing four-slot limit can delay checks. This fix reuses that resource budget and adds no timer, setting, or public API.
