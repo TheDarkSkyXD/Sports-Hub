@@ -73,6 +73,11 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
     calls, pending, rows, snapshot, start,
     hold: () => { holdRechecks = true; },
     hidePublication: () => { listed = false; playersPublished = false; },
+    failCacheWrites: () => {
+      const db = new DatabaseSync(path);
+      try { db.exec("CREATE TRIGGER fail_working_feed_insert BEFORE INSERT ON working_feeds BEGIN SELECT RAISE(ABORT, 'cache-write-failed'); END"); }
+      finally { db.close(); }
+    },
     setGame: (value: Game) => { game = value; },
     setClock: (elapsed: number) => { clock = at + elapsed; },
     async refresh(coordinator: ReturnType<typeof start>, elapsed: number) {
@@ -227,6 +232,70 @@ test('a conclusive negative removes an unpersisted scheduled route from playable
     if (continuing.kind === 'session') assert.equal(continuing.candidates.some(row => row.availability.kind === 'playable'), false);
   } finally { await run.stop(coordinator); }
 });
+
+test('a cache write failure does not remove an unselected playable route after an empty publication', async () => {
+  const scheduled: Game = { ...live, lifecycle: 'scheduled', status: 'pre', date: new Date(at + 60 * 60_000).toISOString() };
+  const run = fixture({ game: scheduled, count: 2 });
+  const coordinator = run.start();
+  try {
+    run.failCacheWrites();
+    await run.refresh(coordinator, 0);
+    assert.equal(run.rows().length, 0);
+    const viewer = await coordinator.command({ kind: 'open', gameId: live.id, manual: false, initialCandidateId: 'route-0' });
+    assert.ok(viewer.kind === 'playback');
+    run.hold();
+    for(let elapsed=60_000;elapsed<=31*60_000;elapsed+=60_000) {
+      run.setClock(elapsed);
+      const heartbeat=await coordinator.command({kind:'authorize',sessionId:viewer.playback.session.id,candidateId:'route-0',generation:0});
+      assert.equal(heartbeat.kind,'authorized');
+    }
+    run.hidePublication();
+    await run.refresh(coordinator,31*60_000);
+    const continuing=await coordinator.command({kind:'session',sessionId:viewer.playback.session.id,generation:0,failure:false,retry:false});
+    assert.ok(continuing.kind==='session');
+    assert.equal(continuing.session.candidateId,'route-0');
+    assert.equal(continuing.candidates.find(candidate=>candidate.id==='route-1')?.availability.kind,'playable');
+    const alternative=await coordinator.command({kind:'open',gameId:live.id,manual:false,initialCandidateId:'route-1'});
+    assert.ok(alternative.kind==='playback');
+    assert.equal(alternative.playback.session.candidateId,'route-1');
+    assert.equal(run.rows().length,0);
+  } finally { await run.stop(coordinator); }
+});
+
+for (const result of [{kind:'playable',proof:'media'},{kind:'unavailable',reason:'invalid-media'}] as const)
+  test(`an old matchup ${result.kind} result cannot change proof after its game ID is reused`, async () => {
+    const run=fixture({persistable:false});
+    const coordinator=run.start();
+    try {
+      await run.refresh(coordinator,0);
+      const viewer=await coordinator.command({kind:'open',gameId:live.id,manual:false});
+      assert.ok(viewer.kind==='playback');
+      run.hold();
+      for(let elapsed=60_000;elapsed<=299_999;elapsed+=60_000) {
+        run.setClock(elapsed);
+        assert.equal((await coordinator.command({kind:'authorize',sessionId:viewer.playback.session.id,
+          candidateId:'route-0',generation:0})).kind,'authorized');
+      }
+      await run.refresh(coordinator,300_000);
+      const oldResult=run.pending.get('100');
+      assert.ok(oldResult);
+      const changed:Game={...live,name:'Seattle Seahawks at San Francisco 49ers',
+        away:{...live.away,name:'Seattle Seahawks',short:'Seahawks',abbreviation:'SEA'}};
+      run.setGame(changed);
+      await run.refresh(coordinator,301_000);
+      oldResult(result);
+      await drain();
+      assert.equal((await run.snapshot(coordinator)).games.find(game=>game.gameId===live.id)?.workingChoiceCount??0,0);
+      assert.equal((await coordinator.command({kind:'playback-evidence',sessionId:viewer.playback.session.id,
+        candidateId:'route-0',generation:0,evidence:{kind:'decoded',startupMs:100}})).kind,'error');
+      assert.ok(run.calls.filter(id=>id==='100').length>=3);
+      run.release('100',{kind:'playable',proof:'media'});
+      await drain();
+      assert.equal((await run.snapshot(coordinator)).games[0].candidates.find(candidate=>candidate.id==='route-0')?.availability.kind,'playable');
+      await coordinator.command({kind:'session',sessionId:viewer.playback.session.id,generation:0,failure:true,retry:false});
+      assert.equal((await run.snapshot(coordinator)).games[0].candidates.find(candidate=>candidate.id==='route-0')?.availability.kind,'playable');
+    } finally { await run.stop(coordinator); }
+  });
 
 test('a failed recheck removes durable proof and the route recovers on its next interval', async () => {
   const run = fixture();
