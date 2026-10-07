@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -35,6 +35,7 @@ function localServer(options: {
   port?: number;
   onReady?: () => void;
   timers?: TimerPolicy;
+  serverRoot?: string;
 }) {
   const logDir = mkdtempSync(path.join(tmpdir(), 'sunday-local-server-test-'));
   const wrapper = runInNewContext(`(function(require, __dirname, process, fetch, AbortSignal) { const module = { exports: {} }; ${source}\nreturn module.exports.createLocalServer; })`, {
@@ -47,12 +48,44 @@ function localServer(options: {
       platform: 'win32', execPath: 'node.exe', env: {},
     }, options.fetch ?? (() => new Promise(() => {})), AbortSignal);
   const service = createLocalServer({
-    root, origin: options.origin ?? 'http://127.0.0.1:49300', port: options.port ?? 49300,
+    root: options.serverRoot ?? root, origin: options.origin ?? 'http://127.0.0.1:49300', port: options.port ?? 49300,
     userData: logDir, controlToken: 'test-control-token', logDir,
     onReady: options.onReady ?? (() => {}),
   });
   return { service, dispose: () => rmSync(logDir, { recursive: true, force: true }) };
 }
+
+test('unpackaged desktop launches source development despite a previous build', async () => {
+  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-source-test-'));
+  mkdirSync(path.join(serverRoot, '.next'));
+  writeFileSync(path.join(serverRoot, '.next', 'BUILD_ID'), 'stale-build');
+  const child = new Child();
+  let launch: string[] | undefined;
+  const room = localServer({
+    serverRoot,
+    spawn(command, args) {
+      if (command !== 'taskkill.exe') launch = Array.from(args);
+      return child;
+    },
+  });
+  try {
+    const ready = room.service.start();
+    try {
+      assert.deepEqual(launch, [
+        path.join(root, 'desktop', 'server-supervisor.cjs'),
+        path.join(serverRoot, 'node_modules', 'next', 'dist', 'bin', 'next'),
+        'dev', '49300',
+      ]);
+    } finally {
+      room.service.beginStop();
+      await assert.rejects(ready, /stop/i);
+    }
+  } finally {
+    room.service.beginStop();
+    room.dispose();
+    rmSync(serverRoot, { recursive: true, force: true });
+  }
+});
 
 async function within<T>(promise: Promise<T>, milliseconds = 150): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
