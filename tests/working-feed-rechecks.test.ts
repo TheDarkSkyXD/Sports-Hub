@@ -27,7 +27,6 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
   let clock = at;
   let game = options.game ?? live;
   let listed = true;
-  let playersPublished = true;
   let holdRechecks = false;
   const nextResult: CandidateProbeResult = { kind: 'playable', proof: 'media' };
   const calls: string[] = [];
@@ -45,7 +44,7 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
     }] : [] }),
     enrichObservation: value => value,
     persistableLocator: () => options.persistable ?? true,
-    compatiblePlayers: () => playersPublished ? Array.from({ length: options.count ?? 1 }, (_, index) => ({
+    compatiblePlayers: () => listed ? Array.from({ length: options.count ?? 1 }, (_, index) => ({
       id: `route-${index}`, label: `Route ${index}`, locator: { provider: 'gooz' as const, playerId: String(index + 100) },
     })) : [],
     probeCandidate: locator => {
@@ -72,7 +71,7 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
   return {
     calls, pending, rows, snapshot, start,
     hold: () => { holdRechecks = true; },
-    hidePublication: () => { listed = false; playersPublished = false; },
+    hidePublication: () => { listed = false; },
     failCacheWrites: () => {
       const db = new DatabaseSync(path);
       try { db.exec("CREATE TRIGGER fail_working_feed_insert BEFORE INSERT ON working_feeds BEGIN SELECT RAISE(ABORT, 'cache-write-failed'); END"); }
@@ -219,9 +218,10 @@ test('a conclusive negative removes an unpersisted scheduled route from playable
   const coordinator = run.start();
   try {
     await run.refresh(coordinator, 0);
+    run.hold();
+    await run.refresh(coordinator, 299_999);
     const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false });
     assert.ok(opened.kind === 'playback');
-    run.hold();
     await run.refresh(coordinator, 300_000);
     run.release('100', { kind: 'unavailable', reason: 'invalid-media' });
     await drain();
@@ -229,7 +229,8 @@ test('a conclusive negative removes an unpersisted scheduled route from playable
     assert.equal((await coordinator.command({ kind: 'open', gameId: live.id, manual: false })).kind, 'error');
     const continuing = await coordinator.command({ kind: 'session', sessionId: opened.playback.session.id,
       generation: 0, failure: false, retry: false });
-    if (continuing.kind === 'session') assert.equal(continuing.candidates.some(row => row.availability.kind === 'playable'), false);
+    assert.ok(continuing.kind === 'session');
+    assert.equal(continuing.candidates.some(row => row.availability.kind === 'playable'), false);
   } finally { await run.stop(coordinator); }
 });
 

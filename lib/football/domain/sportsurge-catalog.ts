@@ -80,6 +80,13 @@ function rowIdentity(eventUrl:string,providerId:string,destinationUrl:string):st
   return createHash('sha256').update(eventUrl).update('\0').update(providerId).update('\0').update(destinationUrl).digest('hex').slice(0,24);
 }
 
+export function sportsurgeEventCandidate(candidate:Candidate,event:SportsurgeCatalog['events'][number]):boolean {
+  const locator=candidate.locator;
+  if(locator.provider!=='sportsurge-v2'||locator.eventId!==event.id)return false;
+  const id=`sportsurge-v2:${rowIdentity(event.url,locator.providerId,locator.url)}`;
+  return candidate.id===id||candidate.id.startsWith(`${id}:`);
+}
+
 export function sportsurgeCandidates(input:{
   current:StoredSportsurgeCatalog|null;
   previous:StoredSportsurgeCatalog|null;

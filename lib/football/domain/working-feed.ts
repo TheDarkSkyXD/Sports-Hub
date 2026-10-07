@@ -17,14 +17,16 @@ export function workingFeedOwner(game: Game, partitionIds: readonly string[]): W
   return { league: game.league, home: team(game.home), away: team(game.away), partitionIds: [...new Set(partitionIds)].sort() };
 }
 
-export function workingFeedMatches(feed: WorkingFeed, game: Game): boolean {
+type FeedIdentity = Pick<WorkingFeed, 'owner'> & { candidate: Pick<WorkingFeed['candidate'], 'gameId'> };
+
+export function workingFeedMatches(feed: FeedIdentity, game: Game): boolean {
   const same = (saved: WorkingFeed['owner']['home'], current: Game['home']) =>
     saved.id && current.id ? saved.id === current.id : normalizedName(saved.name) === normalizedName(current.name);
   return feed.candidate.gameId === game.id && feed.owner.league === game.league &&
     same(feed.owner.home, game.home) && same(feed.owner.away, game.away);
 }
 
-export function cachedFeedEligible(feed: WorkingFeed, game: Game, now: number): boolean {
+export function cachedFeedEligible(feed: FeedIdentity, game: Game, now: number): boolean {
   if (!workingFeedMatches(feed,game)) return false;
   if (game.lifecycle==='final') return now < game.graceEndsAt;
   return game.finalObservedAt===undefined &&
