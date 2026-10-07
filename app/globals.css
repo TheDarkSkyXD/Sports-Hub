@@ -60,8 +60,8 @@
 .source-inventory-item+.source-inventory-item{border-top:1px solid #353a44}
 .source-inventory-item summary{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 10px;align-items:center;cursor:pointer;padding:10px 12px;list-style:none;min-width:0}
 .source-inventory-item summary::-webkit-details-marker{display:none}
-.source-inventory-source-list>.source-inventory-item>summary::before,.source-inventory-game-list>.source-inventory-item>summary::before{content:'';width:6px;height:6px;flex:0 0 6px;border-right:1.5px solid #aeb6c2;border-bottom:1.5px solid #aeb6c2;transform:rotate(-45deg);transition:transform .16s ease}
-.source-inventory-source-list>.source-inventory-item[open]>summary::before,.source-inventory-game-list>.source-inventory-item[open]>summary::before{transform:rotate(45deg)}
+.source-inventory-source-list>.source-inventory-item>summary::before,.source-inventory-game-list>.source-inventory-item>summary::before,.source-inventory-source-games>.source-inventory-game-card>summary::before{content:'';width:6px;height:6px;flex:0 0 6px;border-right:1.5px solid #aeb6c2;border-bottom:1.5px solid #aeb6c2;transform:rotate(-45deg);transition:transform .16s ease}
+.source-inventory-source-list>.source-inventory-item[open]>summary::before,.source-inventory-game-list>.source-inventory-item[open]>summary::before,.source-inventory-source-games>.source-inventory-game-card[open]>summary::before{transform:rotate(45deg)}
 .source-inventory-item summary strong{font-size:12px;font-weight:500;color:#e8eaf0}
 .source-inventory-item summary span{font-size:11px;color:#abb4c0}
 .source-inventory-source-summary{display:flex;flex:1 1 180px;flex-direction:column;gap:3px;min-width:0;overflow-wrap:anywhere}
@@ -77,6 +77,11 @@
 .source-inventory-catalog{padding:0 12px 10px;min-width:0}
 .source-inventory-catalog p{font-size:11px;line-height:1.45;color:#a2aab8;margin:0 0 5px;overflow-wrap:anywhere}
 .source-inventory-catalog .source-inventory-list{margin-top:8px}
+.source-inventory-source-list>.source-inventory-item>.source-inventory-source-games{margin:0 12px 10px}
+.source-inventory-game-card>summary strong{flex:1 1 160px;overflow-wrap:anywhere}
+.source-inventory-listing{padding-top:7px}
+.source-inventory-listing+.source-inventory-listing{border-top:1px solid #353a44}
+.source-inventory-listing>p{margin:0 12px 8px;color:#a2aab8;font-size:11px;line-height:1.45}
 .source-inventory-candidates{margin:0 12px 10px;padding:9px 0;border-block:1px solid #353a44;color:#b9c3d0;font-size:11px}
 .source-inventory-candidates>strong{display:block;margin-bottom:7px;font-weight:600}
 .source-inventory-candidates ul{padding:0}
