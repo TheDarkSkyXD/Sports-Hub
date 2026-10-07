@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { confirmedFinishedBoundEvent, confirmedFinishedGameId, createObservationMatcher, detailCandidateGameIds, matchObservation, matchSourceLiveGame, mergeSchedulePartitions, normalizedName } from '../domain/matching.ts';
+import { confirmedFinishedBoundEvent, confirmedFinishedGameId, createObservationMatcher, detailCandidateGameIds, matchObservation, matchSourceLiveGame, matchUndatedSportsurge, mergeSchedulePartitions, normalizedName } from '../domain/matching.ts';
 import { SESSION_LEASE_MS, compareCandidates, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
 import { sourceInventory } from '../domain/source-inventory.ts';
 import { feedCalendarDay, feedEligible } from '../domain/feed-eligibility.ts';
@@ -194,7 +194,7 @@ export class FootballCoordinator {
     this.restoreWorkingFeeds();
     const match=createObservationMatcher(this.games);
     for (const observation of this.store.observations())
-      this.store.observe(observation,match(observation,this.now()));
+      this.store.observe(observation,matchUndatedSportsurge(observation,match(observation,this.now()),this.games,this.now()));
     this.projectDetails();
     this.reconcileStreameastCandidates();
     this.reconcileSportsurgeCandidates();
@@ -850,10 +850,11 @@ export class FootballCoordinator {
           result.outcome==='unsupported'?Number.MAX_SAFE_INTEGER:retryDeadline(at,0,this.sourceRefreshMs);
         const match=createObservationMatcher(this.games);
         const admitted=accepted.map(observation=>{
-          const result=match(observation,at);
-          if(observation.kickoff!==null&&observation.league!==null&&observation.teams!==null&&result.kind==='matched'){
+          const result=matchUndatedSportsurge(observation,match(observation,at),this.games,at);
+          if(observation.league!==null&&observation.teams!==null&&result.kind==='matched'){
             const game=this.games.find(game=>game.id===result.gameId);
-            if(game?.lifecycle==='live'&&this.scheduleFresh(game))newBindings.push({sourceId:observation.sourceId,
+            if(game&&this.scheduleFresh(game)&&(observation.kickoff!==null&&game.lifecycle==='live'||
+              observation.sourceId==='sportsurge'&&observation.kickoff===null))newBindings.push({sourceId:observation.sourceId,
               eventId:observation.id,url:observation.url,league:observation.league,
               teams:observation.teams,gameId:game.id,observedAt:at});
           }
@@ -911,7 +912,8 @@ export class FootballCoordinator {
       const detail=evidence.get(observation.id);
       if(detail?.outcome!=='resolved'||!matchesDetail(detail,observation)||
         now-detail.at>=30*60_000||detail.at>now+60_000||now-observation.observedAt>=30*60_000)continue;
-      const result=resolvedLiveChannelMatch(observation,match(observation,now),this.games.filter(game=>this.feedGame(game)),detail,now);
+      const resolved=resolvedLiveChannelMatch(observation,match(observation,now),this.games.filter(game=>this.feedGame(game)),detail,now);
+      const result=matchUndatedSportsurge(observation,resolved,this.games,now);
       if(result.kind!=='matched')continue;
       const game=this.games.find(item=>item.id===result.gameId);
       if(!this.feedGame(game))continue;
@@ -1018,7 +1020,7 @@ export class FootballCoordinator {
           (player.locator.provider==='event-page'||player.locator.provider==='tvapp')&&
           player.locator.gameId===rolloverGame?.id&&player.locator.eventUrl===original.url);
         if(publishedEventPage)observation={...observation,observedAt:at};
-        const rawResult=matchObservation(observation,this.games,at);
+        const rawResult=matchUndatedSportsurge(observation,matchObservation(observation,this.games,at),this.games,at);
         const freshGames=this.games.filter(game=>this.feedGame(game));
         const game=rawResult.kind==='matched'?this.games.find(value=>value.id===rawResult.gameId):
           provisionalLiveChannel(observation,rawResult,freshGames,at)??undefined;
@@ -1266,9 +1268,11 @@ export class FootballCoordinator {
     for(const event of catalog.events) {
       const category=catalog.categories[event.league];
       if(event.detail.kind!=='pending'||category.kind!=='collected')continue;
-      const result=match(sportsurgeObservation(event,category.at),this.now());
+      const observation=sportsurgeObservation(event,category.at);
+      const raw=match(observation,this.now());
+      const result=matchUndatedSportsurge(observation,raw,this.games,this.now());
       const gameId=result.kind==='matched'?result.gameId:event.sourceStatus==='live'&&event.kickoff===null&&
-        result.reason==='unverified-kickoff'&&result.possibleGameIds.length===1?result.possibleGameIds[0]:undefined;
+        raw.kind==='unmatched'&&raw.reason==='unverified-kickoff'&&raw.possibleGameIds.length===1?raw.possibleGameIds[0]:undefined;
       if(!gameId)continue;
       for(const stored of history) {
         const prior=stored.catalog.events.find(prior=>sameSportsurgeEvent(event,prior)&&prior.detail.kind==='collected');
@@ -1343,8 +1347,9 @@ export class FootballCoordinator {
         const category=catalog.categories[event.league];
         const observation=sportsurgeObservation(event,category.kind==='pending' ? catalog.startedAt : category.at);
         const raw=match(observation,receivedAt);
-        const result=event.sourceStatus==='live'&&event.kickoff===null?matchSourceLiveGame(raw,this.games,receivedAt):raw;
-        if(category.kind==='collected'&&event.sourceStatus==='live'&&event.kickoff===null&&event.teams&&
+        const live=event.sourceStatus==='live'&&event.kickoff===null?matchSourceLiveGame(raw,this.games,receivedAt):raw;
+        const result=matchUndatedSportsurge(observation,live,this.games,receivedAt);
+        if(category.kind==='collected'&&event.kickoff===null&&event.teams&&
           result.kind==='matched'){
           const game=this.games.find(game=>game.id===result.gameId);
           if(game&&this.scheduleFresh(game))newBindings.push({sourceId:'sportsurge-v2',eventId:event.id,

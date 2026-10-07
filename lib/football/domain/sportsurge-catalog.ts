@@ -1,4 +1,4 @@
-import { confirmedFinishedBoundEvent, confirmedFinishedGameId, createObservationMatcher, matchSourceLiveGame } from './matching.ts';
+import { confirmedFinishedBoundEvent, confirmedFinishedGameId, createObservationMatcher, matchSourceLiveGame, matchUndatedSportsurge } from './matching.ts';
 import { createHash } from 'node:crypto';
 import type { Candidate, Game, Match, Observation, SourceEventBinding, SourceMatchReason, SportsurgeCatalog, SportsurgeCatalogView, SportsurgeProvider, StoredSportsurgeCatalog } from '../shared.ts';
 
@@ -68,8 +68,10 @@ export function sportsurgeObservation(event:SportsurgeCatalog['events'][number],
 
 function matchedGame(event:SportsurgeCatalog['events'][number],at:number,games:Game[],now:number,
   match:ReturnType<typeof createObservationMatcher>):Game|undefined {
-  const raw:Match=match(sportsurgeObservation(event,at),now);
-  const result=event.sourceStatus==='live'&&event.kickoff===null?matchSourceLiveGame(raw,games,now):raw;
+  const observation=sportsurgeObservation(event,at);
+  const raw:Match=match(observation,now);
+  const live=event.sourceStatus==='live'&&event.kickoff===null?matchSourceLiveGame(raw,games,now):raw;
+  const result=matchUndatedSportsurge(observation,live,games,now);
   const id=result.kind==='matched'?result.gameId:null;
   const game=games.find(item=>item.id===id);
   if (!game || game.lifecycle!=='live' && game.lifecycle!=='scheduled') return undefined;
