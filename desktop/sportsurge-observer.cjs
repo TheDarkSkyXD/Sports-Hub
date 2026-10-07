@@ -63,6 +63,10 @@ function isNetworkErrorPlayerState(state) {
     state.errorDescription.startsWith('We are having trouble connecting to the server. Please reload the page.');
 }
 
+function liveFramesInSubtree(mainFrame) {
+  return mainFrame.framesInSubtree.filter(frame => frame && !frame.isDestroyed());
+}
+
 function offlinePlayerFrame(source, frames) {
   let sourceUrl;
   try { sourceUrl = new URL(source); }
@@ -404,7 +408,9 @@ function createObserverSlot(index) {
           current.probeKeys.add(key);
           const probe = async () => {
             if (active !== current) return;
-            const subtree = current.window.webContents.mainFrame.framesInSubtree;
+            let subtree;
+            try { subtree = liveFramesInSubtree(current.window.webContents.mainFrame); }
+            catch { endActive(current,null); return; }
             const frames = frame ? subtree.includes(frame) && !frame.isDestroyed() ? [frame] : [] :
               subtree.filter(item => {
                 if (item.isDestroyed()) return false;
@@ -504,7 +510,7 @@ function createObserverSlot(index) {
       current.playerTimer = setInterval(() => {
         if (active !== current || current.playerActivated) return;
         let frames;
-        try { frames = window.webContents.mainFrame.framesInSubtree; }
+        try { frames = liveFramesInSubtree(window.webContents.mainFrame); }
         catch { endActive(current,null); return; }
         const offline = offlinePlayerFrame(current.url,frames);
         if (offline && !offline.isDestroyed()) {
@@ -584,7 +590,7 @@ function createObserverSlot(index) {
         try {
           const main=window.webContents.mainFrame;
           if(!frame||frame.parent!==main||current.selection.playerFrame||
-            main.framesInSubtree.filter(item=>item.parent===main&&item.url===navigatedUrl).length!==1){
+            liveFramesInSubtree(main).filter(item=>item.parent===main&&item.url===navigatedUrl).length!==1){
             endActive(current,null);return;
           }
           current.selection.playerFrame=frame;
