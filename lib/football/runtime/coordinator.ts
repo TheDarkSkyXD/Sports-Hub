@@ -10,7 +10,7 @@ import { provisionalLiveChannel, resolvedLiveChannelMatch } from '../domain/live
 import { catalogDecision, sameSportsurgeEvent, sanitizeSportsurgeCatalog, sportsurgeCandidates, sportsurgeCatalogView, sportsurgeEventCandidate, sportsurgeObservation } from '../domain/sportsurge-catalog.ts';
 import { sameStreameastEvent, sanitizeStreameastCatalog, streameastDecision, streameastObservation, streameastCandidates, streameastCatalogView, verifiedStreameastMatch } from '../domain/streameast-catalog.ts';
 import type { Recovery } from '../domain/lifecycle.ts';
-import type { CandidateProbeResult, FootballDependencies, FootballRepository } from '../domain/ports.ts';
+import { PartialListingReadError, type CandidateProbeResult, type FootballDependencies, type FootballRepository } from '../domain/ports.ts';
 import { candidateSummary, type Board, type Candidate, type CandidateAvailability, type Command, type DetailEvidence, type Game, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourceEventBinding, type SourcesSnapshot, type StreameastCatalog, type SportsurgeCatalog } from '../shared.ts';
 
 type RecoveryPhase = {kind:'cycling'} | {kind:'exhausted';until:number;knownIds:string[]};
@@ -823,7 +823,14 @@ export class FootballCoordinator {
         if(this.stopped)return;
         const request=this.readHtml(source.url);
         if(!request)return;
-        const html = await request;
+        let partial:PartialListingReadError|null=null;
+        let html:string;
+        try {html=await request;}
+        catch(error) {
+          if(!(error instanceof PartialListingReadError))throw error;
+          partial=error;
+          html=error.html;
+        }
         const at = this.now();
         const result = this.parseListings(source,html,at);
         if (this.stopped) return;
@@ -837,9 +844,10 @@ export class FootballCoordinator {
           newBindings.push(binding);
           return false;
         });
-        const failures=result.outcome==='parser-changed'?(previous?.failures||0)+1:
+        const failures=partial?(previous?.failures||0)+1:result.outcome==='parser-changed'?(previous?.failures||0)+1:
           result.outcome==='unsupported'?(previous?.failures||0):0;
-        const nextEligibleAt=result.outcome==='unsupported'?Number.MAX_SAFE_INTEGER:retryDeadline(at,0,this.sourceRefreshMs);
+        const nextEligibleAt=partial?Math.max(this.hostRetryAt(source.url),retryDeadline(at,this.retryAfterMs(partial),this.sourceRefreshMs)):
+          result.outcome==='unsupported'?Number.MAX_SAFE_INTEGER:retryDeadline(at,0,this.sourceRefreshMs);
         const match=createObservationMatcher(this.games);
         const admitted=accepted.map(observation=>{
           const result=match(observation,at);
@@ -851,9 +859,11 @@ export class FootballCoordinator {
           }
           return {observation,result};
         });
-        this.store.saveListingAttempt(source.id,{at,outcome:result.outcome,count:result.observations.length,failures,nextEligibleAt,parserVersion:source.parserVersion??LISTING_PARSER_VERSION},
+        this.store.saveListingAttempt(source.id,{at,outcome:partial?'failed':result.outcome,
+          ...(partial?{failure:sourceFailure(partial)}:{}),count:result.observations.length,
+          failures,nextEligibleAt,parserVersion:source.parserVersion??LISTING_PARSER_VERSION},
           admitted,newBindings);
-        this.sourceTimes.set(source.id,at);
+        if(!partial)this.sourceTimes.set(source.id,at);
         if(accepted.length)this.publishDetails();
       } catch(error) {
         if (this.stopped) return;

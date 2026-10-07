@@ -3,6 +3,7 @@ import { load } from 'cheerio';
 import { z } from 'zod';
 import type { League, MissingPlayerReason, Observation, ResolvedPlayer } from '../shared.ts';
 import type { ListingSource } from '../domain/ports.ts';
+import { PartialListingReadError } from '../domain/ports.ts';
 import { parsePlayers } from '../../sunday.ts';
 import { parseStreamcenterPlayer } from '../../playback/providers/streamcenter-player.ts';
 import { validEventPagePair } from '../../playback/providers/event-page-policy.ts';
@@ -84,13 +85,18 @@ export async function readHtml(url: string, signal: AbortSignal): Promise<string
     return JSON.stringify(events[0]);
   }
   if (url === 'https://isportsurge.ws/index6') {
-    await readPage(url,signal);
-    const pages: string[] = [];
-    for (const category of ['https://isportsurge.ws/nfl/livestreams3','https://isportsurge.ws/cfb/livestreams2']) {
-      const html = await readPage(category,signal);
-      pages.push(load(html)('body').html() || '');
-    }
-    return `<main>${pages.join('')}</main>`;
+    const results=await Promise.allSettled([
+      readPage('https://isportsurge.ws/nfl/livestreams3',signal),
+      readPage('https://isportsurge.ws/cfb/livestreams2',signal),
+    ]);
+    if(signal.aborted)throw signal.reason instanceof Error?signal.reason:new DOMException('Aborted','AbortError');
+    const pages=results.flatMap(result=>result.status==='fulfilled'?[load(result.value)('body').html()||'']:[]);
+    if(results.every(result=>result.status==='fulfilled'))return `<main>${pages.join('')}</main>`;
+    const errors=results.flatMap(result=>result.status==='rejected'?[result.reason instanceof Error?result.reason:new Error('unavailable')]:[]);
+    const retryAfterMs=Math.max(0,...errors.map(error=>error instanceof SourceFetchError?error.retryAfterMs||0:0));
+    const failure=errors.find(error=>error.message==='http-429'||error.message==='rate-limited')||errors[0];
+    if(!pages.length)throw new SourceFetchError(failure.message,retryAfterMs);
+    throw new PartialListingReadError(`<main>${pages.join('')}</main>`,failure,retryAfterMs);
   }
   return readPage(url,signal,url === TVAPP_API || url === PPV_API || url === SWAC_CATALOG_URL ? 'application/json' : 'text/html');
 }

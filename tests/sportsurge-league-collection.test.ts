@@ -41,6 +41,8 @@ const feeds = (snapshot: SourcesSnapshot) => snapshot.games.flatMap(row => row.c
 async function runCollection(failed: 'nfl' | 'ncaaf' | 'index' | null) {
   const directory = mkdtempSync(join(tmpdir(),'sportsurge-leagues-'));
   const originalFetch = globalThis.fetch;
+  let failedCategory=failed;
+  let clock=at;
   const coordinator = createFootballCoordinator(join(directory,'state.sqlite'),{
     sources:[source],schedules:[
       {id:'nfl',league:'nfl',path:'nfl',group:null},
@@ -49,20 +51,20 @@ async function runCollection(failed: 'nfl' | 'ncaaf' | 'index' | null) {
     ],
     readSchedule:async partition => ({games:games.filter(row=>row.partitions?.includes(partition.id)),at,league:partition.league}),
     readSeasonMembership:async()=>{throw new Error('unexpected membership fetch');},
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),now:()=>at,
+    probeCandidate:async()=>({kind:'playable',proof:'media'}),now:()=>clock,
   });
   globalThis.fetch = async input => {
     const url = String(input);
     if (url===source.url) {
-      if(failed==='index')throw new DOMException('index timeout','TimeoutError');
+      if(failedCategory==='index')throw new DOMException('index timeout','TimeoutError');
       return new Response('<html><body>Sportsurge</body></html>');
     }
     if(url==='https://isportsurge.ws/nfl/livestreams3') {
-      if(failed==='nfl')throw new DOMException('NFL timeout','TimeoutError');
+      if(failedCategory==='nfl')throw new DOMException('NFL timeout','TimeoutError');
       return new Response(category('nfl'));
     }
     if(url==='https://isportsurge.ws/cfb/livestreams2') {
-      if(failed==='ncaaf')throw new DOMException('CFB timeout','TimeoutError');
+      if(failedCategory==='ncaaf')throw new DOMException('CFB timeout','TimeoutError');
       return new Response(category('ncaaf'));
     }
     const index=urls.indexOf(url);
@@ -90,7 +92,8 @@ async function runCollection(failed: 'nfl' | 'ncaaf' | 'index' | null) {
     await coordinator.stop();
     rmSync(directory,{recursive:true,force:true});
   };
-  return {coordinator,snapshot,settled,close};
+  return {coordinator,snapshot,settled,close,
+    failNext:(category:'nfl'|'ncaaf')=>{failedCategory=category;clock+=5*60_000;},get clock(){return clock;}};
 }
 
 test('an NFL category timeout still publishes two NCAA game feeds and reports a partial attempt',async()=>{
@@ -134,5 +137,25 @@ test('a complete Sportsurge pass publishes four distinct game feeds',async()=>{
     assert.deepEqual(feeds(snapshot),[['1001','gooz-57001'],['1002','gooz-57002'],
       ['ncaaf-2001','gooz-57003'],['ncaaf-2002','gooz-57004']]);
     assert.equal(snapshot.sources.find(row=>row.id==='sportsurge')?.lastAttempt?.count,4);
+  } finally {await run.close();}
+});
+
+test('a failed league retains its prior listing timestamp while the healthy league refreshes',async()=>{
+  const run=await runCollection(null);
+  try {
+    await run.coordinator.refresh(true);
+    assert.equal(feeds(await run.settled(4)).length,4);
+    run.failNext('nfl');
+    await run.coordinator.refresh(true);
+    let snapshot=await run.snapshot();
+    for(let attempt=0;attempt<100&&snapshot.sources.find(row=>row.id==='sportsurge')?.lastAttempt?.at!==run.clock;attempt++) {
+      await new Promise<void>(resolve=>setTimeout(resolve,10));
+      snapshot=await run.snapshot();
+    }
+    const sourceRow=snapshot.sources.find(row=>row.id==='sportsurge');
+    assert.equal(sourceRow?.lastAttempt?.outcome,'failed');
+    assert.equal(sourceRow.lastAttempt.count,2);
+    assert.equal(sourceRow.links.find(link=>link.url===urls[0])?.observedAt,at);
+    assert.equal(sourceRow.links.find(link=>link.url===urls[2])?.observedAt,run.clock);
   } finally {await run.close();}
 });

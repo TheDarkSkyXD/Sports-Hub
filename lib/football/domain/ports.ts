@@ -12,6 +12,17 @@ export type SchedulePartition = { games: Game[]; at: number; week?: number };
 export type ScheduleResult = SchedulePartition & { league: League; horizonErrors?: string[] };
 export type ListingResult = { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' };
 
+export class PartialListingReadError extends Error {
+  readonly html:string;
+  readonly retryAfterMs:number;
+  constructor(html:string,failure:Error,retryAfterMs:number) {
+    super(failure.message,{cause:failure});
+    this.name='PartialListingReadError';
+    this.html=html;
+    this.retryAfterMs=retryAfterMs;
+  }
+}
+
 export interface FootballRepository {
   finishedGameRetentionMinutes(): number;
   setFinishedGameRetentionMinutes(minutes:number):void;
