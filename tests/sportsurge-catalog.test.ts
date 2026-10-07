@@ -199,7 +199,7 @@ test('every safe provider row becomes a stable custom-player candidate through p
   assert.equal(sportsurgeCandidates({...input,now:at+30*60_000}).length,0);
 });
 
-test('a source live flag matches the unique scheduled game only near kickoff',()=>{
+test('an undated source event matches a unique scheduled game throughout the feed window',()=>{
   const event=parseCategory(fixture('cfb'),'ncaaf').events[0];
   event.detail=parseDetail(fixture('detail'),event,at);
   const catalog:SportsurgeCatalog={runId,sequence:0,startedAt:at,state:{kind:'complete',at},
@@ -222,13 +222,13 @@ test('a source live flag matches the unique scheduled game only near kickoff',()
   assert.equal(inventory.sportsurgeV2.current?.games[0].gameId,game.id);
   for(const date of [at-31*60_000,at+31*60_000]) {
     const other={...game,date:new Date(date).toISOString()};
-    assert.equal(sportsurgeCandidates({current:stored,previous:null,lastComplete:null,games:[other],now:at}).length,0);
+    assert.equal(sportsurgeCandidates({current:stored,previous:null,lastComplete:null,games:[other],now:at}).length,17);
   }
   assert.equal(sportsurgeCandidates({current:stored,previous:null,lastComplete:null,games:[{...game,date:undefined}],now:at}).length,0);
   const duplicate={...game,id:'ncaaf-other'};
   assert.equal(sportsurgeCandidates({current:stored,previous:null,lastComplete:null,games:[game,duplicate],now:at}).length,0);
   const upcoming:SportsurgeCatalog={...catalog,events:[{...event,sourceStatus:'upcoming'}]};
-  assert.equal(sportsurgeCandidates({current:{catalog:upcoming,receivedAt:at},previous:null,lastComplete:null,games:[game],now:at}).length,0);
+  assert.equal(sportsurgeCandidates({current:{catalog:upcoming,receivedAt:at},previous:null,lastComplete:null,games:[game],now:at}).length,17);
 });
 
 test('an accepted v2 checkpoint opens and authorizes a custom-player session',async()=>{
