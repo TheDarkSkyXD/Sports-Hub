@@ -160,8 +160,68 @@ test('observer saturation and cancellation defer a probe without condemning the 
   assert.deepEqual(await probeCandidate(locator,signal(),async()=>{throw new ProviderDeferredError(2000);}),{kind:'deferred',retryAfterMs:2000});
   const controller=new AbortController();controller.abort();
   const run=fixture({'index.m3u8':playlist()});
-  assert.deepEqual(await probeCandidate(locator,controller.signal,run.open),{kind:'deferred',retryAfterMs:2000});
-  assert.equal(run.closed(),1);
+  let opens=0;
+  assert.deepEqual(await probeCandidate(locator,controller.signal,async()=>{opens++;return run.open();}),{kind:'deferred',retryAfterMs:2000});
+  assert.equal(opens,0);
+  assert.equal(run.closed(),0);
+});
+
+async function settlesSoon<T>(work:Promise<T>):Promise<T|'pending'> {
+  let settled=false;
+  const observed=work.then(value=>{settled=true;return value;});
+  for(let index=0;index<80&&!settled;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+  return settled?observed:'pending';
+}
+
+test('canceling an opening provider settles promptly and closes a late playback',async()=>{
+  const controller=new AbortController();
+  let release:(value:Awaited<ReturnType<ReturnType<typeof fixture>['open']>>)=>void=()=>{};
+  const opening=new Promise<Awaited<ReturnType<ReturnType<typeof fixture>['open']>>>(resolve=>{release=resolve;});
+  const run=fixture({'index.m3u8':playlist(),'segment.ts':transportStream});
+  const late=await run.open();
+  const work=probeCandidate(locator,controller.signal,async()=>opening);
+  controller.abort();
+  try {
+    assert.deepEqual(await settlesSoon(work),{kind:'deferred',retryAfterMs:2000});
+    release(late);
+    for(let index=0;index<10;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(run.closed(),1);
+  } finally {release(late);}
+});
+
+test('canceling a blocked media read closes playback and settles promptly',async()=>{
+  const controller=new AbortController();
+  let release:()=>void=()=>{};
+  const blocked=new Promise<void>(resolve=>{release=resolve;});
+  let entered=false,closed=0;
+  const root:ProviderResource={kind:'playlist',identity:'blocked',resolve(){return null;},async read(){entered=true;await blocked;
+    return {status:200,body:new Response(playlist()).body,contentType:'application/vnd.apple.mpegurl'};
+  }};
+  const work=probeCandidate(locator,controller.signal,async()=>({root,close(){closed++;}}));
+  try {
+    for(let index=0;index<20&&!entered;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(entered,true);
+    controller.abort();
+    assert.deepEqual(await settlesSoon(work),{kind:'deferred',retryAfterMs:2000});
+    assert.equal(closed,1);
+  } finally {release();await work;}
+});
+
+test('canceling a stream whose cleanup never settles still closes playback',async()=>{
+  const controller=new AbortController();
+  let closed=0,canceling=0;
+  const body=new ReadableStream<Uint8Array>({
+    start(stream){stream.enqueue(new Uint8Array(1024*1024+1));},
+    cancel(){canceling++;return new Promise<void>(()=>{});},
+  });
+  const root:ProviderResource={kind:'playlist',identity:'blocked-cancel',resolve(){return null;},
+    async read(){return {status:200,body,contentType:'application/vnd.apple.mpegurl'};}};
+  const work=probeCandidate(locator,controller.signal,async()=>({root,close(){closed++;}}));
+  for(let index=0;index<20&&!canceling;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+  assert.equal(canceling,1);
+  controller.abort();
+  assert.deepEqual(await settlesSoon(work),{kind:'deferred',retryAfterMs:2000});
+  assert.equal(closed,1);
 });
 
 test('fetch-based resources normalize compressed lengths before validating decoded media',async()=>{
