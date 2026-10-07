@@ -109,3 +109,78 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });
+
+test('transient native cleanup failures do not exhaust media partitions or reuse a dirty session', async () => {
+  let created = 0;
+  const media = createObservedMedia({
+    pinAddress: async () => ({ address: '93.184.216.34', family: 4 }),
+    validateUrl: sportsurgeUrl,
+    sessions: { fromPartition: () => {
+      created++;
+      let used = false;
+      let clean = true;
+      let closeAttempts = 0;
+      return {
+        setPermissionRequestHandler() {}, setPermissionCheckHandler() {},
+        webRequest: { onBeforeRequest() {} },
+        async setProxy() {
+          assert.equal(clean, true, 'a session with open native connections cannot be reused');
+          used = true;
+          clean = false;
+        },
+        async closeAllConnections() {
+          if (++closeAttempts === 1) throw new Error('transient native cleanup failure');
+        },
+        async clearAuthCache() {
+          assert.equal(used, true);
+          clean = true;
+        },
+      };
+    } },
+  });
+  try {
+    for (let index = 0; index < 32; index++) {
+      const capability = await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' });
+      assert.ok(capability);
+      media.close(capability);
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const recovered = await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' });
+    assert.ok(recovered, 'a transient cleanup error must not permanently consume the 32-session pool');
+    assert.ok(created <= 32);
+    media.close(recovered);
+  } finally {
+    media.stop();
+  }
+});
+
+test('permanent native cleanup failures keep the media partition count bounded', async () => {
+  let created = 0;
+  const media = createObservedMedia({
+    pinAddress: async () => ({ address: '93.184.216.34', family: 4 }),
+    validateUrl: sportsurgeUrl,
+    sessions: { fromPartition: () => {
+      created++;
+      return {
+        setPermissionRequestHandler() {}, setPermissionCheckHandler() {},
+        webRequest: { onBeforeRequest() {} },
+        async setProxy() {},
+        async closeAllConnections() { throw new Error('permanent native cleanup failure'); },
+        async clearAuthCache() {},
+      };
+    } },
+  });
+  try {
+    for (let index = 0; index < 32; index++) {
+      const capability = await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' });
+      assert.ok(capability);
+      media.close(capability);
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    assert.equal(await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' }), null);
+    assert.equal(created, 32);
+  } finally {
+    media.stop();
+  }
+});

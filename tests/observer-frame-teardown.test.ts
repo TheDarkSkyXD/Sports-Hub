@@ -174,3 +174,58 @@ test('a disposed native frame tree ends a media probe without an unhandled rejec
   } });
   assert.equal(await operation.promise, null);
 });
+
+test('a frame disposed after script execution ends its observation and leaves the slot reusable', async () => {
+  let urlReads = 0;
+  const detached = {
+    get url() {
+      if (++urlReads > 1) throw new Error('native frame disposed');
+      return 'https://player.example/watch';
+    },
+    isDestroyed: () => false,
+    executeJavaScript: async () => true,
+  };
+  const mainFrame: { framesInSubtree: unknown[] } = { framesInSubtree: [detached] };
+  const harness = createObserverHarness(mainFrame);
+  const mediaUrl = 'https://player.example/live.m3u8';
+  const observeMedia = () => {
+    harness.request({ id: 1, url: mediaUrl, resourceType: 'media' });
+    harness.sendHeaders({ id: 1, url: mediaUrl, frame: detached, requestHeaders: {
+      referer: 'https://player.example/watch', 'user-agent': 'Observer test',
+    }, initiatorOrigin: 'https://player.example' });
+    harness.receiveHeaders({ id: 1, url: mediaUrl, statusCode: 200, responseHeaders: {
+      'content-type': ['application/vnd.apple.mpegurl'],
+    } });
+  };
+  const first = harness.observer.observe('https://example.com/event', 'probe');
+  assert.ok(first);
+  try {
+    observeMedia();
+    const result = await Promise.race([
+      first.promise,
+      new Promise(resolve => setTimeout(() => resolve('stalled'), 100)),
+    ]);
+    assert.equal(result, null);
+    mainFrame.framesInSubtree = [{
+      url: 'https://player.example/watch', isDestroyed: () => false,
+      executeJavaScript: async () => true,
+    }];
+    const second = harness.observer.observe('https://example.com/event', 'probe');
+    assert.ok(second);
+    harness.request({ id: 2, url: mediaUrl, resourceType: 'media' });
+    harness.sendHeaders({ id: 2, url: mediaUrl, requestHeaders: {
+      referer: 'https://player.example/watch', 'user-agent': 'Observer test',
+    }, initiatorOrigin: 'https://player.example' });
+    harness.receiveHeaders({ id: 2, url: mediaUrl, statusCode: 200, responseHeaders: {
+      'content-type': ['application/vnd.apple.mpegurl'],
+    } });
+    const secondResult = await Promise.race([
+      second.promise,
+      new Promise(resolve => setTimeout(() => resolve('stalled'), 100)),
+    ]);
+    assert.equal(secondResult?.url, mediaUrl);
+  } finally {
+    first.cancel();
+    harness.observer.stop();
+  }
+});
