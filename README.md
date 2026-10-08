@@ -169,6 +169,8 @@ When ESPN confirms a final, the game leaves live discovery immediately. Existing
 
 The pipeline stores bounded observations, diagnostics, identity mappings, and final deadlines in local SQLite. Desktop data lives in Electron's user-data directory. Browser development defaults to `.desktop-runtime/`. Collection runs while the desktop app is open, including when minimized, and stops with its owned server. There is no cloud collector or preference sync. Local servers bind to `127.0.0.1`; provider requests still use the internet. Saved feed URLs are not encrypted.
 
+`npm run dev` and `npm run start` use `.desktop-runtime/` when `SUNDAY_ROOM_DATA_DIR` is unset. Set `SUNDAY_ROOM_DATA_DIR` to a writable directory when starting Next.js directly, including `.next/standalone/server.js`.
+
 ## Development
 
 ### Browser development
