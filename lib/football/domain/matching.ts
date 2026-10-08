@@ -155,14 +155,14 @@ export function createSourceEventMatcher(games:readonly Game[],mode:'current'|'i
       prepared.set(key,match);
     }
     let result=match(observation,now);
+    const fresh=now-observation.observedAt<30*60_000&&observation.observedAt<=now+60_000;
     if(result.kind==='unmatched'&&observation.kickoff===null&&
       result.reason==='unverified-kickoff'&&result.possibleGameIds.length===1&&
-      (evidence.undated==='retained-live-detail'||
-        now-observation.observedAt<30*60_000&&observation.observedAt<=now+60_000)){
+      (evidence.undated==='retained-live-detail'||fresh)){
       const game=byId.get(result.possibleGameIds[0]);
       if(game&&game.lifecycle!=='final'&&observation.league===game.league&&
         (evidence.undated==='published-listing'&&feedEligible(game,now)||
-          evidence.undated==='retained-live-detail'&&game.lifecycle==='live'&&feedEligible(game,now)||
+          evidence.undated==='retained-live-detail'&&(game.lifecycle==='live'||fresh)&&feedEligible(game,now)||
           evidence.undated==='live-claim'&&feedEligible(game,now)&&game.date!==undefined&&
             Math.abs(Date.parse(game.date)-now)<=30*60_000))
         result={kind:'matched',gameId:game.id};

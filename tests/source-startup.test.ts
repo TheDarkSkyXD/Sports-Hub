@@ -503,7 +503,7 @@ test('a late near-kickoff choice enters a full distant probe queue and receives 
     const full=await coordinator.command({kind:'sources'});
     assert.equal(full.kind,'sources');
     if(full.kind==='sources')assert.equal(full.snapshot.games.flatMap(row=>row.candidates)
-      .filter(candidate=>candidate.availability.kind==='checking').length,260);
+      .filter(candidate=>candidate.availability.kind==='checking').length,282);
     listing.release();
     await until(async()=>{
       const reply=await coordinator.command({kind:'sources'});

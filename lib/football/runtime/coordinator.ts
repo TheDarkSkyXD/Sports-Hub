@@ -540,7 +540,7 @@ export class FootballCoordinator {
     const queued=this.probeQueue.find(job=>job.key===key);
     if(queued)return {kind:'checking',progress:{kind:'queued',since:queued.phase.since}};
     const deferred=this.deferredProbes.get(key);
-    if(deferred&&deferred.until>this.now())return {kind:'checking',progress:{kind:'deferred',since:deferred.since,retryAt:deferred.until,phase:deferred.phase}};
+    if(deferred&&deferred.until>this.now())return {kind:'checking',progress:{kind:'deferred',since:deferred.since,retryAt:deferred.until,...(deferred.phase?{phase:deferred.phase}:{})}};
     if(health?.kind==='unavailable')return health;
     if(this.currentCandidate(candidate)&&this.feedGame(this.games.find(game=>game.id===candidate.gameId)))
       return {kind:'checking',progress:{kind:'queued',since:candidate.observedAt}};
@@ -781,7 +781,7 @@ export class FootballCoordinator {
         const checkedAt=this.now();
         if(result.kind==='playable')this.recordTerminal(job.candidate,{kind:'playable',proof:result.proof,checkedAt,owner:job.owner});
         else if(result.kind==='unavailable') {
-          this.recordTerminal(job.candidate,{kind:'unavailable',reason:result.reason,phase:result.phase,checkedAt,retryAt:checkedAt+this.sourceRefreshMs});
+          this.recordTerminal(job.candidate,{kind:'unavailable',reason:result.reason,...(result.phase?{phase:result.phase}:{}),checkedAt,retryAt:checkedAt+this.sourceRefreshMs});
           this.projectCandidates();
         }
         else {

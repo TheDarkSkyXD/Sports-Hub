@@ -110,7 +110,7 @@ test('explicit retry reaches an unavailable server while the background queue is
       const reply=await coordinator.command({kind:'sources'});
       if(reply.kind==='sources')state=`${reply.snapshot.games[0]?.candidates.length} candidates, ${reply.snapshot.games[0]?.candidates.filter(candidate=>candidate.availability.kind==='checking').length} checking, ${reply.snapshot.games[0]?.candidates.find(candidate=>candidate.id==='candidate-0-0')?.availability.kind} first`;
       return reply.kind==='sources'&&reply.snapshot.games[0]?.candidates.find(candidate=>candidate.id==='candidate-0-0')?.availability.kind==='unavailable'&&
-        reply.snapshot.games[0].candidates.filter(candidate=>candidate.availability.kind==='checking').length===260;
+        reply.snapshot.games[0].candidates.filter(candidate=>candidate.availability.kind==='checking').length===269;
     },()=>`queue did not fill after the first failure, ${state}, calls ${calls.length}`);
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[match.id],retry:true}),{kind:'ok'});
     const queued=await coordinator.command({kind:'sources'});
