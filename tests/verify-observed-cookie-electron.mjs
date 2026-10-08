@@ -20,7 +20,10 @@ const cookie='session=fixture-secret';
 const segment=Buffer.alloc(188*3);
 for(let offset=0;offset<segment.length;offset+=188)segment[offset]=0x47;
 const playlist='#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:4,\n/segments/segment.ts\n';
-const evidence={playlist:0,segment:0,cross:0,playlistCookies:[],segmentCookies:[]};
+const referrerPage=`${fixture}/watch-referrer`;
+const referrerPlaylist=playlist.replace('/segments/segment.ts','/segments/referrer.ts');
+const evidence={playlist:0,segment:0,cross:0,playlistCookies:[],segmentCookies:[],
+  referrerPlaylist:[],referrerSegment:[]};
 let server;
 let child;
 
@@ -51,6 +54,21 @@ function fixtureRequest(request,response){
       <script>fetch('/hls/live.m3u8',{credentials:'include'}).catch(()=>{})</script>`);
     return;
   }
+  if(host==='fixture.example:8443' && request.url==='/watch-referrer'){
+    response.writeHead(200,{'content-type':'text/html; charset=utf-8','referrer-policy':'unsafe-url'});
+    response.end(`<video width="800" height="450" muted playsinline></video>
+      <script>fetch('${cross}/hls/referrer.m3u8').catch(()=>{})</script>`);
+    return;
+  }
+  if(host==='other.fixture.example:8443' &&
+    ['/hls/referrer.m3u8','/segments/referrer.ts'].includes(request.url)){
+    const isPlaylist=request.url==='/hls/referrer.m3u8';
+    (isPlaylist?evidence.referrerPlaylist:evidence.referrerSegment).push(request.headers.referer);
+    if(request.headers.referer!==referrerPage){response.writeHead(403);response.end();return;}
+    response.writeHead(200,{'content-type':isPlaylist?'application/vnd.apple.mpegurl':'video/mp2t',
+      'access-control-allow-origin':fixture});
+    response.end(isPlaylist?referrerPlaylist:segment);return;
+  }
   if(host==='fixture.example:8443' && request.url==='/hls/live.m3u8'){
     evidence.playlistCookies.push(request.headers.cookie===cookie);
     if(request.headers.cookie!==cookie){response.writeHead(403);response.end();return;}
@@ -66,7 +84,7 @@ function fixtureRequest(request,response){
     response.end(segment);return;
   }
   if(host==='other.fixture.example:8443' && request.url==='/cross.ts'){
-    if(request.headers.cookie){response.writeHead(409);response.end();return;}
+    if(request.headers.cookie || request.headers.referer!==`${fixture}/`){response.writeHead(409);response.end();return;}
     evidence.cross++;
     response.writeHead(200,{'content-type':'video/mp2t'});
     response.end(segment);return;
@@ -134,6 +152,24 @@ try{
   assert.ok(evidence.playlist>=3,'browser and relay both read the playlist');
   assert.ok(evidence.segment>=2,'manual replay and probe both read a full segment');
   assert.equal(evidence.cross,1);
+  const referrerObserved=await fetch(`${origin}/observe`,{method:'POST',headers:{
+    'content-type':'application/json','x-sunday-control-token':token,
+  },body:JSON.stringify({url:referrerPage,purpose:'probe'}),signal:AbortSignal.timeout(25000)});
+  assert.equal(referrerObserved.status,200,`referrer observer returned ${referrerObserved.status}: ${await referrerObserved.clone().text()}`);
+  const referrerResult=await referrerObserved.json();
+  assert.equal(referrerResult.url,`${cross}/hls/referrer.m3u8`);
+  assert.deepEqual(evidence.referrerPlaylist,[referrerPage],'browser must send the full referrer to the accepted playlist');
+  const replay=await fetch(`${origin}/media`,{method:'POST',headers:{
+    'content-type':'application/json','x-sunday-control-token':token,
+  },body:JSON.stringify({capability:referrerResult.capability,url:referrerResult.url}),signal:AbortSignal.timeout(10000)});
+  assert.equal(replay.status,200,`native replay must retain the accepted full referrer: ${JSON.stringify(evidence.referrerPlaylist)}`);
+  assert.equal(await replay.text(),referrerPlaylist);
+  await fetch(`${origin}/media/${referrerResult.capability}`,{method:'DELETE',headers:{'x-sunday-control-token':token}});
+  const referrerProof=await probeCandidate({provider:'gooz',playerId:'referrer-fixture'},AbortSignal.timeout(65000),
+    (_locator,signal,purpose)=>observedPublicPage(new URL(referrerPage),signal,purpose));
+  assert.deepEqual(referrerProof,{kind:'playable',proof:'media'});
+  assert.deepEqual(evidence.referrerPlaylist,Array(4).fill(referrerPage));
+  assert.deepEqual(evidence.referrerSegment,[referrerPage]);
   console.log('real Electron observer and media lease verified',JSON.stringify(evidence));
 }finally{
   delete process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN;
