@@ -5,7 +5,7 @@ import { load } from 'cheerio';
 
 const require = createRequire(import.meta.url);
 const { isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame,
-  activatePublishedVipboxVideo } = require('../desktop/sportsurge-observer.cjs');
+  activatePublishedJwVideo } = require('../desktop/sportsurge-observer.cjs');
 
 const offlineHtml = `<html><head><title>Stream is Offline</title></head><body>
 <div class="banner-container"><span class="status-text">Offline</span>
@@ -95,16 +95,16 @@ test('the published SD0 Play control starts one visible paused video without cli
     return [];
   }};
   const style=()=>({display:'block',visibility:'visible'});
-  assert.equal(activatePublishedVipboxVideo(page,style),true);
+  assert.equal(activatePublishedJwVideo(page,style),true);
   assert.equal(video.muted,true);
   assert.equal(clicks,1);
   assert.equal(plays,1);
-  assert.equal(activatePublishedVipboxVideo({...page,querySelectorAll(selector:string){
+  assert.equal(activatePublishedJwVideo({...page,querySelectorAll(selector:string){
     if(selector==='video')return [video];
     if(selector.includes('jw-icon-playback'))return [button,button];
     return [];
   }},style),false);
-  assert.equal(activatePublishedVipboxVideo(page,()=>({display:'none',visibility:'visible'})),false);
+  assert.equal(activatePublishedJwVideo(page,()=>({display:'none',visibility:'visible'})),false);
   assert.equal(clicks,1);
   assert.equal(plays,1);
 });

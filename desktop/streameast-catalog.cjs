@@ -69,7 +69,8 @@ function publishedFreePlayer(html,event,selectedUrl) {
     const player=/^\/(0nhl|strm)\/(\d{1,4})\.php$/.exec(url.pathname);
     if(player)return {kind:'wikisport',section:player[1],id:player[2],url:url.href};
   }
-  const supported=url.origin==='https://dlive.sx'&&/^\/stream\/stream-\d{1,4}\.php$/.test(url.pathname)||
+  const supported=url.origin==='https://wikisport.info'&&/^\/ch\/[1-9]\d{0,3}\.php$/.test(url.pathname)||
+    url.origin==='https://dlive.sx'&&/^\/stream\/stream-\d{1,4}\.php$/.test(url.pathname)||
     url.origin==='https://flyembed.click'&&/^\/embed\/\d{1,4}\.php$/.test(url.pathname)||
     url.origin==='https://fsportshdz.xyz'&&/^\/embed\/[a-z0-9]+(?:-[a-z0-9]+)*-live-streams\.php$/.test(url.pathname);
   return supported?{kind:'page',url:url.href}:{kind:'unsupported'};
