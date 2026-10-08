@@ -32,6 +32,10 @@ Browser categories with unverified future detail paths remain explicit. A new no
 
 ## Verification
 
+Run `npm run verify:record -- <command> [args...]` from the repository root to retain each verification attempt. For the full test suite, run `npm run verify:record -- node --experimental-strip-types --test tests/*.test.ts`. On Windows, pass Node tools through their `node` entrypoint.
+
+The recorder prints output as the command runs. Each attempt gets an `output.log` and `result.json` under `.desktop-runtime/verification-runs/<run>/`. The result records the exact command arguments, working directory, start and end times, exit code, and termination signal. The recorder returns the command's exit code. Pass only arguments that are safe to save in `result.json`; the recorder does not save the environment.
+
 Run the normal typecheck, lint, build, and test commands. `tests/universal-feed-inventory.test.ts` exercises the public coordinator across all 14 leagues and both days, failed and pending schedules, complete empty reads, unknown status, more than 1,000 listings, and 300 choices. Captured browser pages cover NBA, NHL, MLB, and Sportsurge F1 identity and routes.
 
 Run `node --experimental-strip-types tests/verify-observed-cookie-electron.mjs` for actual Chromium capture and native replay. The fixture requires a cookie on a playlist and a sibling-path segment, rejects cookies on another origin, and verifies `probeCandidate` returns media proof. It uses an isolated profile, local HTTPS fixtures, and a test-only address resolver. Production URL and DNS guards remain active.
