@@ -78,7 +78,7 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
     return !!match && new RegExp(`^/${match[1]}/[1-9]\\d{0,3}/${match[2]}-stream$`).test(server.pathname);
   }
   if (event.hostname === 'ppv.st' && server.hostname === 'embedindia.st') {
-    const match = /^\/live\/(cfb|nfl|nba)\/(\d{4}-\d{2}-\d{2})\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
+    const match = /^\/live\/(cfb|nfl|nba|wnba)\/(\d{4}-\d{2}-\d{2})\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
     if (!match) return false;
     const path=`/embed/${match[1]}/${match[2]}/${match[3]}`;
     return server.pathname===path || server.pathname===`${path}/skycast`;

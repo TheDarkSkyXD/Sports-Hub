@@ -51,6 +51,7 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
     const strict=prepared.filter(({game,home,away})=>{
       if (observation.league && game.league!==observation.league) return false;
       if (observation.sourceId==='tvapp-nba' && game.league!=='nba' && game.league!=='wnba' && game.league!=='ncaab') return false;
+      if (observation.sourceId==='tvapp' && game.league!=='nfl' && game.league!=='ncaaf') return false;
       return home.has(first) && away.has(second) || home.has(second) && away.has(first);
     });
     const anchored=(anchorName:string,otherName:string,anchorId:string,otherId:string):boolean=>{

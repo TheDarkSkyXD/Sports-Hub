@@ -7,12 +7,12 @@ import { isBasketballLeague, parseScoreboard, validGameId } from '../lib/sunday.
 import { validEventPagePair } from '../lib/playback/providers/event-page-policy.ts';
 
 const tipoff = Date.parse('2026-10-08T01:30:00Z');
-const scoreboard = (id: string, away: string, home: string, at = tipoff) => ({events:[{
+const scoreboard = (id: string, away: string, home: string, at = tipoff, awayId = '1', homeId = '2') => ({events:[{
   id,date:new Date(at).toISOString(),name:`${away} at ${home}`,
   status:{type:{name:'STATUS_SCHEDULED',state:'pre',shortDetail:'9:30 PM ET'}},
   competitions:[{competitors:[
-    {homeAway:'away',team:{id:'1',displayName:away,shortDisplayName:away,abbreviation:'AWY'}},
-    {homeAway:'home',team:{id:'2',displayName:home,shortDisplayName:home,abbreviation:'HME'}},
+    {homeAway:'away',team:{id:awayId,displayName:away,shortDisplayName:away,abbreviation:'AWY'}},
+    {homeAway:'home',team:{id:homeId,displayName:home,shortDisplayName:home,abbreviation:'HME'}},
   ]}],
 }]});
 const wnba = parseScoreboard(scoreboard('401918298','Las Vegas Aces','Golden State Valkyries'),'wnba')[0];
@@ -103,7 +103,7 @@ test('TVApp football rows cannot attach to basketball games with the same teams 
   const source=SOURCES.find(item=>item.id==='tvapp');
   assert.ok(source);
   const basketball=parseScoreboard(scoreboard('401999900','Duke Blue Devils','North Carolina Tar Heels'),'ncaab')[0];
-  const football=parseScoreboard(scoreboard('401999901','Duke Blue Devils','North Carolina Tar Heels'),'ncaaf')[0];
+  const football=parseScoreboard(scoreboard('401999901','Duke Blue Devils','North Carolina Tar Heels',tipoff,'150','153'),'ncaaf')[0];
   const result=parseListings(source,JSON.stringify([{
     id:'duke-vs-north-carolina-12345',title:'Duke Blue Devils vs North Carolina Tar Heels',
     category:'american-football',date:tipoff,
