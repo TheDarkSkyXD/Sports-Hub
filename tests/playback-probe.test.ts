@@ -170,6 +170,16 @@ test('observer saturation and cancellation defer a probe without condemning the 
   assert.equal(run.closed(),0);
 });
 
+test('a failed media read retains its replay phase',async()=>{
+  const run=fixture({'index.m3u8':playlist()});
+  const opened=await run.open();
+  const result=await probeCandidate(locator,signal(),async()=>({
+    ...opened,root:{...opened.root,read:async()=>{throw new Error('media replay failed');}},
+  }));
+  assert.deepEqual(result,{kind:'unavailable',reason:'upstream',phase:'replay'});
+  assert.equal(run.closed(),1);
+});
+
 async function settlesSoon<T>(work:Promise<T>):Promise<T|'pending'> {
   let settled=false;
   const observed=work.then(value=>{settled=true;return value;});
