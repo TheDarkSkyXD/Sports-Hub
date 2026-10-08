@@ -598,5 +598,49 @@
     "leagues": [
       "mlb"
     ]
+  },
+  {
+    "id": "streamed",
+    "name": "Streamed",
+    "url": "https://streamed.st/api/matches/all",
+    "family": "streamed",
+    "kind": "catalog",
+    "publicUrls": ["https://streamed.st/"],
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+  },
+  {
+    "id": "livesportpro",
+    "name": "LiveSportPro",
+    "url": "https://api.kultsport.com/api/matches/all",
+    "family": "livesportpro",
+    "kind": "catalog",
+    "publicUrls": ["https://livesportpro.com/"],
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+  },
+  {
+    "id": "sportsfeed24",
+    "name": "SportsFeed24",
+    "url": "https://bestfreestreaming.app/api/xhr",
+    "family": "sportsfeed24",
+    "kind": "catalog",
+    "publicUrls": ["https://sportsfeed24.st/"],
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+  },
+  {
+    "id": "crichd",
+    "name": "CricHD",
+    "url": "https://crichd.pk/",
+    "family": "crichd",
+    "publicUrls": ["https://m.crichd.pk/"],
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+  },
+  {
+    "id": "sportsbite",
+    "name": "SportsBite",
+    "url": "https://sportsbite.org/matches",
+    "family": "sportsbite",
+    "kind": "catalog",
+    "publicUrls": ["https://sportsbite.org/"],
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
   }
 ]

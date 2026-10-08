@@ -389,35 +389,30 @@ test('decoded playback removes its queued recheck while other due routes proceed
   } finally { await run.stop(coordinator); }
 });
 
-test('an increased interval postpones queued working rechecks and a shorter interval survives restart', async () => {
-  const run = fixture({ count: 6 });
+test('source refresh changes and restart preserve five-minute media rechecks', async () => {
+  const run = fixture();
   let coordinator = run.start();
   try {
     await run.refresh(coordinator, 0);
-    assert.equal(run.rows().length, 6);
-    run.hold();
+    assert.equal(run.rows().length, 1);
+    await run.refresh(coordinator, 299_999);
+    assert.equal(run.calls.length, 1);
     await run.refresh(coordinator, 300_000);
-    assert.equal(run.pending.size, 4);
-    assert.equal(run.calls.length, 10);
-    assert.equal((await run.snapshot(coordinator)).games[0].workingChoiceCount, 6);
+    assert.equal(run.calls.length, 2);
     const increased = await coordinator.command({ kind: 'set-feed-check-interval', minutes: 15 });
     assert.equal(increased.kind, 'board');
-    await drain();
-    const pending = [...run.pending.keys()];
-    for (const id of pending) run.release(id, { kind: 'playable', proof: 'media' });
-    await drain();
-    await run.refresh(coordinator, 899_999);
-    assert.equal(run.calls.length, 10);
-    await run.refresh(coordinator, 900_000);
-    assert.equal(run.calls.length, 12);
-    for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof: 'media' });
-    await drain();
+    await run.refresh(coordinator, 599_999);
+    assert.equal(run.calls.length, 2);
+    await run.refresh(coordinator, 600_000);
+    assert.equal(run.calls.length, 3);
     await coordinator.stop();
     coordinator = run.start();
     const shortened = await coordinator.command({ kind: 'set-feed-check-interval', minutes: 1 });
     assert.equal(shortened.kind, 'board');
-    await run.refresh(coordinator, 900_001);
-    assert.equal(run.calls.length, 16);
+    await run.refresh(coordinator, 899_999);
+    assert.equal(run.calls.length, 3);
+    await run.refresh(coordinator, 900_000);
+    assert.equal(run.calls.length, 4);
   } finally { await run.stop(coordinator); }
 });
 

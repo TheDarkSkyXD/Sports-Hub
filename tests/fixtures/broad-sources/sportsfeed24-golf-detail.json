@@ -1,0 +1,43 @@
+{
+  "categoryName": "Streams today",
+  "subCategoryName": "Golf",
+  "subCategoryImage": "/assets/images/logos/defaultImage.webp",
+  "game": {
+    "teamA": "Baycurrent Classic",
+    "teamB": "Golf",
+    "teamAImage": "/assets/images/logos/defaultImage.webp",
+    "teamBImage": "/assets/images/logos/defaultImage.webp",
+    "streamerLinks": [
+      {
+        "website": "Sportsfeed24",
+        "websiteLink": "https://sportsfeed24.pk/fixture/Baycurrent Classic-vs-Golf",
+        "mobileSupport": "yes",
+        "language": "English",
+        "streamer": "HD Plus",
+        "_id": "6ac807deb61a5839cbd7508e"
+      },
+      {
+        "website": "Sportsfeed24 Net",
+        "websiteLink": "https://sportsfeed24.cx/fixture/Baycurrent Classic-vs-Golf",
+        "mobileSupport": "yes",
+        "language": "English",
+        "streamer": "sportsfeed",
+        "_id": "6ac807deb61a5839cbd7508f"
+      },
+      {
+        "website": "liveonstreams.online",
+        "websiteLink": "https://liveonstreamz.xyz/2026/10/08/asu-poli-timisoara-vs-steaua-bucuresti/",
+        "mobileSupport": "Yes",
+        "language": "english",
+        "streamer": "Digi Sport 1 Ro...",
+        "_id": "6ac7e778a35b2490b223d156"
+      }
+    ],
+    "websiteLink": "",
+    "matchDate": "Thu, 08 Oct 2026 07:03:19 GMT",
+    "matchTime": "07:03:19 AM UTC",
+    "sourceLink": "https://links.totalsportek1.is/baycurrent-classic-vs-golf/67739/",
+    "player2": "",
+    "trendy": ""
+  }
+}

@@ -1,0 +1,783 @@
+{
+  "days": [
+    {
+      "date": "1969-12-31",
+      "events": [
+        {
+          "time": "23:00",
+          "start": "1969-12-31T23:00:00.000Z",
+          "title": "Willow Cricket",
+          "slug": "admin-willow-cricket",
+          "slug_base": "admin-willow-cricket",
+          "streamed_event_id": "admin-willow-cricket",
+          "tournament_slug": "cricket-willow-cricket",
+          "category": "cricket",
+          "sport": "cricket",
+          "teams": null,
+          "popular": true,
+          "poster": "/api/images/proxy/GwZg7AZpYEZgHCAjAJgCzuAQ2C4+cBjYAUwRQFYxi8xg61rLoATdMFSCiUME-YAE5gFbLnrlGUGtB5lBFRvPqVgSWMEJ58fBJCGlxo+BP5zgEIA.webp",
+          "streamed_event": true,
+          "streamed_merged": 0,
+          "live": false,
+          "streams": [
+            {
+              "id": "fg-lol-willow-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/lol-embed/embed/willow?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "hd",
+              "quality": "HD",
+              "language": "English",
+              "source": "tvapp",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:05:32.554Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            }
+          ],
+          "kickoffMs": -3600000,
+          "streameast_merged": 0,
+          "streamed_st_merged": 0,
+          "cross_ids": {
+            "ppv": "admin-willow-cricket"
+          },
+          "ppv_event_id": "admin-willow-cricket",
+          "event_key": "fg-admin-willow-cricket",
+          "viewers_total": 0
+        }
+      ]
+    },
+    {
+      "date": "2026-10-08",
+      "events": [
+        {
+          "time": "23:00",
+          "start": "2026-10-08T23:00:00.000Z",
+          "title": "Buffalo Sabres vs Dallas Stars",
+          "slug": "buffalo-sabres-vs-dallas-stars",
+          "slug_base": "buffalo-sabres-vs-dallas-stars",
+          "streamed_event_id": "buffalo-sabres-vs-dallas-stars-2591545",
+          "tournament_slug": "hockey-buffalo-sabres-vs-dallas-stars",
+          "category": "hockey",
+          "sport": "hockey",
+          "teams": {
+            "home": {
+              "name": "Buffalo Sabres"
+            },
+            "away": {
+              "name": "Dallas Stars"
+            }
+          },
+          "popular": true,
+          "poster": "/api/images/proxy/GwZg7AZpYEZgHCAjAJgCzrAThFlBWSUYAUwVmDW2nmAmD32FrWGHXbeAENgBjUgg5sSdTtw5kAJqWCEImeuFFs8aXAmBIGcsHxDcQ+qSBggUpg0ZAlzBLRT7DZ9FGBUou78vSyzPTLRg7mKiEEA.webp",
+          "streamed_event": true,
+          "streamed_merged": 0,
+          "live": false,
+          "streams": [
+            {
+              "id": "fg-lol-dallas-stars-vs-buffalo-sabres-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/lol-embed/embed/dallas-stars-vs-buffalo-sabres?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "hd",
+              "quality": "HD",
+              "language": "English",
+              "source": "tvapp",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-nhl-streams-3-dallas-stars-vs-buffalo-sabres-nhl3-admin-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/nhl-streams-3-dallas-stars-vs-buffalo-sabres-nhl3-admin?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:05:33.003Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            }
+          ],
+          "kickoffMs": 1791500400000,
+          "streameast_merged": 0,
+          "streamed_st_merged": 0,
+          "cross_ids": {
+            "ppv": "buffalo-sabres-vs-dallas-stars",
+            "watchfooty": "4774402",
+            "espn": "401892458"
+          },
+          "ppv_event_id": "buffalo-sabres-vs-dallas-stars",
+          "event_key": "fg-buffalo-sabres-vs-dallas-stars",
+          "live_status": {
+            "source": "espn",
+            "state": "pre",
+            "clock": "10/8 - 7:00 PM EDT",
+            "period": "10/8 - 7:00 PM EDT",
+            "home_score": "0",
+            "away_score": "0",
+            "espn_id": "401892458",
+            "updated_at": "2026-10-08T21:09:00.604Z"
+          },
+          "score": {
+            "home": "0",
+            "away": "0"
+          },
+          "viewers_total": 0
+        }
+      ]
+    },
+    {
+      "date": "2026-10-09",
+      "events": [
+        {
+          "time": "00:15",
+          "start": "2026-10-09T00:15:00.000Z",
+          "title": "Dallas Cowboys vs Tampa Bay Buccaneers",
+          "slug": "dallas-cowboys-vs-tampa-bay-buccaneers",
+          "slug_base": "dallas-cowboys-vs-tampa-bay-buccaneers",
+          "streamed_event_id": "dallas-cowboys-vs-tampa-bay-buccaneers-2475438",
+          "tournament_slug": "american-football-dallas-cowboys-vs-tampa-bay-buccaneers",
+          "category": "american-football",
+          "sport": "american-football",
+          "teams": {
+            "home": {
+              "name": "Dallas Cowboys"
+            },
+            "away": {
+              "name": "Tampa Bay Buccaneers"
+            }
+          },
+          "popular": true,
+          "poster": "/api/images/proxy/GwZg7AZpYEZgHCAjAJgCzrAThFlBWSUYAUwVmDW2nmAmD32FrWGHXbeAENgBjUgg5sSdTtw5kAJqWCEImeuFFs8aEFD7QtWMEhDcQfECYhGQJECnPW+BYEgp3WIsSjAqUXD+XpZZXky0YB5iohBAA.webp",
+          "streamed_event": true,
+          "streamed_merged": 0,
+          "live": false,
+          "streams": [
+            {
+              "id": "fg-lol-tampa-bay-buccaneers-vs-dallas-cowboys-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/lol-embed/embed/tampa-bay-buccaneers-vs-dallas-cowboys?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "hd",
+              "quality": "HD",
+              "language": "English",
+              "source": "tvapp",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-nfl-streams-1-tampa-bay-buccaneers-vs-dallas-cowboys-nfl-admin-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/nfl-streams-1-tampa-bay-buccaneers-vs-dallas-cowboys-nfl-admin?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:00.807Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-nfl-streams-1-tampa-bay-buccaneers-vs-dallas-cowboys-nfl-temp-hd",
+              "name": "Server [2]",
+              "label": "Server [2]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/nfl-streams-1-tampa-bay-buccaneers-vs-dallas-cowboys-nfl-temp?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-nfl-streams-1-tampa-bay-buccaneers-vs-dallas-cowboys-espn2-admin-hd",
+              "name": "Server [3]",
+              "label": "Server [3]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/nfl-streams-1-tampa-bay-buccaneers-vs-dallas-cowboys-espn2-admin?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:00.935Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            }
+          ],
+          "kickoffMs": 1791504900000,
+          "streameast_merged": 0,
+          "streamed_st_merged": 0,
+          "cross_ids": {
+            "ppv": "dallas-cowboys-vs-tampa-bay-buccaneers",
+            "watchfooty": "4714833",
+            "espn": "401872980"
+          },
+          "ppv_event_id": "dallas-cowboys-vs-tampa-bay-buccaneers",
+          "event_key": "fg-dallas-cowboys-vs-tampa-bay-buccaneers",
+          "live_status": {
+            "source": "espn",
+            "state": "pre",
+            "clock": "10/8 - 8:15 PM EDT",
+            "period": "10/8 - 8:15 PM EDT",
+            "home_score": "0",
+            "away_score": "0",
+            "espn_id": "401872980",
+            "updated_at": "2026-10-08T21:08:59.733Z"
+          },
+          "score": {
+            "home": "0",
+            "away": "0"
+          },
+          "viewers_total": 0
+        },
+        {
+          "time": "08:30",
+          "start": "2026-10-09T08:30:00.000Z",
+          "title": "Singapore Grand Prix - Practice 1",
+          "slug": "singapore-grand-prix-practice-1",
+          "slug_base": "singapore-grand-prix-practice-1",
+          "streamed_event_id": "ppv-singapore-grand-prix-practice-1",
+          "tournament_slug": "motor-sports-singapore-grand-prix-practice-1",
+          "category": "motor-sports",
+          "sport": "motor-sports",
+          "teams": null,
+          "popular": true,
+          "poster": "/api/images/proxy/GwZg7AZpYEZgHCAjAJgCzuAQ1sFKBWSYAU2DFLABM8E9g1gDCFJMd46Tp51jwywYAE50IRFRBSUpKSBQgSISQojBEMyVhDDgEcSLlltC4+J2yAxthAxbM-mEEim2emELAkuSzKFPWNV0yGQJ1cic9Uj0gA.webp",
+          "streamed_event": true,
+          "streamed_merged": 0,
+          "live": false,
+          "streams": [
+            {
+              "id": "fg-lol-skyf1-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/lol-embed/embed/skyf1?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "hd",
+              "quality": "HD",
+              "language": "English",
+              "source": "tvapp",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.326Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-f1-formula-1-tsn-tedesco-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/f1-formula-1-tsn-tedesco?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.328Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-f1-formula-1-f1-admin-hd",
+              "name": "Server [2]",
+              "label": "Server [2]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/f1-formula-1-f1-admin?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.328Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            }
+          ],
+          "kickoffMs": 1791534600000,
+          "streameast_merged": 0,
+          "streamed_st_merged": 0,
+          "cross_ids": {
+            "ppv": "singapore-grand-prix-practice-1",
+            "watchfooty": "singapore-grand-prix-practice-1-2408192"
+          },
+          "ppv_event_id": "singapore-grand-prix-practice-1",
+          "event_key": "fg-singapore-grand-prix-practice-1",
+          "sportsbite_match_id": "singapore-grand-prix-practice-1",
+          "sportsbite_listed": false,
+          "sportsbite_live": false,
+          "viewers_total": 0
+        }
+      ]
+    },
+    {
+      "date": "2026-10-10",
+      "events": [
+        {
+          "time": "09:00",
+          "start": "2026-10-10T09:00:00.000Z",
+          "title": "Singapore Grand Prix - Sprint",
+          "slug": "singapore-grand-prix-sprint",
+          "slug_base": "singapore-grand-prix-sprint",
+          "streamed_event_id": "ppv-singapore-grand-prix-sprint",
+          "tournament_slug": "motor-sports-singapore-grand-prix-sprint",
+          "category": "motor-sports",
+          "sport": "motor-sports",
+          "teams": null,
+          "popular": true,
+          "poster": "/api/images/proxy/GwZg7AZpYEZgHCAjAJgCzuAQ1sFKBWSYAU2DFLABM8E9g1gDCFJMd46Tp51jwywYAE50IAMYgIIGBInAa0lMGkgQJNdhXB4IkChDCQujWSozScssJ2k7Nksv5hBIplqeFgSXOOVCXVgg3MmUCWzAXbTIIIA.webp",
+          "streamed_event": true,
+          "streamed_merged": 0,
+          "live": false,
+          "streams": [
+            {
+              "id": "fg-lol-skyf1-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/lol-embed/embed/skyf1?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "hd",
+              "quality": "HD",
+              "language": "English",
+              "source": "tvapp",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.326Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-f1-formula-1-tsn-tedesco-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/f1-formula-1-tsn-tedesco?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.328Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-f1-formula-1-f1-admin-hd",
+              "name": "Server [2]",
+              "label": "Server [2]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/f1-formula-1-f1-admin?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.328Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-live-skynz3-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/live-embed/embed/skynz3?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "backup",
+              "quality": "HD",
+              "language": "English",
+              "source": "livelive24-live",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:11.059Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            }
+          ],
+          "kickoffMs": 1791622800000,
+          "streameast_merged": 0,
+          "streamed_st_merged": 0,
+          "cross_ids": {
+            "ppv": "singapore-grand-prix-sprint"
+          },
+          "ppv_event_id": "singapore-grand-prix-sprint",
+          "event_key": "fg-singapore-grand-prix-sprint",
+          "viewers_total": 0
+        },
+        {
+          "time": "13:00",
+          "start": "2026-10-10T13:00:00.000Z",
+          "title": "Singapore Grand Prix - Qualifying",
+          "slug": "singapore-grand-prix-qualifying",
+          "slug_base": "singapore-grand-prix-qualifying",
+          "streamed_event_id": "ppv-singapore-grand-prix-qualifying",
+          "tournament_slug": "motor-sports-singapore-grand-prix-qualifying",
+          "category": "motor-sports",
+          "sport": "motor-sports",
+          "teams": null,
+          "popular": true,
+          "poster": "/api/images/proxy/GwZg7AZpYEZgHCAjAJgCzuAQ1sFKBWSYAU2DFLABM8E9g1gDCFJMd46Tp51jwywYAE50IGCDJYQVccBo0SICCGkpgEEfK3CQKZTJC6AxuMnZVhlSD3myJdfzCCtBbPTCFgSXMfVDnVk1hUno3eHJnDVCIIA.webp",
+          "streamed_event": true,
+          "streamed_merged": 0,
+          "live": false,
+          "streams": [
+            {
+              "id": "fg-lol-skyf1-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/lol-embed/embed/skyf1?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "hd",
+              "quality": "HD",
+              "language": "English",
+              "source": "tvapp",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.326Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-f1-formula-1-tsn-tedesco-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/f1-formula-1-tsn-tedesco?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.328Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-f1-formula-1-f1-admin-hd",
+              "name": "Server [2]",
+              "label": "Server [2]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/f1-formula-1-f1-admin?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.328Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-live-skynz3-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/live-embed/embed/skynz3?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "backup",
+              "quality": "HD",
+              "language": "English",
+              "source": "livelive24-live",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:11.059Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            }
+          ],
+          "kickoffMs": 1791637200000,
+          "streameast_merged": 0,
+          "streamed_st_merged": 0,
+          "cross_ids": {
+            "ppv": "singapore-grand-prix-qualifying"
+          },
+          "ppv_event_id": "singapore-grand-prix-qualifying",
+          "event_key": "fg-singapore-grand-prix-qualifying",
+          "viewers_total": 0
+        }
+      ]
+    },
+    {
+      "date": "2026-10-11",
+      "events": [
+        {
+          "time": "12:00",
+          "start": "2026-10-11T12:00:00.000Z",
+          "title": "Singapore Grand Prix - Race",
+          "slug": "singapore-grand-prix-race",
+          "slug_base": "singapore-grand-prix-race",
+          "streamed_event_id": "ppv-singapore-grand-prix-race",
+          "tournament_slug": "motor-sports-singapore-grand-prix-race",
+          "category": "motor-sports",
+          "sport": "motor-sports",
+          "teams": null,
+          "popular": true,
+          "poster": "/api/images/proxy/GwZg7AZpYEZgHCAjAJgCzuAQ1sFKBWSYAU2DFLABM8E9g1gDCFJMd46Tp51jwywYAE5MwkSETxgiKiHnzEKEBBBYQy9YgDGErMDnKFIEiHFz9c6ephqQVFOQigwgkU2z0whYElzbHIVdWZ3EyRwIZcldgZzIIIA.webp",
+          "streamed_event": true,
+          "streamed_merged": 0,
+          "live": false,
+          "streams": [
+            {
+              "id": "fg-lol-skyf1-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/lol-embed/embed/skyf1?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "hd",
+              "quality": "HD",
+              "language": "English",
+              "source": "tvapp",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.326Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-f1-formula-1-tsn-tedesco-hd",
+              "name": "Server [1]",
+              "label": "Server [1]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/f1-formula-1-tsn-tedesco?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.328Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            },
+            {
+              "id": "fg-rs-f1-formula-1-f1-admin-hd",
+              "name": "Server [2]",
+              "label": "Server [2]",
+              "manifest_url": "https://sportsbite.org/rs-embed/embed/f1-formula-1-f1-admin?v=high&emb=89",
+              "format": "iframe",
+              "status": "online",
+              "stream_group": "other",
+              "quality": "HD",
+              "language": "English",
+              "source": "roxiestreams",
+              "probe_verified": true,
+              "probe_verified_at": "2026-10-08T21:06:32.328Z",
+              "viewers": 0,
+              "playback_hints": {
+                "player": "iframe"
+              }
+            }
+          ],
+          "kickoffMs": 1791720000000,
+          "streameast_merged": 0,
+          "streamed_st_merged": 0,
+          "cross_ids": {
+            "ppv": "singapore-grand-prix-race"
+          },
+          "ppv_event_id": "singapore-grand-prix-race",
+          "event_key": "fg-singapore-grand-prix-race",
+          "viewers_total": 0
+        }
+      ]
+    }
+  ],
+  "categories": [
+    {
+      "sport": "american-football",
+      "category": "american-football",
+      "count": 73
+    },
+    {
+      "sport": "baseball",
+      "category": "baseball",
+      "count": 2
+    },
+    {
+      "sport": "basketball",
+      "category": "basketball",
+      "count": 9
+    },
+    {
+      "sport": "cricket",
+      "category": "cricket",
+      "count": 2
+    },
+    {
+      "sport": "fighting",
+      "category": "fighting",
+      "count": 3
+    },
+    {
+      "sport": "football",
+      "category": "football",
+      "count": 66
+    },
+    {
+      "sport": "golf",
+      "category": "golf",
+      "count": 1
+    },
+    {
+      "sport": "hockey",
+      "category": "hockey",
+      "count": 18
+    },
+    {
+      "sport": "motor-sports",
+      "category": "motor-sports",
+      "count": 5
+    },
+    {
+      "sport": "other",
+      "category": "other",
+      "count": 2
+    },
+    {
+      "sport": "tennis",
+      "category": "tennis",
+      "count": 1
+    },
+    {
+      "sport": "wrestling",
+      "category": "wrestling",
+      "count": 1
+    }
+  ],
+  "total_events": 26,
+  "scraped_at": "2026-10-08T21:09:00.825Z",
+  "schedule_source": "streamed.pk",
+  "streamed_event_source": "streamed.pk",
+  "streamed_events": 253,
+  "streamed_merged_streams": 0,
+  "streamed_matched_events": 0,
+  "streamed_events_with_sources": 0,
+  "streams_probed": true,
+  "streams_probe_version": 13,
+  "ppv_live_bridged": 5,
+  "tvapp_events": 0,
+  "tvapp_feeds": 26,
+  "attached_streams": 27,
+  "attached_events": 19,
+  "tvapp_merged_streams": 25,
+  "tvapp_matched_events": 25,
+  "timst_tlive_merged_streams": 0,
+  "ll24_live_bridged": 12,
+  "livelive24_live_merged_streams": 24,
+  "roxiestreams_rs_merged_streams": 27,
+  "streameast_merged_streams": 0,
+  "streameast_matched_events": 0,
+  "streameast_events": 0,
+  "streameast_dynamic_channels": [],
+  "streameast_event_source": null,
+  "streameast_stripped": true,
+  "streamed_st_merged_streams": 0,
+  "streamed_st_matched_events": 0,
+  "streamed_st_events": 0,
+  "streamed_st_stripped": true,
+  "streamed_pk_sd_stripped": true,
+  "embedhd_stripped": true,
+  "fy_stripped": true,
+  "hd_stripped": true,
+  "vc_stripped": true,
+  "flyembed_merged_streams": 0,
+  "dlive_merged_streams": 0,
+  "cmv_merged_streams": 0,
+  "streams_probe_partial": false,
+  "cross_ids": {
+    "ppv_matched": 177,
+    "ppv_retained": 0,
+    "ppv_missing": 1,
+    "watchfooty_matched": 32,
+    "watchfooty_retained": 0,
+    "watchfooty_missing": 146,
+    "index_fixtures": 0
+  },
+  "empty_live_stripped": 16,
+  "auto_scraped": true,
+  "attach_audit": {
+    "ok": true,
+    "dirty": false,
+    "needs_repair": false,
+    "checked_at": "2026-10-08T21:09:06.585Z",
+    "events": 194,
+    "listed": 0,
+    "duplicate_watchfooty": [],
+    "duplicate_ppv": [],
+    "conflicting_team_pairs": [],
+    "city_aliased_united": [],
+    "shared_unlock_ids": [],
+    "listed_without_cross_count": 0,
+    "listed_without_cross": [],
+    "listed_without_servers": [],
+    "alias_invariants": {
+      "ok": true,
+      "issues": []
+    }
+  },
+  "viewers_updated_at": "2026-10-08T21:09:36.814Z",
+  "viewers_session_ttl_ms": 45000,
+  "viewers_source": "concurrent_unlock_sessions"
+}

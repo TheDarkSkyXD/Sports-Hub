@@ -166,6 +166,8 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
     if (second.kind === 'sources') {
       assert.equal(second.snapshot.games[0].workingChoiceCount, 2);
       assert.deepEqual(second.snapshot.games[0].candidates.find(candidate => candidate.id === firstCandidateId)?.availability,
+        { kind: 'playable', proof: 'media', checkedAt: at });
+      assert.deepEqual(second.snapshot.games[0].candidates.find(candidate => candidate.id !== firstCandidateId)?.availability,
         { kind: 'playable', proof: 'media', checkedAt: at + 60_000 });
     }
     assert.equal(reads.filter(page => page === 'detail').length, 1);

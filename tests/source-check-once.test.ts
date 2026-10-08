@@ -205,28 +205,22 @@ test('a never-checked feed displaces a queued retry without losing the failed fe
   } finally { await run.stop(); }
 });
 
-test('increasing the interval postpones queued retries while active checks finish', async () => {
+test('source refresh setting does not postpone queued media retries', async () => {
   const run = fixture({ count: 8, allFail: true, holdRetries: true, recoverFailures: true });
   try {
     await run.refresh();
     await run.coordinator.command({ kind: 'set-feed-check-interval', minutes: 1 });
     await drain();
-    await run.refresh(60_000);
+    await run.refresh(300_000);
     const queued = (await run.snapshot()).games[0].candidates;
     assert.equal(queued.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'queued').length, 4);
     assert.equal(run.calls.length, 12);
 
     await run.coordinator.command({ kind: 'set-feed-check-interval', minutes: 15 });
     await drain();
-    await run.refresh(80_000);
-    const postponed = (await run.snapshot()).games[0];
-    assert.equal(postponed.workingChoiceCount, 4);
-    assert.equal(postponed.candidates.filter(row => row.availability.kind === 'unavailable' && row.availability.retryAt === at + 900_000).length, 4);
-    await run.refresh(899_999);
-    assert.equal(run.calls.length, 12);
-    await run.refresh(900_000);
+    await run.refresh(320_000);
     assert.equal(run.calls.length, 16);
-    await run.refresh(920_000);
+    await run.refresh(340_000);
     assert.equal((await run.snapshot()).games[0].workingChoiceCount, 8);
   } finally { await run.stop(); }
 });
