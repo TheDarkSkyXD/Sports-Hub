@@ -153,7 +153,6 @@ const catalogFailureLabel:Record<Extract<SportsurgeCatalogView['state'],{kind:'p
   blocked:'Source blocked','rate-limited':'Rate limited; collection paused',timeout:'Timed out',
   'parser-changed':'Page format changed',unavailable:'Source unavailable','invalid-detail-url':'Invalid game link',limit:'Collection limit reached',
 };
-const categoryLabel=(value:SportsurgeCatalogView['categories']['ncaaf'])=>value.kind==='collected'?'collected':value.kind==='pending'?'pending':`failed (${catalogFailureLabel[value.reason]})`;
 const candidateEvidence=(candidate:CandidateSummary,now:number)=>{
   switch(candidate.availability.kind) {
     case 'unknown':return 'Media not checked yet';
@@ -291,11 +290,7 @@ function SportsurgeRun({run,league,snapshot,now,isCurrent,links}:{run:Sportsurge
   const groupedGames=catalogGameGroups(games);
   const rejectedGames=run.rejectedGames.filter(game=>game.league===league);
   const catalogIssues=run.catalogIssues.filter(issue=>issue.league===league);
-  const details=games.filter(game=>game.detail.kind==='collected');
   return <div className="source-inventory-catalog">
-    <p>{leagueName[league]} listings {categoryLabel(run.categories[league])} · Shared checkpoint {time(run.receivedAt)}</p>
-    <p>{games.length} game listings · {details.length} details collected · {games.filter(game=>game.detail.kind==='pending').length} pending · {games.filter(game=>game.detail.kind==='failed').length} failed</p>
-    <p>{games.reduce((count,game)=>count+(game.detail.kind==='collected'?game.detail.providers.length:0),0)} provider rows · {rejectedGames.length} rejected game links · {catalogIssues.length} duplicate-ID notices</p>
     {rejectedGames.length>0&&<details className="source-inventory-diagnostics"><summary>Rejected game links</summary><ul>
       {rejectedGames.map((game,index)=><li key={`${game.league}:${index}`}>{game.title || `${game.league.toUpperCase()} listing`}: {game.reason}</li>)}
     </ul></details>}
@@ -329,12 +324,7 @@ function StreameastRun({run,league,snapshot,now,isCurrent,links}:{run:Streameast
   const groupedGames=catalogGameGroups(games);
   const savedGames=isCurrent?[...(snapshot.streameast.previous?.games??[]),...(snapshot.streameast.lastComplete?.games??[])]:[];
   const rejectedGames=run.rejectedGames.filter(game=>game.league===league);
-  const details=games.filter(game=>game.detail.kind==='collected');
-  const servers=games.flatMap(game=>game.detail.kind==='collected'?game.detail.servers:[]);
   return <div className="source-inventory-catalog">
-    <p>{leagueName[league]} listings {categoryLabel(run.categories[league])} · Shared checkpoint {time(run.receivedAt)}</p>
-    <p>{games.length} game listings · {details.length} details collected · {games.filter(game=>game.detail.kind==='pending').length} pending · {games.filter(game=>game.detail.kind==='failed').length} failed</p>
-    <p>{servers.length} server rows · {servers.filter(server=>server.availability.kind.startsWith('free-')).length} marked free · {servers.filter(server=>server.availability.kind==='premium').length} premium</p>
     {rejectedGames.length>0&&<details className="source-inventory-diagnostics"><summary>Rejected game links · {rejectedGames.length}</summary><ul>
       {rejectedGames.map((game,index)=><li key={`${game.league}:${index}`}>{game.title}: {game.reason}</li>)}
     </ul></details>}
@@ -384,13 +374,7 @@ function CollectorHistory({source,snapshot,league,now}:{source:Source;snapshot:S
       <AlertTriangle size={17} aria-hidden="true" />
       <div><strong>Browser collector unavailable</strong><p>This environment cannot collect new listings right now. Saved scans below show earlier collection, not a live collector status.</p></div>
     </div>}
-    <div className="source-settings-history-grid">
-      <div className="source-settings-history-section">
-        <h4>Latest {leagueName[league]} collection</h4>
-        {current?<><p>Checkpoint {time(current.receivedAt)} · {age(current.receivedAt,snapshot.at)}</p>{renderRun('current')}</>:
-          <p>No collection checkpoint recorded yet.</p>}
-      </div>
-    </div>
+    {current?renderRun('current'):<p>No collection checkpoint recorded yet.</p>}
     {previous&&<details className="source-settings-history-details source-settings-previous">
       <summary>Previous partial or interrupted scan · {time(previous.receivedAt)}</summary>{renderRun('previous')}
     </details>}
