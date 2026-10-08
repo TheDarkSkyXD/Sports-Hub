@@ -18,32 +18,46 @@ const directory = await mkdtemp(path.join(runs, `${startedAt.replace(/[:.]/g, '-
 const output = createWriteStream(path.join(directory, 'output.log'), { flags: 'wx' });
 const outputFinished = finished(output).then(() => null, error => error.message);
 const executable = command[0] === 'node' ? process.execPath : command[0];
-const child = spawn(executable, command.slice(1), {
-  cwd,
-  env: process.env,
-  shell: false,
-  stdio: ['inherit', 'pipe', 'pipe'],
-  windowsHide: true,
-});
-
-child.stdout.on('data', chunk => {
-  process.stdout.write(chunk);
-  output.write(chunk);
-});
-child.stderr.on('data', chunk => {
-  process.stderr.write(chunk);
-  output.write(chunk);
-});
-
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => child.kill(signal));
+let spawnError = null;
+const recordSpawnError = error => {
+  spawnError = error.message;
+  process.stderr.write(`${spawnError}\n`);
+  output.write(`${spawnError}\n`);
+};
+let child;
+try {
+  child = spawn(executable, command.slice(1), {
+    cwd,
+    env: process.env,
+    shell: false,
+    stdio: ['inherit', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+} catch (error) {
+  recordSpawnError(error);
 }
 
-let spawnError = null;
-child.once('error', error => { spawnError = error.message; });
-const { exitCode, signal } = await new Promise(resolve => {
-  child.once('close', (exitCode, signal) => resolve({ exitCode, signal }));
-});
+let exitCode = null;
+let signal = null;
+if (child) {
+  child.stdout.on('data', chunk => {
+    process.stdout.write(chunk);
+    output.write(chunk);
+  });
+  child.stderr.on('data', chunk => {
+    process.stderr.write(chunk);
+    output.write(chunk);
+  });
+
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => child.kill(signal));
+  }
+
+  child.once('error', recordSpawnError);
+  ({ exitCode, signal } = await new Promise(resolve => {
+    child.once('close', (exitCode, signal) => resolve({ exitCode, signal }));
+  }));
+}
 output.end();
 const recordingError = await outputFinished;
 const result = {
