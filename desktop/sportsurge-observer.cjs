@@ -69,12 +69,12 @@ function liveFramesInSubtree(mainFrame) {
 
 function offlinePlayerFrame(source, frames, embeddedEventUrl) {
   const sourceUrl = publicUrl(source);
-  if (!sourceUrl || sourceUrl.search) return null;
-  const direct = sourceUrl.hostname === 'vipbox.fm' && /^\/live\/(?:nfl|ncaaf)\/[a-z0-9-]+$/.test(sourceUrl.pathname) ||
-    sourceUrl.hostname === 'strikeout.im' && /^\/(?:nfl|college-football)\/[1-9][0-9]*\/[a-z0-9-]+$/.test(sourceUrl.pathname) ||
-    sourceUrl.hostname === 'www.vipboxtv.sk' && /^\/cfb\/[1-9]\d{0,3}\/stream-[a-z0-9-]+-live$/.test(sourceUrl.pathname);
+  if (!sourceUrl || sourceUrl.search || sourceUrl.port) return null;
+  const direct = sourceUrl.hostname === 'vipbox.fm' && /^\/live\/(?:nfl|ncaaf)\/[a-z0-9]+(?:-[a-z0-9]+)*-[1-9]\d{0,3}$/.test(sourceUrl.pathname) ||
+    sourceUrl.hostname === 'strikeout.im' && /^\/(?:nfl|college-football)\/[1-9]\d{0,3}\/[a-z0-9]+(?:-[a-z0-9]+)*-stream$/.test(sourceUrl.pathname) ||
+    sourceUrl.hostname === 'www.vipboxtv.sk' && /^\/cfb\/[1-9]\d{0,3}\/stream-[a-z0-9]+(?:-[a-z0-9]+)*-live$/.test(sourceUrl.pathname);
   const embedded = embeddedEventUrl ? publicUrl(embeddedEventUrl) : null;
-  const team = embedded?.hostname === 'ms.buffstream.io' && !embedded.search ?
+  const team = embedded?.hostname === 'ms.buffstream.io' && !embedded.search && !embedded.port ?
     /^\/(?:nfl|cfb)-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(embedded.pathname)?.[1] : null;
   const pair = sourceUrl.hostname === 'embedsports.me' ?
     /^\/american-football\/([a-z0-9]+(?:-[a-z0-9]+)*)-vs-([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$/.exec(sourceUrl.pathname) : null;

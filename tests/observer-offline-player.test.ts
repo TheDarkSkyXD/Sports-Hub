@@ -51,6 +51,9 @@ test('one named SD0 player is eligible on published CFB servers', () => {
   ]) assert.equal(offlinePlayerFrame(source, [player]), player);
   assert.equal(offlinePlayerFrame('https://www.vipboxtv.sk/ads/other-page', [player]), null);
   assert.equal(offlinePlayerFrame('https://vipbox.fm/live/ncaaf/jacksonville-state-vs-kennesaw-state-1?ad=1', [player]), null);
+  assert.equal(offlinePlayerFrame('https://vipbox.fm:8443/live/ncaaf/jacksonville-state-vs-kennesaw-state-1', [player]), null);
+  assert.equal(offlinePlayerFrame('https://vipbox.fm/live/ncaaf/jacksonville-state-vs-kennesaw-state', [player]), null);
+  assert.equal(offlinePlayerFrame('https://strikeout.im/college-football/1/jacksonville-state-vs-kennesaw-state', [player]), null);
 });
 
 test('Buffstream SD0 player belongs to the selected embedded server subtree', () => {
