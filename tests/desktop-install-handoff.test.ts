@@ -52,7 +52,7 @@ test('Install keeps the window open until the local server stops, then starts th
     async loadURL(url: string) { this.webContents.mainFrame.url = url; }
     setAppDetails() {}
     show() { this.visible = true; }
-    focus() {}
+    focus() { events.push('window focused'); }
     isDestroyed() { return false; }
     isFocused() { return true; }
     isVisible() { return this.visible; }
@@ -154,6 +154,7 @@ test('Install keeps the window open until the local server stops, then starts th
 
     for (let i = 0; i < 20 && !handlers.has(CH.install); i += 1) await Promise.resolve();
     assert.ok(window, 'the desktop window opened');
+    assert.ok(events.includes('window focused'), 'the desktop window received focus');
     assert.ok(updater, 'the desktop updater started');
     const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame };
     const get = (channel: string) => {
