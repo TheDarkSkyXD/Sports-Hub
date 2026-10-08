@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, CircleHelp, Clock3, LoaderCircle, RefreshCw } from 'lucide-react';
 import Image from 'next/image';
 import { SourcesSnapshotSchema, type CandidateSummary, type Game, type LinkEvidence, type MissingPlayerReason, type SourcesSnapshot, type SportsurgeCatalogView, type StreameastCatalogView } from '@/lib/football/shared';
+import { retainedStreameastDetail } from './source-inventory-view';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const sourceOrder=new Map([['sportsurge',0],['sportsurge-v2',1],['streameast',2]]);
@@ -319,6 +320,7 @@ function StreameastRun({run,league,snapshot,now,isCurrent,links}:{run:Streameast
   snapshot:SourcesSnapshot;now:number;isCurrent:boolean;links:Source['links']}) {
   const games=run.games.filter(game=>game.league===league);
   const groupedGames=catalogGameGroups(games);
+  const savedGames=isCurrent?[...(snapshot.streameast.previous?.games??[]),...(snapshot.streameast.lastComplete?.games??[])]:[];
   const rejectedGames=run.rejectedGames.filter(game=>game.league===league);
   const details=games.filter(game=>game.detail.kind==='collected');
   const servers=games.flatMap(game=>game.detail.kind==='collected'?game.detail.servers:[]);
@@ -334,19 +336,26 @@ function StreameastRun({run,league,snapshot,now,isCurrent,links}:{run:Streameast
       const candidates=isCurrent&&game.gameId?snapshot.games.find(row=>row.gameId===game.gameId)?.candidates.filter(candidate=>candidate.sourceIds.includes('streameast'))??[]:[];
       const available=candidates.filter(candidate=>candidate.availability.kind==='playable').length;
       const serverRows=listings.reduce((count,listing)=>count+(listing.detail.kind==='collected'?listing.detail.servers.length:0),0);
+      const savedDetails=listings.map(listing=>retainedStreameastDetail(listing,savedGames));
+      const savedRows=savedDetails.reduce((count,detail)=>count+(detail?.servers.length??0),0);
       return <SourceGameCard key={key} title={game.title} summary={isCurrent?
-        `${available} available ${available===1?'feed':'feeds'} · ${serverRows} server rows`:`Saved scan · ${serverRows} server rows`}>
+        `${available} available ${available===1?'feed':'feeds'} · ${serverRows} current server rows${savedRows?` · ${savedRows} saved server rows`:''}`:`Saved scan · ${serverRows} server rows`}>
         <SourceFeedChecks candidates={candidates} at={snapshot.at} now={now}/>
         {isCurrent&&links.filter(link=>link.freshness==='stale-live'&&catalogGameKey(link)===key).map(link=><p key={link.url}>Retained listing: {link.title} · Last seen {time(link.observedAt)}</p>)}
-        {listings.map(listing=><div key={listing.url} className="source-inventory-listing">
+        {listings.map((listing,index)=>{
+          const saved=savedDetails[index];
+          const shown=listing.detail.kind==='collected'?listing.detail:saved;
+          return <div key={listing.url} className="source-inventory-listing">
           <p><a href={listing.url} target="_blank" rel="noopener noreferrer">Game listing ↗</a> · {listing.gameId?'Matched to ESPN':matchReasonLabel[listing.matchReason || 'other']} · {listing.detail.kind==='collected'?`${listing.detail.servers.length} server rows`:listing.detail.kind==='failed'?`Detail failed (${catalogFailureLabel[listing.detail.reason]})`:'Detail pending'}</p>
-          {listing.detail.kind==='collected'&&<ul>{listing.detail.servers.map(server=><li key={server.id}>
-            <a href={server.url} target="_blank" rel="noopener noreferrer">{server.label} ↗</a> · {server.availability.kind==='free-channel'?'Free compatible channel (untested)':
-              server.availability.kind==='free-wikisport'?'Free compatible Wikisport player (untested)':
+          {saved&&<p>Saved server rows · last collected {time(saved.at)} · {saved.servers.length} rows</p>}
+          {shown&&<ul>{shown.servers.map(server=><li key={server.id}>
+            <a href={server.url} target="_blank" rel="noopener noreferrer">{server.label} ↗</a> · {server.availability.kind==='free-channel'?'Free compatible channel':
+              server.availability.kind==='free-wikisport'?'Free compatible Wikisport player':
+              server.availability.kind==='free-page'?'Free compatible page':
               server.availability.kind==='free-unsupported'?'Free · unsupported player':server.availability.kind==='free-unresolved'?'Free · player unresolved':
                 server.availability.kind==='premium'?'Premium':'Access unresolved'}
           </li>)}</ul>}
-        </div>)}
+        </div>;})}
       </SourceGameCard>;
     })}</div>}
   </div>;
