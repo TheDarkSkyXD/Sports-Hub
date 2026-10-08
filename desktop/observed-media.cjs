@@ -193,12 +193,14 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     }
     if (entry.requests.size >= 8) { response.writeHead(429); response.end(); return; }
     touch(entry);
-    const request = network.request({ url: url.href, session: entry.session, method: 'GET', redirect: 'manual', useSessionCookies: url.origin === entry.cookieOrigin });
+    const observedOrigin = url.origin === entry.cookieOrigin;
+    const request = network.request({ url: url.href, session: entry.session, method: 'GET', redirect: 'manual',
+      useSessionCookies: observedOrigin, referrerPolicy: observedOrigin ? 'unsafe-url' : 'strict-origin-when-cross-origin' });
     entry.requests.add(request);
     for (const [name, value] of Object.entries(entry.headers)) {
       if (name === 'Referer') {
         const referer = new URL(value);
-        request.setHeader(name,url.origin === referer.origin ? value : `${referer.origin}/`);
+        request.setHeader(name,observedOrigin || url.origin === referer.origin ? value : `${referer.origin}/`);
       } else request.setHeader(name, value);
     }
     if (range) request.setHeader('Range', range);
