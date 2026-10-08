@@ -6,7 +6,8 @@ export function provisionalLiveChannel(observation:Observation,result:Match,fres
   if(!(observation.sourceId==='buffstream-nfl'&&observation.league==='nfl'||
       observation.sourceId==='buffstream-cfb'&&observation.league==='ncaaf'||
       observation.sourceId==='buffstream-nba'&&observation.league==='nba'||
-      observation.sourceId==='buffstream-nhl'&&observation.league==='nhl')||observation.kickoff!==null||
+      observation.sourceId==='buffstream-nhl'&&observation.league==='nhl'||
+      observation.sourceId==='buffstream-mlb'&&observation.league==='mlb')||observation.kickoff!==null||
     result.kind!=='unmatched'||!(result.reason==='unverified-kickoff'||
       observation.sourceId==='buffstream-cfb'&&result.reason==='unverified-contextual-kickoff')||result.possibleGameIds.length!==1||
     now-observation.observedAt>=30*60_000||observation.observedAt>now+60_000)return null;
@@ -22,7 +23,7 @@ export function provisionalLiveChannel(observation:Observation,result:Match,fres
   const gameMinutes=Number(parts.find(part=>part.type==='hour')?.value)*60+
     Number(parts.find(part=>part.type==='minute')?.value);
   const difference=Math.abs(sourceMinutes-gameMinutes);
-  return (observation.sourceId==='buffstream-nfl'||observation.sourceId==='buffstream-nba'||observation.sourceId==='buffstream-nhl'?difference===0:
+  return (observation.sourceId==='buffstream-nfl'||observation.sourceId==='buffstream-nba'||observation.sourceId==='buffstream-nhl'||observation.sourceId==='buffstream-mlb'?difference===0:
     Math.min(difference,1440-difference)<=60)?game:null;
 }
 
