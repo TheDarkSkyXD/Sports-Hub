@@ -19,9 +19,16 @@ const wikisport=wikisportProvider();
 const eventPage=eventPageProvider();
 const swac=swacProvider();
 const tvapp=tvappProvider();
+const eventPageIdentities=new WeakMap<Extract<CandidateLocator,{provider:'event-page'}>,{fingerprint:string;identity:string}>();
 
 export function providerProbeIdentity(locator:CandidateLocator):string {
-  return locator.provider==='event-page'?eventPageProbeIdentity(locator):JSON.stringify(locator);
+  const fingerprint=JSON.stringify(locator);
+  if(locator.provider!=='event-page')return fingerprint;
+  const cached=eventPageIdentities.get(locator);
+  if(cached?.fingerprint===fingerprint)return cached.identity;
+  const identity=eventPageProbeIdentity(locator);
+  eventPageIdentities.set(locator,{fingerprint,identity});
+  return identity;
 }
 
 export function openProvider(locator: CandidateLocator, signal: AbortSignal, purpose: 'playback' | 'probe' = 'playback'): Promise<ProviderPlayback> {
