@@ -212,7 +212,24 @@ test('a disposed native frame tree ends a media probe without an unhandled rejec
   harness.receiveHeaders({ id: 1, url: mediaUrl, statusCode: 200, responseHeaders: {
     'content-type': ['application/vnd.apple.mpegurl'],
   } });
-  assert.equal(await operation.promise, null);
+  assert.deepEqual(await operation.promise, {kind:'incomplete',phase:'ownership',reason:'frame-detached',retryAfterMs:30000});
+});
+
+test('a verified offline selected player is a completed no-feed observation', async () => {
+  const player = {
+    url: 'https://posamari.me/sd0embed/NFL',
+    isDestroyed: () => false,
+    executeJavaScript: (code: string) => Promise.resolve(code.includes('readyState:document.readyState') ? {
+      readyState: 'complete', hasVideo: false, title: 'Stream is Offline', status: 'Offline',
+      description: 'The stream is currently offline. Please try again later.',
+    } : false),
+  };
+  const harness = createObserverHarness({framesInSubtree:[player]});
+  const operation = harness.observer.observe('https://vipbox.fm/live/nfl/test-game-1','probe');
+  assert.ok(operation);
+  operation.start();
+  harness.tick();
+  assert.deepEqual(await operation.promise,{kind:'no-feed',phase:'activation',reason:'offline'});
 });
 
 test('a frame disposed after script execution ends its observation and leaves the slot reusable', async () => {
