@@ -4,7 +4,7 @@ import { detailIdentity } from './source-policy.ts';
 import { resolvedLiveChannelMatch } from './live-channel.ts';
 import { feedDateEligible, feedEligible } from './feed-eligibility.ts';
 import type { ListingSource } from './ports.ts';
-import { confirmedFinishedBoundEvent, confirmedFinishedGameId, createObservationMatcher, matchSourceLiveGame, normalizedName } from './matching.ts';
+import { confirmedFinishedBoundEvent, confirmedFinishedGameId, createObservationMatcher, matchSourceLiveGame, matchUndatedSportsurge, normalizedName } from './matching.ts';
 import { sportsurgeCatalogView, sportsurgeObservation } from './sportsurge-catalog.ts';
 import { streameastCatalogView, streameastObservation, verifiedStreameastMatch } from './streameast-catalog.ts';
 
@@ -149,10 +149,11 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     const links=linksBySource.get(observation.sourceId) || new Map();
     if (links.has(url)) return;
     const raw=match(observation,at);
-    const result:Match=sourceLive && !stale && observation.league && observation.teams && observation.kickoff===null
-      ?matchSourceLiveGame(raw,games,at):
-      event===null?resolvedLiveChannelMatch(observation,raw,freshGames,details.get(observation.id),at):
-        verifiedStreameastMatch(event,raw,gameById.get(raw.kind==='matched'?raw.gameId:''));
+    const live=sourceLive&&!stale&&observation.league&&observation.teams&&observation.kickoff===null?
+      matchSourceLiveGame(raw,games,at):raw;
+    const resolved:Match=event===null?resolvedLiveChannelMatch(observation,live,freshGames,details.get(observation.id),at):
+      verifiedStreameastMatch(event,raw,gameById.get(raw.kind==='matched'?raw.gameId:''));
+    const result=matchUndatedSportsurge(observation,resolved,games,at);
     if(!visibleObservation(observation,result))return;
     const gameId=result.kind==='matched' && gameById.has(result.gameId) ? result.gameId : null;
     if (stale && (!gameId || gameById.get(gameId)?.lifecycle!=='live')) return;

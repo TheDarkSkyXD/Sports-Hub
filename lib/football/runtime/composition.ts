@@ -4,6 +4,7 @@ import { SCHEDULES, readSchedule, readSeasonMembership } from '../adapters/sched
 import { SOURCES, SourceFetchError, compatiblePlayers, enrichObservation, missingPlayerReason, parseListings, readHtml, tvappPlayers } from '../adapters/sources.ts';
 import type { FootballDependencies } from '../domain/ports.ts';
 import { FootballCoordinator } from './coordinator.ts';
+import { PartialListingReadError } from '../domain/ports.ts';
 import { probeCandidate, probeIdentity } from '../../playback/probe.ts';
 import { persistableLocator } from '../../playback/persistent-locator.ts';
 
@@ -28,7 +29,7 @@ export function createFootballCoordinator(path: string, options: Overrides = {})
       probeCandidate:options.probeCandidate ?? probeCandidate,
       probeIdentity:options.probeIdentity ?? probeIdentity,
       persistableLocator:options.persistableLocator ?? persistableLocator,
-      retryAfterMs:options.retryAfterMs ?? (error => error instanceof SourceFetchError ? error.retryAfterMs || 0 : 0),
+      retryAfterMs:options.retryAfterMs ?? (error => error instanceof SourceFetchError || error instanceof PartialListingReadError ? error.retryAfterMs || 0 : 0),
       now:options.now ?? Date.now,
       id:options.id ?? randomUUID,
     });

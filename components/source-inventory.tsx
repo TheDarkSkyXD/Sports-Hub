@@ -206,11 +206,12 @@ function CollectionHealth({source}:{source:Source}) {
     'parser-changed':'The source page format changed.',
     'empty-after-success':'This collection returned no listings after an earlier successful collection.',
     'player-drop':'A game page stopped publishing supported free players.',
-    'collection-failed':source.links.length>0?'The latest collection failed. Previously saved listings are retained below.':'The latest collection failed; no new listing count was confirmed.',
+    'collection-failed':health.currentCount>0?'The latest collection failed after collecting some listings. Previously saved listings are retained below.':
+      source.links.length>0?'The latest collection failed. Previously saved listings are retained below.':'The latest collection failed; no new listing count was confirmed.',
   }[health.reason];
   return <div className="source-inventory-coverage-alert" role="note"><AlertTriangle size={16} aria-hidden="true"/>
     <div><strong>Source collection needs attention</strong><p>{reason}</p>
-      {health.reason==='collection-failed'?<p>Last successful scan {time(health.baselineAt)}. Latest attempt failed {time(health.currentAt)}; no new listing count was confirmed.</p>:
+      {health.reason==='collection-failed'?<p>Last successful scan {time(health.baselineAt)}. Latest attempt failed {time(health.currentAt)}; {health.currentCount>0?`${health.currentCount} ${health.currentCount===1?'listing was':'listings were'} collected`:'no new listing count was confirmed'}.</p>:
         <p>{health.reason==='player-drop'?'Feeds found':health.reason==='parser-changed'?'Collected results':'Listings'}: {health.baselineCount} at {time(health.baselineAt)} → {health.currentCount} at {time(health.currentAt)}. Source availability may have changed.</p>}</div>
   </div>;
 }

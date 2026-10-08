@@ -1,5 +1,6 @@
 import type { Game, Match, Observation, SourceEventBinding } from '../shared.ts';
 import { COLLEGE_TEAM_CATALOG } from './college-teams.generated.ts';
+import { feedEligible } from './feed-eligibility.ts';
 
 export function normalizedName(value: string): string {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\band\b/g, '&').replace(/[^a-z0-9]/g, '');
@@ -88,6 +89,14 @@ export function detailCandidateGameIds(result:Match):readonly string[] {
   if(result.kind==='matched')return [result.gameId];
   return result.reason==='unverified-kickoff'||result.reason==='unverified-contextual-kickoff'
     ?result.possibleGameIds:[];
+}
+
+export function matchUndatedSportsurge(observation:Observation,result:Match,games:readonly Game[],now:number):Match {
+  if((observation.sourceId!=='sportsurge'&&observation.sourceId!=='sportsurge-v2')||
+    observation.kickoff!==null||now-observation.observedAt>=30*60_000||observation.observedAt>now+60_000||
+    result.kind!=='unmatched'||result.reason!=='unverified-kickoff'||result.possibleGameIds.length!==1)return result;
+  const game=games.find(game=>game.id===result.possibleGameIds[0]);
+  return game&&observation.league===game.league&&feedEligible(game,now)?{kind:'matched',gameId:game.id}:result;
 }
 
 export function matchSourceLiveGame(result:Match,games:readonly Game[],now:number):Match {
