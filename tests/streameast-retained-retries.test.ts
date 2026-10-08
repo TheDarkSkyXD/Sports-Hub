@@ -22,7 +22,9 @@ const eventUrl = 'https://v2.streameast.ga/cfb/new-mexico-state-aggies-vs-fiu-pa
 function catalog(startedAt: number, detail: StreameastCatalog['events'][number]['detail'],
   options: { title?: string; gameId?: string; categoryAt?: number; state?: 'collecting' | 'complete' } = {}): StreameastCatalog {
   return {
-    runId: startedAt === at ? '11111111-1111-4111-8111-111111111111' : '22222222-2222-4222-8222-222222222222',
+    runId: startedAt === at ? '11111111-1111-4111-8111-111111111111' :
+      startedAt === at + 5 * minute ? '22222222-2222-4222-8222-222222222222' :
+        '33333333-3333-4333-8333-333333333333',
     sequence: 0, startedAt,
     state: options.state === 'complete' ? { kind: 'complete', at: startedAt } : { kind: 'collecting' },
     categories: { nfl: { kind: 'collected', at: startedAt }, ncaaf: { kind: 'collected', at: options.categoryAt ?? startedAt } },
@@ -47,13 +49,14 @@ function fixture() {
   let store = new FootballStore(path);
   store.savePartition('fbs', { games: [game], league: 'ncaaf', at });
   let now = at;
+  let scheduledGame = game;
   const calls = new Map<string, number>();
   const pending = new Map<string, (result: CandidateProbeResult) => void>();
   const create = () => new FootballCoordinator({
     store, now: () => now, id: () => 'session',
     schedules: [{ id: 'fbs', league: 'ncaaf', path: '', group: 'fbs' }],
     sources: [{ id: 'streameast', url: 'https://v2.streameast.ga/cfb/', family: 'streameast', kind: 'browser-catalog' }],
-    readSchedule: async () => ({ games: [game], league: 'ncaaf', at: now }),
+    readSchedule: async () => ({ games: [scheduledGame], league: 'ncaaf', at: now }),
     readSeasonMembership: async () => { throw new Error('unused'); },
     readHtml: async () => { throw new Error('unused'); },
     parseListings: () => ({ observations: [], outcome: 'empty' }),
@@ -83,6 +86,11 @@ function fixture() {
     return reply.snapshot.games.find(row => row.gameId === game.id)?.candidates ?? [];
   };
   return { calls, pending, publish, candidates, get coordinator() { return coordinator; },
+    setGame(value: Game) { scheduledGame = value; },
+    clockWithoutProjection(minutes: number) {
+      now = at + minutes * minute;
+      store.savePartition('fbs', { games: [scheduledGame], league: 'ncaaf', at: now });
+    },
     async advance(minutes: number) {
       now = at + minutes * minute;
       await coordinator.refresh(true);
@@ -116,7 +124,7 @@ test('a fresh matched board keeps older published StreamEast servers retryable a
     const rows = await run.candidates();
     assert.equal(rows.length, 3);
     assert.ok(rows.every(row => row.availability.kind !== 'playable'));
-    assert.ok(run.calls.get('2') && run.calls.get('2')! >= 3);
+    assert.ok((run.calls.get('2') ?? 0) >= 3);
     assert.ok(run.pending.has('2'));
     run.pending.get('2')?.({ kind: 'playable', proof: 'media' });
     await drain();
@@ -166,7 +174,57 @@ test('an expired current category cannot retain older server publication', async
     await run.publish(catalog(at, collected(at), { state: 'complete' }));
     await run.advance(31);
     await run.publish(catalog(at + 31 * minute, { kind: 'pending' }));
-    await run.advance(62);
+    assert.equal((await run.candidates()).length, 3);
+    run.clockWithoutProjection(62);
+    assert.equal((await run.candidates()).length, 0);
+  } finally { await run.stop(); }
+});
+
+test('the newest matching collected-empty detail blocks older server rows', async () => {
+  const run = fixture();
+  try {
+    await run.publish(catalog(at, collected(at), { state: 'complete' }));
+    await run.advance(5);
+    await run.publish(catalog(at + 5 * minute, collected(at + 5 * minute, [])));
+    await run.advance(31);
+    await run.publish(catalog(at + 31 * minute, { kind: 'failed', at: at + 31 * minute, reason: 'rate-limited' }));
+    assert.equal((await run.candidates()).length, 0);
+  } finally { await run.stop(); }
+});
+
+test('an ESPN identity change cannot recover an earlier event route', async () => {
+  const run = fixture();
+  try {
+    await run.publish(catalog(at, collected(at), { state: 'complete' }));
+    await run.advance(31);
+    await run.publish(catalog(at + 31 * minute, { kind: 'pending' }, { gameId: '46297' }));
+    assert.equal((await run.candidates()).length, 0);
+  } finally { await run.stop(); }
+});
+
+test('a final game cannot recover an older published server', async () => {
+  const run = fixture();
+  try {
+    await run.publish(catalog(at, collected(at), { state: 'complete' }));
+    await run.advance(25);
+    run.setGame({ ...game, status: 'post', lifecycle: 'final', finalObservedAt: at + 31 * minute });
+    await run.advance(31);
+    await run.publish(catalog(at + 31 * minute, { kind: 'pending' }));
+    assert.equal((await run.candidates()).length, 0);
+  } finally { await run.stop(); }
+});
+
+test('a failed category without a current event does not revive historical servers', async () => {
+  const run = fixture();
+  try {
+    await run.publish(catalog(at, collected(at), { state: 'complete' }));
+    await run.advance(25);
+    await run.advance(31);
+    const failed = catalog(at + 31 * minute, { kind: 'pending' });
+    failed.state = { kind: 'partial', at: at + 31 * minute, reason: 'rate-limited' };
+    failed.categories.ncaaf = { kind: 'failed', at: at + 31 * minute, reason: 'rate-limited' };
+    failed.events = [];
+    await run.publish(failed);
     assert.equal((await run.candidates()).length, 0);
   } finally { await run.stop(); }
 });
