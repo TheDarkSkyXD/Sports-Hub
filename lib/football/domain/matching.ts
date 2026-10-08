@@ -56,6 +56,7 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
       if (observation.league && game.league!==observation.league) return false;
       if (observation.sourceId==='tvapp-nba' && game.league!=='nba' && game.league!=='wnba' && game.league!=='ncaab') return false;
       if (observation.sourceId==='tvapp-nhl' && game.league!=='nhl' && game.league!=='ncaah' && game.league!=='ncaawh') return false;
+      if (observation.sourceId==='tvapp-mlb' && game.league!=='mlb') return false;
       if (observation.sourceId==='tvapp' && game.league!=='nfl' && game.league!=='ncaaf') return false;
       return home.has(first) && away.has(second) || home.has(second) && away.has(first);
     });
@@ -67,7 +68,7 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
         !!activeAnchor&&activeAnchor.size===1&&activeAnchor.has(anchorId)&&
         !!activeOther&&activeOther.has(otherId)&&[...activeOther].every(owner=>otherOwners.has(owner));
     };
-    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='ncaab'||observation.league==='nhl'||observation.league==='ncaah'||observation.league==='ncaawh'||observation.sourceId==='tvapp-nba'||observation.sourceId==='tvapp-nhl'?[]:prepared.filter(({game})=>{
+    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='ncaab'||observation.league==='nhl'||observation.league==='ncaah'||observation.league==='ncaawh'||observation.league==='mlb'||observation.sourceId==='tvapp-nba'||observation.sourceId==='tvapp-nhl'||observation.sourceId==='tvapp-mlb'?[]:prepared.filter(({game})=>{
       if(game.league!=='ncaaf'||!collegeAliases.has(game.home.id||'')||!collegeAliases.has(game.away.id||''))return false;
       const home=identity(game,game.home),away=identity(game,game.away);
       return anchored(first,second,home,away)||anchored(second,first,away,home)||

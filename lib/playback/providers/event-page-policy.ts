@@ -39,12 +39,18 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
   const event = exactPage(eventUrl), server = exactPage(serverUrl);
   if (!event || !server) return false;
   if(event.hostname==='ms.buffstream.io'&&server.hostname==='embedsports.me'){
-    const team=/^\/(nfl|cfb|nba|nhl)-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(event.pathname);
-    const pair=/^\/(american-football|basketball|ice-hockey)\/([a-z0-9]+(?:-[a-z0-9]+)*)-vs-([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$/.exec(server.pathname);
-    return !!team&&!!pair&&(team[1]==='nba' ? pair[1]==='basketball' : team[1]==='nhl'?pair[1]==='ice-hockey':pair[1]==='american-football')&&
+    const team=/^\/(nfl|cfb|nba|nhl|mlb)-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(event.pathname);
+    const pair=/^\/(american-football|basketball|ice-hockey|baseball)\/([a-z0-9]+(?:-[a-z0-9]+)*)-vs-([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$/.exec(server.pathname);
+    return !!team&&!!pair&&(team[1]==='nba' ? pair[1]==='basketball' : team[1]==='nhl'?pair[1]==='ice-hockey':team[1]==='mlb'?pair[1]==='baseball':pair[1]==='american-football')&&
       (team[2]===pair[2]||team[2]===pair[3]);
   }
-  if (event.hostname === 'tvapp1.pk') return eventUrl===serverUrl && /^\/watch\/\d{1,20}$/.test(event.pathname);
+  if(event.hostname==='mlbbox.me'&&server.hostname==='embedsports.me'){
+    const matchup=/^\/mlb\/([a-z0-9-]+)-vs-([a-z0-9-]+)-stream$/.exec(event.pathname);
+    const player=/^\/baseball\/([a-z0-9-]+)-vs-([a-z0-9-]+)-stream-[12]$/.exec(server.pathname);
+    return !!matchup&&!!player&&
+      (matchup[1]===player[1]&&matchup[2]===player[2]||matchup[1]===player[2]&&matchup[2]===player[1]);
+  }
+  if (event.hostname === 'tvapp1.pk') return eventUrl===serverUrl && /^\/watch\/[a-zA-Z0-9-]{1,120}$/.test(event.pathname);
   if ((event.hostname === 'methstreams.st' || event.hostname === 'crackstreams.st') && server.hostname === 'fxtrend.st') {
     if (/^\/event\/ppv-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(event.pathname))
       return new RegExp(`^${event.pathname}/(?:core|vector|vertex|hotel)/[1-9]\\d{0,2}$`).test(server.pathname);
@@ -74,11 +80,11 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
     return !!match && new RegExp(`^/cfb/[1-9]\\d{0,3}/stream-${match[1]}-live$`).test(server.pathname);
   }
   if (event.hostname === 'strikeout.im' && server.hostname === event.hostname) {
-    const match = /^\/(college-football|nfl|nba|nhl)\/stream-([a-z0-9]+(?:-[a-z0-9]+)*)-live$/.exec(event.pathname);
+    const match = /^\/(college-football|nfl|nba|nhl|mlb)\/stream-([a-z0-9]+(?:-[a-z0-9]+)*)-live$/.exec(event.pathname);
     return !!match && new RegExp(`^/${match[1]}/[1-9]\\d{0,3}/${match[2]}-stream$`).test(server.pathname);
   }
   if (event.hostname === 'ppv.st' && server.hostname === 'embedindia.st') {
-    const match = /^\/live\/(cfb|nfl|nba|wnba|nhl)\/(\d{4}-\d{2}-\d{2})\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
+    const match = /^\/live\/(cfb|nfl|nba|wnba|nhl|mlb)\/(\d{4}-\d{2}-\d{2})\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
     if (!match) return false;
     const path=`/embed/${match[1]}/${match[2]}/${match[3]}`;
     return server.pathname===path || server.pathname===`${path}/skycast`;

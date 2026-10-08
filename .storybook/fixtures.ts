@@ -55,6 +55,7 @@ export const productBoard: Board = {
     nhl: { scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
     ncaah: { scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
     ncaawh: { scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
+    mlb: { scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
   },
   games: [
     { id: '401', league: 'nfl', lifecycle: 'live', status: 'in', name: 'Green Bay Packers at Chicago Bears',

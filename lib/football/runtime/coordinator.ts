@@ -264,7 +264,7 @@ export class FootballCoordinator {
     return this.refreshing;
   }
   private scheduleFresh(game: Game): boolean {
-    const keys = game.partitions?.length ? game.partitions : game.league === 'nfl' ? ['nfl'] : game.league === 'nba' || game.league === 'wnba' || game.league === 'ncaab' || game.league === 'nhl' || game.league === 'ncaah' || game.league === 'ncaawh' ? [game.league] : [];
+    const keys = game.partitions?.length ? game.partitions : game.league === 'nfl' ? ['nfl'] : game.league === 'nba' || game.league === 'wnba' || game.league === 'ncaab' || game.league === 'nhl' || game.league === 'ncaah' || game.league === 'ncaawh' || game.league === 'mlb' ? [game.league] : [];
     return keys.length > 0 && keys.every(key => !this.errors.has(key) && this.now()-(this.store.partition(key)?.at || 0) <= 90000);
   }
   private probeKey(candidate:Candidate):string {
@@ -1021,7 +1021,7 @@ export class FootballCoordinator {
         if(!this.observationFeedEligible(observation))return;
         const at=this.now();
         const rolloverGame=liveRolloverGame(original);
-        const playersFor=(id:string)=>['tvapp','tvapp-nba','tvapp-nhl'].includes(observation.sourceId)&&this.tvappPlayers?
+        const playersFor=(id:string)=>['tvapp','tvapp-nba','tvapp-nhl','tvapp-mlb'].includes(observation.sourceId)&&this.tvappPlayers?
           this.tvappPlayers(id,observation,html,signal):Promise.resolve(this.compatiblePlayers(id,observation,html));
         const rolloverPlayers=rolloverGame&&observation.kickoff===original.kickoff?
           await playersFor(rolloverGame.id):[];
@@ -1131,7 +1131,7 @@ export class FootballCoordinator {
       ]).concat(this.errors.has('working-feed-cache')?['Working feeds could not be saved for the next restart.']:[])};
     };
     const now = this.now();
-    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),feedCheckIntervalMinutes:this.store.feedCheckIntervalMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs']),nba:feed(['nba']),wnba:feed(['wnba']),ncaab:feed(['ncaab']),nhl:feed(['nhl']),ncaah:feed(['ncaah']),ncaawh:feed(['ncaawh'])},games:this.games.filter(game => {
+    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),feedCheckIntervalMinutes:this.store.feedCheckIntervalMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs']),nba:feed(['nba']),wnba:feed(['wnba']),ncaab:feed(['ncaab']),nhl:feed(['nhl']),ncaah:feed(['ncaah']),ncaawh:feed(['ncaawh']),mlb:feed(['mlb'])},games:this.games.filter(game => {
       if(game.lifecycle==='final')return now<game.graceEndsAt;
       return (game.partitions || []).some(key => now-(this.store.partition(key)?.at || 0)<24*3600000) ||
         game.finalObservedAt !== undefined || (this.candidates.get(game.id)||[]).some(candidate=>this.selectable(candidate)) ||
