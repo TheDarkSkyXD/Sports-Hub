@@ -1,3 +1,4 @@
+require('./closed-stdio.cjs');
 const { app, autoUpdater, BrowserWindow, dialog, ipcMain, shell, powerMonitor, Notification } = require('electron');
 const { randomUUID } = require('node:crypto');
 const path = require('node:path');
