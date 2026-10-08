@@ -56,6 +56,11 @@ export const productBoard: Board = {
     ncaah: { scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
     ncaawh: { scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
     mlb: { scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
+    f1: { scoresAt: null, sourceAt: null, errors: [] },
+    'nascar-cup': { scoresAt: null, sourceAt: null, errors: [] },
+    'nascar-truck': { scoresAt: null, sourceAt: null, errors: [] },
+    motogp: { scoresAt: null, sourceAt: null, errors: [] },
+    motorsport: { scoresAt: null, sourceAt: null, errors: [] },
   },
   games: [
     { id: '401', league: 'nfl', lifecycle: 'live', status: 'in', name: 'Green Bay Packers at Chicago Bears',

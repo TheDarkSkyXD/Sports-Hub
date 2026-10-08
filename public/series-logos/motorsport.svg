@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 64" role="img" aria-label="Motorsport checkered flag">
+  <rect width="96" height="64" rx="8" fill="#20242b"/>
+  <path d="M19 52V12" stroke="#dce2ea" stroke-width="4" stroke-linecap="round"/>
+  <path d="M22 12h54v32H22z" fill="#f5f7fa"/>
+  <path d="M22 12h9v8h-9zm18 0h9v8h-9zm18 0h9v8h-9zm-27 8h9v8h-9zm18 0h9v8h-9zm18 0h9v8h-9zm-45 8h9v8h-9zm18 0h9v8h-9zm18 0h9v8h-9zm-27 8h9v8h-9zm18 0h9v8h-9zm18 0h9v8h-9z" fill="#20242b"/>
+</svg>

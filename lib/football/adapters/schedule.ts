@@ -1,8 +1,9 @@
 import { parseScoreboard, scoreboardFeedData, scoreboardWeek } from '../../sunday.ts';
-import { GameSchema } from '../shared.ts';
-import type { Game, SeasonMembership } from '../shared.ts';
+import { GameSchema, isRaceGame } from '../shared.ts';
+import type { Game, MatchupGame, Observation, SeasonMembership } from '../shared.ts';
 import type { ScheduleResult, ScheduleSource } from '../domain/ports.ts';
 import { recordFinal } from '../domain/lifecycle.ts';
+import { digest, parseListings, readHtml, SOURCES } from './sources.ts';
 
 export const SCHEDULES = [
   {id:'nfl',league:'nfl',path:'nfl',group:null},
@@ -15,12 +16,18 @@ export const SCHEDULES = [
   {id:'ncaah',league:'ncaah',sport:'hockey',path:'mens-college-hockey',group:null},
   {id:'ncaawh',league:'ncaawh',sport:'hockey',path:'womens-college-hockey',group:null},
   {id:'mlb',league:'mlb',sport:'baseball',path:'mlb',group:null},
+  {id:'f1',league:'f1',sport:'racing',path:'f1',group:null},
+  {id:'nascar-cup',league:'nascar-cup',sport:'racing',path:'nascar-premier',group:null},
+  {id:'nascar-truck',league:'nascar-truck',sport:'racing',path:'nascar-truck',group:null},
+  {id:'motogp',league:'motogp',sport:'racing',path:'source-motogp',group:null},
+  {id:'motorsport',league:'motorsport',sport:'racing',path:'source-motorsport',group:null},
 ] as const;
 
 type FutureDay = { date: string; games: Game[]; expiresAt: number };
 const futureDays = new WeakMap<AbortSignal, Map<string, FutureDay>>();
 const FUTURE_TTL_MS = 300000;
 const FUTURE_CONCURRENCY = 3;
+let sharedListingRead:{at:number;signal:AbortSignal;promise:Promise<Observation[]>}|undefined;
 
 function validKickoff(date: string | undefined): boolean {
   if (!date || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/.test(date)) return false;
@@ -30,8 +37,8 @@ function validKickoff(date: string | undefined): boolean {
   return Number.isFinite(time) && time >= Date.UTC(2000,0,1) && time < Date.UTC(2100,0,1) && Number.isFinite(calendar) && new Date(calendar).toISOString().slice(0,10) === day;
 }
 
-function sameTeams(a: Pick<Game,'home' | 'away'>, b: Pick<Game,'home' | 'away'>): boolean {
-  const same = (left: Game['home'], right: Game['home']) => left.id && right.id ? left.id === right.id : left.name === right.name;
+function sameTeams(a: Pick<MatchupGame,'home' | 'away'>, b: Pick<MatchupGame,'home' | 'away'>): boolean {
+  const same = (left: MatchupGame['home'], right: MatchupGame['home']) => left.id && right.id ? left.id === right.id : left.name === right.name;
   return same(a.home,b.home) && same(a.away,b.away);
 }
 
@@ -67,6 +74,7 @@ export async function readSeasonMembership(season: number, signal: AbortSignal):
 }
 
 export async function readSchedule(partition: ScheduleSource, now: number, signal: AbortSignal, onCurrent?: (result: ScheduleResult) => void): Promise<ScheduleResult> {
+  if(partition.league==='motogp'||partition.league==='motorsport')return readListingSchedule(partition,now,signal,onCurrent);
   const date = (time: number) => new Date(time).toISOString().slice(0,10).replaceAll('-','');
   const today = date(now);
   const lastFutureDate = date(now + 7*24*3600000);
@@ -100,7 +108,9 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
           ? recordFinal({...game,partitions:[partition.id]},now)
           : {...game,partitions:[partition.id]});
       });
-      if (daily.length !== input.events.length || new Set(daily.map(game => game.id)).size !== daily.length) throw new Error('schedule-incomplete-or-duplicate');
+      if ((partition.sport==='racing'?input.events.some((event:unknown)=>!event||typeof event!=='object'||!('competitions' in event)||!Array.isArray(event.competitions)||
+        daily.filter(game=>game.league===partition.league&&'race' in game&&game.race.eventId===('id' in event?event.id:undefined)).length!==event.competitions.length):
+        daily.length !== input.events.length) || new Set(daily.map(game => game.id)).size !== daily.length) throw new Error('schedule-incomplete-or-duplicate');
       return {games:daily,week:withWeek ? scoreboardWeek(input) : undefined};
     };
     try {return await request();}
@@ -113,7 +123,10 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
     for (const game of daily) {
       const previous = games.get(game.id);
       if (previous) {
-        if (previous.home.id !== game.home.id || previous.away.id !== game.away.id) {
+        if (previous.league!==game.league || isRaceGame(previous)&&isRaceGame(game)&&
+          (previous.race.eventId!==game.race.eventId||previous.race.session!==game.race.session||previous.date!==game.date) ||
+          !isRaceGame(previous)&&!isRaceGame(game)&&
+          (previous.home.id!==game.home.id||previous.away.id!==game.away.id)) {
           if (futureDate) horizonErrors.push(`${futureDate}:schedule-conflicting-event`);
           else throw new Error('schedule-conflicting-event');
         }
@@ -132,7 +145,7 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
       const supplemental = parseScoreboard(scoreboardFeedData(await response.json() as unknown,'cdn'),'ncaaf');
       for (const extra of supplemental) {
         const game = games.get(extra.id);
-        if (game && !validKickoff(game.date) && validKickoff(extra.date) && sameTeams(game,extra)) games.set(game.id,GameSchema.parse({...game,date:extra.date}));
+        if (game && !isRaceGame(game) && 'home' in extra && !validKickoff(game.date) && validKickoff(extra.date) && sameTeams(game,extra)) games.set(game.id,GameSchema.parse({...game,date:extra.date}));
       }
     } catch (error) {
       if (signal.aborted) throw error;
@@ -186,4 +199,45 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
   }
   await supplementDates();
   return result();
+}
+function numericIdentity(value:string):string {
+  return String(parseInt(digest(value).slice(0,12),16));
+}
+async function readListingSchedule(partition:ScheduleSource,now:number,signal:AbortSignal,
+  onCurrent?: (result:ScheduleResult)=>void):Promise<ScheduleResult> {
+  if(!sharedListingRead||sharedListingRead.at!==now||sharedListingRead.signal!==signal)
+    sharedListingRead={at:now,signal,promise:readMotorsportsListings(now,signal)};
+  const observations=await sharedListingRead.promise;
+  const unique=new Map<string,Game>();
+  for(const observation of observations){
+    if(observation.league!==partition.league||observation.kickoff===null||
+      observation.kickoff<now-24*3600_000||observation.kickoff>now+7*24*3600_000)continue;
+    const title=observation.title;
+    const practice=/\b(?:free\s+)?practice\s*([1-4])\b|\bfp([1-4])\b/i.exec(title);
+    const practiceNumber=practice?.[1]||practice?.[2];
+    const session=/sprint[\s-]*(?:qualifying|quali|shootout)/i.test(title)?'sprint-qualifying':
+      /\bsprint\b/i.test(title)?'sprint':/\bqualifying\b|\bquali\b/i.test(title)?'qualifying':
+      practiceNumber==='2'?'practice-2':practiceNumber==='3'?'practice-3':practiceNumber==='4'?'practice-4':
+      practiceNumber==='1'?'practice-1':/\bpractice\b/i.test(title)?'practice':'race';
+    const round=title.replace(/\s*[-—]\s*(?:free\s+)?(?:practice\s*[1-4]?|sprint(?:\s+qualifying)?|qualifying|race)$/i,'').trim();
+    const eventId=numericIdentity(`${partition.league}|${round}`);
+    const sessionId=numericIdentity(`${partition.league}|${title}|${observation.kickoff}`);
+    const status=observation.kickoff>now?'pre':'unknown';
+    const lifecycle=observation.kickoff>now?'scheduled':'unknown';
+    const game=GameSchema.parse({id:`${partition.league}-${sessionId}`,league:partition.league,name:title,
+      date:new Date(observation.kickoff).toISOString(),race:{eventId,sessionId,session,round},status,lifecycle,
+      detail:status==='pre'?'Scheduled':'Status unavailable',partitions:[partition.id]});
+    unique.set(game.id,game);
+  }
+  const result={games:[...unique.values()],at:Date.now(),league:partition.league};
+  onCurrent?.(result);
+  return result;
+}
+async function readMotorsportsListings(now:number,signal:AbortSignal):Promise<Observation[]> {
+  const sources=SOURCES.filter(source=>source.family==='motorsports');
+  const results=await Promise.allSettled(sources.map(async source=>parseListings(source,await readHtml(source.url,signal),now)));
+  if(signal.aborted)throw signal.reason??new DOMException('Aborted','AbortError');
+  const collected=results.flatMap(result=>result.status==='fulfilled'&&result.value.outcome!=='parser-changed'?[result.value]:[]);
+  if(!collected.length)throw new Error('source-schedule-unavailable');
+  return collected.flatMap(result=>result.observations);
 }

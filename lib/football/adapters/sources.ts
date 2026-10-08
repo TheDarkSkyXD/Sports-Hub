@@ -47,6 +47,8 @@ export const SOURCES = [
   {id:'tvapp-nhl',name:'TVApp Hockey',url:TVAPP_HOCKEY_API,family:'tvapp',kind:'catalog',parserVersion:4,publicUrls:[]},
   {id:'tvapp-mlb',name:'TVApp Baseball',url:TVAPP_BASEBALL_API,family:'tvapp',kind:'catalog',parserVersion:4,publicUrls:[]},
   {id:'ppv',name:'PPV',url:PPV_API,family:'ppv',kind:'catalog',publicUrls:['https://ppv.st/#26']},
+  {id:'methstreams-f1',name:'Methstreams Motorsports',url:'https://methstreams.st/F1',family:'motorsports'},
+  {id:'crackstreams-f1',name:'Crackstreams Motorsports',url:'https://crackstreams.st/F1',family:'motorsports'},
   {id:'streamcenter',name:'Streamcenter',url:STREAMCENTER_CATALOG,family:'streamcenter',publicUrls:['https://streame.center/']},
   {id:'streamcenter-nba',name:'Streamcenter Basketball',url:STREAMCENTER_BASKETBALL,family:'streamcenter',publicUrls:['https://streame.center/']},
   {id:'streamcenter-nhl',name:'Streamcenter Hockey',url:STREAMCENTER_HOCKEY,family:'streamcenter',publicUrls:['https://streame.center/']},
@@ -91,7 +93,8 @@ export function allowedDiscoveryUrl(value: string): boolean {
     if(url.hostname==='tv.swac.org')return swacProgramId(value)!==null;
     return hosts.has(url.hostname) || !url.search && !url.hash && (
       url.hostname === 'tvapp1.pk' && /^\/watch\/[a-zA-Z0-9-]{1,120}$/.test(url.pathname) ||
-      url.hostname === 'ppv.st' && /^\/live\/(?:cfb|nfl|nba|wnba|nhl|mlb)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(url.pathname));
+      url.hostname === 'ppv.st' && (/^\/live\/(?:cfb|nfl|nba|wnba|nhl|mlb)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(url.pathname)||
+        /^\/live\/f1\/\d{4}\/[a-z0-9-]+\/(?:fp[123]|sprint-q|sprint|qualifying|race)$/.test(url.pathname)));
   } catch { return false; }
 }
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex').slice(0,24);
@@ -103,7 +106,7 @@ export async function readHtml(url: string, signal: AbortSignal): Promise<string
     const parsed = PpvCatalog.safeParse(JSON.parse(body));
     if (!parsed.success) throw new Error('parser-changed');
     const path = new URL(url).pathname.slice('/live/'.length);
-    const events = parsed.data.streams.filter(group => group.category === 'American Football' || group.category === 'Basketball' || group.category === 'Ice Hockey' || group.category === 'Baseball')
+    const events = parsed.data.streams.filter(group => group.category === 'American Football' || group.category === 'Basketball' || group.category === 'Ice Hockey' || group.category === 'Baseball' || group.category === 'Motorsports')
       .flatMap(group => group.streams).filter(value => {
         const event = PpvEvent.safeParse(value);
         return event.success && event.data.uri_name === path;
@@ -249,22 +252,23 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
   } else if (source.family === 'ppv') {
     const result = PpvCatalog.safeParse(input);
     if (!result.success) return invalid();
-    const groups = result.data.streams.filter(group => group.category === 'American Football' || group.category === 'Basketball' || group.category === 'Ice Hockey' || group.category === 'Baseball');
+    const groups = result.data.streams.filter(group => group.category === 'American Football' || group.category === 'Basketball' || group.category === 'Ice Hockey' || group.category === 'Baseball' || group.category === 'Motorsports');
     if (!groups.length || new Set(groups.map(group=>group.category)).size!==groups.length) return invalid();
     for (const value of groups.flatMap(group=>group.streams)) {
       const result = PpvEvent.safeParse(value);
       if (!result.success) return invalid();
       const event = result.data;
-      const league = event.tag === 'College Football' ? 'ncaaf' : event.tag === 'NFL' ? 'nfl' : event.tag === 'NBA' ? 'nba' : event.tag === 'WNBA' ? 'wnba' : event.tag === 'NHL' ? 'nhl' : event.tag === 'MLB' ? 'mlb' : null;
+      const league = event.tag === 'College Football' ? 'ncaaf' : event.tag === 'NFL' ? 'nfl' : event.tag === 'NBA' ? 'nba' : event.tag === 'WNBA' ? 'wnba' : event.tag === 'NHL' ? 'nhl' : event.tag === 'MLB' ? 'mlb' : event.tag === 'Formula 1' ? 'f1' : null;
       if (!league || !event.uri_name.startsWith(`${league === 'ncaaf' ? 'cfb' : league}/`)) continue;
-      if (!/^(?:cfb|nfl|nba|wnba|nhl|mlb)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(event.uri_name)) return invalid();
+      if (!/^(?:cfb|nfl|nba|wnba|nhl|mlb)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(event.uri_name)&&
+        !/^f1\/\d{4}\/[a-z0-9-]+\/(?:fp[123]|sprint-q|sprint|qualifying|race)$/.test(event.uri_name)) return invalid();
       if (event.starts_at <= 0) continue;
       const kickoff = event.starts_at*1000;
       if (kickoff < Date.UTC(2000,0,1) || kickoff >= Date.UTC(2100,0,1)) return invalid();
       if (kickoff > now+7*86400000) continue;
       const title = event.name.replace(/\s+/g,' ').trim();
       const pair = catalogTeams(title);
-      const teams: [string,string] | null = pair && /\s+at\s+/i.test(title) ? [pair[1],pair[0]] : pair;
+      const teams: [string,string] | null = league==='f1'?null:pair && /\s+at\s+/i.test(title) ? [pair[1],pair[0]] : pair;
       const url = `https://ppv.st/live/${event.uri_name}`;
       if (!add({id:`${source.id}:${event.id}`,sourceId:source.id,url,title,teams,
         league,kickoff,rawTime:new Date(kickoff).toISOString(),observedAt:now,parserVersion:2})) return invalid();
@@ -276,6 +280,7 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
 
 export function parseListings(source: ListingSource, html: string, now: number): { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' } {
   if (source.kind === 'catalog') return parseCatalog(source,html,now);
+  if(source.family==='motorsports')return parseMotorsportsListings(source,html,now);
   if (source.family === 'livetv') return parseLiveTvListings(source,html,now);
   if (source.id === 'nflstreams') return parseNflstreamsListings(source,html,now);
   if (source.family === 'streamcenter') return parseStreamcenterListings(source,html,now);
@@ -405,6 +410,31 @@ function parseStreamcenterListings(source: ListingSource, html: string, now: num
   if (invalid) return {observations:[],outcome:'parser-changed'};
   return {observations,outcome:observations.length ? 'parsed' : $('article.game-card-row').length ? 'empty' : 'parser-changed'};
 }
+function parseMotorsportsListings(source:ListingSource,html:string,now:number):ReturnType<typeof parseListings> {
+  const $=load(html),observations:Observation[]=[];
+  const seen=new Set<string>();
+  $('a.ev[data-start][href]').each((_index,node)=>{
+    const row=$(node),title=(row.attr('title')||row.find('.ev-t').text()).replace(/\s+/g,' ').trim();
+    const section=row.closest('section.lg').attr('id')||'';
+    const league:League|null=/^g-lg-f1-\d{8}$/.test(section)?'f1':
+      /^g-lg-nascar-truck-\d{8}$/.test(section)?'nascar-truck':
+      /^g-lg-nascar-premier-\d{8}$/.test(section)?'nascar-cup':
+      /^g-cat-motogp-\d{8}$/.test(section)?'motogp':
+      /^g-cat-motorsport-\d{8}$/.test(section)?'motorsport':null;
+    if(!league||!title)return;
+    let url:URL;
+    try{url=new URL(row.attr('href')||'',source.url);}catch{return;}
+    if(url.hostname!==new URL(source.url).hostname||!/^\/event\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(url.pathname)||
+      url.search||url.hash||!allowedDiscoveryUrl(url.href))return;
+    const rawTime=row.attr('data-start')||'';
+    const kickoff=parseKickoff(rawTime);
+    if(kickoff===null||seen.has(url.href))return;
+    seen.add(url.href);
+    observations.push({id:`${source.id}:${digest(url.href)}`,sourceId:source.id,url:url.href,title,teams:null,league,
+      kickoff,rawTime,observedAt:now,parserVersion:2});
+  });
+  return {observations,outcome:observations.length?'parsed':$('a.ev[data-start]').length?'empty':'parser-changed'};
+}
 
 export function enrichObservation(observation: Observation, html: string): Observation {
   if(observation.sourceId==='livetv')return enrichLiveTvObservation(observation,html);
@@ -460,7 +490,7 @@ function eventPagePlayer(gameId:string,eventUrl:string,serverUrl:string,label:st
 
 const ChannelEventBase = z.object({
   '@type':z.literal('SportsEvent'),url:z.string().url(),name:z.string(),startDate:z.string(),
-  offers:z.object({price:z.union([z.string(),z.number()])}),
+  offers:z.object({price:z.union([z.string(),z.number()])}),sport:z.string().optional(),
 });
 const ChannelTeam = z.object({name:z.string()});
 const ChannelEvent = z.union([
@@ -469,7 +499,7 @@ const ChannelEvent = z.union([
 ]);
 
 export function missingPlayerReason(observation:Observation,html:string):MissingPlayerReason {
-  if(!['tvapp','tvapp-nba','tvapp-nhl','tvapp-mlb','methstreams','methstreams-nba','methstreams-nhl','methstreams-mlb','crackstreams-st','crackstreams-nba','crackstreams-nhl','crackstreams-mlb','sportsurge','livetv'].includes(observation.sourceId))return 'no-compatible-media';
+  if(!['tvapp','tvapp-nba','tvapp-nhl','tvapp-mlb','methstreams','methstreams-nba','methstreams-nhl','methstreams-mlb','crackstreams-st','crackstreams-nba','crackstreams-nhl','crackstreams-mlb','methstreams-f1','crackstreams-f1','sportsurge','livetv'].includes(observation.sourceId))return 'no-compatible-media';
   const $=load(html);
   $('script,style,noscript').remove();
   const text=$('body').text().replace(/\s+/g,' ').trim();
@@ -508,16 +538,21 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
     const player=eventPagePlayer(gameId,observation.url,observation.url,'TVApp');
     return player?[player]:[];
   }
-  if (observation.sourceId === 'methstreams' || observation.sourceId === 'methstreams-nba' || observation.sourceId === 'methstreams-nhl' || observation.sourceId === 'methstreams-mlb' || observation.sourceId === 'crackstreams-st' || observation.sourceId === 'crackstreams-nba' || observation.sourceId === 'crackstreams-nhl' || observation.sourceId === 'crackstreams-mlb') {
+  if (observation.sourceId === 'methstreams' || observation.sourceId === 'methstreams-nba' || observation.sourceId === 'methstreams-nhl' || observation.sourceId === 'methstreams-mlb' || observation.sourceId === 'methstreams-f1' || observation.sourceId === 'crackstreams-st' || observation.sourceId === 'crackstreams-nba' || observation.sourceId === 'crackstreams-nhl' || observation.sourceId === 'crackstreams-mlb' || observation.sourceId === 'crackstreams-f1') {
     const $ = load(html);
     const host=observation.sourceId.startsWith('methstreams')?'methstreams.st':'crackstreams.st';
-    if(new URL(observation.url).hostname!==host || !observation.teams || observation.kickoff===null ||
+    if(new URL(observation.url).hostname!==host || (!observation.teams&&observation.league!=='f1'&&observation.league!=='nascar-cup'&&observation.league!=='nascar-truck'&&observation.league!=='motogp'&&observation.league!=='motorsport') || observation.kickoff===null ||
       $('link[rel="canonical"]').attr('href')!==observation.url || $('meta[property="og:url"]').attr('content')!==observation.url)return [];
     const events=$('script[type="application/ld+json"]').toArray().flatMap(node=>{
       try {const parsed=ChannelEvent.safeParse(JSON.parse($(node).text()));return parsed.success?[parsed.data]:[];}catch{return [];}
     });
     const identity=(teams:readonly string[])=>teams.map(team=>team.toLowerCase().replace(/\s+/g,' ').trim()).sort().join('|');
     const event=events.find(value=>{
+      if(!observation.teams)return value.url===observation.url&&Date.parse(value.startDate)===observation.kickoff&&
+        value.name===observation.title&&'performer' in value&&value.performer?.[0]?.name===value.name&&
+        (observation.league==='f1'?value.sport==='Formula 1':observation.league==='motogp'?value.sport==='MotoGP':
+          observation.league==='nascar-cup'?value.sport==='NASCAR Cup Series':
+          observation.league==='nascar-truck'?value.sport==='NASCAR Truck Series':value.sport==='Motorsport');
       const namedTeams=catalogTeams(observation.league==='mlb'
         ?value.name.replace(/\s*\((?:ALDS|NLDS|ALCS|NLCS|World Series) Game \d+\)\s*$/i,'')
         :value.name);
@@ -554,7 +589,7 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
     const event = parsed.data;
     const expected = `https://ppv.st/live/${event.uri_name}`;
     if (observation.url !== expected || observation.kickoff !== event.starts_at*1000 ||
-      !['College Football','NFL','NBA','WNBA','NHL','MLB'].includes(event.tag)) return [];
+      !['College Football','NFL','NBA','WNBA','NHL','MLB','Formula 1'].includes(event.tag)) return [];
     const pages = new Map<string,ResolvedPlayer>();
     for (const row of [event,...event.substreams]) {
       if (!row.iframe || row.tag !== event.tag || row.name !== event.name ||

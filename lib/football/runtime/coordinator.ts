@@ -11,7 +11,7 @@ import { catalogDecision, sameSportsurgeEvent, sanitizeSportsurgeCatalog, sports
 import { sameStreameastEvent, sanitizeStreameastCatalog, streameastDecision, streameastObservation, streameastCandidates, streameastCatalogView, verifiedStreameastMatch } from '../domain/streameast-catalog.ts';
 import type { Recovery } from '../domain/lifecycle.ts';
 import { PartialListingReadError, type CandidateProbeResult, type FootballDependencies, type FootballRepository } from '../domain/ports.ts';
-import { candidateSummary, type Board, type Candidate, type CandidateAvailability, type Command, type DetailEvidence, type Game, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourceEventBinding, type SourcesSnapshot, type StreameastCatalog, type SportsurgeCatalog } from '../shared.ts';
+import { candidateSummary, isRaceGame, type Board, type Candidate, type CandidateAvailability, type Command, type DetailEvidence, type Game, type MatchupGame, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourceEventBinding, type SourcesSnapshot, type StreameastCatalog, type SportsurgeCatalog } from '../shared.ts';
 
 type RecoveryPhase = {kind:'cycling'} | {kind:'exhausted';until:number;knownIds:string[]};
 type FeedOwner = WorkingFeed['owner'];
@@ -172,10 +172,10 @@ export class FootballCoordinator {
     this.games = [...scheduled,...finals.filter(game=>!present.has(game.id)&&game.graceEndsAt!==undefined&&this.now()<game.graceEndsAt)].map(game => {
       const final = previous.get(game.id);
       const current = final ? {...final,partitions:game.partitions} : game;
-      if (current.league !== 'ncaaf' || !current.season) return current;
+      if (isRaceGame(current) || current.league !== 'ncaaf' || !current.season) return current;
       const membership = this.store.membership(current.season);
       if (!membership) return current;
-      const team = (value:Game['home']):Game['home'] => {
+      const team = (value:MatchupGame['home']):MatchupGame['home'] => {
         const id = value.id?.replace(/^espn:ncaaf:/,'');
         const subdivision = id ? membership.teams[id] : undefined;
         return subdivision ? {...value,membership:{subdivision,season:membership.season,observedAt:membership.at,source:'espn-core'}} : value;
@@ -989,7 +989,7 @@ export class FootballCoordinator {
       for(const [gameId,requestedAt] of this.checkTargets)if(this.now()-requestedAt<=90_000)viewed.add(gameId);
       const match=createObservationMatcher(this.games);
       return this.store.observations().flatMap(observation=>{
-        if(visited.has(observation.id)||catalogIds.has(observation.sourceId)||!observation.teams||
+        if(visited.has(observation.id)||catalogIds.has(observation.sourceId)||!observation.teams&&observation.league!=='f1'&&observation.league!=='nascar-cup'&&observation.league!=='nascar-truck'&&observation.league!=='motogp'&&observation.league!=='motorsport'||
           this.hostRetryAt(observation.url)>this.now()||this.listingPending(observation.url))return [];
         const result=match(observation,this.now());
         const rolloverGame=result.kind==='unmatched'&&result.reason==='stale-observation'?liveRolloverGame(observation):undefined;
@@ -1131,7 +1131,7 @@ export class FootballCoordinator {
       ]).concat(this.errors.has('working-feed-cache')?['Working feeds could not be saved for the next restart.']:[])};
     };
     const now = this.now();
-    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),feedCheckIntervalMinutes:this.store.feedCheckIntervalMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs']),nba:feed(['nba']),wnba:feed(['wnba']),ncaab:feed(['ncaab']),nhl:feed(['nhl']),ncaah:feed(['ncaah']),ncaawh:feed(['ncaawh']),mlb:feed(['mlb'])},games:this.games.filter(game => {
+    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),feedCheckIntervalMinutes:this.store.feedCheckIntervalMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs']),nba:feed(['nba']),wnba:feed(['wnba']),ncaab:feed(['ncaab']),nhl:feed(['nhl']),ncaah:feed(['ncaah']),ncaawh:feed(['ncaawh']),mlb:feed(['mlb']),f1:feed(['f1']),'nascar-cup':feed(['nascar-cup']),'nascar-truck':feed(['nascar-truck']),motogp:feed(['motogp']),motorsport:feed(['motorsport'])},games:this.games.filter(game => {
       if(game.lifecycle==='final')return now<game.graceEndsAt;
       return (game.partitions || []).some(key => now-(this.store.partition(key)?.at || 0)<24*3600000) ||
         game.finalObservedAt !== undefined || (this.candidates.get(game.id)||[]).some(candidate=>this.selectable(candidate)) ||
@@ -1271,7 +1271,9 @@ export class FootballCoordinator {
     const freshGameIds=new Set(this.games.filter(game=>this.feedGame(game)).map(game=>game.id));
     const eligibleGameIds=new Set(this.games.filter(game=>{
       const candidates=this.candidates.get(game.id)||[];
-      return freshGameIds.has(game.id)||candidates.some(candidate=>this.retainedPlayable(candidate));
+      return freshGameIds.has(game.id)||isRaceGame(game)&&game.lifecycle==='scheduled'&&
+        this.scheduleFresh(game)&&Date.parse(game.date)<=at+7*24*3600_000||
+        candidates.some(candidate=>this.retainedPlayable(candidate));
     }).map(game=>game.id));
     const cache=this.inventoryCache;
     if (cache?.revision===this.revision && at-cache.at<15_000 && day===cache.day&&
