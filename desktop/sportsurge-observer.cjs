@@ -299,7 +299,7 @@ function authorized(value, expected) {
   return left.length === right.length && timingSafeEqual(left,right);
 }
 
-function createObserverSlot(index) {
+function createObserverSlot(index, resolveAddress = pinnedAddress) {
   const debug = (...parts) => { if (process.env.SUNDAY_ROOM_OBSERVER_DEBUG === '1') console.error('[observer]',index,...parts); };
   const proxySecret = randomUUID();
   const proxyAuthorization = `Basic ${Buffer.from(`observer:${proxySecret}`).toString('base64')}`;
@@ -330,7 +330,7 @@ function createObserverSlot(index) {
   proxy = http.createServer((request,response) => {
     const current = active;
     void handleCertificateIssuerRequest(request,response,{
-      authorization:proxyAuthorization,pinAddress:pinnedAddress,
+      authorization:proxyAuthorization,pinAddress:resolveAddress,
       isActive:()=>!!current && active===current,
       admit:()=>++current.issuerRequests<=8,
     });
@@ -361,7 +361,7 @@ function createObserverSlot(index) {
     };
     client.once('close',release);
     let address;
-    try { address = await pinnedAddress(url.hostname,() => active === current); }
+    try { address = await resolveAddress(url.hostname,() => active === current); }
     catch (error) { debug('dns rejected',url.hostname,error?.message); if (!client.destroyed) client.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return; }
     if (active !== current || client.destroyed) { client.destroy(); return; }
     const remote = net.connect({ host: address.address, port: Number(match[2]), family: address.family });
@@ -602,8 +602,13 @@ function createObserverSlot(index) {
               current.window.webContents.mainFrame.framesInSubtree.includes(frame) &&
               (!current.embeddedEventUrl || belongsToEmbeddedServer(frame,current.url)) &&
               (isOfflinePlayerState(state) || isNetworkErrorPlayerState(state))) {
-              debug('player explicitly unavailable');
-              endActive(current,noFeed('activation','offline'));
+              if (isOfflinePlayerState(state)) {
+                debug('player explicitly offline');
+                endActive(current,noFeed('activation','offline'));
+              } else {
+                debug('player network error');
+                endActive(current,incomplete('activation','player-network-error'));
+              }
             }
           }).catch(() => {});
           if (!current.playerActivating) {
@@ -774,9 +779,9 @@ function createObserverSlot(index) {
     } };
 }
 
-function createSportsurgeObserver({ controlToken, port = 0 }) {
-  const slots = Array.from({ length: OBSERVER_SLOTS },(_,index) => createObserverSlot(index));
-  const media = createObservedMedia({ pinAddress:pinnedAddress,validateUrl:publicUrl });
+function createSportsurgeObserver({ controlToken, port = 0, resolveAddress = pinnedAddress }) {
+  const slots = Array.from({ length: OBSERVER_SLOTS },(_,index) => createObserverSlot(index,resolveAddress));
+  const media = createObservedMedia({ pinAddress:resolveAddress,validateUrl:publicUrl });
   const service = http.createServer(async (request,response) => {
     const release = request.method === 'DELETE' && /^\/media\/([a-f0-9-]{36})$/.exec(request.url || '');
     if (!release && (request.method !== 'POST' || !['/observe','/media'].includes(request.url))) { response.writeHead(404); response.end(); return; }
@@ -833,7 +838,7 @@ function createSportsurgeObserver({ controlToken, port = 0 }) {
         if (victim) operation = victim.observe(url.href,purpose,embeddedEvent?.href,selection);
       }
       if (!operation) { response.writeHead(429); response.end(); return; }
-      await pinnedAddress((embeddedEvent||url).hostname,() => !closed);
+      await resolveAddress((embeddedEvent||url).hostname,() => !closed);
       if (closed) return;
       operation.start();
       const result = await operation.promise;

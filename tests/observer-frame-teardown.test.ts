@@ -232,6 +232,25 @@ test('a verified offline selected player is a completed no-feed observation', as
   assert.deepEqual(await operation.promise,{kind:'no-feed',phase:'activation',reason:'offline'});
 });
 
+test('a selected player network error keeps the observation incomplete', async () => {
+  const player = {
+    url: 'https://posamari.me/sd0embed/NFL',
+    isDestroyed: () => false,
+    executeJavaScript: (code: string) => Promise.resolve(code.includes('readyState:document.readyState') ? {
+      readyState: 'complete', hasVideo: false, title: 'Technical Issue',
+      errorVisible: true, errorHeading: 'Network Error',
+      errorDescription: 'We are having trouble connecting to the server. Please reload the page.',
+    } : false),
+  };
+  const harness = createObserverHarness({framesInSubtree:[player]});
+  const operation = harness.observer.observe('https://vipbox.fm/live/nfl/test-game-1','probe');
+  assert.ok(operation);
+  operation.start();
+  harness.tick();
+  assert.deepEqual(await operation.promise,
+    {kind:'incomplete',phase:'activation',reason:'player-network-error',retryAfterMs:30000});
+});
+
 test('a frame disposed after script execution ends its observation and leaves the slot reusable', async () => {
   let urlReads = 0;
   const detached = {

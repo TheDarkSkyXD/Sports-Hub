@@ -36,19 +36,30 @@ class ChromiumRequest extends EventEmitter {
 
 test('observed media preserves captured headers, ranges, cross-origin children, and capability lifetime', async () => {
   const requests: ChromiumRequest[] = [];
+  type FixtureCookie={url:string;name:string;value:string;path:string;secure:boolean};
   let connectionsClosed = 0;
   let sessionsCreated = 0;
   let authCachesCleared = 0;
+  let cookieStoresCleared = 0;
   const transport = createObservedMedia({
     pinAddress: async () => ({ address: '93.184.216.34', family: 4 }),
     validateUrl: sportsurgeUrl,
     idleMs: 1000,
-    network: { request({ url }: { url: string }) { const request = new ChromiumRequest(url); requests.push(request); return request; } },
-    sessions: { fromPartition: () => { sessionsCreated++; return {
+    network: { request({ url,session,useSessionCookies }: { url: string; session:{cookieJar:FixtureCookie[]};useSessionCookies:boolean }) {
+      const request = new ChromiumRequest(url);
+      const cookie=useSessionCookies && session.cookieJar.find(item=>new URL(item.url).origin===new URL(url).origin &&
+        new URL(url).pathname.startsWith(item.path));
+      if(cookie)request.headers.Cookie=`${cookie.name}=${cookie.value}`;
+      requests.push(request);
+      return request;
+    } },
+    sessions: { fromPartition: () => { sessionsCreated++; const cookieJar:FixtureCookie[]=[]; return {
+      cookieJar,cookies:{async set(value:FixtureCookie){cookieJar.push(value);}},
       setPermissionRequestHandler() {}, setPermissionCheckHandler() {},
       webRequest: { onBeforeRequest() {} },
       async setProxy() {}, async closeAllConnections() { connectionsClosed++; },
       async clearAuthCache() { authCachesCleared++; },
+      async clearStorageData() {cookieJar.length=0;cookieStoresCleared++;},
     }; } },
   });
   const root = { url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium', origin: 'https://embed.example',
@@ -98,7 +109,7 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
     const second = await read('https://media.example/segment.ts');
     assert.equal(second.status, 200);
     await second.arrayBuffer();
-    assert.equal(requests.at(-1)?.headers.Referer, 'https://embed.example/player');
+    assert.equal(requests.at(-1)?.headers.Referer, 'https://embed.example/');
     await new Promise(resolve => setTimeout(resolve, 1100));
     assert.equal((await read('https://media.example/segment.ts')).status, 404);
     assert.equal(connectionsClosed, 2);
@@ -109,6 +120,7 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
     }
     assert.equal(sessionsCreated, 1);
     assert.equal(authCachesCleared, 42);
+    assert.equal(cookieStoresCleared, 42);
   } finally {
     transport.stop();
     await new Promise<void>(resolve => server.close(() => resolve()));
@@ -140,6 +152,7 @@ test('transient native cleanup failures do not exhaust media partitions or reuse
           assert.equal(used, true);
           clean = true;
         },
+        async clearStorageData() {},
       };
     } },
   });
@@ -173,6 +186,7 @@ test('permanent native cleanup failures keep the media partition count bounded',
         async setProxy() {},
         async closeAllConnections() { throw new Error('permanent native cleanup failure'); },
         async clearAuthCache() {},
+        async clearStorageData() {},
       };
     } },
   });
@@ -206,6 +220,7 @@ test('a timed out native cleanup stays quarantined after its late completion', a
         async setProxy() {},
         closeAllConnections: () => first ? stalledCleanup : Promise.resolve(),
         async clearAuthCache() { if (first) clearAuthCalls++; },
+        async clearStorageData() {},
       };
     } },
   });

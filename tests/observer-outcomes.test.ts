@@ -9,6 +9,7 @@ test('observer completion, incomplete capture, and local capacity reach distinct
     {status:503,body:{kind:'incomplete',phase:'capture',reason:'deadline',retryAfterMs:30000}},
     {status:503,body:null},
     {status:404,body:null},
+    {status:503,body:{kind:'incomplete',phase:'capture',reason:'x'.repeat(2048),retryAfterMs:30000}},
   ];
   const server=createServer((_request,response)=>{
     const reply=replies.shift();
@@ -29,6 +30,7 @@ test('observer completion, incomplete capture, and local capacity reach distinct
     await assert.rejects(observe(),{name:'ProviderDeferredError',phase:'capture',retryAfterMs:30000});
     await assert.rejects(observe(),{name:'ProviderDeferredError',retryAfterMs:2000});
     assert.equal(await observe(),null);
+    await assert.rejects(observe(),{name:'ProviderDeferredError',retryAfterMs:2000});
     assert.equal(replies.length,0);
   }finally{
     if(previousOrigin===undefined)delete process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN;

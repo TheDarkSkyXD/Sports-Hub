@@ -59,8 +59,10 @@ export function sanitizedRead(response: Response): ProviderReadResult {
   };
 }
 
-export async function boundedText(response: Response, limit = 1024*1024): Promise<string> {
-  if (!response.ok || !response.body) { await response.body?.cancel(); throw new Error(`Provider page returned ${response.status}`); }
+export async function boundedText(response: Response, limit = 1024*1024, allowErrorStatus=false): Promise<string> {
+  if ((!response.ok && !allowErrorStatus) || !response.body) {
+    await response.body?.cancel(); throw new Error(`Provider page returned ${response.status}`);
+  }
   const length = Number(response.headers.get('content-length'));
   if (length > limit) { await response.body.cancel(); throw new Error('Provider page is too large'); }
   const reader = response.body.getReader();

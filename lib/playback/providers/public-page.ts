@@ -206,7 +206,10 @@ async function observedPublicRequest(request:PublicObservation, signal: AbortSig
         sourceEventId:request.sourceEventId,serverId:request.serverId}}),
   });
   if (response.status === 404 || response.status === 503) {
-    const outcome=observerOutcome(await response.json().catch(()=>null));
+    const body=await boundedText(response,1024,true).catch(()=>null);
+    let value:unknown=null;
+    if(body)try{value=JSON.parse(body);}catch{}
+    const outcome=observerOutcome(value);
     if (response.status===404 && outcome?.kind==='no-feed') throw new ProviderNoFeedError(outcome.phase);
     if (response.status===503 && outcome?.kind==='incomplete')
       throw new ProviderDeferredError(outcome.retryAfterMs,outcome.phase);

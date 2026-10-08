@@ -10,6 +10,19 @@ const CLEANUP_DEADLINE_MS = 5000;
 const CLEANUP_RETRY_MS = 100;
 const CLEANUP_PASSES = 3;
 
+function capturedCookies(header) {
+  if (typeof header !== 'string' || !/^[\x20-\x7e]{1,8192}$/.test(header)) return [];
+  const values = header.split(';');
+  if (values.length > 32) return [];
+  return values.flatMap(part => {
+    const pair = part.trim();
+    const equal = pair.indexOf('=');
+    if (equal < 1) return [];
+    const name = pair.slice(0,equal), value = pair.slice(equal+1);
+    return /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,256}$/.test(name) && value.length <= 4096 ? [{name,value}] : [];
+  });
+}
+
 function allowedMediaUrl(value, validateUrl) {
   const url = typeof value === 'string' && validateUrl(value);
   return url || null;
@@ -46,6 +59,8 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
       await partition.session.closeAllConnections();
       if (!cleaning(partition, generation)) return;
       await partition.session.clearAuthCache();
+      if (!cleaning(partition, generation)) return;
+      await partition.session.clearStorageData({storages:['cookies']});
       if (!cleaning(partition, generation)) return;
       clearTimeout(partition.deadlineTimer);
       partition.state = 'free';
@@ -107,14 +122,13 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     const mediaSession = partition.session;
     const entry = { id, partition, generation,
       session: mediaSession, sockets: new Set(), requests: new Set(), proxy: null, timer: null, issuerRequests: 0,
-      mediaOrigin: root.origin,
-      mediaCookie: typeof mediaCookie === 'string' && /^[\x20-\x7e]{1,8192}$/.test(mediaCookie) ? mediaCookie : null,
       headers: { 'User-Agent': userAgent, Accept: '*/*', ...(origin ? { Origin: origin } : {}),
         ...(requestReferer ? { Referer: requestReferer } : {}) }, secret };
     mediaSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     mediaSession.setPermissionCheckHandler(() => false);
     mediaSession.webRequest.onBeforeRequest((details, callback) => {
-      callback({ cancel: !capabilities.has(id) || !allowedMediaUrl(details.url, validateUrl) });
+      const allowed = allowedMediaUrl(details.url, validateUrl);
+      callback({ cancel: !capabilities.has(id) || !allowed });
     });
     const proxy = http.createServer((request, response) => {
       void handleCertificateIssuerRequest(request,response,{
@@ -162,6 +176,11 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
       if (stopped || !capabilities.has(id)) return null;
       await mediaSession.setProxy({ mode: 'fixed_servers', proxyRules: `http://127.0.0.1:${proxy.address().port}`, proxyBypassRules: '<-loopback>' });
       if (stopped || !capabilities.has(id)) return null;
+      const path = root.pathname.slice(0,root.pathname.lastIndexOf('/')+1);
+      for (const {name,value} of capturedCookies(mediaCookie)) {
+        await mediaSession.cookies.set({url:root.href,name,value,path,secure:true});
+        if (stopped || !capabilities.has(id)) return null;
+      }
       touch(entry);
       return id;
     } catch (error) { close(id); throw error; }
@@ -175,10 +194,14 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     }
     if (entry.requests.size >= 8) { response.writeHead(429); response.end(); return; }
     touch(entry);
-    const request = network.request({ url: url.href, session: entry.session, method: 'GET', redirect: 'manual', useSessionCookies: false });
+    const request = network.request({ url: url.href, session: entry.session, method: 'GET', redirect: 'manual', useSessionCookies: true });
     entry.requests.add(request);
-    for (const [name, value] of Object.entries(entry.headers)) request.setHeader(name, value);
-    if (entry.mediaCookie && url.origin === entry.mediaOrigin) request.setHeader('Cookie', entry.mediaCookie);
+    for (const [name, value] of Object.entries(entry.headers)) {
+      if (name === 'Referer') {
+        const referer = new URL(value);
+        request.setHeader(name,url.origin === referer.origin ? value : `${referer.origin}/`);
+      } else request.setHeader(name, value);
+    }
     if (range) request.setHeader('Range', range);
     request.on('login', (authInfo, callback) => {
       if (authInfo.isProxy && authInfo.host === '127.0.0.1') callback('media', entry.secret);
