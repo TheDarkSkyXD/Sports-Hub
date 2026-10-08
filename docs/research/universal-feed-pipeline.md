@@ -6,6 +6,14 @@ The collector covers every supported league for today and tomorrow in America/Ch
 
 Repeated matching preparation blocked the schedule worker. The preceding schedule fix reuses prepared matching state. On the same saved profile, inventory generation fell from 10,300 ms before that fix to 785 ms with this pipeline. A subsequent complete schedule refresh finished in 6,761 ms without errors. These measurements describe that local run; provider latency varies.
 
+MotoGP and Motorsport share two listing reads. Both reads reached their ten-second deadline during a native refresh, leaving the last accepted partitions unchanged. Once those partitions passed the existing 90-second freshness boundary, the app showed the unavailable or stale warnings. Each provider now retries a timeout once with a fresh deadline. A healthy provider is read once, cancellation prevents a retry, and repeated timeouts still report unavailable schedules. The retry does not extend the freshness boundary.
+
+The remaining FBS future-date timeout occurred after HTTP 200 headers arrived. Repeated early-current and final schedule publications blocked response-body processing with full synchronous projections, even when their games were unchanged. The coordinator now persists every accepted timestamp and compares the normalized saved games with the prior games. Changed games, stale or failed recovery, Chicago midnight, and successful schedule-coverage transitions still rebuild synchronously. Unchanged fresh results preserve probe maintenance, source checks, revision updates, discovery, and detail resolution without another full projection.
+
+Repeated probe identity checks also validated the same event and server URLs. Event-page identities now use a weak cache keyed by the locator object and guarded by its complete JSON value. Changing the game ID, either URL, or fallback data recomputes the identity. Identity bytes stay unchanged, and opening a player still validates the URL pair independently.
+
+In a subsequent loaded Electron run with two refresh cycles and three-second source polling, full rebuilds fell from 61 to 28 and their total wall time fell from 18.25 to 6.79 seconds. Maximum event-loop delay fell from 3993 to 1246 ms. The October 10 FBS response completed in 6584 ms without retry, within the existing ten-second deadline. No request timed out in the final run. These live runs used fresh backups taken at different times, so the comparison does not establish a controlled percentage improvement or guarantee future provider availability.
+
 Browser collection previously covered football categories. Separate provider and inventory matching rules could disagree. The shared registry now supplies source coverage and verified category routes. The common matcher checks league, participant aliases, date or race session, and external event identity. NFL ESPN IDs remain bare. Every other league uses its canonical league prefix.
 
 Dispatch capacity hid unqueued choices as unknown. The coordinator now reports retained candidate backlog as queued and refills its bounded dispatch queue. The 300-choice behavior test verifies that every choice receives a check with at most four active probes.
@@ -39,6 +47,8 @@ Browser categories with unverified future detail paths remain explicit. A new no
 Run `npm run verify:record -- <command> [args...]` from the repository root to retain each verification attempt. For the full test suite, run `npm run verify:record -- node --experimental-strip-types --test tests/*.test.ts`. On Windows, pass Node tools through their `node` entrypoint.
 
 The recorder prints output as the command runs. Each attempt gets an `output.log` and `result.json` under `.desktop-runtime/verification-runs/<run>/`. The result records the exact command arguments, working directory, start and end times, exit code, and termination signal. The recorder returns the command's exit code. Pass only arguments that are safe to save in `result.json`; the recorder does not save the environment.
+
+A command that cannot start still retains its launch error in both output and the result. This includes a missing executable and a synchronous Windows batch-launch rejection. The recorder preserves `shell: false` and returns failure for a rejected launch.
 
 Run the normal typecheck, lint, build, and test commands. `tests/universal-feed-inventory.test.ts` exercises the public coordinator across all 14 leagues and both days, failed and pending schedules, complete empty reads, unknown status, more than 1,000 listings, and 300 choices. Captured browser pages cover NBA, NHL, MLB, and Sportsurge F1 identity and routes.
 
