@@ -77,3 +77,33 @@ test('changed current scores and later future games are published before and aft
     assert.deepEqual((await board(coordinator)).games.map(row=>row.id),['100','101']);
   }finally{finish({games:[current,future],at,league:'nfl'});await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
+
+test('unchanged games are reprojected when a stale or failed schedule becomes fresh again',async()=>{
+  for(const failure of [false,true]){
+    const directory=mkdtempSync(join(tmpdir(),'schedule-projection-recovery-')),path=join(directory,'state.sqlite');
+    let now=at,fail=false;
+    const seed=new FootballStore(path);
+    seed.observe({id:'saved',sourceId:'fixture',url:'https://fixture.example/game',title:game.name,
+      teams:['Away','Home'],league:'nfl',kickoff:at,rawTime:'',observedAt:at,parserVersion:1},
+    {kind:'matched',gameId:'100'});
+    seed.close();
+    const coordinator=createFootballCoordinator(path,{now:()=>now,schedules,sources:[],
+      readHtml:async()=>'',compatiblePlayers:()=>[],readSchedule:async()=>{
+        if(fail)throw new Error('schedule offline');
+        return {games:[game],league:'nfl',at:now};
+      }});
+    const writes=mock.method(FootballStore.prototype,'observe');
+    try{
+      await coordinator.refresh(true);await drain();
+      if(failure){now+=1000;fail=true;await coordinator.refresh(true);fail=false;}
+      else now+=90_001;
+      writes.mock.resetCalls();
+      await coordinator.refresh(true);
+      const recovered=await board(coordinator);
+      assert.equal(recovered.leagues.nfl.scoresAt,new Date(now).toISOString());
+      assert.deepEqual(recovered.leagues.nfl.errors,[]);
+      assert.deepEqual(recovered.games.map(row=>row.id),['100']);
+      assert.equal(writes.mock.callCount(),1);
+    }finally{writes.mock.restore();await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
+  }
+});

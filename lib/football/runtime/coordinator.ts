@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { createFinishedGameMatcher, createSourceEventMatcher, detailCandidateGameIds, mergeSchedulePartitions, normalizedName, type SourceEventEvidence } from '../domain/matching.ts';
 import { listingEventEvidence } from '../source-registry.ts';
 import { SESSION_LEASE_MS, compareCandidates, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
@@ -241,16 +242,28 @@ export class FootballCoordinator {
     this.refreshing = (async () => {
       await Promise.all(this.schedules.map(async source => {
         try {
+          let projectedCoverage = this.refreshedSchedules.has(source.id);
           const accept = (result: Awaited<ReturnType<FootballDependencies['readSchedule']>>) => {
             if (this.stopped) return;
             const previous = this.store.partition(source.id);
-            this.store.savePartition(source.id,{...result,at:this.now()});
+            const acceptedAt = this.now();
+            const wasFresh = previous && !this.errors.has(source.id) && acceptedAt-previous.at<=90000;
+            this.store.savePartition(source.id,{...result,at:acceptedAt});
+            const accepted = this.store.partition(source.id);
             this.errors.delete(source.id);
             if(result.games.length || previous?.games.length || this.workingFeeds.size) {
-              this.rebuild();
+              if(!wasFresh || feedCalendarDay(previous.at)!==feedCalendarDay(acceptedAt) ||
+                projectedCoverage!==this.refreshedSchedules.has(source.id) ||
+                !isDeepStrictEqual(previous.games,accepted?.games)) this.rebuild();
+              else {
+                this.reconcileProbeJobs();
+                this.checkSources([],false);
+                this.revision++;
+              }
               this.requestDiscovery(now,force);
               this.requestResolution();
-            }
+            } else this.revision++;
+            projectedCoverage = this.refreshedSchedules.has(source.id);
           };
           const result = await this.fetchSchedule(source,now,this.controller.signal,accept);
           if(this.stopped)return;

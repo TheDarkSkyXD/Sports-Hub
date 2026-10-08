@@ -318,6 +318,45 @@ test('corrupt and unsupported cache rows are removed without blocking restart', 
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 
+test('complete unchanged empty partitions evict orphan saved proof after startup coverage',async()=>{
+  const run=fixture();run.setPartitions(['nfl','other']);
+  run.setGames([{...game,partitions:['nfl','other']}]);
+  let coordinator=run.start();
+  try{
+    await coordinator.refresh(true);await drain();await coordinator.stop();
+    assert.equal(run.readRows().length,1);
+    run.hide();run.setGames([]);
+    run.sql("UPDATE partitions SET payload=json_set(payload,'$.games',json('[]')); DELETE FROM observations; DELETE FROM details;");
+    let release:(games:Game[])=>void=()=>{};
+    run.partitionResults.set('other',new Promise<Game[]>(resolve=>{release=resolve;}));
+    coordinator=run.start();
+    const refresh=coordinator.refresh(true);
+    try{await drain();assert.equal(run.readRows().length,1);}
+    finally{release([]);}
+    await refresh;await drain();
+    assert.equal(run.readRows().length,0);
+    assert.deepEqual((await snapshot(coordinator)).games,[]);
+  }finally{await coordinator.stop();run.cleanup();}
+});
+
+test('an unchanged fresh schedule restores saved feeds when Chicago midnight opens its feed window',async()=>{
+  const run=fixture();let coordinator=run.start();
+  try{
+    await coordinator.refresh(true);await drain();await coordinator.stop();
+    run.hide();run.setProbe(async()=>({kind:'deferred',retryAfterMs:60_000}));
+    run.setClock(Date.parse('2026-10-09T04:59:30Z'));
+    run.setGames([{...game,status:'pre',lifecycle:'scheduled',date:'2026-10-10T17:00:00Z'}]);
+    coordinator=run.start();await coordinator.refresh(true);await drain();
+    assert.equal((await snapshot(coordinator)).games.flatMap(row=>row.candidates).length,0);
+    assert.equal(run.readRows().length,1);
+    run.setClock(Date.parse('2026-10-09T05:00:01Z'));
+    await coordinator.refresh(true);await drain();
+    const candidates=(await snapshot(coordinator)).games.find(row=>row.gameId===game.id)?.candidates;
+    assert.equal(candidates?.length,1);
+    assert.deepEqual(candidates[0].availability,{kind:'playable',proof:'media',checkedAt:at});
+  }finally{await coordinator.stop();run.cleanup();}
+});
+
 test('a failed durable positive write leaves real media playable and reports the storage failure', async () => {
   const run = fixture(); const coordinator = run.start();
   try {
