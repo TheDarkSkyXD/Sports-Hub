@@ -3,7 +3,7 @@ import { createFinishedGameMatcher, createSourceEventMatcher, detailCandidateGam
 import { listingEventEvidence } from '../source-registry.ts';
 import { SESSION_LEASE_MS, compareCandidates, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
 import { sourceInventory } from '../domain/source-inventory.ts';
-import { feedCalendarDay, feedEligible, feedWindow } from '../domain/feed-eligibility.ts';
+import { feedCalendarDay, feedEligible, feedInventoryEligible, feedWindow } from '../domain/feed-eligibility.ts';
 import { cachedFeedEligible, workingFeedMatches, workingFeedOwner, type WorkingFeed } from '../domain/working-feed.ts';
 import { persistableLocator } from '../../playback/persistent-locator.ts';
 import { SOURCE_REFRESH_MS, detailIdentity, retryDeadline, sourceFailure } from '../domain/source-policy.ts';
@@ -237,6 +237,7 @@ export class FootballCoordinator {
     const now = this.now();
     if (!force && now - this.lastSchedule < 30000) return;
     this.lastSchedule = now;
+    this.requestDiscovery(now,force);
     this.refreshing = (async () => {
       await Promise.all(this.schedules.map(async source => {
         try {
@@ -1288,7 +1289,7 @@ export class FootballCoordinator {
     const freshGameIds=new Set(this.games.filter(game=>this.feedGame(game)).map(game=>game.id));
     const eligibleGameIds=new Set(this.games.filter(game=>{
       const candidates=this.candidates.get(game.id)||[];
-      return feedEligible(game,at)||
+      return feedInventoryEligible(game,at)||
         candidates.some(candidate=>this.retainedPlayable(candidate));
     }).map(game=>game.id));
     const cache=this.inventoryCache;

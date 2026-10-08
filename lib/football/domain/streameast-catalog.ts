@@ -81,7 +81,7 @@ export function streameastObservation(event:StreameastCatalog['events'][number],
 
 export function streameastEvidence(event:StreameastCatalog['events'][number]):SourceEventEvidence {
   return {undated:'none',externalGameId:event.espnEventId===null?null:
-    event.league==='ncaaf'?`ncaaf-${event.espnEventId}`:event.espnEventId};
+    event.league==='nfl'?event.espnEventId:`${event.league}-${event.espnEventId}`};
 }
 
 export function streameastCandidates(event:StreameastCatalog['events'][number],gameId:string):Candidate[] {

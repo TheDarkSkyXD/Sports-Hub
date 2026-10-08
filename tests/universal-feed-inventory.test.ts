@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { sourceInventory } from '../lib/football/domain/source-inventory.ts';
 import { feedWindow } from '../lib/football/domain/feed-eligibility.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
-import { GameSchema, LeagueSchema, SourcesSnapshotSchema, isMotorsportsLeague, isRaceGame, type Candidate, type DetailEvidence, type Game, type Observation } from '../lib/football/shared.ts';
+import { GameSchema, LeagueSchema, SourcesSnapshotSchema, SportsurgeCatalogSchema, StreameastCatalogSchema, isMotorsportsLeague, isRaceGame, type Candidate, type DetailEvidence, type Game, type Observation } from '../lib/football/shared.ts';
 
 const at=Date.parse('2026-10-08T17:00:00Z');
 const source={id:'fixture',url:'https://fixture.example/schedule',family:'fixture',leagues:['nfl'] as const};
@@ -56,6 +56,33 @@ test('an unresolved source identity cannot establish no feeds for a scheduled ev
   assert.deepEqual(snapshot.games[0].feeds,{kind:'incomplete',reason:'listings'});
 });
 
+test('paid, unclassified and legacy StreamEast details cannot claim no published feeds',()=>{
+  const event={id:'nfl:100',url:'https://v2.streameast.ga/nfl/away-vs-home/',league:'nfl',title:'Away vs Home',
+    teams:['Away','Home'],kickoff:at+3600_000,espnEventId:null};
+  for(const [publication,reason] of [
+    [{premium:0,unknown:0},'no-published-player'],[{premium:1,unknown:0},'paid-only'],
+    [{premium:0,unknown:1},'parser-changed'],[undefined,'parser-changed'],
+  ] as const) {
+    const catalog=StreameastCatalogSchema.parse({runId:'11111111-1111-4111-8111-111111111111',sequence:0,
+      startedAt:at,state:{kind:'collecting'},categories:{nfl:{kind:'collected',at},ncaaf:{kind:'pending'}},
+      events:[{...event,detail:{kind:'collected',at,servers:[],...(publication?{publication}:{})}}],rejectedGames:[]});
+    const snapshot=sourceInventory({...base,sources:[{id:'streameast',url:'https://v2.streameast.ga/nfl-streams/',
+      family:'streameast',kind:'browser-catalog',leagues:['nfl']}],streameastCatalog:{current:{catalog,receivedAt:at},lastComplete:null,previous:null}});
+    assert.deepEqual(snapshot.sources[0].links[0].evidence,{kind:'missing',checkedAt:at,reason,retryAt:null});
+    assert.equal(snapshot.sources[0].scopes[0].feeds.kind,publication&&reason==='no-published-player'?'no-feeds':'incomplete');
+  }
+});
+
+test('duplicate provider event identities prevent a complete empty scope',()=>{
+  const catalog=SportsurgeCatalogSchema.parse({runId:'11111111-1111-4111-8111-111111111111',sequence:0,
+    startedAt:at,state:{kind:'collecting'},categories:{nfl:{kind:'collected',at},ncaaf:{kind:'pending'}},
+    events:[],rejectedGames:[],catalogIssues:[{league:'nfl',title:'Away vs Home',reason:'duplicate-game-id'}]});
+  const snapshot=sourceInventory({...base,sources:[{id:'sportsurge-v2',url:'https://sportsurge.ws/watch-nfl-streams/',
+    family:'sportsurge',kind:'browser-catalog',leagues:['nfl']}],sportsurgeCatalog:{current:{catalog,receivedAt:at},lastComplete:null,previous:null}});
+  assert.deepEqual(snapshot.sources[0].scopes[0].read,{kind:'incomplete',reason:'partial',checkedAt:at});
+  assert.deepEqual(snapshot.games[0].feeds,{kind:'incomplete',reason:'listings'});
+});
+
 test('feed counts separate discovery, verified media, decoded working playback and pending checks',()=>{
   const choices:Candidate[]=['media','decoded','queued'].map((id,index)=>({id,gameId:'100',label:id,sourceIds:['fixture'],
     observedAt:at,locator:{provider:'gooz',playerId:String(index+1)}}));
@@ -71,6 +98,26 @@ test('Chicago collection dates follow the calendar across daylight saving transi
     {timeZone:'America/Chicago',days:['2026-11-01','2026-11-02']});
   assert.deepEqual(feedWindow(Date.parse('2026-03-08T07:30:00Z')),
     {timeZone:'America/Chicago',days:['2026-03-08','2026-03-09']});
+});
+
+test('a known event with unknown status remains visible without authorizing its feeds',async()=>{
+  const directory=mkdtempSync(join(tmpdir(),'universal-unknown-event-'));
+  const event=GameSchema.parse({id:'motogp-10001',league:'motogp',name:'Fixture Grand Prix Race',
+    date:new Date(at-3600_000).toISOString(),race:{eventId:'100',sessionId:'101',session:'race',round:'Fixture Grand Prix'},
+    status:'unknown',lifecycle:'unknown',detail:'Status unavailable',partitions:['motogp']});
+  let probes=0;
+  const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{now:()=>at,sources:[],
+    schedules:[{id:'motogp',league:'motogp',path:'source-motogp',group:null}],
+    readSchedule:async()=>({league:'motogp',games:[event],at}),probeCandidate:async()=>{probes++;return {kind:'playable',proof:'media'};}});
+  try {
+    await coordinator.refresh();
+    const reply=await coordinator.command({kind:'sources'});
+    if(reply.kind!=='sources')assert.fail('expected sources reply');
+    assert.equal(reply.snapshot.games[0].gameId,event.id);
+    assert.deepEqual(reply.snapshot.games[0].feeds,{kind:'incomplete',reason:'schedule'});
+    assert.equal(reply.snapshot.scheduleScopes[0].read.kind,'complete');
+    assert.equal(probes,0);
+  } finally {await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 
 test('source collection starts when every schedule partition fails',async()=>{
@@ -94,6 +141,27 @@ test('source collection starts when every schedule partition fails',async()=>{
     }
     assert.fail('source collection did not finish');
   } finally {await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('source collection starts while schedule requests are still pending',async()=>{
+  const directory=mkdtempSync(join(tmpdir(),'universal-pending-schedule-'));
+  let release!:()=>void;
+  const pending=new Promise<void>(resolve=>{release=resolve;});
+  let sourceReads=0;
+  const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{now:()=>at,sources:[source],
+    schedules:[{id:'nfl',league:'nfl',path:'football/nfl',group:null}],
+    readSchedule:async()=>{await pending;return {league:'nfl',games:[game],at};},
+    readHtml:async()=>{sourceReads++;return '<main>Recognized empty schedule</main>';},
+    parseListings:()=>({outcome:'empty',observations:[]})});
+  const refresh=coordinator.refresh();
+  try {
+    for(let index=0;index<30;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(sourceReads,1);
+    const reply=await coordinator.command({kind:'sources'});
+    if(reply.kind!=='sources')assert.fail('expected sources reply');
+    assert.equal(reply.snapshot.sources[0].scopes[0].read.kind,'complete');
+    assert.equal(reply.snapshot.scheduleScopes[0].read.kind,'incomplete');
+  } finally {release();await refresh;await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 
 test('a listing after the former thousand-row limit still reaches source settings',async()=>{

@@ -5,7 +5,9 @@ import test from 'node:test';
 import { SOURCE_REGISTRY, browserCategory } from '../lib/football/source-registry.ts';
 import { CandidateLocatorSchema, SportsurgeCatalogSchema, StreameastCatalogSchema } from '../lib/football/shared.ts';
 import { sanitizeSportsurgeCatalog } from '../lib/football/domain/sportsurge-catalog.ts';
-import { sanitizeStreameastCatalog, streameastCandidates } from '../lib/football/domain/streameast-catalog.ts';
+import { sanitizeStreameastCatalog, streameastCandidates, streameastEvidence, streameastObservation } from '../lib/football/domain/streameast-catalog.ts';
+import { createSourceEventMatcher } from '../lib/football/domain/matching.ts';
+import type { Game } from '../lib/football/shared.ts';
 import { streameastServerUrl } from '../lib/playback/providers/streameast-server.ts';
 import { FootballStore } from '../lib/football/adapters/store.ts';
 
@@ -53,6 +55,13 @@ test('captured StreamEast nonfootball rows become valid same-event selected serv
     const event=result.events[0];
     assert.equal(event.id,`${league}:${id}`);
     assert.equal(event.espnEventId,espnId);
+    const game:Game={id:`${league}-${espnId}`,league:event.league,name:event.title,date:new Date(event.kickoff).toISOString(),
+      home:{name:event.teams[1],short:event.teams[1],abbreviation:'HOM',color:'112233',score:null},
+      away:{name:event.teams[0],short:event.teams[0],abbreviation:'AWY',color:'332211',score:null},
+      status:'pre',lifecycle:'scheduled',detail:'Scheduled',redzone:false};
+    assert.equal(streameastEvidence(event).externalGameId,game.id);
+    const match=createSourceEventMatcher([game])(streameastObservation(event,at),streameastEvidence(event),at);
+    assert.deepEqual(match.match,{kind:'matched',gameId:game.id});
     event.detail={kind:'collected',at,servers:[{id:'2',label:'Server 2',url:`${event.url}2`,availability:{kind:'free-page'}}]};
     const catalog=StreameastCatalogSchema.parse({runId,sequence:0,startedAt:at,state:{kind:'collecting'},
       categories:{...pendingCategories,[league]:{kind:'collected',at}},events:[event],rejectedGames:[]});

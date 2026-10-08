@@ -3,7 +3,7 @@ import { listingEventEvidence } from '../source-registry.ts';
 import { compareCandidates } from './lifecycle.ts';
 import { detailIdentity } from './source-policy.ts';
 import { resolvedLiveChannelMatch } from './live-channel.ts';
-import { feedDateEligible, feedEligible, feedWindow } from './feed-eligibility.ts';
+import { feedDateEligible, feedInventoryEligible, feedWindow } from './feed-eligibility.ts';
 import { sourceCoverage } from '../source-registry.ts';
 import type { ListingSource } from './ports.ts';
 import { createFinishedGameMatcher, createSourceEventMatcher, normalizedName, type SourceEventEvidence } from './matching.ts';
@@ -103,7 +103,7 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     candidate.observedAt>=windowStartAt&&candidate.observedAt<=at+60_000);
   const details=new Map((input.details||[]).map(detail=>[detail.observationId,detail]));
   const gameById=new Map(games.map(game=>[game.id,game]));
-  const visibleGameIds=input.visibleGameIds??new Set(games.filter(game=>feedEligible(game,at)).map(game=>game.id));
+  const visibleGameIds=input.visibleGameIds??new Set(games.filter(game=>feedInventoryEligible(game,at)).map(game=>game.id));
   const candidateEligible=(candidate:Candidate):boolean=>{
     return visibleGameIds.has(candidate.gameId)&&candidateCurrent(candidate);
   };
@@ -279,9 +279,10 @@ export function sourceInventory(input:Input):SourcesSnapshot {
             .map(candidate=>candidate.id)};
       const publishedEvidence:LinkEvidence=catalogEvidence.kind==='collected'&&!catalogEvidence.candidateIds.length?
         {kind:'missing',checkedAt:catalogEvidence.checkedAt,
-          reason:event.detail.kind==='collected'&&event.detail.servers.length&&event.detail.servers.every(server=>server.availability.kind==='premium')?
-            'paid-only':event.detail.kind==='collected'&&event.detail.servers.some(server=>server.availability.kind==='free-unsupported')?
-              'unsupported-player':'no-published-player',retryAt:null}:catalogEvidence;
+          reason:event.detail.kind==='collected'&&(event.detail.publication?.unknown||event.detail.servers.some(server=>server.availability.kind==='unknown'))?
+            'parser-changed':event.detail.kind==='collected'&&event.detail.servers.some(server=>server.availability.kind==='free-unsupported')?
+              'unsupported-player':event.detail.kind==='collected'&&(event.detail.publication?.premium||event.detail.servers.some(server=>server.availability.kind==='premium'))?
+                'paid-only':event.detail.kind==='collected'&&event.detail.publication?'no-published-player':'parser-changed',retryAt:null}:catalogEvidence;
       if (runIndex===0 && observation.kickoff===null) {
         const historical=streameastHistory.flatMap((events,index)=>{
           const prior=events.get(event.id);
@@ -324,7 +325,9 @@ export function sourceInventory(input:Input):SourcesSnapshot {
           !category||category.kind==='pending'?{kind:'incomplete',reason:'pending',checkedAt:null}:
           category.kind==='failed'?{kind:'incomplete',reason:'failed',checkedAt:category.at}:
           at-category.at>=30*60_000?{kind:'incomplete',reason:'stale',checkedAt:category.at}:
-          run?.catalog.rejectedGames.some(event=>event.league===league)?{kind:'incomplete',reason:'partial',checkedAt:category.at}:
+          run?.catalog.rejectedGames.some(event=>event.league===league)||
+            source.id==='sportsurge-v2'&&input.sportsurgeCatalog.current?.catalog.catalogIssues.some(issue=>issue.league===league)?
+            {kind:'incomplete',reason:'partial',checkedAt:category.at}:
           {kind:'complete',checkedAt:category.at};
       } else {
         const attempt=input.attempts[source.id];
@@ -405,7 +408,7 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     const relevant=sourceRows.flatMap(source=>source.scopes.filter(scope=>scope.league===game.league));
     const complete= relevant.length>0&&relevant.every(scope=>scope.read.kind==='complete');
     const feedState:FeedState=freshCandidates.length?feedCounts(freshCandidates,availability):
-      input.freshGameIds&&!input.freshGameIds.has(game.id)?{kind:'incomplete',reason:'schedule'}:
+      game.lifecycle==='unknown'||input.freshGameIds&&!input.freshGameIds.has(game.id)?{kind:'incomplete',reason:'schedule'}:
       complete&&sourceLinks.every(link=>link.freshness==='fresh'&&noPublishedFeed(link.evidence))?
         {kind:'no-feeds',checkedAt:Math.max(...relevant.map(scope=>scope.read.checkedAt??0))}:
         {kind:'incomplete',reason:sourceLinks.length?'details':'listings'};

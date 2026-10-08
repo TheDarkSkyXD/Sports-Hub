@@ -30,3 +30,8 @@ export function feedEligible(game: Pick<Game, 'lifecycle' | 'date' | 'finalObser
   if (game.lifecycle === 'live') return true;
   return game.lifecycle === 'scheduled' && game.date !== undefined && feedDateEligible(Date.parse(game.date), now);
 }
+
+export function feedInventoryEligible(game: Pick<Game, 'lifecycle' | 'date' | 'finalObservedAt'>, now:number):boolean {
+  return feedEligible(game,now)||game.lifecycle==='unknown'&&game.finalObservedAt===undefined&&
+    game.date!==undefined&&feedDateEligible(Date.parse(game.date),now);
+}
