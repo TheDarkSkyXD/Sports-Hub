@@ -46,6 +46,8 @@ Run `node --experimental-strip-types tests/verify-observed-cookie-electron.mjs` 
 
 Run `node tests/player.browser.mjs --desktop --live-only` for decoded HLS playback and live-edge controls in Electron. After a production build, run `node scripts/prepare-desktop.mjs` and `node tests/verify-standalone-feed-worker.mjs`. Preparation requires the source registry and game timing module. The verifier starts the actual standalone worker, reads all 42 sources and 14 league scopes, then stops it.
 
+Run `node tests/verify-web-worker-default.mjs` after the build to check the browser launcher with no data-directory override. It starts the real production server in a temporary workspace, checks the source API and its isolated default database, and removes its process tree and temporary files. The optional browser observer is disabled for this configuration check.
+
 A live Streamcenter NBA listing also decoded on its website and in the Electron app. Website decoded frames advanced from 1,089 to 2,677. App frames advanced from 62 to 1,557, and the source inventory recorded decoded proof for the same candidate. This check occurred before tipoff and verifies the listed feed's playback. It does not establish that every external feed works or that the pregame content is the scheduled game.
 
 Real providers can block access, change markup, or publish players only near kickoff. The checks cannot establish decoded playback for every external stream before publication. Those cases remain incomplete or unpublished and eligible for a later check.
