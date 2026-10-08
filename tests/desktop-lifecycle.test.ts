@@ -97,6 +97,7 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
     addQuitHandler() { DesktopNsisUpdater.prototype.addQuitHandler.call(this); }
   }
   const dependency = (name: string) => {
+    if (name === './closed-stdio.cjs') return {};
     if (name === 'electron') return {
       app, autoUpdater: new EventEmitter(), BrowserWindow: FakeWindow,
       ipcMain: { handle() {} }, shell: { openExternal: async () => {} },
@@ -271,6 +272,7 @@ test('permanent local server startup failure shows an error and exits after clea
     async stop() { events.push('server stopped'); },
   };
   const dependency = (name: string) => {
+    if (name === './closed-stdio.cjs') return {};
     if (name === 'electron') return {
       app, autoUpdater: new EventEmitter(), BrowserWindow: Window,
       dialog: { showErrorBox(title: string, message: string) { events.push(`dialog: ${title}: ${message}`); } },

@@ -164,6 +164,8 @@ test('Sportsurge browser fallback starts at the sole published Sportspatrika pla
     const cases = [
       { html: `<iframe src="${player}"></iframe>`, expected: player },
       { html: '<iframe src="https://ch.aianimalvibes.com/football/728"></iframe>', expected: 'https://ch.aianimalvibes.com/football/728' },
+      { html: '<iframe src="https://ch.aianimalvibes.com/cfb/66184"></iframe>', expected: 'https://ch.aianimalvibes.com/cfb/66184' },
+      { html: '<iframe src="https://ch.aianimalvibes.com/cfb/66184?ad=1"></iframe>', expected: outer },
       { html: '<iframe src="https://ch.aianimalvibes.com/football/728"></iframe><iframe src="https://ads.example/"></iframe>', expected: outer },
       { html: '<iframe src="https://ch.aianimalvibes.com.evil.example/football/728"></iframe>', expected: outer },
       { html: '<iframe src="https://ch.aianimalvibes.com/football/728?other=1"></iframe>', expected: outer },

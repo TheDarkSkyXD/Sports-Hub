@@ -5,7 +5,7 @@ import {validEventPagePair} from '../../playback/providers/event-page-policy.ts'
 
 export function buffstreamPlayers(gameId:string,observation:Observation,html:string):ResolvedPlayer[] {
   const league=observation.sourceId==='buffstream-nfl'&&observation.league==='nfl'?'NFL':
-    observation.sourceId==='buffstream-cfb'&&observation.league==='ncaaf'?'CFB':null;
+    (observation.sourceId==='buffstream-cfb'||observation.sourceId==='crackstreams-cfb')&&observation.league==='ncaaf'?'CFB':null;
   if(!league||!observation.teams||
     !observation.url.startsWith(`https://ms.buffstream.io/${league.toLowerCase()}-streams/`))return [];
   const $=load(html);

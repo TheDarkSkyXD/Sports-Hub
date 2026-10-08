@@ -1,0 +1,147 @@
+[
+  {
+    "id": "401872980",
+    "league": "nfl",
+    "name": "Tampa Bay Buccaneers at Dallas Cowboys",
+    "date": "2026-10-09T00:15Z",
+    "home": {
+      "id": "espn:nfl:6",
+      "name": "Dallas Cowboys",
+      "short": "Cowboys",
+      "abbreviation": "DAL",
+      "color": "002a5c",
+      "score": "0"
+    },
+    "away": {
+      "id": "espn:nfl:27",
+      "name": "Tampa Bay Buccaneers",
+      "short": "Buccaneers",
+      "abbreviation": "TB",
+      "color": "bd1c36",
+      "score": "0"
+    },
+    "status": "pre",
+    "lifecycle": "scheduled",
+    "detail": "Scheduled",
+    "redzone": false,
+    "partitions": [
+      "nfl"
+    ]
+  },
+  {
+    "id": "ncaaf-401870766",
+    "league": "ncaaf",
+    "name": "Sam Houston Bearkats at Liberty Flames",
+    "date": "2026-10-08T23:00Z",
+    "home": {
+      "id": "espn:ncaaf:2335",
+      "name": "Liberty Flames",
+      "short": "Liberty",
+      "abbreviation": "LIB",
+      "color": "0a254e",
+      "score": "0"
+    },
+    "away": {
+      "id": "espn:ncaaf:2534",
+      "name": "Sam Houston Bearkats",
+      "short": "Sam Houston",
+      "abbreviation": "SHSU",
+      "color": "f56423",
+      "score": "0"
+    },
+    "status": "pre",
+    "lifecycle": "scheduled",
+    "detail": "Scheduled",
+    "redzone": false,
+    "partitions": [
+      "fbs"
+    ]
+  },
+  {
+    "id": "ncaaf-401871052",
+    "league": "ncaaf",
+    "name": "Missouri State Bears at Western Kentucky Hilltoppers",
+    "date": "2026-10-08T23:00Z",
+    "home": {
+      "id": "espn:ncaaf:98",
+      "name": "Western Kentucky Hilltoppers",
+      "short": "Western KY",
+      "abbreviation": "WKU",
+      "color": "e13a3e",
+      "score": "0"
+    },
+    "away": {
+      "id": "espn:ncaaf:2623",
+      "name": "Missouri State Bears",
+      "short": "Missouri St",
+      "abbreviation": "MOST",
+      "color": "5e0009",
+      "score": "0"
+    },
+    "status": "pre",
+    "lifecycle": "scheduled",
+    "detail": "Scheduled",
+    "redzone": false,
+    "partitions": [
+      "fbs"
+    ]
+  },
+  {
+    "id": "ncaaf-401862794",
+    "league": "ncaaf",
+    "name": "South Florida Bulls at UTSA Roadrunners",
+    "date": "2026-10-08T23:30Z",
+    "home": {
+      "id": "espn:ncaaf:2636",
+      "name": "UTSA Roadrunners",
+      "short": "UTSA",
+      "abbreviation": "UTSA",
+      "color": "0c2340",
+      "score": "0"
+    },
+    "away": {
+      "id": "espn:ncaaf:58",
+      "name": "South Florida Bulls",
+      "short": "South Florida",
+      "abbreviation": "USF",
+      "color": "006747",
+      "score": "0"
+    },
+    "status": "pre",
+    "lifecycle": "scheduled",
+    "detail": "Scheduled",
+    "redzone": false,
+    "partitions": [
+      "fbs"
+    ]
+  },
+  {
+    "id": "ncaaf-401869933",
+    "league": "ncaaf",
+    "name": "South Alabama Jaguars at Arkansas State Red Wolves",
+    "date": "2026-10-08T23:30Z",
+    "home": {
+      "id": "espn:ncaaf:2032",
+      "name": "Arkansas State Red Wolves",
+      "short": "Arkansas St",
+      "abbreviation": "ARST",
+      "color": "cc092f",
+      "score": "0"
+    },
+    "away": {
+      "id": "espn:ncaaf:6",
+      "name": "South Alabama Jaguars",
+      "short": "South Alabama",
+      "abbreviation": "USA",
+      "color": "00205b",
+      "score": "0"
+    },
+    "status": "pre",
+    "lifecycle": "scheduled",
+    "detail": "Scheduled",
+    "redzone": false,
+    "partitions": [
+      "fbs"
+    ]
+  }
+]

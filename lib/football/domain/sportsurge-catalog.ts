@@ -116,7 +116,8 @@ export function sportsurgeCandidates(input:{
       const id=`sportsurge-v2:${rowIdentity(event.url,provider.id,provider.destination.url)}`;
       candidates.set(id,{id,gameId:game.id,label:`Sportsurge v2 · ${provider.label}`,
         sourceIds:['sportsurge-v2'],observedAt:detail.at,
-        locator:{provider:'sportsurge-v2',eventId:event.id,providerId:provider.id,url:provider.destination.url}});
+        locator:{provider:'sportsurge-v2',eventId:event.id,providerId:provider.id,url:provider.destination.url,
+          ...(event.teams?{expectedMatchup:{league:event.league,teams:event.teams}}:{})}});
     }
   }
   return [...candidates.values()];

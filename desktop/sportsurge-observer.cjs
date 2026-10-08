@@ -67,20 +67,34 @@ function liveFramesInSubtree(mainFrame) {
   return mainFrame.framesInSubtree.filter(frame => frame && !frame.isDestroyed());
 }
 
-function offlinePlayerFrame(source, frames) {
-  let sourceUrl;
-  try { sourceUrl = new URL(source); }
-  catch { return null; }
-  if (sourceUrl.protocol !== 'https:' || !(
-    sourceUrl.hostname === 'vipbox.fm' && /^\/live\/(?:nfl|ncaaf)\/[a-z0-9-]+$/.test(sourceUrl.pathname) ||
-    sourceUrl.hostname === 'strikeout.im' && /^\/(?:nfl|college-football)\/[1-9][0-9]*\/[a-z0-9-]+$/.test(sourceUrl.pathname) ||
-    sourceUrl.hostname === 'www.vipboxtv.sk'
-  )) return null;
+function dudestreamCfbEmbeddedPair(event,server) {
+  return !!event && !!server && event.origin === 'https://dudestream1.com' && !event.search &&
+    /^\/cfb[1-9]\d{0,2}\/$/.test(event.pathname) && server.origin === 'https://embedsports.me' && !server.search &&
+    /^\/american-football\/[a-z0-9]+(?:-[a-z0-9]+)*-vs-[a-z0-9]+(?:-[a-z0-9]+)*-stream-[12]$/.test(server.pathname);
+}
+
+function offlinePlayerFrame(source, frames, embeddedEventUrl) {
+  const sourceUrl = publicUrl(source);
+  if (!sourceUrl || sourceUrl.search || sourceUrl.port) return null;
+  const direct = sourceUrl.hostname === 'vipbox.fm' && /^\/live\/(?:nfl|ncaaf)\/[a-z0-9]+(?:-[a-z0-9]+)*-[1-9]\d{0,3}$/.test(sourceUrl.pathname) ||
+    sourceUrl.hostname === 'strikeout.im' && /^\/(?:nfl|college-football)\/[1-9]\d{0,3}\/[a-z0-9]+(?:-[a-z0-9]+)*-stream$/.test(sourceUrl.pathname) ||
+    sourceUrl.hostname === 'www.vipboxtv.sk' && /^\/cfb\/[1-9]\d{0,3}\/stream-[a-z0-9]+(?:-[a-z0-9]+)*-live$/.test(sourceUrl.pathname);
+  const embedded = embeddedEventUrl ? publicUrl(embeddedEventUrl) : null;
+  const team = embedded?.hostname === 'ms.buffstream.io' && !embedded.search && !embedded.port ?
+    /^\/(?:nfl|cfb)-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(embedded.pathname)?.[1] : null;
+  const pair = sourceUrl.hostname === 'embedsports.me' ?
+    /^\/american-football\/([a-z0-9]+(?:-[a-z0-9]+)*)-vs-([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$/.exec(sourceUrl.pathname) : null;
+  const dudestream = dudestreamCfbEmbeddedPair(embedded,sourceUrl);
+  const selected = embeddedEventUrl ? !!pair && (dudestream || !!team && (team === pair[1] || team === pair[2])) : direct;
+  if (!selected) return null;
   const players = frames.filter(frame => {
     try {
       const url = new URL(frame.url);
+      const owned = !embeddedEventUrl || (dudestream ? belongsToDudestreamPage(frame,source,embeddedEventUrl) :
+        belongsToEmbeddedServer(frame,source));
       return url.protocol === 'https:' && url.pathname === '/sd0embed/NFL' &&
-        ['fallafar.me','posamari.me','dervlin.me','ninguno.cc','lonpapil.eu'].includes(url.hostname);
+        ['fallafar.me','posamari.me','dervlin.me','ninguno.cc','lonpapil.eu'].includes(url.hostname) &&
+        owned;
     }
     catch { return false; }
   });
@@ -108,6 +122,16 @@ function belongsToEmbeddedServer(frame,serverUrl) {
       if(current.url===serverUrl)return true;
     }
   } catch { return false; }
+  return false;
+}
+
+function belongsToDudestreamPage(frame,serverUrl,eventUrl) {
+  try {
+    for(let current=frame;current;current=current.parent){
+      if(current.isDestroyed())return false;
+      if(current.url===serverUrl)return current.parent?.url===eventUrl&&!current.parent.isDestroyed();
+    }
+  } catch {}
   return false;
 }
 
@@ -160,7 +184,7 @@ function tvappEmbedEntry(value) {
 function aianimalvibesPlayer(value) {
   const url = publicUrl(value);
   return !!url && url.origin === 'https://ch.aianimalvibes.com' &&
-    /^\/football\/[0-9]{1,10}$/.test(url.pathname) && !url.search && !url.port;
+    /^\/(?:football|cfb)\/[0-9]{1,10}$/.test(url.pathname) && !url.search && !url.port;
 }
 
 function createNavigationPolicy(value,allowStreameastServer=false) {
@@ -516,7 +540,7 @@ function createObserverSlot(index) {
         let frames;
         try { frames = liveFramesInSubtree(window.webContents.mainFrame); }
         catch { endActive(current,null); return; }
-        const offline = offlinePlayerFrame(current.url,frames);
+        const offline = offlinePlayerFrame(current.url,frames,current.embeddedEventUrl);
         if (offline && !offline.isDestroyed()) {
           const frame = offline, url = frame.url;
           void frame.executeJavaScript(`({title:document.title,readyState:document.readyState,
@@ -530,20 +554,23 @@ function createObserverSlot(index) {
             errorDescription:document.querySelector('.error-state > p')?.textContent.trim() || ''})`).then(state => {
             if (active === current && !frame.isDestroyed() && frame.url === url &&
               current.window.webContents.mainFrame.framesInSubtree.includes(frame) &&
+              (!current.embeddedEventUrl || belongsToEmbeddedServer(frame,current.url)) &&
               (isOfflinePlayerState(state) || isNetworkErrorPlayerState(state))) {
               debug('player explicitly unavailable');
               endActive(current,null);
             }
           }).catch(() => {});
-          if (!current.playerActivating && (
-            /^https:\/\/vipbox\.fm\/live\/nfl\/[a-z0-9-]+$/.test(current.url) ||
-            /^https:\/\/strikeout\.im\/nfl\/[1-9][0-9]*\/[a-z0-9-]+$/.test(current.url)
-          )) {
+          if (!current.playerActivating) {
             current.playerActivating = true;
             void frame.executeJavaScript(`(${activatePublishedVipboxVideo.toString()})()`)
               .then(activated => {
-                if (active !== current || frame.isDestroyed() || frame.url !== url ||
-                  !current.window.webContents.mainFrame.framesInSubtree.includes(frame)) return;
+                if (active !== current) return;
+                if (frame.isDestroyed() || frame.url !== url ||
+                  !current.window.webContents.mainFrame.framesInSubtree.includes(frame) ||
+                  current.embeddedEventUrl && !belongsToEmbeddedServer(frame,current.url)) {
+                  current.playerActivating = false;
+                  return;
+                }
                 if (activated) { current.playerActivated = true; debug('activated published SD0 player'); }
                 else current.playerActivating = false;
               }).catch(() => { if (active === current) current.playerActivating = false; });
@@ -626,6 +653,7 @@ function createObserverSlot(index) {
         if(active!==current||window.webContents.getURL()!==embeddedEventUrl)return;
         const selectedUrl=JSON.stringify(url),eventUrl=JSON.stringify(embeddedEventUrl);
         const isNfl=new URL(embeddedEventUrl).hostname==='nflstreams.org';
+        const isDudestream=new URL(embeddedEventUrl).hostname==='dudestream1.com';
         void window.webContents.executeJavaScript(`(() => {
           if(location.href!==${eventUrl})return false;
           if(${isNfl}){
@@ -633,6 +661,7 @@ function createObserverSlot(index) {
           }else{
             const canonical=document.querySelector('link[rel="canonical"]')?.href;
             if(!canonical)return false;
+            if(${isDudestream}&&canonical!==${eventUrl})return false;
             const canonicalUrl=new URL(canonical),eventUrl=new URL(${eventUrl});
             if(!['http:','https:'].includes(canonicalUrl.protocol)||canonicalUrl.hostname!==eventUrl.hostname||
               canonicalUrl.pathname!==eventUrl.pathname||canonicalUrl.search||canonicalUrl.hash)return false;
@@ -727,7 +756,8 @@ function createSportsurgeObserver({ controlToken, port = 0 }) {
         rawSelection!==undefined && !selection || selection && embeddedEvent ||
         embeddedEvent && !(
           embeddedEvent.hostname==='nflstreams.org'&&url.hostname==='piratecat.store'||
-          embeddedEvent.hostname==='ms.buffstream.io'&&url.hostname==='embedsports.me')) {
+          embeddedEvent.hostname==='ms.buffstream.io'&&url.hostname==='embedsports.me'||
+          dudestreamCfbEmbeddedPair(embeddedEvent,url))) {
         response.writeHead(400); response.end(); return;
       }
       for (const slot of slots) {

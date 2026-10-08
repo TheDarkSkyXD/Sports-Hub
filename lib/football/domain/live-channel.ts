@@ -1,15 +1,17 @@
 import type {DetailEvidence,Game,Match,Observation} from '../shared.ts';
 import {detailIdentity} from './source-policy.ts';
+import {feedEligible} from './feed-eligibility.ts';
 
 export function provisionalLiveChannel(observation:Observation,result:Match,freshGames:readonly Game[],now:number):Game|null {
   if(!(observation.sourceId==='buffstream-nfl'&&observation.league==='nfl'||
       observation.sourceId==='buffstream-cfb'&&observation.league==='ncaaf')||observation.kickoff!==null||
-    result.kind!=='unmatched'||result.reason!=='unverified-kickoff'||result.possibleGameIds.length!==1||
+    result.kind!=='unmatched'||!(result.reason==='unverified-kickoff'||
+      observation.sourceId==='buffstream-cfb'&&result.reason==='unverified-contextual-kickoff')||result.possibleGameIds.length!==1||
     now-observation.observedAt>=30*60_000||observation.observedAt>now+60_000)return null;
   const clock=/^(0?[1-9]|1[0-2]):([0-5]\d)\s*(am|pm)\s*ET$/i.exec(observation.rawTime.trim());
   if(!clock)return null;
   const game=freshGames.find(game=>game.id===result.possibleGameIds[0]);
-  if(!game||game.lifecycle!=='live'||game.finalObservedAt!==undefined||!game.date)return null;
+  if(!game||!feedEligible(game,now)||!game.date)return null;
   const kickoff=Date.parse(game.date);
   if(!Number.isFinite(kickoff))return null;
   const hour=Number(clock[1])%12+(clock[3].toLowerCase()==='pm'?12:0);
