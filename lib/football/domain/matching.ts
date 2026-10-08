@@ -7,6 +7,10 @@ export function normalizedName(value: string): string {
 }
 
 const collegeAliases = new Map<string, readonly string[]>();
+const hockeyAliases = new Map<string, readonly string[]>([
+  ['espn:ncaawh:2779',['Saint Lawrence Saints']],
+  ['espn:ncaawh:2815',['Lindenwood Lady Lions']],
+]);
 const collegeOwners = new Map<string, Set<string>>();
 for (const team of COLLEGE_TEAM_CATALOG) {
   const aliases = [...new Set(team.aliases.map(normalizedName).filter(Boolean))];
@@ -20,7 +24,7 @@ for (const team of COLLEGE_TEAM_CATALOG) {
 
 export function createObservationMatcher(games: Game[], mode: 'current' | 'inventory-live' = 'current'): (observation: Observation, now: number) => Match {
   const identity = (game: Game, team: Game['home']) => `${game.league}:${team.id || normalizedName(team.name)}`;
-  const aliases = (game: Game, team: Game['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || [])].map(normalizedName).filter(Boolean)]);
+  const aliases = (game: Game, team: Game['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || []), ...(hockeyAliases.get(team.id || '') || [])].map(normalizedName).filter(Boolean)]);
   const liveOwners = new Map<string,Set<string>>();
   const gameAliases = new Map<Game,[Set<string>,Set<string>]>();
   for (const game of games) {
@@ -51,6 +55,7 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
     const strict=prepared.filter(({game,home,away})=>{
       if (observation.league && game.league!==observation.league) return false;
       if (observation.sourceId==='tvapp-nba' && game.league!=='nba' && game.league!=='wnba' && game.league!=='ncaab') return false;
+      if (observation.sourceId==='tvapp-nhl' && game.league!=='nhl' && game.league!=='ncaah' && game.league!=='ncaawh') return false;
       if (observation.sourceId==='tvapp' && game.league!=='nfl' && game.league!=='ncaaf') return false;
       return home.has(first) && away.has(second) || home.has(second) && away.has(first);
     });
@@ -62,7 +67,7 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
         !!activeAnchor&&activeAnchor.size===1&&activeAnchor.has(anchorId)&&
         !!activeOther&&activeOther.has(otherId)&&[...activeOther].every(owner=>otherOwners.has(owner));
     };
-    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='ncaab'||observation.sourceId==='tvapp-nba'?[]:prepared.filter(({game})=>{
+    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='ncaab'||observation.league==='nhl'||observation.league==='ncaah'||observation.league==='ncaawh'||observation.sourceId==='tvapp-nba'||observation.sourceId==='tvapp-nhl'?[]:prepared.filter(({game})=>{
       if(game.league!=='ncaaf'||!collegeAliases.has(game.home.id||'')||!collegeAliases.has(game.away.id||''))return false;
       const home=identity(game,game.home),away=identity(game,game.away);
       return anchored(first,second,home,away)||anchored(second,first,away,home)||

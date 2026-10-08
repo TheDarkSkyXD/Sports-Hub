@@ -7,6 +7,7 @@ import { tvappIdentity, tvappStreams } from './tvapp-catalog.ts';
 type TvappLocator = Extract<CandidateLocator,{provider:'tvapp'}>;
 const CATALOG='https://api-backups.handleapi.win/matches/sport/american-football';
 const BASKETBALL_CATALOG='https://api-backups.handleapi.win/matches/sport/basketball';
+const HOCKEY_CATALOG='https://api-backups.handleapi.win/matches/sport/hockey';
 
 async function publicJson(url:string,referer:URL,signal:AbortSignal,requester:Requester):Promise<unknown> {
   const result=await get(url,signal,requester,referer);
@@ -24,7 +25,8 @@ export function tvappProvider(requester:Requester=(url,signal,headers,timeoutMs)
     const eventUrl=new URL(locator.eventUrl);
     if(eventUrl.origin!=='https://tvapp1.pk'||eventUrl.search||eventUrl.hash||
       !/^\/watch\/[a-zA-Z0-9-]{1,120}$/.test(eventUrl.pathname))throw new Error('Unsupported TVApp watch page');
-    const catalog=await publicJson(/^(?:nba|wnba|ncaab)-/.test(locator.gameId)?BASKETBALL_CATALOG:CATALOG,eventUrl,signal,requester);
+    const catalog=await publicJson(/^(?:nhl|ncaah|ncaawh)-/.test(locator.gameId)?HOCKEY_CATALOG:
+      /^(?:nba|wnba|ncaab)-/.test(locator.gameId)?BASKETBALL_CATALOG:CATALOG,eventUrl,signal,requester);
     if(!Array.isArray(catalog))throw new Error('TVApp catalog changed');
     const found=catalog.flatMap(value=>{
       const item=tvappIdentity(value);

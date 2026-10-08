@@ -11,6 +11,9 @@ export const SCHEDULES = [
   {id:'nba',league:'nba',sport:'basketball',path:'nba',group:null},
   {id:'wnba',league:'wnba',sport:'basketball',path:'wnba',group:null},
   {id:'ncaab',league:'ncaab',sport:'basketball',path:'mens-college-basketball',group:'50'},
+  {id:'nhl',league:'nhl',sport:'hockey',path:'nhl',group:null},
+  {id:'ncaah',league:'ncaah',sport:'hockey',path:'mens-college-hockey',group:null},
+  {id:'ncaawh',league:'ncaawh',sport:'hockey',path:'womens-college-hockey',group:null},
 ] as const;
 
 type FutureDay = { date: string; games: Game[]; expiresAt: number };

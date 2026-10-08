@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const LeagueSchema = z.enum(['nfl', 'ncaaf', 'nba', 'wnba', 'ncaab']);
+export const LeagueSchema = z.enum(['nfl', 'ncaaf', 'nba', 'wnba', 'ncaab', 'nhl', 'ncaah', 'ncaawh']);
 const BrowserCatalogLeagueSchema = z.enum(['nfl','ncaaf']);
 export const TeamSchema = z.object({
   id: z.string().optional(), name: z.string(), short: z.string(), abbreviation: z.string(),
@@ -34,7 +34,7 @@ export const BoardSchema = z.object({
   scheduleState: z.enum(['loading','ready']),
   finishedGameRetentionMinutes: FinishedGameRetentionMinutesSchema.default(DEFAULT_FINISHED_GAME_RETENTION_MINUTES),
   feedCheckIntervalMinutes: FeedCheckIntervalMinutesSchema.default(DEFAULT_FEED_CHECK_INTERVAL_MINUTES),
-  leagues: z.object({ nfl: LeagueFeedSchema, ncaaf: LeagueFeedSchema, nba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), wnba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaab: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}) }), aliases: z.record(z.string()),
+  leagues: z.object({ nfl: LeagueFeedSchema, ncaaf: LeagueFeedSchema, nba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), wnba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaab: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), nhl: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaah: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaawh: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}) }), aliases: z.record(z.string()),
 });
 export type Team = z.infer<typeof TeamSchema>;
 export type Game = z.infer<typeof GameSchema>;
@@ -82,7 +82,7 @@ export type CandidateSummary = z.infer<typeof CandidateSummarySchema>;
 export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
   z.object({provider:z.literal('swac'),eventId:z.string().regex(/^[a-f0-9]{32}$/)}),
   z.object({provider:z.literal('gooz'),playerId:z.string().regex(/^\d{1,20}$/)}),
-  z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid(),league:z.enum(['ncaaf','nba','wnba']).optional()}),
+  z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid(),league:z.enum(['ncaaf','nba','wnba','nhl']).optional()}),
   z.object({provider:z.literal('streameast'),channelId:z.string().regex(/^\d{1,4}$/)}),
   z.object({provider:z.literal('streameast-server'),gameId:z.string().regex(/^(?:(?:ncaaf|nba)-)?\d{1,20}$/),
     sourceEventId:z.string().regex(/^(?:ncaaf|nfl|nba):\d{1,12}$/),eventUrl:z.string().url().max(400),
@@ -90,9 +90,9 @@ export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
   z.object({provider:z.literal('sportsurge-v2'),eventId:z.string().regex(/^(?:ncaaf|nfl|nba):\d{1,12}$/),providerId:z.string().min(1).max(100),url:z.string().url().max(2000),
     expectedMatchup:z.object({league:LeagueSchema,teams:z.tuple([z.string().min(1).max(120),z.string().min(1).max(120)])}).strict().optional()}),
   z.object({provider:z.literal('wikisport'),section:z.enum(['0nhl','strm']),playerId:z.string().regex(/^\d{1,4}$/)}),
-  z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba)-)?\d{1,20}$/),
+  z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh)-)?\d{1,20}$/),
     eventUrl:z.string().url().max(2000),serverUrl:z.string().url().max(2000)}).strict(),
-  z.object({provider:z.literal('tvapp'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba)-)?\d{1,20}$/),
+  z.object({provider:z.literal('tvapp'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh)-)?\d{1,20}$/),
     eventUrl:z.string().url().max(2000),source:z.string().regex(/^[a-z0-9-]{1,32}$/),
     sourceId:z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/),streamNo:z.number().int().min(1).max(100),
     kickoff:z.number().int(),title:z.string().min(1).max(200),teams:z.tuple([z.string().min(1),z.string().min(1)])}).strict(),
