@@ -557,8 +557,6 @@ export class FootballCoordinator {
     const deferred=this.deferredProbes.get(key);
     if(deferred&&deferred.until>this.now())return {kind:'checking',progress:{kind:'deferred',since:deferred.since,retryAt:deferred.until,...(deferred.phase?{phase:deferred.phase}:{})}};
     if(health?.kind==='unavailable')return health;
-    if(this.currentCandidate(candidate)&&this.feedGame(this.games.find(game=>game.id===candidate.gameId)))
-      return {kind:'checking',progress:{kind:'queued',since:candidate.observedAt}};
     return {kind:'unknown'};
   }
   private selectable(candidate:Candidate):boolean {
@@ -640,6 +638,9 @@ export class FootballCoordinator {
     const queued=new Set(this.probeQueue.map(job=>job.key));
     const hasPlayable=(candidate:Candidate):boolean=>this.terminal(candidate)?.kind==='playable';
     const demand=this.probeDemand();
+    const admittedByGame=new Map<string,number>();
+    for(const job of [...this.activeProbes.values(),...this.probeQueue])
+      admittedByGame.set(job.candidate.gameId,(admittedByGame.get(job.candidate.gameId)||0)+1);
     const eligible=this.games.filter(game=>this.feedGame(game)).map(game=>({
       gameId:game.id,urgency:this.gameUrgency(game),kickoff:game.date?Date.parse(game.date):Infinity,
       candidates:(this.candidates.get(game.id)||[]).filter(candidate=>this.currentCandidate(candidate)).sort((a,b)=>this.rankCandidates(a,b))
@@ -692,13 +693,16 @@ export class FootballCoordinator {
       ...unknown.map(candidate=>({candidate,priority:'unknown'} as const)),...maintenance];
     for(const work of additions) {
       const {candidate,priority}=work;
+      const admitted=admittedByGame.get(candidate.gameId)||0;
+      if(admitted>=(demand.has(candidate.gameId)?2:1))continue;
       if(this.probeQueue.length>=PROBE_QUEUE_LIMIT) {
         const maintenanceReplacement=this.probeQueue.reduce((latest,job,index)=>
           (job.priority==='retry'||job.priority==='recheck')&&
           (latest<0||this.maintenanceDue(job)>=this.maintenanceDue(this.probeQueue[latest]))?index:latest,-1);
         if(priority==='retry'||priority==='recheck') {
           if(maintenanceReplacement<0||this.maintenanceDue(work)>=this.maintenanceDue(this.probeQueue[maintenanceReplacement]))continue;
-          this.probeQueue.splice(maintenanceReplacement,1);
+          const [removed]=this.probeQueue.splice(maintenanceReplacement,1);
+          admittedByGame.set(removed.candidate.gameId,(admittedByGame.get(removed.candidate.gameId)||1)-1);
         } else {
           const demanded=priority!=='forced'&&demand.has(candidate.gameId);
           const approaching=priority!=='forced'&&!demanded&&nearKickoff.has(candidate.gameId);
@@ -713,7 +717,8 @@ export class FootballCoordinator {
           if(displaced<0)continue;
           if(maintenanceReplacement<0&&demanded&&!demand.has(this.probeQueue[displaced].candidate.gameId)&&
             this.probeQueue.filter(job=>!demand.has(job.candidate.gameId)).length<=1)continue;
-          this.probeQueue.splice(displaced,1);
+          const [removed]=this.probeQueue.splice(displaced,1);
+          admittedByGame.set(removed.candidate.gameId,(admittedByGame.get(removed.candidate.gameId)||1)-1);
         }
       }
       const key=this.probeKey(candidate);
@@ -723,6 +728,7 @@ export class FootballCoordinator {
       const prior=this.terminal(candidate);
       const owner=prior?.kind==='playable'?prior.owner:this.gameOwner(game);
       this.probeQueue.push({...work,key,owner,controller:new AbortController(),revision:this.healthRevision.get(key)||0,phase:{kind:'queued',since:now}});
+      admittedByGame.set(candidate.gameId,(admittedByGame.get(candidate.gameId)||0)+1);
       this.revision++;
     }
     const rank=new Map(ordered.map((candidate,index)=>[this.probeKey(candidate),index]));
