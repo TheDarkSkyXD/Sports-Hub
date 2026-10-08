@@ -28,6 +28,27 @@ const games:Game[]=[
 const detail=(url:string)=>fixture(new URL(url).pathname.split('/').at(-1)!.replace('-live-stream',''));
 const raw=(observation:Observation)=>matchObservation(observation,games,at);
 
+test('Crackstreams CFB collects its published Buff pages with exact matchup and source attribution',()=>{
+  const crack=SOURCES.find(item=>item.id==='crackstreams-cfb');
+  assert.ok(crack);
+  const catalog=readFileSync(new URL('./fixtures/crackstreams-cfb-buff-pages.html',import.meta.url),'utf8');
+  const observations=parseListings(crack,catalog,at).observations.slice(0,2);
+  assert.equal(observations.length,2);
+  for(const observation of observations){
+    const html=detail(observation.url);
+    const result=raw(enrichObservation(observation,html));
+    assert.equal(result.kind,'matched');
+    if(result.kind!=='matched')continue;
+    assert.equal(observation.sourceId,'crackstreams-cfb');
+    const players=compatiblePlayers(result.gameId,observation,html);
+    assert.equal(players.length,1);
+    assert.deepEqual(players,compatiblePlayers(result.gameId,{...observation,sourceId:'buffstream-cfb'},html));
+    assert.deepEqual(compatiblePlayers(result.gameId,{...observation,league:'nfl'},html),[]);
+    assert.deepEqual(compatiblePlayers(result.gameId,observation,html.replace('rel="canonical"','rel="other"')),[]);
+    assert.deepEqual(compatiblePlayers(result.gameId,observation,html.replace(/-vs-/g,'-vs-other-')),[]);
+  }
+});
+
 test('captured CFB rows and exact published player pages bind four channels to two distinct live games',()=>{
   const parsed=parseListings(source,fixture('catalog'),at);
   assert.equal(parsed.outcome,'parsed');

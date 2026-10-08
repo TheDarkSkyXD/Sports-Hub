@@ -13,6 +13,18 @@ import {GameSchema,type DetailEvidence,type Game,type Observation} from '../lib/
 const at=Date.parse('2026-10-08T00:33:22Z');
 const fixture=(name:string,extension='html')=>readFileSync(new URL(`./fixtures/buffstream-future-${name}.${extension}`,import.meta.url),'utf8');
 const games=GameSchema.array().parse(JSON.parse(fixture('games','json')));
+
+test('Crackstreams stale future dates remain conflicting while Buffstream publishes the same players',()=>{
+  const source=SOURCES.find(source=>source.id==='crackstreams-cfb');
+  assert.ok(source);
+  const html=readFileSync(new URL('./fixtures/crackstreams-cfb-buff-pages.html',import.meta.url),'utf8');
+  const observation=parseListings(source,html,at).observations.find(row=>row.teams?.includes('Sam Houston'));
+  assert.ok(observation);
+  const result=matchObservation(observation,games,at);
+  assert.equal(result.kind,'unmatched');
+  if(result.kind==='unmatched')assert.equal(result.reason,'conflicting-date');
+  assert.equal(provisionalLiveChannel(observation,result,games,at),null);
+});
 const sources=SOURCES.filter(source=>source.id==='buffstream-nfl'||source.id==='buffstream-cfb');
 const observations=sources.flatMap(source=>parseListings(source,fixture(source.id==='buffstream-nfl'?'nfl-catalog':'cfb-catalog'),at).observations);
 const html=(observation:Observation)=>fixture(new URL(observation.url).pathname.split('/').at(-1)!.replace('-live-stream',''));
