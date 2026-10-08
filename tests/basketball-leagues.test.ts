@@ -99,7 +99,7 @@ test('WNBA PPV and Streamcenter listings bind only to the WNBA schedule game',()
   assert.equal(compatiblePlayers(wnba.id,streamResult.observations[0],'<html></html>').length,0);
 });
 
-test('TVApp football rows cannot attach to basketball games with the same teams and tipoff',()=>{
+test('TVApp football scope rejects basketball while an unknown source keeps both sports ambiguous',()=>{
   const source=SOURCES.find(item=>item.id==='tvapp');
   assert.ok(source);
   const basketball=parseScoreboard(scoreboard('401999900','Duke Blue Devils','North Carolina Tar Heels'),'ncaab')[0];
@@ -118,6 +118,8 @@ test('TVApp football rows cannot attach to basketball games with the same teams 
     {kind:'unmatched',reason:'unknown-teams',possibleGameIds:[]});
   assert.deepEqual(createSourceEventMatcher([basketball,football])(observation,evidence,tipoff).match,
     {kind:'matched',gameId:football.id});
+  assert.deepEqual(createSourceEventMatcher([basketball,football])({...observation,sourceId:'fixture'},evidence,tipoff).match,
+    {kind:'unmatched',reason:'ambiguous-matchup',possibleGameIds:[basketball.id,football.id]});
 });
 
 test('TVApp basketball rows cannot attach to college football games with the same team names',()=>{

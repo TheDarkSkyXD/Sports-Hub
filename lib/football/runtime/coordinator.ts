@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createFinishedGameMatcher, createSourceEventMatcher, detailCandidateGameIds, mergeSchedulePartitions, normalizedName, type SourceEventEvidence } from '../domain/matching.ts';
+import { listingEventEvidence } from '../source-registry.ts';
 import { SESSION_LEASE_MS, compareCandidates, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
 import { sourceInventory } from '../domain/source-inventory.ts';
 import { feedCalendarDay, feedEligible, feedWindow } from '../domain/feed-eligibility.ts';
@@ -14,9 +15,6 @@ import { PartialListingReadError, type CandidateProbeResult, type FootballDepend
 import { candidateSummary, isRaceGame, type Board, type Candidate, type CandidateAvailability, type Command, type DetailEvidence, type Game, type MatchupGame, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourceEventBinding, type SourcesSnapshot, type StreameastCatalog, type SportsurgeCatalog } from '../shared.ts';
 
 type RecoveryPhase = {kind:'cycling'} | {kind:'exhausted';until:number;knownIds:string[]};
-const listingEvidence=(observation:Observation):SourceEventEvidence=>({
-  undated:observation.sourceId==='sportsurge'?'published-listing':'none',externalGameId:null,
-});
 type FeedOwner = WorkingFeed['owner'];
 type SelectionOwner = {key:string;owner:FeedOwner};
 type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;phase:RecoveryPhase;requestId?:string;decodedGeneration?:number;selection?:SelectionOwner};
@@ -201,8 +199,20 @@ export class FootballCoordinator {
     }
     this.restoreWorkingFeeds();
     const match=createSourceEventMatcher(this.games);
+    const catalogEvidence=new Map<string,SourceEventEvidence>();
+    const surge=this.store.sportsurgeCatalog();
+    for(const stored of [surge.current,surge.previous,surge.lastComplete])for(const event of stored?.catalog.events||[]) {
+      const id=`sportsurge-v2:${event.url}`;
+      if(!catalogEvidence.has(id))catalogEvidence.set(id,sportsurgeEvidence(event,this.now()));
+    }
+    const east=this.store.streameastCatalog();
+    for(const stored of [east.current,east.previous,east.lastComplete])for(const event of stored?.catalog.events||[]) {
+      const id=`streameast:${event.url}`;
+      if(!catalogEvidence.has(id))catalogEvidence.set(id,streameastEvidence(event));
+    }
     for (const observation of this.store.observations())
-      this.store.observe(observation,match(observation,listingEvidence(observation),this.now()).match);
+      this.store.observe(observation,match(observation,
+        catalogEvidence.get(observation.id)||listingEventEvidence(observation.sourceId),this.now()).match);
     this.projectDetails();
     this.reconcileStreameastCandidates();
     this.reconcileSportsurgeCandidates();
@@ -280,7 +290,7 @@ export class FootballCoordinator {
     return !!game&&this.scheduleFresh(game)&&feedEligible(game,this.now());
   }
   private observationFeedEligible(observation:Observation):boolean {
-    const result=this.inventoryMatch(observation,listingEvidence(observation),this.now()).match;
+    const result=this.inventoryMatch(observation,listingEventEvidence(observation.sourceId),this.now()).match;
     const ids=detailCandidateGameIds(result);
     return ids.some(id=>this.feedGame(this.games.find(game=>game.id===id)));
   }
@@ -807,8 +817,8 @@ export class FootballCoordinator {
     const verifiedListing=(observation:Observation):Observation=>{
       const previous=previousObservations.get(observation.id);
       if(!(observation.kickoff===null&&sameListing(observation,previous)&&previous.kickoff!==null&&
-        this.inventoryMatch(previous,listingEvidence(previous),this.now()).kind==='matched'))return observation;
-      const decision=this.inventoryMatch(previous,listingEvidence(previous),this.now());
+        this.inventoryMatch(previous,listingEventEvidence(previous.sourceId),this.now()).kind==='matched'))return observation;
+      const decision=this.inventoryMatch(previous,listingEventEvidence(previous.sourceId),this.now());
       const game=decision.kind==='matched'?this.games.find(game=>game.id===decision.gameId):undefined;
       if(game?.lifecycle!=='live'||game.finalObservedAt!==undefined||!this.scheduleFresh(game))return observation;
       return {...observation,kickoff:previous.kickoff,rawTime:previous.rawTime,
@@ -866,7 +876,7 @@ export class FootballCoordinator {
           result.outcome==='unsupported'?Number.MAX_SAFE_INTEGER:retryDeadline(at,0,this.sourceRefreshMs);
         const match=createSourceEventMatcher(this.games);
         const admitted=accepted.map(observation=>{
-          const result=match(observation,listingEvidence(observation),at).match;
+          const result=match(observation,listingEventEvidence(observation.sourceId),at).match;
           if(observation.league!==null&&observation.teams!==null&&result.kind==='matched'){
             const game=this.games.find(game=>game.id===result.gameId);
             if(game&&this.scheduleFresh(game)&&(observation.kickoff!==null&&game.lifecycle==='live'||
@@ -929,7 +939,7 @@ export class FootballCoordinator {
       const detail=evidence.get(observation.id);
       if(detail?.outcome!=='resolved'||!matchesDetail(detail,observation)||
         now-detail.at>=30*60_000||detail.at>now+60_000||now-observation.observedAt>=30*60_000)continue;
-      const decision=match(observation,listingEvidence(observation),now);
+      const decision=match(observation,listingEventEvidence(observation.sourceId),now);
       const result=resolvedLiveChannelMatch(observation,decision.match,freshGames,detail,now);
       if(result.kind!=='matched')continue;
       const game=this.games.find(item=>item.id===result.gameId);
@@ -985,7 +995,7 @@ export class FootballCoordinator {
     const evidence=new Map(this.store.detailEvidence().map(row=>[row.observationId,row]));
     const liveRolloverGame=(observation:Observation):Game|undefined=>{
       if(!eventPageIds.has(observation.sourceId)||this.now()-observation.observedAt<=30*60_000||observation.kickoff===null)return;
-      const result=this.inventoryMatch(observation,listingEvidence(observation),this.now()).match;
+      const result=this.inventoryMatch(observation,listingEventEvidence(observation.sourceId),this.now()).match;
       if(result.kind!=='matched')return;
       const game=this.games.find(value=>value.id===result.gameId);
       return game?.lifecycle==='live'&&game.finalObservedAt===undefined&&this.scheduleFresh(game)&&
@@ -999,7 +1009,7 @@ export class FootballCoordinator {
       return this.store.observations().flatMap(observation=>{
         if(visited.has(observation.id)||catalogIds.has(observation.sourceId)||!observation.teams&&observation.league!=='f1'&&observation.league!=='nascar-cup'&&observation.league!=='nascar-truck'&&observation.league!=='motogp'&&observation.league!=='motorsport'||
           this.hostRetryAt(observation.url)>this.now()||this.listingPending(observation.url))return [];
-        const result=match(observation,listingEvidence(observation),this.now()).match;
+        const result=match(observation,listingEventEvidence(observation.sourceId),this.now()).match;
         const rolloverGame=result.kind==='unmatched'&&result.reason==='stale-observation'?liveRolloverGame(observation):undefined;
         const detailIds=detailCandidateGameIds(result);
         if(!detailIds.length&&!rolloverGame)return [];
@@ -1037,7 +1047,7 @@ export class FootballCoordinator {
           (player.locator.provider==='event-page'||player.locator.provider==='tvapp')&&
           player.locator.gameId===rolloverGame?.id&&player.locator.eventUrl===original.url);
         if(publishedEventPage)observation={...observation,observedAt:at};
-        const rawResult=createSourceEventMatcher(this.games)(observation,listingEvidence(observation),at).match;
+        const rawResult=createSourceEventMatcher(this.games)(observation,listingEventEvidence(observation.sourceId),at).match;
         const freshGames=this.games.filter(game=>this.feedGame(game));
         const game=rawResult.kind==='matched'?this.games.find(value=>value.id===rawResult.gameId):
           provisionalLiveChannel(observation,rawResult,freshGames,at)??undefined;

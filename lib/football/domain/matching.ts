@@ -146,7 +146,8 @@ export function createSourceEventMatcher(games:readonly Game[],mode:'current'|'i
   const byId=new Map(games.map(game=>[game.id,game]));
   return (observation:Observation,evidence:SourceEventEvidence,now:number):SourceEventDecision=>{
     const declared=sourceCoverage(observation.sourceId);
-    const leagues=declared.length?declared:observation.league?[observation.league]:[];
+    const leagues=declared.length?declared:observation.league?[observation.league]:
+      [...new Set(games.map(game=>game.league))];
     const key=[...leagues].sort().join(',');
     let match=prepared.get(key);
     if(!match){
@@ -162,8 +163,8 @@ export function createSourceEventMatcher(games:readonly Game[],mode:'current'|'i
       if(game&&game.lifecycle!=='final'&&observation.league===game.league&&
         (evidence.undated==='published-listing'&&feedEligible(game,now)||
           evidence.undated==='retained-live-detail'&&game.lifecycle==='live'&&feedEligible(game,now)||
-          evidence.undated==='live-claim'&&feedEligible(game,now)&&
-          (game.lifecycle==='live'||game.date!==undefined&&Math.abs(Date.parse(game.date)-now)<=30*60_000)))
+          evidence.undated==='live-claim'&&feedEligible(game,now)&&game.date!==undefined&&
+            Math.abs(Date.parse(game.date)-now)<=30*60_000))
         result={kind:'matched',gameId:game.id};
     }
     if(evidence.externalGameId!==null&&

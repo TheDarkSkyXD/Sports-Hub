@@ -1,4 +1,5 @@
 import { candidateSummary, type Candidate, type CandidateAvailability, type CollectionAttempt, type CollectionHealth, type DetailEvidence, type Game, type LinkEvidence, type Match, type Observation, type SourceAttempt, type SourceEventBinding, type SourceMatchReason, type SourcesSnapshot, type StoredSportsurgeCatalog, type StoredStreameastCatalog, type StreameastCatalog } from '../shared.ts';
+import { listingEventEvidence } from '../source-registry.ts';
 import { compareCandidates } from './lifecycle.ts';
 import { detailIdentity } from './source-policy.ts';
 import { resolvedLiveChannelMatch } from './live-channel.ts';
@@ -164,7 +165,7 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     const links=linksBySource.get(observation.sourceId) || new Map();
     if (links.has(url)) return;
     const matchEvidence:SourceEventEvidence=event?streameastEvidence(event):sourceEvidence??
-      {undated:observation.sourceId==='sportsurge'?'published-listing':'none',externalGameId:null};
+      listingEventEvidence(observation.sourceId);
     const decision=match(observation,matchEvidence,at);
     const result:Match=event===null?resolvedLiveChannelMatch(observation,decision.match,freshGames,details.get(observation.id),at):decision.match;
     if(!visibleObservation(observation,result))return;

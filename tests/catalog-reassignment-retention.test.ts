@@ -136,6 +136,10 @@ test('a StreamEast external game ID conflict vetoes a matching date and teams', 
     assert.equal(snapshot.sources.find(source => source.id === 'streameast')?.matchedGameCount, 0);
     assert.equal(snapshot.games.find(game => game.gameId === games[0].id)?.candidates.length ?? 0, 0);
     assert.equal(snapshot.streameast.current?.games[0]?.gameId, null);
+    await run.advance(1000);
+    const rebuilt = await run.snapshot();
+    assert.equal(rebuilt.sources.find(source => source.id === 'streameast')?.matchedGameCount, 0);
+    assert.equal(rebuilt.games.find(game => game.gameId === games[0].id)?.candidates.length ?? 0, 0);
   } finally { await run.stop(); }
 });
 

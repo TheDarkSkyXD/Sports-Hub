@@ -3,6 +3,7 @@
     "id": "sportsurge",
     "url": "https://isportsurge.ws/index6",
     "family": "sportsurge",
+    "undatedListingEvidence": "published-listing",
     "leagues": [
       "nfl",
       "ncaaf",
@@ -372,6 +373,7 @@
     "url": "https://v2.sportsurge.net/watch-cfb-streams/",
     "family": "sportsurge",
     "kind": "browser-catalog",
+    "undatedListingEvidence": "published-listing",
     "publicUrls": [
       "https://v2.sportsurge.net/watch-cfb-streams/",
       "https://v2.sportsurge.net/watch-nfl-streams/",
