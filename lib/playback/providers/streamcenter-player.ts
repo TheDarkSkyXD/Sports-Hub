@@ -1,6 +1,6 @@
 import { load } from 'cheerio';
 
-const playerUrl=/^(?:https:)?\/\/streame\.center\/embed\/(?:hls|hls2)\.php\?stream=([a-z0-9]{1,40})$/;
+const playerUrl=/^(?:https:)?\/\/streame\.center\/embed\/(?:hls|hls2)\.php\?stream=([A-Za-z0-9]{1,40})$/;
 
 export function parseStreamcenterPlayer(html:string): {stream:string;url:string} | null {
   const $=load(html);
