@@ -195,7 +195,14 @@ function ListingEvidence({evidence,at,candidates}:{evidence:LinkEvidence;at:numb
     }
     case 'missing':return <span className="source-inventory-evidence" data-state={evidence.reason==='not-yet-published'?'pending':'warning'}>
       {missingReasonLabel[evidence.reason]} · Checked {time(evidence.checkedAt)} · {age(evidence.checkedAt,at)}{evidence.retryAt===null?'':` · Retry eligible ${time(evidence.retryAt)}`}</span>;
-    case 'failed':return <span className="source-inventory-evidence" data-state="warning">Player collection failed · {failureLabel[evidence.failure]} · Checked {time(evidence.checkedAt)} · {age(evidence.checkedAt,at)}{evidence.retryAt===null?'':` · Retry eligible ${time(evidence.retryAt)}`}</span>;
+    case 'failed':{
+      const available=new Set(candidates.filter(candidate=>candidate.availability.kind==='playable').map(candidate=>candidate.id)).size;
+      return <span className="source-inventory-evidence" data-state="warning">
+        {evidence.failure==='rate-limited'?'Feed list refresh paused':'Feed list refresh failed'} · {failureLabel[evidence.failure]}
+        {available>0?` · ${available} available ${available===1?'feed':'feeds'} from this source`:''}
+        {' · '}Checked {time(evidence.checkedAt)} · {age(evidence.checkedAt,at)}{evidence.retryAt===null?'':` · Retry eligible ${time(evidence.retryAt)}`}
+      </span>;
+    }
     default:{const exhaustive:never=evidence;return exhaustive;}
   }
 }
@@ -529,7 +536,7 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
           {game.candidates.length>0?<div className="source-inventory-candidates"><strong>Feed check results</strong><ul>{game.candidates.map(candidate=><li key={candidate.id}><span>{candidate.label}</span><span className="source-inventory-check" data-state={candidate.availability.kind}>{candidateEvidence(candidate,renderNow)}{candidate.availability.kind==='playable'||candidate.availability.kind==='unavailable'?` · Checked ${time(candidate.availability.checkedAt)} · ${age(candidate.availability.checkedAt,snapshot.at)}`:''}</span></li>)}</ul></div>:<p>No feeds found yet. The listing evidence below explains each source.</p>}
           {game.sharedRoutes.map(route=><p className="source-inventory-shared-route" key={route.id}>{route.candidateIds.map(id=>game.candidates.find(candidate=>candidate.id===id)?.label||id).join(' and ')} reach the same published server route. These remain separate player entries.</p>)}
           <ul>{game.sourceLinks.map(link=><li key={`${link.sourceId}:${link.url}`}><span>{snapshot.sources.find(source=>source.id===link.sourceId)?.name || link.sourceId}</span>
-            {link.sourceId==='sportsurge-v2'?<span>{link.title}</span>:<a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>}{link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}<ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={game.candidates}/></li>)}</ul>
+            {link.sourceId==='sportsurge-v2'?<span>{link.title}</span>:<a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>}{link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}<ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={game.candidates.filter(candidate=>candidate.sourceIds.includes(link.sourceId))}/></li>)}</ul>
         </details>)}<div className="source-inventory-game-pagination">{visibleGames.length<listedGames.length?
           <button type="button" className="button subtle" onClick={()=>updateFilters({gameLimit:Math.min(gameLimit+GAME_PAGE_SIZE,listedGames.length)})}>Load more games</button>:
            <span>All {listedGames.length} games shown</span>}</div></div>}
