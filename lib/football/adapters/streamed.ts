@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Observation, ResolvedPlayer } from '../shared.ts';
+import type { MissingPlayerReason, Observation, ResolvedPlayer } from '../shared.ts';
 import type { ListingResult } from '../domain/ports.ts';
 import { streamApiUrl, streamedEventUrl, validStreamTarget } from '../../playback/providers/catalog-stream-policy.ts';
 import {playerId} from './player-id.ts';
@@ -52,6 +52,16 @@ export function selectStreamedEvent(body:string,variant:Variant,eventId:string):
   const matches=parsed.data.filter(event=>event.id===eventId&&validId(event.id));
   if(matches.length!==1)throw new Error('parser-changed');
   return JSON.stringify(matches[0]);
+}
+
+export function streamedMissingReason(observation:Observation,body:string,variant:Variant):MissingPlayerReason {
+  let input:unknown;
+  try{input=JSON.parse(body);}catch{return 'parser-changed';}
+  const parsed=Event.safeParse(input);
+  if(!parsed.success)return 'parser-changed';
+  if(!eventIdentity(parsed.data,variant,observation))return 'conflicting-game';
+  if(parsed.data.sources.length)return 'unsupported-player';
+  return observation.kickoff!==null&&observation.kickoff>observation.observedAt?'not-yet-published':'no-published-player';
 }
 
 export async function streamedPlayers(gameId:string,observation:Observation,body:string,signal:AbortSignal,

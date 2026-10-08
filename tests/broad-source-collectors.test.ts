@@ -106,6 +106,91 @@ test('catalog playback rejects reassigned event before requesting a stream',asyn
   assert.equal(reads,1);
 });
 
+test('concurrent catalog candidates share one fresh read and cancel independently',async()=>{
+  const event={id:'buffalo-sabres-vs-dallas-stars-2591545',title:'Buffalo Sabres vs Dallas Stars',
+    date:Date.parse('2026-10-08T23:00:00Z'),teams:{home:{name:'Buffalo Sabres'},away:{name:'Dallas Stars'}},
+    sources:[{source:'sp:golf',id:'2123'}]};
+  const locator={provider:'catalog-stream' as const,gameId:'401892458',source:'livesportpro' as const,
+    eventUrl:`https://api.kultsport.com/api/matches/all#${event.id}`,eventId:event.id,sourceName:'sp:golf',sourceId:'2123',
+    streamNo:1,kickoff:event.date,title:event.title,teams:['Buffalo Sabres','Dallas Stars'] as [string,string]};
+  let release!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;});
+  let clock=100_000;
+  const nowMock=mock.method(Date,'now',()=>clock);
+  let catalogReads=0,streamReads=0;
+  const direct='https://lb29.strmd.st/secure/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/ingest/stream/streamedbuffalosabres/1/playlist.m3u8';
+  const requester=async(url:URL)=>{
+    if(url.pathname==='/api/matches/all'){
+      catalogReads++;
+      if(catalogReads===1)await gate;
+      return new Response(JSON.stringify([{...event,title:catalogReads===1?event.title:'Other Event'}]),
+        {headers:{'content-type':'application/json'}});
+    }
+    streamReads++;
+    return new Response(JSON.stringify([1,2].map(streamNo=>({id:'2123',streamNo,source:'streamed',embedUrl:direct}))),
+      {headers:{'content-type':'application/json'}});
+  };
+  try{
+    const provider=catalogStreamProvider(requester);
+    const firstSignal=new AbortController();
+    const first=provider.open(locator,firstSignal.signal,'probe');
+    const second=provider.open({...locator,streamNo:2},new AbortController().signal,'probe');
+    firstSignal.abort(new Error('caller canceled'));
+    await assert.rejects(first,/caller canceled/);
+    release();
+    const playback=await second;
+    assert.equal(playback.root.identity,direct);
+    assert.equal(catalogReads,1);
+    assert.equal(streamReads,1);
+    playback.close();
+    const next=await provider.open(locator,new AbortController().signal,'probe');
+    assert.equal(next.root.identity,direct);
+    assert.equal(catalogReads,1);
+    next.close();
+    await assert.rejects(provider.open(locator,new AbortController().signal),/event changed/);
+    assert.equal(catalogReads,2);
+    clock+=15_001;
+    await assert.rejects(provider.open(locator,new AbortController().signal,'probe'),/event changed/);
+    assert.equal(catalogReads,3);
+  }finally{nowMock.mock.restore();release();}
+});
+
+test('a canceled or failed shared catalog read is discarded before the next open',async()=>{
+  const body=fixture('streamed.json');
+  const observation=parseListings(source('streamed'),body,at).observations.find(row=>row.title==='Buffalo Sabres vs Dallas Stars')!;
+  const event=JSON.parse(body).find((row:{id:string})=>observation.url.endsWith(row.id));
+  event.sources=[{source:'golf',id:'2123'}];
+  const players=await resolvePlayers('401892458',observation,JSON.stringify(event),new AbortController().signal,async()=>
+    JSON.stringify([{id:'2123',streamNo:1,source:'golf',embedUrl:'https://embed.st/embed/golf/2123/1'}]));
+  const locator=players[0].locator;
+  assert.equal(locator.provider,'catalog-stream');
+  if(locator.provider!=='catalog-stream')return;
+  let reads=0,upstreamAborts=0;
+  const requester=async(_url:URL,signal:AbortSignal)=>{
+    reads++;
+    if(reads===1)return new Promise<Response>((_resolve,reject)=>{
+      const abort=()=>{upstreamAborts++;reject(signal.reason);};
+      signal.addEventListener('abort',abort,{once:true});
+      if(signal.aborted)abort();
+    });
+    if(reads===2)return new Response('{}',{headers:{'content-type':'application/json'}});
+    return new Response(JSON.stringify([{...event,title:'Other Event'}]),{headers:{'content-type':'application/json'}});
+  };
+  const provider=catalogStreamProvider(requester);
+  const firstSignal=new AbortController(),secondSignal=new AbortController();
+  const first=provider.open(locator,firstSignal.signal,'probe');
+  const second=provider.open(locator,secondSignal.signal,'probe');
+  firstSignal.abort(new Error('first canceled'));
+  await assert.rejects(first,/first canceled/);
+  assert.equal(upstreamAborts,0);
+  secondSignal.abort(new Error('second canceled'));
+  await assert.rejects(second,/second canceled/);
+  assert.equal(upstreamAborts,1);
+  await assert.rejects(provider.open(locator,new AbortController().signal,'probe'),/Catalog stream changed/);
+  await assert.rejects(provider.open(locator,new AbortController().signal,'probe'),/event changed/);
+  assert.equal(reads,3);
+});
+
 test('LiveSportPro keeps its scoped source reference while direct HLS is resolved only at open',async()=>{
   const body=fixture('livesportpro.json');
   const observation=parseListings(source('livesportpro'),body,at).observations.find(row=>row.title==='Buffalo Sabres vs Dallas Stars')!;
@@ -169,6 +254,28 @@ test('CricHD detail admits only published same-event Watch links',async()=>{
   assert.equal(players[0].locator.provider,'event-page');
   assert.deepEqual(await resolvePlayers('motogp-123',{...observation,title:'Other Race'},
     fixture('crichd-motogp-page.html'),new AbortController().signal),[]);
+});
+
+test('empty player reasons distinguish changed events, rejected links, and unpublished details',()=>{
+  const body=fixture('streamed.json');
+  const observation=parseListings(source('streamed'),body,at).observations.find(row=>row.title==='Buffalo Sabres vs Dallas Stars')!;
+  const event=JSON.parse(body).find((row:{id:string})=>observation.url.endsWith(row.id));
+  assert.equal(missingPlayerReason(observation,JSON.stringify({...event,title:'Other Event',sources:[]})),'conflicting-game');
+  assert.equal(missingPlayerReason(observation,JSON.stringify({...event,sources:[]})),'not-yet-published');
+  assert.equal(missingPlayerReason(observation,JSON.stringify(event)),'unsupported-player');
+  assert.equal(missingPlayerReason(observation,'{'),'parser-changed');
+  const lspBody=fixture('livesportpro.json');
+  const lsp=parseListings(source('livesportpro'),lspBody,at).observations.find(row=>row.title==='Buffalo Sabres vs Dallas Stars')!;
+  const lspEvent=JSON.parse(lspBody).find((row:{id:string})=>lsp.url.endsWith(row.id));
+  assert.equal(missingPlayerReason(lsp,JSON.stringify({...lspEvent,title:'Other Event'})),'conflicting-game');
+  const listing=parseListings(source('crichd'),fixture('crichd-home.html'),at);
+  const race=listing.observations.find(row=>row.url==='https://crichd.pk/event/motogp-indonesia-grand-prix')!;
+  const detail=fixture('crichd-motogp-page.html');
+  assert.equal(missingPlayerReason(race,'<html><body>Changed template</body></html>'),'parser-changed');
+  assert.equal(missingPlayerReason({...race,title:'Other Race'},detail),'conflicting-game');
+  assert.equal(missingPlayerReason(race,detail.replace(/https:\/\/playerbee\.top\/charlie\/[^" ]+/g,
+    'https://other.example/wrong-event')),'unsupported-player');
+  assert.equal(missingPlayerReason(race,detail.replace(/<a\b[^>]*>\s*Watch\s*<\/a>/g,'')),'not-yet-published');
 });
 
 test('SportsBite uses exact event key and ignores upstream online metadata',async()=>{
@@ -300,6 +407,28 @@ test('SportsFeed24 partial category failure retains complete event routing',asyn
     assert.equal(calls.filter(url=>url.endsWith('/api/xhr')).length,7);
     assert.equal(calls.filter(url=>url.endsWith('/api/xrhs')).length,2);
   }finally{fetchMock.mock.restore();}
+});
+
+test('SportsFeed24 malformed categories retain other complete categories',async()=>{
+  const today=JSON.parse(fixture('sportsfeed24-today.json'));
+  for(const invalid of ['invalid-json','{}']){
+    const fetchMock=mock.method(globalThis,'fetch',async(_input:RequestInfo|URL,init?:RequestInit)=>{
+      const category=JSON.parse(String(init?.body)).categoryName;
+      return new Response(category==='F1'?invalid:JSON.stringify(category?{categoryName:category,subCategories:[]}:today),
+        {headers:{'content-type':'application/json'}});
+    });
+    try{
+      await assert.rejects(readHtml(source('sportsfeed24').url,new AbortController().signal),(error:unknown)=>{
+        assert.ok(error instanceof PartialListingReadError);
+        assert.equal(JSON.parse(error.html).complete,false);
+        assert.equal(JSON.parse(error.html).categories.length,6);
+        const result=parseListings(source('sportsfeed24'),error.html,at);
+        assert.equal(result.outcome,'parsed');
+        assert.equal(result.observations.some(row=>row.title==='Baycurrent Classic vs Golf'),true);
+        return true;
+      });
+    }finally{fetchMock.mock.restore();}
+  }
 });
 
 test('a CricHD redirect cannot cross into another allowed source host',async()=>{

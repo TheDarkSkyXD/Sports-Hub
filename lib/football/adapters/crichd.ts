@@ -1,5 +1,5 @@
 import { load } from 'cheerio';
-import type { Observation, ResolvedPlayer } from '../shared.ts';
+import type { MissingPlayerReason, Observation, ResolvedPlayer } from '../shared.ts';
 import type { ListingResult } from '../domain/ports.ts';
 import { validEventPagePair } from '../../playback/providers/event-page-policy.ts';
 import {playerId} from './player-id.ts';
@@ -59,16 +59,27 @@ export function parseCrichdListings(body:string,now:number):ListingResult {
   return {outcome:observations.length?'parsed':'empty',observations};
 }
 
-export function crichdPlayers(gameId:string,observation:Observation,body:string):ResolvedPlayer[] {
-  if(!eventUrl(observation.url))return [];
-  const $=load(body);
+function detailIdentity(observation:Observation,$:ReturnType<typeof load>):boolean {
   const countdown=$('.data-countdown[data-start]').first();
   const kickoff=Date.parse(countdown.attr('data-start')||'');
   const heading=$('h1').first().text().replace(/\s+Live Streaming Online - Crichd$/,'').trim();
   const teams=countdown.parent().find('.flex-col.items-center > div').map((_i,node)=>$(node).text().trim()).get();
-  if(kickoff!==observation.kickoff||(observation.teams?
-    teams.length!==2||teams.join('|')!==observation.teams.join('|'):
-    heading!==observation.title))return [];
+  return eventUrl(observation.url)&&kickoff===observation.kickoff&&(observation.teams?
+    teams.length===2&&teams.join('|')===observation.teams.join('|'):
+    heading===observation.title);
+}
+
+export function crichdMissingReason(observation:Observation,body:string):MissingPlayerReason {
+  const $=load(body);
+  if(!$('h1').length||!$('.data-countdown[data-start]').length)return 'parser-changed';
+  if(!detailIdentity(observation,$))return 'conflicting-game';
+  if($('a[href]').toArray().some(node=>$(node).text().trim()==='Watch'))return 'unsupported-player';
+  return observation.kickoff!==null&&observation.kickoff>observation.observedAt?'not-yet-published':'no-published-player';
+}
+
+export function crichdPlayers(gameId:string,observation:Observation,body:string):ResolvedPlayer[] {
+  const $=load(body);
+  if(!detailIdentity(observation,$))return [];
   const players=new Map<string,ResolvedPlayer>();
   $('a[href]').each((_i,node)=>{
     const url=$(node).attr('href')||'';

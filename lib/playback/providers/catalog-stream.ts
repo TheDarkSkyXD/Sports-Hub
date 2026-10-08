@@ -6,6 +6,9 @@ import { get, observedPublicPage, publicHttpsRequest, resource, type Requester }
 import { streamApiUrl, streamedEventUrl, validLiveRelay, validStreamReference, validStreamTarget } from './catalog-stream-policy.ts';
 
 type Locator=Extract<CandidateLocator,{provider:'catalog-stream'}>;
+type CatalogEvents=z.infer<typeof Event>[];
+type CatalogRead={kind:'pending';promise:Promise<CatalogEvents>;controller:AbortController;waiters:number};
+type CatalogSnapshot={kind:'ready';events:CatalogEvents;expiresAt:number};
 const Ref=z.object({source:z.string(),id:z.string()});
 const Event=z.object({id:z.string(),title:z.string(),date:z.number().int(),
   teams:z.object({home:z.object({name:z.string()}),away:z.object({name:z.string()})}).nullish(),sources:z.array(Ref)});
@@ -21,6 +24,7 @@ export function durableCatalogStream(locator:Locator):boolean {
 
 export function catalogStreamProvider(requester:Requester=(url,signal,headers,timeoutMs)=>
   publicHttpsRequest(url,signal,headers,undefined,timeoutMs),observe:Observe=observedPublicPage):PlaybackProvider<Locator> {
+  const catalogs=new Map<string,CatalogRead|CatalogSnapshot>();
   async function json(url:string,signal:AbortSignal):Promise<unknown>{
     const result=await get(url,signal,requester);
     if(result.url.href!==url||!/application\/json/i.test(result.response.headers.get('content-type')||'')){
@@ -28,12 +32,54 @@ export function catalogStreamProvider(requester:Requester=(url,signal,headers,ti
     }
     return JSON.parse(await boundedText(result.response,2*1024*1024));
   }
+  async function catalog(url:string,signal:AbortSignal,purpose:'playback'|'probe'):Promise<CatalogEvents> {
+    signal.throwIfAborted();
+    const key=`${purpose}:${url}`;
+    let entry=catalogs.get(key);
+    if(entry?.kind==='ready'){
+      if(entry.expiresAt>Date.now())return entry.events;
+      catalogs.delete(key);
+      entry=undefined;
+    }
+    if(!entry){
+      const controller=new AbortController();
+      const promise=(async()=>{
+        const parsed=z.array(Event).safeParse(await json(url,controller.signal));
+        if(!parsed.success)throw new Error('Catalog stream changed');
+        return parsed.data;
+      })();
+      entry={kind:'pending',promise,controller,waiters:0};
+      catalogs.set(key,entry);
+      const current=entry;
+      promise.then(events=>{
+        if(catalogs.get(key)===current){
+          if(purpose==='probe')catalogs.set(key,{kind:'ready',events,expiresAt:Date.now()+15_000});
+          else catalogs.delete(key);
+        }
+      },()=>{if(catalogs.get(key)===current)catalogs.delete(key);});
+    }
+    entry.waiters++;
+    const current=entry;
+    try{
+      return await new Promise<CatalogEvents>((resolve,reject)=>{
+        const abort=()=>{signal.removeEventListener('abort',abort);reject(signal.reason);};
+        signal.addEventListener('abort',abort,{once:true});
+        current.promise.then(value=>{signal.removeEventListener('abort',abort);resolve(value);},
+          error=>{signal.removeEventListener('abort',abort);reject(error);});
+        if(signal.aborted)abort();
+      });
+    }finally{
+      current.waiters--;
+      if(current.waiters===0&&catalogs.get(key)===current){
+        catalogs.delete(key);
+        current.controller.abort();
+      }
+    }
+  }
   return {provider:'catalog-stream',async open(locator,signal,purpose='playback'){
     if(!durableCatalogStream(locator))throw new Error('Unsupported catalog stream');
     const catalogUrl=locator.source==='streamed'?'https://streamed.st/api/matches/all':'https://api.kultsport.com/api/matches/all';
-    const catalog=z.array(Event).safeParse(await json(catalogUrl,signal));
-    if(!catalog.success)throw new Error('Catalog stream changed');
-    const matches=catalog.data.filter(event=>event.id===locator.eventId);
+    const matches=(await catalog(catalogUrl,signal,purpose)).filter(event=>event.id===locator.eventId);
     if(matches.length!==1)throw new Error('Catalog stream event changed');
     const event=matches[0],teams=event.teams?[event.teams.home.name,event.teams.away.name]:null;
     if(event.title!==locator.title||event.date!==locator.kickoff||

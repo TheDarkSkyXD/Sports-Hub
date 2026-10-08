@@ -10,6 +10,14 @@ const Game=z.object({teamA:z.string().min(1),teamB:z.string().min(1),matchDate:z
 const Category=z.object({categoryName:z.string(),subCategories:z.array(z.object({subCategoryName:z.string(),games:z.array(Game)}))});
 const Detail=z.object({game:Game});
 
+export function parseSportsfeed24Category(body:string):z.infer<typeof Category> {
+  let input:unknown;
+  try{input=JSON.parse(body);}catch{throw new Error('parser-changed');}
+  const parsed=Category.safeParse(input);
+  if(!parsed.success)throw new Error('parser-changed');
+  return parsed.data;
+}
+
 function eventUrl(value:string):boolean {
   try {
     const url=new URL(value);

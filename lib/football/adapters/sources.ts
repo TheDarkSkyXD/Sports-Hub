@@ -12,9 +12,9 @@ import { TvappMatch, catalogTeams, preferredCatalogTeams, tvappIdentity, tvappSt
 import {enrichLiveTvObservation,liveTvPlayers,parseLiveTvListings} from './livetv.ts';
 import {nflstreamsPlayers,parseNflstreamsListings} from './nflstreams.ts';
 import {buffstreamPlayers} from './buffstream.ts';
-import {parseStreamedCatalog,selectStreamedEvent,streamedPlayers} from './streamed.ts';
-import {parseSportsfeed24,sportsfeed24MissingReason,sportsfeed24Players} from './sportsfeed24.ts';
-import {parseCrichdListings,crichdPlayers} from './crichd.ts';
+import {parseStreamedCatalog,selectStreamedEvent,streamedMissingReason,streamedPlayers} from './streamed.ts';
+import {parseSportsfeed24,parseSportsfeed24Category,sportsfeed24MissingReason,sportsfeed24Players} from './sportsfeed24.ts';
+import {parseCrichdListings,crichdMissingReason,crichdPlayers} from './crichd.ts';
 import {parseSportsbite,selectSportsbiteEvent,sportsbiteMissingReason,sportsbitePlayers} from './sportsbite.ts';
 
 const TVAPP_API = 'https://api-backups.handleapi.win/matches/sport/american-football';
@@ -80,10 +80,10 @@ export const digest = (value: string) => createHash('sha256').update(value).dige
 export async function readHtml(url: string, signal: AbortSignal): Promise<string> {
   signal.throwIfAborted();
   if(url==='https://bestfreestreaming.app/api/xhr'){
-    const results=await Promise.allSettled(sportsfeedCategories.map(categoryName=>
-      readPage(url,signal,'application/json',JSON.stringify(categoryName?{categoryName}:{}))));
+    const results=await Promise.allSettled(sportsfeedCategories.map(async categoryName=>
+      parseSportsfeed24Category(await readPage(url,signal,'application/json',JSON.stringify(categoryName?{categoryName}:{})))));
     signal.throwIfAborted();
-    const categories=results.flatMap(result=>result.status==='fulfilled'?[JSON.parse(result.value)]:[]);
+    const categories=results.flatMap(result=>result.status==='fulfilled'?[result.value]:[]);
     const errors=results.flatMap(result=>result.status==='rejected'?[result.reason instanceof Error?result.reason:new Error('unavailable')]:[]);
     const body=JSON.stringify({categories,complete:errors.length===0});
     if(errors.length){
@@ -529,8 +529,9 @@ const ChannelEvent = z.union([
 export function missingPlayerReason(observation:Observation,html:string):MissingPlayerReason {
   if(observation.sourceId==='sportsfeed24')return sportsfeed24MissingReason(observation,html);
   if(observation.sourceId==='sportsbite')return sportsbiteMissingReason(observation,html);
-  if(['streamed','livesportpro','crichd'].includes(observation.sourceId))
-    return observation.kickoff!==null&&observation.kickoff>observation.observedAt?'not-yet-published':'no-published-player';
+  if(observation.sourceId==='streamed'||observation.sourceId==='livesportpro')
+    return streamedMissingReason(observation,html,observation.sourceId);
+  if(observation.sourceId==='crichd')return crichdMissingReason(observation,html);
   if(!['tvapp','tvapp-nba','tvapp-nhl','tvapp-mlb','methstreams','methstreams-nba','methstreams-nhl','methstreams-mlb','crackstreams-st','crackstreams-nba','crackstreams-nhl','crackstreams-mlb','methstreams-f1','crackstreams-f1','sportsurge','livetv'].includes(observation.sourceId))return 'no-compatible-media';
   const $=load(html);
   $('script,style,noscript').remove();
