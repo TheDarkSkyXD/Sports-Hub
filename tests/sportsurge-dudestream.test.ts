@@ -21,6 +21,8 @@ test('NCAA title evidence distinguishes exact, conflicting, and unknown identiti
   assert.equal(publishedFootballMatchup(expectedMatchup,'Tigers vs Kennesaw State'),'unknown');
   assert.equal(publishedFootballMatchup(undefined,'Jacksonville State vs Kennesaw State'),'unknown');
   assert.equal(publishedFootballMatchup({league:'nfl',teams:expectedMatchup.teams},'Jacksonville State vs Kennesaw State'),'unknown');
+  assert.equal(publishedFootballMatchup({league:'ncaaf',teams:['New Mexico State Aggies','Florida International Panthers']},
+    'NM State vs FIU – ☆𝘿𝙪𝙙𝙚𝒮𝙩𝙧𝙚𝙖𝙢☆'),'matches');
 });
 
 async function withObserver(run:(requests:unknown[])=>Promise<void>):Promise<void>{
@@ -74,6 +76,7 @@ test('Dudestream contradictions end before browser fallback',async()=>{
   await withObserver(async requests=>{
     for(const [page,nested] of [
       [parentHtml('Troy Trojans vs Kennesaw State Owls',[player]),playerHtml('Jacksonville State vs Kennesaw State')],
+      [parentHtml('Tigers vs Kennesaw State',[wrongPlayer]),playerHtml('Jacksonville State vs Kennesaw State')],
       [parentHtml('Jacksonville State vs Kennesaw State',[wrongPlayer]),playerHtml('Jacksonville State vs Kennesaw State')],
       [parentHtml('Jacksonville State vs Kennesaw State',[player]),playerHtml('Troy Trojans vs Kennesaw State Owls')],
     ])await assert.rejects(sportsurgeV2Provider(requester(page,nested)).open(locator,new AbortController().signal),
@@ -96,5 +99,18 @@ test('unknown or incomplete Dudestream identity cannot enter embedded activation
       playback.close();
       assert.deepEqual(requests.at(-1),{url:source,purpose:'playback'});
     }
+    const nfl={...locator,expectedMatchup:{league:'nfl' as const,teams:['Dallas Cowboys','Tampa Bay Buccaneers'] as const}};
+    const page=parentHtml('Jacksonville State vs Kennesaw State',[player]);
+    const nested=playerHtml('Jacksonville State vs Kennesaw State');
+    const nflPlayback=await sportsurgeV2Provider(requester(page,nested)).open(nfl,new AbortController().signal);
+    nflPlayback.close();
+    assert.deepEqual(requests.at(-1),{url:source,purpose:'playback'});
+    const unavailable=async(url:URL):Promise<Response>=>{
+      if(url.href===player)throw new Error('Player page unavailable');
+      return requester(page,nested)(url);
+    };
+    const fallback=await sportsurgeV2Provider(unavailable).open(locator,new AbortController().signal);
+    fallback.close();
+    assert.deepEqual(requests.at(-1),{url:source,purpose:'playback'});
   });
 });

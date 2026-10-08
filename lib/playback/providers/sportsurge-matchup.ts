@@ -32,14 +32,15 @@ function publishedOwner(name:string,edge:'start'|'end'):string|null {
   return owners.size===1?[...owners][0]:null;
 }
 
-export function conflictingPublishedFootballMatchup(expected:ExpectedMatchup,title:string):boolean {
-  if(expected.league!=='ncaaf')return false;
-  const parts=title.split(/\s+(?:vs\.?|versus|at)\s+/i);
-  if(parts.length!==2)return false;
+export function publishedFootballMatchup(expected:ExpectedMatchup|undefined,title:string):'matches'|'conflicting'|'unknown' {
+  if(expected?.league!=='ncaaf')return 'unknown';
+  const headline=title.normalize('NFKC').replace(/\s+[–—]\s+[^A-Za-z0-9]*DudeStream[^A-Za-z0-9]*$/i,'');
+  const parts=headline.split(/\s+(?:vs\.?|versus|at)\s+/i);
+  if(parts.length!==2)return 'unknown';
   const expectedOwners=expected.teams.map(uniqueOwner);
-  if(!expectedOwners[0]||!expectedOwners[1]||expectedOwners[0]===expectedOwners[1])return false;
+  if(!expectedOwners[0]||!expectedOwners[1]||expectedOwners[0]===expectedOwners[1])return 'unknown';
   const published=[publishedOwner(parts[0],'end'),publishedOwner(parts[1],'start')];
-  if(!published[0]||!published[1]||published[0]===published[1])return false;
-  return !(published[0]===expectedOwners[0]&&published[1]===expectedOwners[1]||
-    published[0]===expectedOwners[1]&&published[1]===expectedOwners[0]);
+  if(!published[0]||!published[1]||published[0]===published[1])return 'unknown';
+  return published[0]===expectedOwners[0]&&published[1]===expectedOwners[1]||
+    published[0]===expectedOwners[1]&&published[1]===expectedOwners[0]?'matches':'conflicting';
 }
