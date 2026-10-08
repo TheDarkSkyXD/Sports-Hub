@@ -6,8 +6,7 @@ import { createFootballCoordinator } from './composition.ts';
 
 if (!parentPort) throw new Error('Football worker requires a parent port.');
 const port = parentPort;
-if (typeof workerData?.dataDir !== 'string') throw new Error('Football worker requires a data directory.');
-const dataDir = workerData.dataDir;
+const dataDir = typeof workerData?.dataDir === 'string' ? workerData.dataDir : join(process.cwd(),'.desktop-runtime');
 mkdirSync(dataDir,{recursive:true});
 const coordinator = createFootballCoordinator(join(dataDir,'football.sqlite'),{
   ownerToken:workerData?.ownerToken,

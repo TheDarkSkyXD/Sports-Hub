@@ -12,10 +12,9 @@ class WorkerClient {
   private closed = false;
   private readonly ownerToken = randomUUID();
   constructor(reclaimToken?: string) {
-    const dataDir = process.env.SUNDAY_ROOM_DATA_DIR ?? join(process.cwd(),'.desktop-runtime');
     this.worker = new Worker(join(process.cwd(),'lib','football','runtime','worker.ts'),{
       execArgv:['--experimental-strip-types'],
-      workerData:{dataDir,desktop:process.env.SUNDAY_ROOM_DESKTOP==='1',
+      workerData:{dataDir:process.env.SUNDAY_ROOM_DATA_DIR,desktop:process.env.SUNDAY_ROOM_DESKTOP==='1',
         browserCollectorsAvailable:process.env.SUNDAY_ROOM_BROWSER_COLLECTORS==='1',ownerToken:this.ownerToken,reclaimToken},
     });
     this.worker.on('message',(input:unknown) => {
