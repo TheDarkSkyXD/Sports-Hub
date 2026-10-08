@@ -161,7 +161,7 @@ export const DetailEvidenceSchema = z.discriminatedUnion('outcome',[
 ]);
 export type DetailEvidence = z.infer<typeof DetailEvidenceSchema>;
 export const SourceMatchReasonSchema=z.enum(['not-a-matchup','unknown-teams','unverified-kickoff','unverified-contextual-kickoff',
-  'ambiguous-matchup','conflicting-date','finished-game','other']);
+  'ambiguous-matchup','conflicting-date','conflicting-game-id','finished-game','other']);
 export type SourceMatchReason=z.infer<typeof SourceMatchReasonSchema>;
 export const SportsurgeFailureSchema=z.enum(['blocked','rate-limited','timeout','parser-changed','unavailable','invalid-detail-url','limit']);
 export const SportsurgeProviderSchema=z.object({

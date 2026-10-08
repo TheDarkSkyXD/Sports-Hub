@@ -1,6 +1,6 @@
-import { createFinishedGameMatcher, createObservationMatcher, matchSourceLiveGame, matchUndatedSportsurge } from './matching.ts';
+import { createFinishedGameMatcher, createSourceEventMatcher, type SourceEventEvidence } from './matching.ts';
 import { createHash } from 'node:crypto';
-import type { Candidate, Game, Match, Observation, SourceEventBinding, SourceMatchReason, SportsurgeCatalog, SportsurgeCatalogView, SportsurgeProvider, StoredSportsurgeCatalog } from '../shared.ts';
+import type { Candidate, Game, Observation, SourceEventBinding, SourceMatchReason, SportsurgeCatalog, SportsurgeCatalogView, SportsurgeProvider, StoredSportsurgeCatalog } from '../shared.ts';
 
 const DETAIL_PATH=/^\/watch-(\d{1,12})-(cfb|nfl)-[a-z0-9]+(?:-[a-z0-9]+)*\/$/;
 const CREDENTIAL_KEY=/^(?:token|access_token|auth|authorization|key|signature|sig|st|e|x-amz-.+)$/i;
@@ -66,16 +66,11 @@ export function sportsurgeObservation(event:SportsurgeCatalog['events'][number],
     teams:event.teams,kickoff:event.kickoff,rawTime:event.kickoff===null?'':new Date(event.kickoff).toISOString(),observedAt:at,parserVersion:1};
 }
 
-function matchedGame(event:SportsurgeCatalog['events'][number],at:number,games:Game[],now:number,
-  match:ReturnType<typeof createObservationMatcher>):Game|undefined {
-  const observation=sportsurgeObservation(event,at);
-  const raw:Match=match(observation,now);
-  const live=event.sourceStatus==='live'&&event.kickoff===null?matchSourceLiveGame(raw,games,now):raw;
-  const result=matchUndatedSportsurge(observation,live,games,now);
-  const id=result.kind==='matched'?result.gameId:null;
-  const game=games.find(item=>item.id===id);
-  if (!game || game.lifecycle!=='live' && game.lifecycle!=='scheduled') return undefined;
-  return game;
+export function sportsurgeEvidence(event:SportsurgeCatalog['events'][number],now:number):SourceEventEvidence {
+  const detail=event.detail;
+  return {undated:event.sourceStatus==='live'&&detail.kind==='collected'&&
+    detail.at<=now+60_000&&now-detail.at<30*60_000?'retained-live-detail':
+    event.sourceStatus==='live'?'live-claim':'published-listing',externalGameId:null};
 }
 
 function rowIdentity(eventUrl:string,providerId:string,destinationUrl:string):string {
@@ -99,7 +94,7 @@ export function sportsurgeCandidates(input:{
   const {current,previous,lastComplete,games,now}=input;
   const older=current?.catalog.state.kind==='complete'?[]:[previous,lastComplete];
   const catalogs=[current,...older].filter((stored):stored is StoredSportsurgeCatalog=>stored!==null);
-  const match=createObservationMatcher(games,'inventory-live');
+  const match=createSourceEventMatcher(games,'inventory-live');
   const replaced=new Set<string>();
   const candidates=new Map<string,Candidate>();
   for(const stored of catalogs) for(const event of stored.catalog.events) {
@@ -109,7 +104,8 @@ export function sportsurgeCandidates(input:{
     const detail=event.detail;
     if(!detail.retainedFromRunId&&detail.at<category.at||detail.at>now+60_000||now-detail.at>=30*60_000)continue;
     replaced.add(event.url);
-    const game=matchedGame(event,category.at,games,now,match);
+    const decision=match(sportsurgeObservation(event,category.at),sportsurgeEvidence(event,now),now);
+    const game=games.find(item=>item.id===(decision.kind==='matched'?decision.gameId:''));
     if(!game)continue;
     for(const provider of detail.providers) {
       if(provider.destination.kind!=='link'||provider.observedAt!==detail.at)continue;
@@ -133,8 +129,7 @@ function publicReason(value:string):SourceMatchReason {
 
 export function sportsurgeCatalogView(stored:StoredSportsurgeCatalog,games:Game[],now:number,bindings:readonly SourceEventBinding[]=[]):SportsurgeCatalogView {
   const {catalog,receivedAt}=stored;
-  const match=createObservationMatcher(games);
-  const matchInventory=createObservationMatcher(games,'inventory-live');
+  const match=createSourceEventMatcher(games,'inventory-live');
   const finished=createFinishedGameMatcher(games);
   const activeEvents=catalog.events.filter(event=>{
     const category=catalog.categories[event.league];
@@ -146,14 +141,14 @@ export function sportsurgeCatalogView(stored:StoredSportsurgeCatalog,games:Game[
   const views=activeEvents.map(event=>{
     const category=catalog.categories[event.league];
     const observedAt=category.kind==='pending' ? catalog.startedAt : category.at;
-    const result=match(sportsurgeObservation(event,observedAt),now);
-    const game=matchedGame(event,observedAt,games,now,matchInventory);
+    const decision=match(sportsurgeObservation(event,observedAt),sportsurgeEvidence(event,now),now);
+    const game=games.find(item=>item.id===(decision.kind==='matched'?decision.gameId:''));
     const detail=event.detail.kind==='collected'?{...event.detail,providers:event.detail.providers.map(provider=>({
       ...provider,destination:provider.destination.kind==='link'?{kind:'link' as const}:provider.destination,
     }))}:event.detail;
     return {id:event.id,title:event.title,url:event.url,league:event.league,
       gameId:game?.id || null,
-      matchReason:game?null:result.kind==='unmatched' ? publicReason(result.reason) : null,
+      matchReason:game?null:decision.match.kind==='unmatched' ? publicReason(decision.match.reason) : null,
       sourceStatus:event.sourceStatus,detail};
   });
   const details=activeEvents.map(event=>event.detail);

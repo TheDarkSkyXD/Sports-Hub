@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { createFinishedGameMatcher, createObservationMatcher, detailCandidateGameIds, matchObservation, matchSourceLiveGame, matchUndatedSportsurge, mergeSchedulePartitions, normalizedName } from '../domain/matching.ts';
+import { createFinishedGameMatcher, createSourceEventMatcher, detailCandidateGameIds, mergeSchedulePartitions, normalizedName, type SourceEventEvidence } from '../domain/matching.ts';
 import { SESSION_LEASE_MS, compareCandidates, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
 import { sourceInventory } from '../domain/source-inventory.ts';
 import { feedCalendarDay, feedEligible, feedWindow } from '../domain/feed-eligibility.ts';
@@ -7,13 +7,16 @@ import { cachedFeedEligible, workingFeedMatches, workingFeedOwner, type WorkingF
 import { persistableLocator } from '../../playback/persistent-locator.ts';
 import { SOURCE_REFRESH_MS, detailIdentity, retryDeadline, sourceFailure } from '../domain/source-policy.ts';
 import { provisionalLiveChannel, resolvedLiveChannelMatch } from '../domain/live-channel.ts';
-import { catalogDecision, sameSportsurgeEvent, sanitizeSportsurgeCatalog, sportsurgeCandidates, sportsurgeCatalogView, sportsurgeEventCandidate, sportsurgeObservation } from '../domain/sportsurge-catalog.ts';
-import { sameStreameastEvent, sanitizeStreameastCatalog, streameastDecision, streameastObservation, streameastCandidates, streameastCatalogView, verifiedStreameastMatch } from '../domain/streameast-catalog.ts';
+import { catalogDecision, sameSportsurgeEvent, sanitizeSportsurgeCatalog, sportsurgeCandidates, sportsurgeCatalogView, sportsurgeEventCandidate, sportsurgeEvidence, sportsurgeObservation } from '../domain/sportsurge-catalog.ts';
+import { sameStreameastEvent, sanitizeStreameastCatalog, streameastDecision, streameastObservation, streameastCandidates, streameastCatalogView, streameastEvidence } from '../domain/streameast-catalog.ts';
 import type { Recovery } from '../domain/lifecycle.ts';
 import { PartialListingReadError, type CandidateProbeResult, type FootballDependencies, type FootballRepository } from '../domain/ports.ts';
 import { candidateSummary, isRaceGame, type Board, type Candidate, type CandidateAvailability, type Command, type DetailEvidence, type Game, type MatchupGame, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourceEventBinding, type SourcesSnapshot, type StreameastCatalog, type SportsurgeCatalog } from '../shared.ts';
 
 type RecoveryPhase = {kind:'cycling'} | {kind:'exhausted';until:number;knownIds:string[]};
+const listingEvidence=(observation:Observation):SourceEventEvidence=>({
+  undated:observation.sourceId==='sportsurge'?'published-listing':'none',externalGameId:null,
+});
 type FeedOwner = WorkingFeed['owner'];
 type SelectionOwner = {key:string;owner:FeedOwner};
 type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;phase:RecoveryPhase;requestId?:string;decodedGeneration?:number;selection?:SelectionOwner};
@@ -76,7 +79,7 @@ export class FootballCoordinator {
   private controller = new AbortController();
   private games: Game[] = [];
   private finished=createFinishedGameMatcher(this.games);
-  private inventoryMatch=createObservationMatcher(this.games,'inventory-live');
+  private inventoryMatch=createSourceEventMatcher(this.games,'inventory-live');
   private finalDeadlines = new Map<string,number>();
   private cleanedFinals = new Set<string>();
   private candidates = new Map<string,Candidate[]>();
@@ -185,7 +188,7 @@ export class FootballCoordinator {
       return {...current,home:team(current.home),away:team(current.away)};
     });
     this.finished=createFinishedGameMatcher(this.games);
-    this.inventoryMatch=createObservationMatcher(this.games,'inventory-live');
+    this.inventoryMatch=createSourceEventMatcher(this.games,'inventory-live');
     for(const [gameId,health] of this.terminalByGame) {
       const game=this.games.find(row=>row.id===gameId);
       if(!this.feedGame(game))continue;
@@ -197,9 +200,9 @@ export class FootballCoordinator {
       }
     }
     this.restoreWorkingFeeds();
-    const match=createObservationMatcher(this.games);
+    const match=createSourceEventMatcher(this.games);
     for (const observation of this.store.observations())
-      this.store.observe(observation,matchUndatedSportsurge(observation,match(observation,this.now()),this.games,this.now()));
+      this.store.observe(observation,match(observation,listingEvidence(observation),this.now()).match);
     this.projectDetails();
     this.reconcileStreameastCandidates();
     this.reconcileSportsurgeCandidates();
@@ -277,7 +280,7 @@ export class FootballCoordinator {
     return !!game&&this.scheduleFresh(game)&&feedEligible(game,this.now());
   }
   private observationFeedEligible(observation:Observation):boolean {
-    const result=this.inventoryMatch(observation,this.now());
+    const result=this.inventoryMatch(observation,listingEvidence(observation),this.now()).match;
     const ids=detailCandidateGameIds(result);
     return ids.some(id=>this.feedGame(this.games.find(game=>game.id===id)));
   }
@@ -804,9 +807,9 @@ export class FootballCoordinator {
     const verifiedListing=(observation:Observation):Observation=>{
       const previous=previousObservations.get(observation.id);
       if(!(observation.kickoff===null&&sameListing(observation,previous)&&previous.kickoff!==null&&
-        this.inventoryMatch(previous,this.now()).kind==='matched'))return observation;
-      const match=this.inventoryMatch(previous,this.now());
-      const game=match.kind==='matched'?this.games.find(game=>game.id===match.gameId):undefined;
+        this.inventoryMatch(previous,listingEvidence(previous),this.now()).kind==='matched'))return observation;
+      const decision=this.inventoryMatch(previous,listingEvidence(previous),this.now());
+      const game=decision.kind==='matched'?this.games.find(game=>game.id===decision.gameId):undefined;
       if(game?.lifecycle!=='live'||game.finalObservedAt!==undefined||!this.scheduleFresh(game))return observation;
       return {...observation,kickoff:previous.kickoff,rawTime:previous.rawTime,
         kickoffLineage:previous.kickoffLineage||{observedAt:previous.observedAt,rawTime:previous.rawTime}};
@@ -861,9 +864,9 @@ export class FootballCoordinator {
           result.outcome==='unsupported'?(previous?.failures||0):0;
         const nextEligibleAt=partial?Math.max(this.hostRetryAt(source.url),retryDeadline(at,this.retryAfterMs(partial),this.sourceRefreshMs)):
           result.outcome==='unsupported'?Number.MAX_SAFE_INTEGER:retryDeadline(at,0,this.sourceRefreshMs);
-        const match=createObservationMatcher(this.games);
+        const match=createSourceEventMatcher(this.games);
         const admitted=accepted.map(observation=>{
-          const result=matchUndatedSportsurge(observation,match(observation,at),this.games,at);
+          const result=match(observation,listingEvidence(observation),at).match;
           if(observation.league!==null&&observation.teams!==null&&result.kind==='matched'){
             const game=this.games.find(game=>game.id===result.gameId);
             if(game&&this.scheduleFresh(game)&&(observation.kickoff!==null&&game.lifecycle==='live'||
@@ -919,15 +922,15 @@ export class FootballCoordinator {
     this.detailCandidateIds.clear();
     for(const rows of this.candidates.values())
       for(const candidate of rows)if(priorDetailIds.has(candidate.id))this.detailCandidateIds.add(candidate.id);
-    const match=createObservationMatcher(this.games);
+    const match=createSourceEventMatcher(this.games);
     const freshGames=this.games.filter(game=>this.feedGame(game));
     for(const observation of observations) {
       if(!this.sources.some(source=>source.id===observation.sourceId))continue;
       const detail=evidence.get(observation.id);
       if(detail?.outcome!=='resolved'||!matchesDetail(detail,observation)||
         now-detail.at>=30*60_000||detail.at>now+60_000||now-observation.observedAt>=30*60_000)continue;
-      const resolved=resolvedLiveChannelMatch(observation,match(observation,now),freshGames,detail,now);
-      const result=matchUndatedSportsurge(observation,resolved,this.games,now);
+      const decision=match(observation,listingEvidence(observation),now);
+      const result=resolvedLiveChannelMatch(observation,decision.match,freshGames,detail,now);
       if(result.kind!=='matched')continue;
       const game=this.games.find(item=>item.id===result.gameId);
       if(!this.feedGame(game))continue;
@@ -982,7 +985,7 @@ export class FootballCoordinator {
     const evidence=new Map(this.store.detailEvidence().map(row=>[row.observationId,row]));
     const liveRolloverGame=(observation:Observation):Game|undefined=>{
       if(!eventPageIds.has(observation.sourceId)||this.now()-observation.observedAt<=30*60_000||observation.kickoff===null)return;
-      const result=this.inventoryMatch(observation,this.now());
+      const result=this.inventoryMatch(observation,listingEvidence(observation),this.now()).match;
       if(result.kind!=='matched')return;
       const game=this.games.find(value=>value.id===result.gameId);
       return game?.lifecycle==='live'&&game.finalObservedAt===undefined&&this.scheduleFresh(game)&&
@@ -992,11 +995,11 @@ export class FootballCoordinator {
     const ranked=():Observation[]=>{
       const viewed=new Set([...this.sessions.values()].map(session=>session.value.gameId));
       for(const [gameId,requestedAt] of this.checkTargets)if(this.now()-requestedAt<=90_000)viewed.add(gameId);
-      const match=createObservationMatcher(this.games);
+      const match=createSourceEventMatcher(this.games);
       return this.store.observations().flatMap(observation=>{
         if(visited.has(observation.id)||catalogIds.has(observation.sourceId)||!observation.teams&&observation.league!=='f1'&&observation.league!=='nascar-cup'&&observation.league!=='nascar-truck'&&observation.league!=='motogp'&&observation.league!=='motorsport'||
           this.hostRetryAt(observation.url)>this.now()||this.listingPending(observation.url))return [];
-        const result=match(observation,this.now());
+        const result=match(observation,listingEvidence(observation),this.now()).match;
         const rolloverGame=result.kind==='unmatched'&&result.reason==='stale-observation'?liveRolloverGame(observation):undefined;
         const detailIds=detailCandidateGameIds(result);
         if(!detailIds.length&&!rolloverGame)return [];
@@ -1034,7 +1037,7 @@ export class FootballCoordinator {
           (player.locator.provider==='event-page'||player.locator.provider==='tvapp')&&
           player.locator.gameId===rolloverGame?.id&&player.locator.eventUrl===original.url);
         if(publishedEventPage)observation={...observation,observedAt:at};
-        const rawResult=matchUndatedSportsurge(observation,matchObservation(observation,this.games,at),this.games,at);
+        const rawResult=createSourceEventMatcher(this.games)(observation,listingEvidence(observation),at).match;
         const freshGames=this.games.filter(game=>this.feedGame(game));
         const game=rawResult.kind==='matched'?this.games.find(value=>value.id===rawResult.gameId):
           provisionalLiveChannel(observation,rawResult,freshGames,at)??undefined;
@@ -1182,15 +1185,14 @@ export class FootballCoordinator {
     const history=[stored.lastComplete,stored.previous].filter(stored=>stored!==null);
     const currentUrls=new Set(current?.events.map(event=>event.url)||[]);
     const now=this.now();
-    const match=createObservationMatcher(this.games);
+    const match=createSourceEventMatcher(this.games);
     const currentListed=new Set<string>();
     for(const catalog of catalogs)for(const event of catalog.events) {
       if(catalog!==current&&currentUrls.has(event.url))continue;
       const category=catalog.categories[event.league];
       if(category.kind!=='collected')continue;
-      const raw=match(streameastObservation(event,category.at),now);
-      const game=this.games.find(item=>item.id===(raw.kind==='matched'?raw.gameId:''));
-      const result=verifiedStreameastMatch(event,raw,game);
+      const result=match(streameastObservation(event,category.at),streameastEvidence(event),now).match;
+      const game=this.games.find(item=>item.id===(result.kind==='matched'?result.gameId:''));
       if(result.kind!=='matched'||!this.feedGame(game))continue;
       if(catalog===current)currentListed.add(game.id);
       const freshlyCollected=event.detail.kind==='collected'&&now-event.detail.at<30*60000;
@@ -1318,16 +1320,15 @@ export class FootballCoordinator {
   private sportsurgeReuse(catalog:SportsurgeCatalog):Extract<Reply,{kind:'catalog-ack'}>['reuseDetails'] {
     const history=Object.values(this.store.sportsurgeCatalog()).flatMap(stored=>stored?[stored]:[]);
     const events:SportsurgeCatalog['events']=[];
-    const match=createObservationMatcher(this.games,'inventory-live');
+    const match=createSourceEventMatcher(this.games,'inventory-live');
     let bytes=2;
     for(const event of catalog.events) {
       const category=catalog.categories[event.league];
       if(event.detail.kind!=='pending'||category.kind!=='collected')continue;
       const observation=sportsurgeObservation(event,category.at);
-      const raw=match(observation,this.now());
-      const result=matchUndatedSportsurge(observation,raw,this.games,this.now());
+      const result=match(observation,sportsurgeEvidence(event,this.now()),this.now()).match;
       const gameId=result.kind==='matched'?result.gameId:event.sourceStatus==='live'&&event.kickoff===null&&
-        raw.kind==='unmatched'&&raw.reason==='unverified-kickoff'&&raw.possibleGameIds.length===1?raw.possibleGameIds[0]:undefined;
+        result.kind==='unmatched'&&result.reason==='unverified-kickoff'&&result.possibleGameIds.length===1?result.possibleGameIds[0]:undefined;
       if(!gameId)continue;
       for(const stored of history) {
         const prior=stored.catalog.events.find(prior=>sameSportsurgeEvent(event,prior)&&prior.detail.kind==='collected');
@@ -1349,14 +1350,14 @@ export class FootballCoordinator {
   private streameastReuse(catalog:StreameastCatalog):Extract<Reply,{kind:'catalog-ack'}>['reuseDetails'] {
     const history=Object.values(this.store.streameastCatalog()).flatMap(stored=>stored?[stored]:[]);
     const events:StreameastCatalog['events']=[];
-    const match=createObservationMatcher(this.games);
+    const match=createSourceEventMatcher(this.games);
     let bytes=2;
     for(const event of catalog.events) {
       const category=catalog.categories[event.league];
       if(event.detail.kind!=='pending'||category.kind!=='collected')continue;
-      const raw=match(streameastObservation(event,category.at),this.now());
-      const game=this.games.find(game=>game.id===(raw.kind==='matched'?raw.gameId:''));
-      if(!game||verifiedStreameastMatch(event,raw,game).kind!=='matched')continue;
+      const decision=match(streameastObservation(event,category.at),streameastEvidence(event),this.now());
+      const game=this.games.find(game=>game.id===(decision.kind==='matched'?decision.gameId:''));
+      if(!game)continue;
       for(const stored of history) {
         const prior=stored.catalog.events.find(prior=>sameStreameastEvent(event,prior)&&prior.detail.kind==='collected');
         if(prior?.detail.kind!=='collected')continue;
@@ -1396,14 +1397,12 @@ export class FootballCoordinator {
       if (decision==='replay') {this.reconcileSportsurgeCandidates();this.reconcileProbeJobs();this.checkSources([],false);return {kind:'catalog-ack',sourceRefreshMs:this.sourceRefreshMs,skipDetailEventIds,...(skipDetailEventUrls.length?{skipDetailEventUrls}:{}),...(reuseDetails?{reuseDetails}:{})};}
       if (decision==='rejected') return {kind:'error',status:409,message:'Sportsurge catalog checkpoint is obsolete.'};
       const receivedAt=this.now();
-      const match=createObservationMatcher(this.games);
+      const match=createSourceEventMatcher(this.games);
       const newBindings:SourceEventBinding[]=[];
       const observations=catalog.events.filter(event=>!skipDetailEventIds.includes(event.id)&&!skipDetailEventUrls.includes(event.url)).map(event=>{
         const category=catalog.categories[event.league];
         const observation=sportsurgeObservation(event,category.kind==='pending' ? catalog.startedAt : category.at);
-        const raw=match(observation,receivedAt);
-        const live=event.sourceStatus==='live'&&event.kickoff===null?matchSourceLiveGame(raw,this.games,receivedAt):raw;
-        const result=matchUndatedSportsurge(observation,live,this.games,receivedAt);
+        const result=match(observation,sportsurgeEvidence(event,receivedAt),receivedAt).match;
         if(category.kind==='collected'&&event.kickoff===null&&event.teams&&
           result.kind==='matched'){
           const game=this.games.find(game=>game.id===result.gameId);
@@ -1422,13 +1421,12 @@ export class FootballCoordinator {
     if (command.kind==='streameast-catalog') {
       const catalog=sanitizeStreameastCatalog(command.catalog,this.now(),Object.values(this.store.streameastCatalog()).flatMap(stored=>stored?[stored]:[]));
       if(!catalog)return {kind:'error',status:400,message:'Invalid StreamEast catalog checkpoint.'};
-      const matchCheckpoint=createObservationMatcher(this.games);
+      const matchCheckpoint=createSourceEventMatcher(this.games);
       const skipDetailEventIds=catalog.events.filter(event=>{
         const category=catalog.categories[event.league];
-        const expected=event.espnEventId===null?undefined:event.league==='nfl'?event.espnEventId:`${event.league}-${event.espnEventId}`;
+        const expected=streameastEvidence(event).externalGameId??undefined;
         const observation=streameastObservation(event,category.kind==='pending'?catalog.startedAt:category.at);
-        const raw=matchCheckpoint(observation,this.now());
-        const result=verifiedStreameastMatch(event,raw,this.games.find(game=>game.id===(raw.kind==='matched'?raw.gameId:'')));
+        const result=matchCheckpoint(observation,streameastEvidence(event),this.now()).match;
         return !!this.finished.finishedGameId(observation,this.now(),expected)||
           !detailCandidateGameIds(result).length||!this.observationFeedEligible(observation);
       }).map(event=>event.id);
@@ -1438,17 +1436,15 @@ export class FootballCoordinator {
       if(decision==='rejected')return {kind:'error',status:409,message:'StreamEast catalog checkpoint is obsolete.'};
       const receivedAt=this.now();
       const oldEvents=Object.values(this.store.streameastCatalog()).flatMap(stored=>stored?.catalog.events||[]);
-      const match=createObservationMatcher(this.games);
+      const match=createSourceEventMatcher(this.games);
       const observations=catalog.events.filter(event=>!skipDetailEventIds.includes(event.id)).map(event=>{
         const category=catalog.categories[event.league];
         const observation=streameastObservation(event,category.kind==='pending'?catalog.startedAt:category.at);
-        const raw=match(observation,receivedAt);
-        const game=this.games.find(item=>item.id===(raw.kind==='matched'?raw.gameId:''));
-        return {observation,result:verifiedStreameastMatch(event,raw,game)};
+        return {observation,result:match(observation,streameastEvidence(event),receivedAt).match};
       });
       const visible=observations.filter(({observation,result})=>{
         const event=catalog.events.find(item=>`streameast:${item.url}`===observation.id);
-        return !event?.espnEventId||result.kind==='matched'||result.reason!=='conflicting-date';
+        return !event?.espnEventId||result.kind==='matched'||result.reason!=='conflicting-game-id';
       });
       this.store.saveStreameastCatalog({catalog,receivedAt},visible);
       this.reconcileStreameastCandidates();
