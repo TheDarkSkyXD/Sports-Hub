@@ -71,6 +71,33 @@ test('Buffstream SD0 player belongs to the selected embedded server subtree', ()
   assert.equal(offlinePlayerFrame(server, [player]), null);
 });
 
+test('NBA SD0 player is eligible only under an owned basketball server', () => {
+  const nbaPlayer={url:'https://dervlin.me/sd0embed/NBA?pid=5'};
+  const nflPlayer={url:'https://dervlin.me/sd0embed/NFL?pid=5'};
+  const vipbox='https://vipbox.fm/live/nba/portland-trail-blazers-vs-golden-state-warriors-1';
+  const strikeout='https://strikeout.im/nba/1/portland-trail-blazers-vs-golden-state-warriors-stream';
+  const football='https://vipbox.fm/live/nfl/dallas-cowboys-vs-tampa-bay-buccaneers-1';
+  for(const source of [vipbox,strikeout]){
+    assert.equal(offlinePlayerFrame(source,[nbaPlayer]),nbaPlayer);
+    assert.equal(offlinePlayerFrame(source,[nflPlayer]),null);
+    assert.equal(offlinePlayerFrame(source,[nbaPlayer,{...nbaPlayer}]),null);
+    assert.equal(offlinePlayerFrame(source,[{url:'https://ads.example/sd0embed/NBA'}]),null);
+  }
+  assert.equal(offlinePlayerFrame(football,[nbaPlayer]),null);
+  assert.equal(offlinePlayerFrame('https://vipbox.fm/live/nba/portland-trail-blazers-vs-golden-state-warriors-1?ad=1',[nbaPlayer]),null);
+  const event='https://ms.buffstream.io/nba-streams/golden-state-warriors-live-stream';
+  const server='https://embedsports.me/basketball/portland-trail-blazers-vs-golden-state-warriors-stream-2';
+  const root={url:event,parent:null,isDestroyed:()=>false};
+  const selected={url:server,parent:root,isDestroyed:()=>false};
+  const owned={...nbaPlayer,parent:selected,isDestroyed:()=>false};
+  assert.equal(offlinePlayerFrame(server,[owned],event),owned);
+  assert.equal(offlinePlayerFrame(server,[{...owned,parent:{...selected,url:server.replace('golden-state-warriors','chicago-bulls')}}],event),null);
+  assert.equal(offlinePlayerFrame(server,[owned,{...owned}],event),null);
+  assert.equal(offlinePlayerFrame(server,[{...nflPlayer,parent:selected,isDestroyed:()=>false}],event),null);
+  assert.equal(offlinePlayerFrame(server,[owned],'https://ms.buffstream.io/nfl-streams/golden-state-warriors-live-stream'),null);
+  assert.equal(offlinePlayerFrame(server.replace('basketball','american-football'),[owned],event),null);
+});
+
 test('Dudestream CFB SD0 player belongs only to its selected embedded server subtree', () => {
   const event='https://dudestream1.com/cfb96/';
   const server='https://embedsports.me/american-football/jacksonville-state-vs-kennesaw-state-stream-1';

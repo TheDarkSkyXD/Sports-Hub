@@ -33,6 +33,23 @@ test('event page policy binds published server routes to their exact event', () 
   assert.equal(validEventPagePair(routes[3][0], routes[3][1].replace('nd-unc', 'other-game')), false);
 });
 
+test('NBA MethStreams and Crackstreams pages admit only their published reversed PPV matchup',()=>{
+  const matchup='portland-trail-blazers-vs-golden-state-warriors';
+  const serverMatchup='ppv-golden-state-warriors-vs-portland-trail-blazers';
+  const serverRoot=`https://fxtrend.st/event/${serverMatchup}`;
+  const published=['core/1','core/2','core/3','core/4','vector/1','vertex/1','vertex/2','hotel/1','hotel/2'];
+  for(const host of ['methstreams.st','crackstreams.st']){
+    const event=`https://${host}/event/${matchup}`;
+    for(const route of published)assert.equal(validEventPagePair(event,`${serverRoot}/${route}`),true,`${host} ${route}`);
+    for(const other of [
+      `${serverRoot.replace('golden-state-warriors','chicago-bulls')}/core/1`,
+      `${serverRoot}/core/0`,`${serverRoot}/core/1000`,`${serverRoot}/admin/1`,
+      `${serverRoot}/core/1?ad=1`,`${serverRoot}/core/1#player`,
+      `${serverRoot.replace('fxtrend.st','ads.example')}/core/1`,
+    ])assert.equal(validEventPagePair(event,other),false,other);
+  }
+});
+
 test('event page provider rejects an unrelated server before invoking the browser observer', async () => {
   let opened = false;
   const provider = eventPageProvider(async () => { opened = true; throw new Error('unexpected observer call'); });
