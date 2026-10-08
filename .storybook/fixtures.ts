@@ -1,4 +1,4 @@
-import { DEFAULT_FINISHED_GAME_RETENTION_MINUTES, type Board, type CandidateSummary, type Playback, type SourcesSnapshot } from '../lib/football/shared';
+import { DEFAULT_FINISHED_GAME_RETENTION_MINUTES, SourcesSnapshotSchema, type Board, type CandidateSummary, type Playback, type SourcesSnapshot } from '../lib/football/shared';
 import { defaultUpdateFeedUrl, UpdateFeedUrlSchema, type UpdateStatus } from '../lib/desktop-update';
 import type { Feed } from '../lib/sunday';
 
@@ -20,26 +20,30 @@ export const playback: Playback = {
   candidates,
 };
 
-export const sourcesSnapshot: SourcesSnapshot = {
+export const sourcesSnapshot: SourcesSnapshot = SourcesSnapshotSchema.parse({
   at: now, revision: 1, windowStartAt: now - 60_000, lastDiscoveryAt: now - 30_000,
   browserCollectorsAvailable: true,
+  scheduleScopes:[{league:'nfl',read:{kind:'complete',checkedAt:now}}],
   sportsurgeV2: { current: null, lastComplete: null, previous: null },
   streameast: { current: null, lastComplete: null, previous: null },
   sources: [{
     id: 'sportsurge', name: 'Sportsurge', catalogUrl: 'https://example.invalid/catalog',
+    leagues:['nfl'],scopes:[{league:'nfl',read:{kind:'complete',checkedAt:now},eventCount:1,
+      feeds:{kind:'feeds',discovered:1,mediaVerified:1,decoded:0,checking:0}}],
     publicUrls: ['https://example.invalid/catalog'], pending: false,
     collectionMode: 'compatible-feed-discovery',
     lastAttempt: { at: now - 30_000, outcome: 'parsed' },
     listingCount: 1, matchedGameCount: 1, staleListingCount: 0, compatibleFeedCount: 1,
     freeChoiceCount:1,workingChoiceCount:1,collectionHealth:{kind:'no-baseline'},
     unmatchedListingCount: 0, unmatchedReasons: [],
-    links: [{ title: 'Sample game listing', url: 'https://example.invalid/game', gameId: '401', observedAt: now, freshness: 'fresh',evidence:{kind:'collected',checkedAt:now,candidateIds:['sample-primary']} }],
+    links: [{ title: 'Sample game listing', url: 'https://example.invalid/game', gameId: '401', league:'nfl',observedAt: now, freshness: 'fresh',evidence:{kind:'collected',checkedAt:now,candidateIds:['sample-primary']} }],
   }],
   games: [{ gameId: '401', name: 'Green Bay Packers at Chicago Bears', sourceCount: 1, uniqueFeedCount: 1,
+    league:'nfl',date:new Date(now).toISOString(),feeds:{kind:'feeds',discovered:1,mediaVerified:1,decoded:0,checking:0},
     freeChoiceCount:1,workingChoiceCount:1,sharedRoutes:[],
     candidates: [candidates[0]], sourceLinks: [{ sourceId: 'sportsurge', title: 'Sample game listing',
       url: 'https://example.invalid/game', observedAt: now, freshness: 'fresh',evidence:{kind:'collected',checkedAt:now,candidateIds:['sample-primary']} }] }],
-};
+});
 
 const team = (id: string, name: string, short: string, abbreviation: string, color: string, score: string | null) =>
   ({ id, name, short, abbreviation, color, score, record: '2-1' });

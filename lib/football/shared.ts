@@ -88,6 +88,7 @@ export const SourceEventBindingSchema=z.object({
 export type SourceEventBinding=z.infer<typeof SourceEventBindingSchema>;
 export type Match = { kind: 'matched'; gameId: string } | { kind: 'unmatched'; reason: string; possibleGameIds: string[] };
 export const MediaPhaseSchema=z.enum(['activation','capture','ownership','replay']);
+export type MediaPhase=z.infer<typeof MediaPhaseSchema>;
 export const CandidateAvailabilitySchema = z.discriminatedUnion('kind',[
   z.object({kind:z.literal('unknown')}),
   z.object({kind:z.literal('checking'),progress:z.discriminatedUnion('kind',[
@@ -301,12 +302,25 @@ export type CollectionHealth=z.infer<typeof CollectionHealthSchema>;
 export const SharedRouteSchema=z.object({id:z.string(),candidateIds:z.array(z.string()),sourceIds:z.array(z.string()),
   evidence:z.literal('same-published-server')});
 export type SharedRoute=z.infer<typeof SharedRouteSchema>;
+export const InventoryReadStateSchema=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('complete'),checkedAt:z.number()}),
+  z.object({kind:z.literal('incomplete'),reason:z.enum(['pending','stale','failed','partial','unavailable','unverified-date']),checkedAt:z.number().nullable()}),
+]);
+export const InventoryFeedStateSchema=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('feeds'),discovered:z.number().int().nonnegative(),mediaVerified:z.number().int().nonnegative(),decoded:z.number().int().nonnegative(),checking:z.number().int().nonnegative()}),
+  z.object({kind:z.literal('no-feeds'),checkedAt:z.number()}),
+  z.object({kind:z.literal('incomplete'),reason:z.enum(['listings','details','unsupported','schedule'])}),
+]);
 export const SourcesSnapshotSchema = z.object({
   at:z.number(),revision:z.number(),windowStartAt:z.number(),lastDiscoveryAt:z.number().nullable(),browserCollectorsAvailable:z.boolean(),
+  window:z.object({timeZone:z.literal('America/Chicago'),days:z.tuple([z.string(),z.string()])}).optional(),
+  scheduleScopes:z.array(z.object({league:LeagueSchema,read:InventoryReadStateSchema})).default([]),
   sportsurgeV2:z.object({current:SportsurgeCatalogViewSchema.nullable(),lastComplete:SportsurgeCatalogViewSchema.nullable(),previous:SportsurgeCatalogViewSchema.nullable()}),
   streameast:z.object({current:StreameastCatalogViewSchema.nullable(),lastComplete:StreameastCatalogViewSchema.nullable(),previous:StreameastCatalogViewSchema.nullable()}),
   sources:z.array(z.object({
     id:z.string(),name:z.string(),catalogUrl:z.string().url(),publicUrls:z.array(z.string().url()),pending:z.boolean(),
+    leagues:z.array(LeagueSchema).default([]),
+    scopes:z.array(z.object({league:LeagueSchema,read:InventoryReadStateSchema,eventCount:z.number().int().nonnegative(),feeds:InventoryFeedStateSchema})).default([]),
     collectionMode:z.enum(['listings-only','compatible-feed-discovery']),
     lastAttempt:SourceAttemptSchema.nullable(),listingCount:z.number().int().nonnegative(),
     matchedGameCount:z.number().int().nonnegative(),staleListingCount:z.number().int().nonnegative(),
@@ -315,11 +329,12 @@ export const SourcesSnapshotSchema = z.object({
     compatibleFeedCount:z.number().int().nonnegative(),
     unmatchedListingCount:z.number().int().nonnegative(),
     unmatchedReasons:z.array(z.object({reason:SourceMatchReasonSchema,count:z.number().int().positive()})),
-    links:z.array(z.object({title:z.string(),url:z.string().url(),gameId:z.string().nullable(),
+    links:z.array(z.object({title:z.string(),url:z.string().url(),gameId:z.string().nullable(),league:LeagueSchema.nullable().default(null),
       observedAt:z.number(),freshness:z.enum(['fresh','stale-live']),evidence:LinkEvidenceSchema.default({kind:'pending'})})),
   })),
   games:z.array(z.object({
     gameId:z.string(),name:z.string(),sourceCount:z.number().int().nonnegative(),
+    league:LeagueSchema.optional(),date:z.string().nullable().default(null),feeds:InventoryFeedStateSchema.default({kind:'incomplete',reason:'listings'}),
     uniqueFeedCount:z.number().int().nonnegative(),freeChoiceCount:z.number().int().nonnegative().default(0),
     workingChoiceCount:z.number().int().nonnegative().default(0),sharedRoutes:z.array(SharedRouteSchema).default([]),
     candidates:z.array(CandidateSummarySchema),sourceLinks:z.array(z.object({sourceId:z.string(),title:z.string(),url:z.string().url(),

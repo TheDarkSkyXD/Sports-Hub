@@ -16,21 +16,8 @@ type BadgeTone = 'neutral'|'warning'|'fetched'|'complete'|'progress';
 type ScopeFilters={sourceQuery:string;sourceFilter:SourceFilter;gameQuery:string;gameLimit:number};
 const GAME_PAGE_SIZE=20;
 const defaultScopeFilters=():ScopeFilters=>({sourceQuery:'',sourceFilter:'all',gameQuery:'',gameLimit:GAME_PAGE_SIZE});
-const nflOnly=new Set(['nflstreams']);
-const collegeOnly=new Set(['swac','streamcenter']);
 const leagueName:Record<InventoryLeague,string>={nfl:'NFL',ncaaf:'NCAA CFB',nba:'NBA',wnba:'WNBA',ncaab:'NCAA BB',nhl:'NHL',ncaah:'NCAA Hockey',ncaawh:"NCAA Women's Hockey",mlb:'MLB',f1:'F1','nascar-cup':'NASCAR Cup','nascar-truck':'NASCAR Trucks',motogp:'MotoGP',motorsport:'Motorsport'};
 function isInventoryLeague(value:string):value is InventoryLeague{return value in leagueName;}
-const sourceInLeague=(id:string,league:InventoryLeague)=>
-  league==='f1'?['ppv','methstreams-f1','crackstreams-f1'].includes(id):
-  league==='nascar-cup'||league==='nascar-truck'||league==='motogp'||league==='motorsport'?['methstreams-f1','crackstreams-f1'].includes(id):
-  league==='mlb'?['sportsurge','ppv','tvapp-mlb','streamcenter-mlb','strikeout-mlb','methstreams-mlb','crackstreams-mlb','buffstream-mlb','mlbbox-mlb'].includes(id):
-  league==='nhl'?['sportsurge','ppv','tvapp-nhl','streamcenter-nhl','vipbox-nhl','strikeout-nhl','methstreams-nhl','crackstreams-nhl','buffstream-nhl'].includes(id):
-  league==='ncaah'||league==='ncaawh'?['tvapp-nhl','methstreams-nhl','crackstreams-nhl'].includes(id):
-  league==='ncaab'?id==='tvapp-nba':
-  league==='wnba'?['ppv','tvapp-nba','streamcenter-nba'].includes(id):
-  league==='nba'?['sportsurge','ppv'].includes(id)||id.endsWith('-nba'):
-  league==='nfl'?!collegeOnly.has(id)&&!/(?:-cfb|-ncaaf|-nba|-nhl|-mlb)$/.test(id):
-  !nflOnly.has(id)&&!/(?:-nfl|-nba|-nhl|-mlb)$/.test(id);
 const statusMeta:Record<SourceStatus,{label:string;attention:boolean}>={
   'integration-pending':{label:'Integration pending',attention:false},
   waiting:{label:'Waiting for collection',attention:false},
@@ -54,7 +41,7 @@ function sourceStatus(source:Source,snapshot:SourcesSnapshot,league:InventoryLea
   if(source.id==='sportsurge-v2'||source.id==='streameast') {
     if(!snapshot.browserCollectorsAvailable)return 'collector-unavailable';
     if(!run)return 'waiting';
-    const category=league==='nfl'||league==='ncaaf'?run.categories[league]:undefined;
+    const category=Object.entries(run.categories).find(([key])=>key===league)?.[1];
     if(!category)return 'waiting';
     if(category.kind==='failed')return 'league-failed';
     if(category.kind==='pending')return run.interrupted?'interrupted':run.state.kind==='collecting'?'collecting':'waiting';
@@ -113,21 +100,42 @@ type BrandedGame={id:string;league?:Game['league'];home?:MatchupGame['home'];awa
 type ScopedSource={source:Source;matchedGames:number;workingChoices:number;
   links:Source['links'];unclassifiedLinks:Source['links'];incomplete:boolean};
 function scopeInventory(snapshot:SourcesSnapshot,branding:readonly BrandedGame[],league:InventoryLeague){
-  const knownLeague=new Map(branding.map(game=>[game.id,game.league]));
+  const knownLeague=new Map([...branding.map(game=>[game.id,game.league] as const),...snapshot.games.filter(game=>game.league).map(game=>[game.gameId,game.league] as const)]);
   const games=snapshot.games.filter(game=>knownLeague.get(game.gameId)===league);
   const unclassifiedGames=snapshot.games.filter(game=>knownLeague.get(game.gameId)===undefined);
-  const sources:ScopedSource[]=snapshot.sources.filter(source=>sourceInLeague(source.id,league)).map(source=>{
+  const sources:ScopedSource[]=snapshot.sources.filter(source=>source.leagues.includes(league)).map(source=>{
     const linkedGames=games.filter(game=>game.sourceLinks.some(link=>link.sourceId===source.id));
     const candidates=games.flatMap(game=>game.candidates.filter(candidate=>candidate.sourceIds.includes(source.id)));
     return {source,matchedGames:linkedGames.length,
       workingChoices:candidates.filter(candidate=>candidate.availability.kind==='playable').length,
       links:source.links.filter(link=>link.gameId!==null&&knownLeague.get(link.gameId)===league),
-      unclassifiedLinks:source.links.filter(link=>link.gameId===null||knownLeague.get(link.gameId)===undefined),
+      unclassifiedLinks:source.links.filter(link=>(link.gameId===null||knownLeague.get(link.gameId)===undefined)&&(link.league===null||link.league===league)),
       incomplete:unclassifiedGames.some(game=>game.sourceLinks.some(link=>link.sourceId===source.id)||
         game.candidates.some(candidate=>candidate.sourceIds.includes(source.id)))};
   });
   return {games,unclassifiedGames,sources,
     workingChoices:games.reduce((total,game)=>total+game.workingChoiceCount,0)};
+}
+function sourceScopeMessage(source:Source,league:InventoryLeague):string {
+  const scope=source.scopes.find(scope=>scope.league===league);
+  if(!scope)return 'Waiting for collection today and tomorrow.';
+  if(scope.read.kind==='incomplete')return {
+    pending:'Collection is pending.',stale:'Collection is stale. Refresh is pending.',
+    failed:'Collection failed. No empty result has been confirmed.',partial:'Collection is incomplete.',
+    unavailable:'Collector is unavailable.', 'unverified-date':'Event dates still need verification.',
+  }[scope.read.reason];
+  if(scope.eventCount===0)return 'No events from this source today or tomorrow.';
+  if(scope.feeds.kind==='no-feeds')return 'No feeds available for the listed events today or tomorrow.';
+  if(scope.feeds.kind==='feeds')return `${scope.feeds.discovered} feeds found · ${scope.feeds.mediaVerified} media verified · ${scope.feeds.decoded} working · ${scope.feeds.checking} pending checks`;
+  return 'Feed collection is incomplete. No empty result has been confirmed.';
+}
+function gameFeedMessage(game:SourcesSnapshot['games'][number]):string {
+  if(game.feeds.kind==='no-feeds')return 'No feeds available. Source collection completed without a published feed.';
+  if(game.feeds.kind==='incomplete')return game.feeds.reason==='schedule'?
+    'The schedule is stale. Feed collection will resume when it refreshes.':
+    game.feeds.reason==='unsupported'?'Published feeds use an unsupported player.':
+    'Feed collection is incomplete. No feeds have been confirmed yet.';
+  return `${game.feeds.discovered} feeds found · ${game.feeds.mediaVerified} media verified · ${game.feeds.decoded} working`;
 }
 const sourceIcons:Record<string,string>={
   sportsurge:'/source-icons/sportsurge.png',
@@ -176,14 +184,14 @@ const candidateEvidence=(candidate:CandidateSummary,now:number)=>{
       switch(progress.kind) {
         case 'queued':return `Queued for media check · Waiting ${duration(now-progress.since)}`;
         case 'active':return `Checking media · ${duration(now-progress.since)} elapsed`;
-        case 'deferred':return `Waiting to retry · ${duration(progress.retryAt-now)} remaining`;
+        case 'deferred':return `Check incomplete${progress.phase?` during ${progress.phase}`:''} · Retrying in ${duration(progress.retryAt-now)}`;
         default:{const exhaustive:never=progress;return exhaustive;}
       }
     }
-    case 'playable':return candidate.availability.proof==='decoded'?'Working · Playback decoded':'Working · Media checked';
+    case 'playable':return candidate.availability.proof==='decoded'?'Working · Playback decoded':'Media verified · Playback not yet confirmed';
     case 'unavailable':return {
       upstream:'Source media unavailable',unsupported:'Player unsupported',
-      'invalid-media':'No valid video returned',timeout:'Media check timed out',playback:'Playback failed',
+      'invalid-media':'No valid video returned',timeout:'Media check timed out',playback:'Playback failed','no-feed':'No feed available from source',
     }[candidate.availability.reason];
     default:{const exhaustive:never=candidate.availability;return exhaustive;}
   }
@@ -430,6 +438,7 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
   const query=gameQuery.trim().toLowerCase();
   const listedGames=scoped?.games.filter(game=>game.name.toLowerCase().includes(query))||[];
   const visibleGames=listedGames.slice(0,gameLimit);
+  const scheduleScope=snapshot?.scheduleScopes.find(scope=>scope.league===league);
   const gameList=useRef<HTMLDivElement|null>(null);
   const resetGameSearch=(value:string)=>{
     updateFilters({gameQuery:value,gameLimit:GAME_PAGE_SIZE});
@@ -477,14 +486,14 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
     return()=>window.clearInterval(timer);},[timedChecks]);
   const content=snapshot&&<>
       <p className="source-inventory-time">Snapshot updated {time(snapshot.at)}{loading?' · Updating…':''}</p>
-      <p className="source-inventory-scope-note">Feed discovery and checks cover live games and games scheduled for today or tomorrow in America/Chicago.</p>
+      <p className="source-inventory-scope-note">Feed discovery covers all supported sports today and tomorrow in America/Chicago, including live games. These filters only change the displayed results.</p>
       <div className="source-inventory-overview" aria-label={`${leagueName[league]} inventory totals`}>
         <div><strong>{sources.length}</strong><span>Sources</span></div>
-        <div><strong>{countLabel(scoped?.games.length??0,!!scoped?.unclassifiedGames.length)}</strong><span>Games with listings</span></div>
-        <div><strong>{countLabel(scoped?.workingChoices??0,!!scoped?.unclassifiedGames.length)}</strong><span>Available feeds</span></div>
+        <div><strong>{countLabel(scoped?.games.length??0,!!scoped?.unclassifiedGames.length)}</strong><span>Scheduled and live events</span></div>
+        <div><strong>{countLabel(scoped?.workingChoices??0,!!scoped?.unclassifiedGames.length)}</strong><span>Media verified feeds</span></div>
       </div>
       {(scoped?.unclassifiedGames.length??0)>0&&<p className="source-inventory-scope-note" role="note">{scoped?.unclassifiedGames.length} {scoped?.unclassifiedGames.length===1?'game could':'games could'} not be assigned to a league from the current board. Counts may be incomplete; open Games for unclassified details.</p>}
-      <details className="source-inventory-explainer"><summary>How these counts work</summary><p>Available feeds passed a media or playback check. Each game shows its pending and failed checks in the feed check results. New feeds are checked before use. Working and failed feeds are rechecked at your chosen interval. Working feeds stay available while rechecks run. A failed check or playback failure marks a feed unavailable. Multiple entries can reach the same server.</p></details>
+      <details className="source-inventory-explainer"><summary>How these counts work</summary><p>Media verified feeds passed playlist and video segment checks. Working feeds have decoded video during app playback. Each game shows pending and failed checks. An incomplete or failed collection does not mean there are no events or feeds. Multiple feed entries can reach the same server.</p></details>
       <div className="source-inventory-views" role="group" aria-label="Inventory view">
         <button type="button" aria-pressed={view==='sources'} onClick={()=>setView('sources')}>Sources</button>
         <button type="button" aria-pressed={view==='games'} onClick={()=>setView('games')}>Games</button>
@@ -504,6 +513,7 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
               `Source fetch ${time(source.lastAttempt.at)} · ${age(source.lastAttempt.at,snapshot.at)} · ${attemptLabel[source.lastAttempt.outcome]}${source.lastAttempt.outcome==='failed'&&source.lastAttempt.failure?` · ${failureLabel[source.lastAttempt.failure]}`:''}`:
               'No fetch recorded yet'}
           </p>
+          <p role="status">{sourceScopeMessage(source,league)}</p>
           <p>{source.collectionMode==='listings-only'?'Listings only':'Compatible feed discovery'}{source.pending?' · Integration pending':''}</p>
           {source.id!=='sportsurge-v2'&&source.id!=='streameast'&&<CollectionHealth source={source}/>}
           {source.id!=='sportsurge-v2'&&<div className="source-inventory-public-links"><a href={source.catalogUrl} target="_blank" rel="noopener noreferrer">Listing endpoint ↗</a>
@@ -517,12 +527,12 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
             <ul>{source.unmatchedReasons.map(item=><li key={item.reason}>{matchReasonLabel[item.reason]}: {item.count}</li>)}</ul></details>}
         </details>)}
       </div>}</> : <>
-      <h4>{leagueName[league]} games with listed sources</h4>
+      <h4>{leagueName[league]} events today and tomorrow</h4>
       <div className="source-inventory-game-search"><label htmlFor={`listed-game-search-${league}`}>Find a listed game</label>
         <div><input id={`listed-game-search-${league}`} type="search" aria-label="Find a listed game" value={gameQuery} onChange={event=>resetGameSearch(event.target.value)} placeholder="Team or game"/>
           <button type="button" onClick={()=>resetGameSearch('')} disabled={!gameQuery}>Clear</button></div>
         <p aria-live="polite">Showing {visibleGames.length} of {listedGames.length} {query?`matching games (${scoped?.games.length??0} listed total)`:'games'}{listedGames.length>0?` · Page ${Math.ceil(visibleGames.length/GAME_PAGE_SIZE)} of ${Math.ceil(listedGames.length/GAME_PAGE_SIZE)}`:''}</p></div>
-      {scoped?.games.length===0?<p className="source-inventory-state">No {leagueName[league]} games currently have matched source links.</p>:
+      {scoped?.games.length===0?<p className="source-inventory-state">{scheduleScope?.read.kind==='complete'?`No ${leagueName[league]} games or events today or tomorrow.`:`The ${leagueName[league]} schedule is incomplete. No empty schedule has been confirmed.`}</p>:
         listedGames.length===0?<p className="source-inventory-state">No listed games match your search.</p>:
         <div ref={gameList} className="source-inventory-list source-inventory-game-list" role="region" aria-label={`${leagueName[league]} games with listed sources`} tabIndex={0}
           onScroll={event=>{
@@ -532,7 +542,8 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
               updateFilters({gameLimit:Math.min(gameLimit+GAME_PAGE_SIZE,listedGames.length)});
           }}>{visibleGames.map(game=><details key={game.gameId} className="source-inventory-item">
           <summary><span className="source-inventory-source-summary">{branding?<GameTitle name={game.name} game={brandedGames.get(game.gameId)}/>:<strong>{game.name}</strong>}<span>{game.sourceCount} listed sources · {game.workingChoiceCount} available feeds</span></span>{selectedGames.has(game.gameId)&&<span className="source-inventory-badge">Selected</span>}</summary>
-          {game.candidates.length>0?<div className="source-inventory-candidates"><strong>Feed check results</strong><ul>{game.candidates.map(candidate=><li key={candidate.id}><span>{candidate.label}</span><span className="source-inventory-check" data-state={candidate.availability.kind}>{candidateEvidence(candidate,renderNow)}{candidate.availability.kind==='playable'||candidate.availability.kind==='unavailable'?` · Checked ${time(candidate.availability.checkedAt)} · ${age(candidate.availability.checkedAt,snapshot.at)}`:''}</span></li>)}</ul></div>:<p>No feeds found yet. The listing evidence below explains each source.</p>}
+          <p role="status">{gameFeedMessage(game)}</p>
+          {game.candidates.length>0&&<div className="source-inventory-candidates"><strong>Feed check results</strong><ul>{game.candidates.map(candidate=><li key={candidate.id}><span>{candidate.label}</span><span className="source-inventory-check" data-state={candidate.availability.kind}>{candidateEvidence(candidate,renderNow)}{candidate.availability.kind==='playable'||candidate.availability.kind==='unavailable'?` · Checked ${time(candidate.availability.checkedAt)} · ${age(candidate.availability.checkedAt,snapshot.at)}`:''}</span></li>)}</ul></div>}
           {game.sharedRoutes.map(route=><p className="source-inventory-shared-route" key={route.id}>{route.candidateIds.map(id=>game.candidates.find(candidate=>candidate.id===id)?.label||id).join(' and ')} reach the same published server route. These remain separate player entries.</p>)}
           <ul>{game.sourceLinks.map(link=><li key={`${link.sourceId}:${link.url}`}><span>{snapshot.sources.find(source=>source.id===link.sourceId)?.name || link.sourceId}</span>
             {link.sourceId==='sportsurge-v2'?<span>{link.title}</span>:<a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>}{link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}<ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={game.candidates.filter(candidate=>candidate.sourceIds.includes(link.sourceId))}/></li>)}</ul>

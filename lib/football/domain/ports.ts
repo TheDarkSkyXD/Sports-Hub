@@ -1,7 +1,6 @@
-import type { CandidateLocator, CollectionAttempt, DetailEvidence, Game, League, Match, MissingPlayerReason, Observation, ResolvedPlayer, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
+import type { CandidateLocator, CollectionAttempt, DetailEvidence, Game, League, Match, MediaPhase, MissingPlayerReason, Observation, ResolvedPlayer, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
 import type { WorkingFeed } from './working-feed.ts';
 
-export type MediaPhase = 'activation'|'capture'|'ownership'|'replay';
 export type CandidateProbeResult =
   | {kind:'playable';proof:'media'|'decoded'}
   | {kind:'unavailable';reason:'upstream'|'unsupported'|'invalid-media'|'timeout'|'no-feed';phase?:MediaPhase}

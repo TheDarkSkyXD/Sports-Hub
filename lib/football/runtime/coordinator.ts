@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { createFinishedGameMatcher, createObservationMatcher, detailCandidateGameIds, matchObservation, matchSourceLiveGame, matchUndatedSportsurge, mergeSchedulePartitions, normalizedName } from '../domain/matching.ts';
 import { SESSION_LEASE_MS, compareCandidates, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
 import { sourceInventory } from '../domain/source-inventory.ts';
-import { feedCalendarDay, feedEligible } from '../domain/feed-eligibility.ts';
+import { feedCalendarDay, feedEligible, feedWindow } from '../domain/feed-eligibility.ts';
 import { cachedFeedEligible, workingFeedMatches, workingFeedOwner, type WorkingFeed } from '../domain/working-feed.ts';
 import { persistableLocator } from '../../playback/persistent-locator.ts';
 import { SOURCE_REFRESH_MS, detailIdentity, retryDeadline, sourceFailure } from '../domain/source-policy.ts';
@@ -112,7 +112,7 @@ export class FootballCoordinator {
   private decoded=new Map<string,{at:number;startupMs:number}>();
   private probeQueue:ProbeJob[]=[];
   private activeProbes=new Map<string,ProbeJob>();
-  private deferredProbes=new Map<string,{since:number;until:number;timer:ReturnType<typeof setTimeout>;candidate:Candidate}>();
+  private deferredProbes=new Map<string,{since:number;until:number;timer:ReturnType<typeof setTimeout>;candidate:Candidate;phase:Extract<CandidateProbeResult,{kind:'deferred'}>['phase']}>();
   private browserProbeAfter=0;
   private sourceRefreshMs=SOURCE_REFRESH_MS;
   private checkTargets=new Map<string,number>();
@@ -208,8 +208,7 @@ export class FootballCoordinator {
     this.revision++;
   }
   private requestDiscovery(now: number, explicit=false): void {
-    if (this.stopped || this.discovering || !explicit&&now - this.lastDiscovery < 30_000 ||
-      !this.games.some(game => this.feedGame(game))) return;
+    if (this.stopped || this.discovering || !explicit&&now - this.lastDiscovery < 30_000) return;
     this.lastDiscovery = now;
     this.discovering = this.discover(explicit).catch(error => {
       if (!this.stopped) this.errors.set('discovery',errorCode(error));
@@ -264,7 +263,7 @@ export class FootballCoordinator {
       if(membershipChanged)this.rebuild();
       this.sweep();
       this.requestDiscovery(now,force);
-    })().finally(() => { this.refreshing=undefined; });
+    })().finally(() => { this.refreshing=undefined;this.revision++; });
     return this.refreshing;
   }
   private scheduleFresh(game: Game): boolean {
@@ -527,8 +526,10 @@ export class FootballCoordinator {
     const queued=this.probeQueue.find(job=>job.key===key);
     if(queued)return {kind:'checking',progress:{kind:'queued',since:queued.phase.since}};
     const deferred=this.deferredProbes.get(key);
-    if(deferred&&deferred.until>this.now())return {kind:'checking',progress:{kind:'deferred',since:deferred.since,retryAt:deferred.until}};
+    if(deferred&&deferred.until>this.now())return {kind:'checking',progress:{kind:'deferred',since:deferred.since,retryAt:deferred.until,phase:deferred.phase}};
     if(health?.kind==='unavailable')return health;
+    if(this.currentCandidate(candidate)&&this.feedGame(this.games.find(game=>game.id===candidate.gameId)))
+      return {kind:'checking',progress:{kind:'queued',since:candidate.observedAt}};
     return {kind:'unknown'};
   }
   private selectable(candidate:Candidate):boolean {
@@ -766,17 +767,17 @@ export class FootballCoordinator {
         const checkedAt=this.now();
         if(result.kind==='playable')this.recordTerminal(job.candidate,{kind:'playable',proof:result.proof,checkedAt,owner:job.owner});
         else if(result.kind==='unavailable') {
-          this.recordTerminal(job.candidate,{kind:'unavailable',reason:result.reason,checkedAt,retryAt:checkedAt+this.sourceRefreshMs});
+          this.recordTerminal(job.candidate,{kind:'unavailable',reason:result.reason,phase:result.phase,checkedAt,retryAt:checkedAt+this.sourceRefreshMs});
           this.projectCandidates();
         }
         else {
           const delay=Math.max(1000,Math.min(60_000,result.retryAfterMs));
-          if(usesBrowserProbe(job.candidate))this.browserProbeAfter=Math.max(this.browserProbeAfter,checkedAt+delay);
+          if(usesBrowserProbe(job.candidate)&&!result.phase)this.browserProbeAfter=Math.max(this.browserProbeAfter,checkedAt+delay);
           const timer=setTimeout(()=>{
             this.deferredProbes.delete(job.key);
             if(!this.stopped)this.checkSources([],false);
           },delay);
-          this.deferredProbes.set(job.key,{since:checkedAt,until:checkedAt+delay,timer,candidate:job.candidate});
+          this.deferredProbes.set(job.key,{since:checkedAt,until:checkedAt+delay,timer,candidate:job.candidate,phase:result.phase});
         }
         this.revision++;
       }).catch(()=>{
@@ -848,7 +849,7 @@ export class FootballCoordinator {
         if (this.stopped) return;
         const knownBindings=this.store.sourceEventBindings();
         const newBindings:SourceEventBinding[]=[];
-        const accepted=result.observations.slice(0,1000).map(verifiedListing).filter(observation=>{
+        const accepted=result.observations.map(verifiedListing).filter(observation=>{
           if(this.finished.finishedGameId(observation,at)||
             this.finished.finishedBoundEvent(observation,observation.id,knownBindings))return false;
           const binding=finishedListingBinding(observation,at);
@@ -1275,8 +1276,7 @@ export class FootballCoordinator {
     const freshGameIds=new Set(this.games.filter(game=>this.feedGame(game)).map(game=>game.id));
     const eligibleGameIds=new Set(this.games.filter(game=>{
       const candidates=this.candidates.get(game.id)||[];
-      return freshGameIds.has(game.id)||isRaceGame(game)&&game.lifecycle==='scheduled'&&
-        this.scheduleFresh(game)&&Date.parse(game.date)<=at+7*24*3600_000||
+      return feedEligible(game,at)||
         candidates.some(candidate=>this.retainedPlayable(candidate));
     }).map(game=>game.id));
     const cache=this.inventoryCache;
@@ -1286,11 +1286,25 @@ export class FootballCoordinator {
       freshGameIds.size===cache.freshGameIds.size&&
       [...freshGameIds].every(id=>cache.freshGameIds.has(id))) return cache.snapshot;
     const attempts=this.store.sourceAttempts();
+    const dates=feedWindow(at).days.map(day=>day.replaceAll('-',''));
+    const scheduleScopes:SourcesSnapshot['scheduleScopes']=[...new Set(this.schedules.map(source=>source.league))].map(league=>{
+      const partitions=this.schedules.filter(source=>source.league===league);
+      const checkedAt=Math.min(...partitions.map(source=>this.store.partition(source.id)?.at??0));
+      const failed=partitions.some(source=>this.errors.has(source.id)||
+        dates.some(date=>this.errors.get(`${source.id}-horizon`)?.includes(date)));
+      const read:SourcesSnapshot['scheduleScopes'][number]['read']=failed?
+        {kind:'incomplete',reason:'failed',checkedAt:checkedAt||null}:
+        !checkedAt?{kind:'incomplete',reason:'pending',checkedAt:null}:
+        at-checkedAt>90_000?{kind:'incomplete',reason:'stale',checkedAt}:
+        this.refreshing?{kind:'incomplete',reason:'pending',checkedAt}:
+        {kind:'complete',checkedAt};
+      return {league,read};
+    });
     const lastDiscoveryAt=Object.values(attempts).length ? Math.max(...Object.values(attempts).map(item=>item.at)) : null;
     const availableCandidates=new Map([...this.candidates].filter(([gameId])=>eligibleGameIds.has(gameId))
       .map(([gameId,rows])=>[gameId,rows.filter(candidate=>
         freshGameIds.has(gameId)||this.retainedPlayable(candidate))]));
-    const snapshot=sourceInventory({at,revision:this.revision,lastDiscoveryAt,sources:this.sources,browserCollectorsAvailable:this.browserCollectorsAvailable,
+    const snapshot=sourceInventory({at,revision:this.revision,lastDiscoveryAt,sources:this.sources,scheduleScopes,browserCollectorsAvailable:this.browserCollectorsAvailable,
       observations:this.store.observations(),games:this.games,visibleGameIds:eligibleGameIds,freshGameIds,candidates:availableCandidates,attempts,
       sourceEventBindings:this.store.sourceEventBindings(),
       details:this.store.detailEvidence(),collectionHistory:this.store.collectionHistory(at),

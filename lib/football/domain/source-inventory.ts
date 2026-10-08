@@ -2,7 +2,8 @@ import { candidateSummary, type Candidate, type CandidateAvailability, type Coll
 import { compareCandidates } from './lifecycle.ts';
 import { detailIdentity } from './source-policy.ts';
 import { resolvedLiveChannelMatch } from './live-channel.ts';
-import { feedDateEligible, feedEligible } from './feed-eligibility.ts';
+import { feedDateEligible, feedEligible, feedWindow } from './feed-eligibility.ts';
+import { sourceCoverage } from '../source-registry.ts';
 import type { ListingSource } from './ports.ts';
 import { createFinishedGameMatcher, createObservationMatcher, matchSourceLiveGame, matchUndatedSportsurge, normalizedName } from './matching.ts';
 import { sportsurgeCatalogView, sportsurgeObservation } from './sportsurge-catalog.ts';
@@ -19,9 +20,23 @@ type Input = {
   candidateEligible?:(candidate:Candidate)=>boolean;
   compareCandidates?:(left:Candidate,right:Candidate)=>number;
   attempts:Record<string,SourceAttempt>;
+  scheduleScopes?:SourcesSnapshot['scheduleScopes'];
   sportsurgeCatalog:{current:StoredSportsurgeCatalog|null;lastComplete:StoredSportsurgeCatalog|null;previous:StoredSportsurgeCatalog|null};
   streameastCatalog:{current:StoredStreameastCatalog|null;lastComplete:StoredStreameastCatalog|null;previous:StoredStreameastCatalog|null};
 };
+
+type ReadState=SourcesSnapshot['scheduleScopes'][number]['read'];
+type FeedState=SourcesSnapshot['games'][number]['feeds'];
+function noPublishedFeed(evidence:LinkEvidence):boolean {
+  return evidence.kind==='missing'&&(evidence.reason==='no-published-player'||evidence.reason==='not-yet-published');
+}
+function feedCounts(rows:readonly Candidate[],availability:(candidate:Candidate)=>CandidateAvailability):FeedState {
+  const states=rows.map(availability);
+  return {kind:'feeds',discovered:rows.length,
+    mediaVerified:states.filter(state=>state.kind==='playable').length,
+    decoded:states.filter(state=>state.kind==='playable'&&state.proof==='decoded').length,
+    checking:states.filter(state=>state.kind==='unknown'||state.kind==='checking').length};
+}
 
 function publicObservationUrl(value:string,hosts:Set<string>):string|null {
   try {
@@ -165,7 +180,8 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       {...publishedEvidence,candidateIds:publishedEvidence.candidateIds.filter(id=>
         !!gameId&&(candidates.get(gameId)||[]).some(candidate=>candidate.id===id&&
           candidateEligible(candidate)))}:publishedEvidence;
-    links.set(url,{title:observation.title,url,gameId,observedAt:observation.observedAt,freshness,evidence});
+    links.set(url,{title:observation.title,url,gameId,league:gameId?gameById.get(gameId)?.league??observation.league:observation.league,
+      observedAt:observation.observedAt,freshness,evidence});
     linksBySource.set(observation.sourceId,links);
     if (!gameId) {
       const reasons=reasonsBySource.get(observation.sourceId) || new Map<SourceMatchReason,number>();
@@ -298,8 +314,40 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       .filter(candidate=>candidateEligible(candidate)&&
         candidate.sourceIds.includes(source.id)&&availability(candidate).kind==='playable')
       .map(candidate=>`${gameId}:${candidate.id}`))).size;
+    const leagues=[...(source.leagues??sourceCoverage(source.id))];
+    const scopes=leagues.map(league=>{
+      const scopeLinks=links.filter(link=>link.freshness==='fresh'&&(link.league===league||link.league===null));
+      const run=source.id==='sportsurge-v2'?input.sportsurgeCatalog.current:source.id==='streameast'?input.streameastCatalog.current:null;
+      let read:ReadState;
+      if(source.kind==='pending')read={kind:'incomplete',reason:'unavailable',checkedAt:null};
+      else if(source.kind==='browser-catalog') {
+        const category=run?Object.entries(run.catalog.categories).find(([key])=>key===league)?.[1]:undefined;
+        read=!input.browserCollectorsAvailable?{kind:'incomplete',reason:'unavailable',checkedAt:null}:
+          !category||category.kind==='pending'?{kind:'incomplete',reason:'pending',checkedAt:null}:
+          category.kind==='failed'?{kind:'incomplete',reason:'failed',checkedAt:category.at}:
+          at-category.at>=30*60_000?{kind:'incomplete',reason:'stale',checkedAt:category.at}:
+          run?.catalog.rejectedGames.some(event=>event.league===league)?{kind:'incomplete',reason:'partial',checkedAt:category.at}:
+          {kind:'complete',checkedAt:category.at};
+      } else {
+        const attempt=input.attempts[source.id];
+        read=!attempt?{kind:'incomplete',reason:'pending',checkedAt:null}:
+          at-attempt.at>=30*60_000?{kind:'incomplete',reason:'stale',checkedAt:attempt.at}:
+          attempt.outcome==='parsed'||attempt.outcome==='empty'?{kind:'complete',checkedAt:attempt.at}:
+          {kind:'incomplete',reason:'failed',checkedAt:attempt.at};
+      }
+      if(read.kind==='complete'&&scopeLinks.some(link=>link.league===null||link.gameId===null))
+        read={kind:'incomplete',reason:scopeLinks.some(link=>link.evidence.kind==='unmatched'&&
+          (link.evidence.reason==='unverified-kickoff'||link.evidence.reason==='unverified-contextual-kickoff'))?'unverified-date':'partial',checkedAt:read.checkedAt};
+      const rows=[...candidates.values()].flatMap(rows=>rows.filter(candidate=>candidateEligible(candidate)&&
+        candidate.sourceIds.includes(source.id)&&gameById.get(candidate.gameId)?.league===league));
+      const feeds:FeedState=rows.length?feedCounts(rows,availability):
+        read.kind==='complete'&&scopeLinks.length>0&&scopeLinks.every(link=>link.gameId!==null&&noPublishedFeed(link.evidence))?
+          {kind:'no-feeds',checkedAt:read.checkedAt}:{kind:'incomplete',reason:scopeLinks.length?'details':'listings'};
+      return {league,read,eventCount:scopeLinks.length,feeds};
+    });
     return {
       id:source.id,name:source.name || source.id.replace(/-/g,' '),catalogUrl:source.url,
+      leagues,scopes,
       publicUrls:[...new Set(source.publicUrls || [source.url])],pending:source.kind==='pending',
       collectionMode:'compatible-feed-discovery' as const,
       lastAttempt:input.attempts[source.id] || null,listingCount:links.length,matchedGameCount:matched.size,
@@ -315,7 +363,6 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     const sourceLinks=linksByGame.get(game.id) || [];
     const selectable=(candidates.get(game.id) || []).filter(candidate=>candidateEligible(candidate))
       .sort(input.compareCandidates??compareCandidates).map(candidate=>candidateSummary(candidate,availability(candidate)));
-    if (!sourceLinks.length && !selectable.length) return [];
     const sourceCount=new Set(sourceLinks.map(link=>link.sourceId)).size;
     const currentSources=new Set(sourceLinks.filter(link=>link.freshness==='fresh').map(link=>link.sourceId));
     const uniqueFeedCount=new Set((candidates.get(game.id) || []).filter(candidate=>candidateEligible(candidate) && candidate.sourceIds.some(sourceId=>currentSources.has(sourceId)) && availability(candidate).kind==='playable')
@@ -357,7 +404,14 @@ export function sourceInventory(input:Input):SourcesSnapshot {
         }
       }
     }
-    return [{gameId:game.id,name:game.name,sourceCount,uniqueFeedCount,
+    const relevant=sourceRows.flatMap(source=>source.scopes.filter(scope=>scope.league===game.league));
+    const complete= relevant.length>0&&relevant.every(scope=>scope.read.kind==='complete');
+    const feedState:FeedState=freshCandidates.length?feedCounts(freshCandidates,availability):
+      input.freshGameIds&&!input.freshGameIds.has(game.id)?{kind:'incomplete',reason:'schedule'}:
+      complete&&sourceLinks.every(link=>link.freshness==='fresh'&&noPublishedFeed(link.evidence))?
+        {kind:'no-feeds',checkedAt:Math.max(...relevant.map(scope=>scope.read.checkedAt??0))}:
+        {kind:'incomplete',reason:sourceLinks.length?'details':'listings'};
+    return [{gameId:game.id,name:game.name,league:game.league,date:game.date??null,feeds:feedState,sourceCount,uniqueFeedCount,
       freeChoiceCount:new Set(freshCandidates.map(candidate=>candidate.id)).size,
       workingChoiceCount:new Set(freshCandidates.filter(candidate=>availability(candidate).kind==='playable')
         .map(candidate=>candidate.id)).size,sharedRoutes,candidates:selectable,sourceLinks}];
@@ -383,7 +437,7 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     const scoped=scopedStreameast(stored);
     return scoped?streameastCatalogView(scoped,games,at):null;
   };
-  return {at,revision:input.revision,windowStartAt,lastDiscoveryAt:input.lastDiscoveryAt,browserCollectorsAvailable:input.browserCollectorsAvailable,
+  return {at,revision:input.revision,windowStartAt,window:feedWindow(at),scheduleScopes:input.scheduleScopes??[],lastDiscoveryAt:input.lastDiscoveryAt,browserCollectorsAvailable:input.browserCollectorsAvailable,
     sportsurgeV2:{
       current:sportsurgeView(input.sportsurgeCatalog.current),
       lastComplete:sportsurgeView(input.sportsurgeCatalog.lastComplete),
