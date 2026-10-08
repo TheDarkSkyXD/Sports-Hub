@@ -155,6 +155,45 @@ test('a media probe finds the valid player next to a removed iframe', async () =
   assert.equal(result?.referer, player.url);
 });
 
+test('only exact fxtrend PPV servers can continue past 32 frames and capture published media',async()=>{
+  const mediaUrl='https://player.example/live.m3u8';
+  const source='https://fxtrend.st/event/ppv-golden-state-warriors-vs-portland-trail-blazers/vertex/1';
+  const observe=async(page:string,expectMedia:boolean)=>{
+    const player={url:'https://player.example/watch',isDestroyed:()=>false,
+      executeJavaScript:()=>Promise.resolve(true)};
+    const ads=Array.from({length:32},(_,index)=>({url:`https://ads.example/frame-${index}`,
+      isDestroyed:()=>false,executeJavaScript:()=>Promise.resolve(false)}));
+    const harness=createObserverHarness({framesInSubtree:[player,...ads]});
+    const operation=harness.observer.observe(page,'probe');
+    assert.ok(operation);
+    operation.start();
+    harness.window().webContents.emit('frame-created');
+    if(expectMedia){
+      harness.request({id:1,url:mediaUrl,resourceType:'media'});
+      harness.sendHeaders({id:1,url:mediaUrl,requestHeaders:{
+        referer:player.url,'user-agent':'Observer test',
+      },initiatorOrigin:'https://player.example'});
+      harness.receiveHeaders({id:1,url:mediaUrl,statusCode:200,responseHeaders:{
+        'content-type':['application/vnd.apple.mpegurl'],
+      }});
+      assert.equal((await operation.promise)?.url,mediaUrl,page);
+    }else{
+      const result=await Promise.race([operation.promise,
+        new Promise(resolve=>setTimeout(()=>resolve('still observing'),50))]);
+      operation.cancel();
+      assert.equal(result,null,page);
+    }
+  };
+  for(const type of ['core/1','vector/1','vertex/1','hotel/2'])
+    await observe(source.replace('vertex/1',type),true);
+  for(const page of [
+    'https://example.com/event',source.replace('fxtrend.st','ads.example'),
+    source.replace('https:','http:'),source.replace('fxtrend.st','fxtrend.st:8443'),
+    `${source}?ad=1`,`${source}#player`,source.replace('vertex/1','vertex/0'),
+    source.replace('vertex/1','vertex/1000'),source.replace('vertex/1','admin/1'),
+  ])await observe(page,false);
+});
+
 test('a disposed native frame tree ends a media probe without an unhandled rejection', async () => {
   const mainFrame: { framesInSubtree: unknown[] } = { framesInSubtree: [] };
   Object.defineProperty(mainFrame, 'framesInSubtree', {
