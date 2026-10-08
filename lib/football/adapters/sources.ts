@@ -429,7 +429,7 @@ export function missingPlayerReason(observation:Observation,html:string):Missing
 export function compatiblePlayers(gameId: string, observation: Observation, html: string): ResolvedPlayer[] {
   if(observation.sourceId==='livetv')return liveTvPlayers(gameId,observation,html);
   if(observation.sourceId==='nflstreams')return nflstreamsPlayers(gameId,observation,html);
-  if(observation.sourceId==='buffstream-nfl'||observation.sourceId==='buffstream-cfb')return buffstreamPlayers(gameId,observation,html);
+  if(['buffstream-nfl','buffstream-cfb','crackstreams-cfb'].includes(observation.sourceId))return buffstreamPlayers(gameId,observation,html);
   if(observation.sourceId==='swac'){
     let input:unknown;
     try{input=JSON.parse(html);}catch{return [];}
