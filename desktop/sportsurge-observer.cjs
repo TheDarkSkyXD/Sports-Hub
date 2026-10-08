@@ -89,12 +89,15 @@ function offlinePlayerFrame(source, frames, embeddedEventUrl) {
     (team[1]==='nba' ? pair[1]==='basketball' : pair[1]==='american-football') &&
     (team[2] === pair[2] || team[2] === pair[3])) : direct;
   if (!selected) return null;
+  const playerPath=embeddedEventUrl ? team?.[1]==='nba' ? '/sd0embed/NBA' : '/sd0embed/NFL' :
+    sourceUrl.hostname==='vipbox.fm'&&sourceUrl.pathname.startsWith('/live/nba/')||
+    sourceUrl.hostname==='strikeout.im'&&sourceUrl.pathname.startsWith('/nba/') ? '/sd0embed/NBA' : '/sd0embed/NFL';
   const players = frames.filter(frame => {
     try {
       const url = new URL(frame.url);
       const owned = !embeddedEventUrl || (dudestream ? belongsToDudestreamPage(frame,source,embeddedEventUrl) :
         belongsToEmbeddedServer(frame,source));
-      return url.protocol === 'https:' && url.pathname === '/sd0embed/NFL' &&
+      return url.protocol === 'https:' && url.pathname === playerPath &&
         ['fallafar.me','posamari.me','dervlin.me','ninguno.cc','lonpapil.eu'].includes(url.hostname) &&
         owned;
     }

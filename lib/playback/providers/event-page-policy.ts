@@ -48,6 +48,16 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
   if ((event.hostname === 'methstreams.st' || event.hostname === 'crackstreams.st') && server.hostname === 'fxtrend.st') {
     if (/^\/event\/ppv-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(event.pathname))
       return new RegExp(`^${event.pathname}/(?:core|vector|vertex|hotel)/[1-9]\\d{0,2}$`).test(server.pathname);
+    const publishedPpv=/^\/event\/ppv-([a-z0-9-]+)\/(?:core|vector|vertex|hotel)\/[1-9]\d{0,2}$/.exec(server.pathname);
+    if(publishedPpv){
+      const pair=(slug:string)=>{
+        const teams=slug.split('-vs-');
+        return teams.length===2&&teams.every(team=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(team))?teams.sort():null;
+      };
+      const eventTeams=event.pathname.startsWith('/event/')?pair(event.pathname.slice('/event/'.length)):null;
+      const serverTeams=pair(publishedPpv[1]);
+      return !!eventTeams&&!!serverTeams&&eventTeams[0]===serverTeams[0]&&eventTeams[1]===serverTeams[1];
+    }
     if (/^\/event\/m-[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}$/.test(event.pathname)) {
       return server.pathname===event.pathname ||
         new RegExp(`^${event.pathname}/(?:core|vector|vertex|foxtrot|main|hotel)/[1-9]\\d{0,2}$`).test(server.pathname);
