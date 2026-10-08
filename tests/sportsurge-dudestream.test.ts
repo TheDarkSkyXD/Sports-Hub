@@ -7,7 +7,7 @@ import {sportsurgeV2Provider} from '../lib/playback/providers/sportsurge-v2.ts';
 const source='https://dudestream1.com/abc1234';
 const parent='https://dudestream1.com/cfb96/';
 const player='https://embedsports.me/american-football/jacksonville-state-vs-kennesaw-state-stream-1';
-const wrongPlayer='https://embedsports.me/american-football/troy-vs-kennesaw-state-stream-1';
+const wrongPlayer='https://embedsports.me/american-football/troy-trojans-vs-kennesaw-state-owls-stream-1';
 const expectedMatchup={league:'ncaaf' as const,teams:['Jacksonville State Gamecocks','Kennesaw State Owls'] as const};
 const locator={provider:'sportsurge-v2' as const,eventId:'ncaaf:66184',providerId:'stream-1-0',url:source,expectedMatchup};
 const parentHtml=(title:string,frames:string[],canonical=parent)=>`<html><head><title>${title}</title>
@@ -17,7 +17,7 @@ const playerHtml=(title:string)=>`<html><head><title>${title}</title></head><bod
 test('NCAA title evidence distinguishes exact, conflicting, and unknown identities',()=>{
   assert.equal(publishedFootballMatchup(expectedMatchup,'Jacksonville State vs Kennesaw State – Dudestream'),'matches');
   assert.equal(publishedFootballMatchup(expectedMatchup,'Kennesaw St at Jax State'),'matches');
-  assert.equal(publishedFootballMatchup(expectedMatchup,'Troy vs Kennesaw State'),'conflicting');
+  assert.equal(publishedFootballMatchup(expectedMatchup,'Troy Trojans vs Kennesaw State Owls'),'conflicting');
   assert.equal(publishedFootballMatchup(expectedMatchup,'Tigers vs Kennesaw State'),'unknown');
   assert.equal(publishedFootballMatchup(undefined,'Jacksonville State vs Kennesaw State'),'unknown');
   assert.equal(publishedFootballMatchup({league:'nfl',teams:expectedMatchup.teams},'Jacksonville State vs Kennesaw State'),'unknown');
@@ -73,9 +73,9 @@ test('one positively identified Dudestream CFB server opens inside its exact pub
 test('Dudestream contradictions end before browser fallback',async()=>{
   await withObserver(async requests=>{
     for(const [page,nested] of [
-      [parentHtml('Troy vs Kennesaw State',[player]),playerHtml('Jacksonville State vs Kennesaw State')],
+      [parentHtml('Troy Trojans vs Kennesaw State Owls',[player]),playerHtml('Jacksonville State vs Kennesaw State')],
       [parentHtml('Jacksonville State vs Kennesaw State',[wrongPlayer]),playerHtml('Jacksonville State vs Kennesaw State')],
-      [parentHtml('Jacksonville State vs Kennesaw State',[player]),playerHtml('Troy vs Kennesaw State')],
+      [parentHtml('Jacksonville State vs Kennesaw State',[player]),playerHtml('Troy Trojans vs Kennesaw State Owls')],
     ])await assert.rejects(sportsurgeV2Provider(requester(page,nested)).open(locator,new AbortController().signal),
       /conflicting.*matchup/i);
     assert.equal(requests.length,0);
