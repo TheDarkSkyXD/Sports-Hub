@@ -24,8 +24,10 @@ async function fixture(t: TestContext): Promise<string> {
     '.next/static/app.js': 'static asset',
     '.next/standalone/lib/football/runtime/worker.ts': '',
     '.next/standalone/lib/football/runtime/composition.ts': '',
+    '.next/standalone/lib/football/source-registry.json': '[]',
     '.next/standalone/lib/playback/probe.ts': '',
     '.next/standalone/lib/sunday.ts': '',
+    '.next/standalone/lib/game-timing.ts': '',
     'public/favicon.svg': 'icon',
     'node_modules/cheerio/index.js': '',
     'node_modules/zod/index.js': '',
@@ -73,4 +75,10 @@ test('desktop preparation fails when a required Sharp dependency is absent', asy
   await rmdir(path.dirname(missing));
   await assert.rejects(run(process.execPath, [prepare], { cwd: root, windowsHide: true }),
     /ENOENT.*detect-libc/s);
+});
+
+test('desktop preparation rejects a standalone worker without its source registry',async t=>{
+  const root=await fixture(t);
+  await rm(path.join(root,'.next/standalone/lib/football/source-registry.json'));
+  await assert.rejects(run(process.execPath,[prepare],{cwd:root,windowsHide:true}),/ENOENT.*source-registry\.json/s);
 });

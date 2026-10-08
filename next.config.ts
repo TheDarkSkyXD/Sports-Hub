@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   output: "standalone",
   outputFileTracingIncludes: {
-    '/*': ['./lib/football/**/*.ts', './lib/playback/**/*.ts', './lib/sunday.ts'],
+    '/*': ['./lib/football/**/*.ts', './lib/football/source-registry.json', './lib/playback/**/*.ts', './lib/sunday.ts', './lib/game-timing.ts'],
   },
   // The football worker resolves its database from a runtime path, so the tracer
   // follows it into local build and verification scratch. Left in standalone,
