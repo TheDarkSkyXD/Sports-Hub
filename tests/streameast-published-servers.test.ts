@@ -78,3 +78,22 @@ test('a selected StreamEast page requires one exact same-game free player root',
   ];
   for(const [index,page] of invalid.entries())assert.equal(publishedFreePlayer(page,event,selected).kind,'unsupported',String(index));
 });
+
+test('the selected college Server 3 keeps its exact Wikisport channel inside a game-bound browser choice', () => {
+  const event={id:'ncaaf:46295',url:'https://v2.streameast.ga/cfb/jacksonville-state-gamecocks-vs-kennesaw-state-owls/'};
+  const selected=`${event.url}3`;
+  const player='https://wikisport.info/ch/128.php';
+  const page=`<main class="streameast-video-page"><div class="se-board" data-match-id="46295"></div>
+    <div class="stream-alt-list"><a class="stream-alt-item active" href="${selected}">
+      <span class="stream-alt-name">Server 3</span><span class="stream-alt-free-badge">Free</span></a></div>
+    <div id="se-player-root" class="se-player"><iframe src="${player}"></iframe></div></main>`;
+  assert.deepEqual(publishedFreePlayer(page,event,selected),{kind:'page',url:player});
+  for(const changed of [
+    page.replace(player,'https://wikisport.info/ch/0.php'),
+    page.replace(player,'https://wikisport.info/ch/128.php?token=other'),
+    page.replace(player,'https://wikisport.info:444/ch/128.php'),
+    page.replace('data-match-id="46295"','data-match-id="99999"'),
+    page.replace('class="stream-alt-item active"','class="stream-alt-item active stream-alt-item-pro"'),
+    page.replace('</div></main>',`<iframe src="${player}"></iframe></div></main>`),
+  ])assert.equal(publishedFreePlayer(changed,event,selected).kind,'unsupported');
+});
