@@ -101,7 +101,7 @@ function offlinePlayerFrame(source, frames, embeddedEventUrl) {
   return players.length === 1 ? players[0] : null;
 }
 
-function activatePublishedVipboxVideo(page = document, computedStyle = getComputedStyle) {
+function activatePublishedJwVideo(page = document, computedStyle = getComputedStyle) {
   const videos = page.querySelectorAll('video');
   const buttons = page.querySelectorAll('.jw-icon-playback[role="button"][aria-label="Play"]');
   if (videos.length !== 1 || buttons.length !== 1) return false;
@@ -150,6 +150,34 @@ function belongsToSelectedStreameastPlayer(frame,current) {
     return root===current.selection.playerFrame&&root.parent===main&&
       root.url===current.selection.playerUrl&&main.framesInSubtree.includes(root);
   } catch{return false;}
+}
+
+function selectedWikisportJwFrame(current,frames) {
+  try {
+    const selection=current?.selection;
+    if(selection?.kind!=='streameast-server'||
+      !selection.playerUrl||!selection.playerFrame||
+      current.url!==`${selection.eventUrl}${selection.serverId}`)return null;
+    const rootUrl=publicUrl(selection.playerUrl);
+    if(!rootUrl||rootUrl.origin!=='https://wikisport.info'||rootUrl.port||rootUrl.search||
+      !/^\/ch\/[1-9]\d{0,3}\.php$/.test(rootUrl.pathname))return null;
+    const main=current.window?.webContents?.mainFrame;
+    const root=selection.playerFrame;
+    if(!main||main.url!==current.url||root.isDestroyed()||root.parent!==main||
+      root.url!==selection.playerUrl||!frames.includes(root)||!main.framesInSubtree.includes(root))return null;
+    const players=frames.filter(frame=>{
+      if(frame.parent!==root)return false;
+      const url=publicUrl(frame.url);
+      return !!url&&url.origin==='https://xstream.st'&&!url.port&&
+        url.pathname==='/fslivepro.php'&&url.searchParams.size===1&&
+        /^[-_a-zA-Z0-9]{1,40}$/.test(url.searchParams.get('stream')||'');
+    });
+    if(players.length!==1)return null;
+    const player=players[0];
+    if(player.isDestroyed()||!main.framesInSubtree.includes(player)||
+      !belongsToSelectedStreameastPlayer(player,current))return null;
+    return player;
+  } catch { return null; }
 }
 
 function allowsSelectedStreameastNavigation(frame,target,current) {
@@ -562,7 +590,7 @@ function createObserverSlot(index) {
           }).catch(() => {});
           if (!current.playerActivating) {
             current.playerActivating = true;
-            void frame.executeJavaScript(`(${activatePublishedVipboxVideo.toString()})()`)
+            void frame.executeJavaScript(`(${activatePublishedJwVideo.toString()})()`)
               .then(activated => {
                 if (active !== current) return;
                 if (frame.isDestroyed() || frame.url !== url ||
@@ -575,6 +603,24 @@ function createObserverSlot(index) {
                 else current.playerActivating = false;
               }).catch(() => { if (active === current) current.playerActivating = false; });
           }
+        }
+        const selectedJw=selectedWikisportJwFrame(current,frames);
+        if(selectedJw&&!current.playerActivating) {
+          const frame=selectedJw, url=frame.url;
+          current.playerActivating=true;
+          void frame.executeJavaScript(`(() => location.href===${JSON.stringify(url)}&&
+            (${activatePublishedJwVideo.toString()})())()`)
+            .then(activated=>{
+              if(active!==current)return;
+              let stillSelected=false;
+              try {stillSelected=!frame.isDestroyed()&&frame.url===url&&
+                selectedWikisportJwFrame(current,liveFramesInSubtree(window.webContents.mainFrame))===frame;}
+              catch {}
+              if(activated&&stillSelected) {
+                current.playerActivated=true;
+                debug('activated selected Wikisport JW player');
+              } else current.playerActivating=false;
+            }).catch(()=>{if(active===current)current.playerActivating=false;});
         }
         const aianimalvibesFrames = frames.filter(frame => aianimalvibesPlayer(frame.url));
         if (aianimalvibesFrames.length > 1) return;
@@ -808,4 +854,4 @@ function createSportsurgeObserver({ controlToken, port = 0 }) {
   return { start, stop };
 }
 
-module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedVipboxVideo, aianimalvibesPlayer, belongsToSelectedStreameastPlayer, allowsSelectedStreameastNavigation, recognizedDlivePixelTransport };
+module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedJwVideo, aianimalvibesPlayer, belongsToSelectedStreameastPlayer, selectedWikisportJwFrame, allowsSelectedStreameastNavigation, recognizedDlivePixelTransport };
