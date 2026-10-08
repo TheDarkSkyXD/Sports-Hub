@@ -261,6 +261,8 @@ export function parseListings(source: ListingSource, html: string, now: number):
     }
     if (!allowedDiscoveryUrl(url)) return;
     const path = new URL(url).pathname;
+    if(source.id==='buffstream-cfb'&&!path.startsWith('/cfb-streams/')||
+      source.id==='buffstream-nfl'&&!path.startsWith('/nfl-streams/'))return;
     if (/^\/(?:nfl|cfb)\/livestreams\d*\/?$/i.test(path)) return;
     if (!/\/(?:watch\/(?:nfl|cfb)\/|onair\/(?:nfl|ncaaf)\/|(?:nfl|cfb|college-football)\/.*(?:live|stream)|(?:nfl|cfb)-streams\/.+-live-stream|event\/)/i.test(path)) return;
     const row = source.family === 'sportsurge' ? anchor : anchor.closest('tr,[data-start],article,li,.event,.match,.card').first();
@@ -288,7 +290,7 @@ export function parseListings(source: ListingSource, html: string, now: number):
       container.attr('data-utc') || container.find('[data-utc]').first().attr('data-utc') ||
       container.attr('data-start') || container.find('[data-start]').first().attr('data-start') ||
       container.attr('content') || container.find('[content]').first().attr('content') || textTime ||
-      (source.id==='buffstream-nfl'?container.find('td').toArray().map(cell=>$(cell).text().trim())
+      (source.family==='buffstream'?container.find('td').toArray().map(cell=>$(cell).text().trim())
         .find(text=>/^(?:0?[1-9]|1[0-2]):[0-5]\d\s*(?:am|pm)\s*ET$/i.test(text))||'':'');
     const inferredLeague: League | null = /\/(?:watch\/cfb|cfb|ncaaf|college-football)(?:\/|-)/i.test(path) ? 'ncaaf' : /\/(?:watch\/nfl|nfl)(?:\/|-)/i.test(path) ? 'nfl' : null;
     const section = source.family === 'event' ? anchor.closest('section.lg').attr('id') || '' : '';
@@ -349,7 +351,7 @@ function parseStreamcenterListings(source: ListingSource, html: string, now: num
 export function enrichObservation(observation: Observation, html: string): Observation {
   if(observation.sourceId==='livetv')return enrichLiveTvObservation(observation,html);
   if(observation.sourceId==='nflstreams')return observation;
-  if(observation.sourceId==='buffstream-nfl')return observation;
+  if(observation.sourceId==='buffstream-nfl'||observation.sourceId==='buffstream-cfb')return observation;
   if (['streamcenter','ppv','tvapp','swac'].includes(observation.sourceId)) return observation;
   const $ = load(html);
   if (vipboxSourceIds.has(observation.sourceId) && $('meta[property="og:url"]').first().attr('content') === observation.url) {
@@ -427,7 +429,7 @@ export function missingPlayerReason(observation:Observation,html:string):Missing
 export function compatiblePlayers(gameId: string, observation: Observation, html: string): ResolvedPlayer[] {
   if(observation.sourceId==='livetv')return liveTvPlayers(gameId,observation,html);
   if(observation.sourceId==='nflstreams')return nflstreamsPlayers(gameId,observation,html);
-  if(observation.sourceId==='buffstream-nfl')return buffstreamPlayers(gameId,observation,html);
+  if(observation.sourceId==='buffstream-nfl'||observation.sourceId==='buffstream-cfb')return buffstreamPlayers(gameId,observation,html);
   if(observation.sourceId==='swac'){
     let input:unknown;
     try{input=JSON.parse(html);}catch{return [];}
