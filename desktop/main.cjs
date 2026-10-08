@@ -136,7 +136,7 @@ app.whenReady().then(async () => {
   streameastCollector.start();
   win = new BrowserWindow({
     title:'Sunday Room',width:1500,height:1060,minWidth:900,minHeight:650,
-    backgroundColor:'#101114',autoHideMenuBar:true,show:false,
+    backgroundColor:'#101114',autoHideMenuBar:true,show:true,
     icon:path.join(__dirname,'icons','sunday-room.png'),
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,webSecurity:true,backgroundThrottling:false},
   });
@@ -150,6 +150,7 @@ app.whenReady().then(async () => {
     });
   }
   win.show();
+  win.focus();
   win.webContents.setWindowOpenHandler(({url}) => {
     try { if (new URL(url).protocol === 'https:') void shell.openExternal(url); } catch {}
     return {action:'deny'};
