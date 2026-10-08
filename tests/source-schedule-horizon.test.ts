@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { SCHEDULES } from '../lib/football/adapters/schedule.ts';
+import { SCHEDULES, readSchedule } from '../lib/football/adapters/schedule.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 
 test('future-day failures stay visible during a retry and clear after successful completion', async () => {
@@ -21,7 +21,7 @@ test('future-day failures stay visible during a retry and clear after successful
     return Response.json({ events: [] });
   };
   const coordinator = createFootballCoordinator(join(directory, 'state.sqlite'), {
-    now: () => clock, schedules: [SCHEDULES[0]], sources: [],
+    now: () => clock, schedules: [SCHEDULES[0]], sources: [], readSchedule,
   });
   const board = async () => {
     const reply = await coordinator.command({ kind: 'board' });

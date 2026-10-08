@@ -35,7 +35,7 @@ test('current games publish before future dates finish and future dates use a sl
     assert.deepEqual(first.games.map(game => game.id), ['100']);
     requests.length = 0;
     await readSchedule(SCHEDULES[0], at + 30_000, signal);
-    assert.deepEqual(requests, ['20261001', '20261002']);
+    assert.deepEqual(requests, ['20261002', '20261001']);
     requests.length = 0;
     await readSchedule(SCHEDULES[0], at + 300_001, signal);
     assert.equal(requests.length, 9);
@@ -45,6 +45,28 @@ test('current games publish before future dates finish and future dates use a sl
     await pending;
     globalThis.fetch = original;
   }
+});
+
+test('today publishes while yesterday is still pending, then complete history clears the partial warning',async()=>{
+  const original=globalThis.fetch;
+  let release!:()=>void;
+  const history=new Promise<void>(resolve=>{release=resolve;});
+  let current:ScheduleResult|undefined;
+  globalThis.fetch=async input=>{
+    const day=new URL(String(input)).searchParams.get('dates');
+    if(day==='20261001')await history;
+    return Response.json({events:day==='20261002'?[event]:[]});
+  };
+  const pending=readSchedule(SCHEDULES[0],at,new AbortController().signal,result=>{current=result;});
+  try {
+    for(let i=0;i<20&&!current;i++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.deepEqual(current?.games.map(game=>game.id),['100']);
+    assert.deepEqual(current?.historyErrors,['20261001:pending']);
+    release();
+    const complete=await pending;
+    assert.equal(complete.historyErrors,undefined);
+    assert.deepEqual(complete.games.map(game=>game.id),['100']);
+  } finally {release();await pending;globalThis.fetch=original;}
 });
 
 test('expired future rows remain visible during refresh and failed dates report their errors', async () => {
@@ -128,7 +150,7 @@ test('current-day failures still reject and future requests stop on abort', asyn
   } finally { globalThis.fetch = original; }
 });
 
-test('one timed-out current or future day retries only that day and clears its failure',async()=>{
+test('a timed-out current day retries while an optional future timeout stays partial',async()=>{
   const original=globalThis.fetch;
   const liveAt=Date.parse('2026-10-04T18:00:00Z');
   const currentEvent={...event,date:new Date(liveAt).toISOString()};
@@ -148,13 +170,12 @@ test('one timed-out current or future day retries only that day and clears its f
     const controller=new AbortController();
     const result=await readSchedule(SCHEDULES[0],liveAt,controller.signal);
     assert.deepEqual(result.games.map(game=>game.id),['100']);
-    assert.equal(result.horizonErrors,undefined);
+    assert.deepEqual(result.horizonErrors,['20261010:timeout']);
     assert.equal(calls.get('20261004'),2);
-    assert.equal(calls.get('20261010'),2);
+    assert.equal(calls.get('20261010'),1);
     assert.equal(calls.get('20261003'),1);
-    assert.equal([...calls.values()].reduce((sum,count)=>sum+count,0),11);
+    assert.equal([...calls.values()].reduce((sum,count)=>sum+count,0),10);
     assert.notEqual(signals.get('20261004')?.[0],signals.get('20261004')?.[1]);
-    assert.notEqual(signals.get('20261010')?.[0],signals.get('20261010')?.[1]);
     controller.abort();
     assert.ok([...signals.values()].flat().every(signal=>signal.aborted));
   } finally {globalThis.fetch=original;}
@@ -178,7 +199,7 @@ test('a second timeout remains a real failure, while abort, HTTP, and parser err
     };
     const future=await readSchedule(SCHEDULES[0],liveAt,new AbortController().signal);
     assert.deepEqual(future.horizonErrors,['20261010:timeout']);
-    assert.equal(calls.get('20261010'),2);
+    assert.equal(calls.get('20261010'),1);
 
     calls.clear();
     globalThis.fetch=async input=>{

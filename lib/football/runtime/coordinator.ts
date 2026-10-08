@@ -128,6 +128,7 @@ export class FootballCoordinator {
   private readonly schedules: FootballDependencies['schedules'];
   private readonly sources: FootballDependencies['sources'];
   private readonly fetchSchedule: FootballDependencies['readSchedule'];
+  private readonly closeSchedule: FootballDependencies['closeSchedule'];
   private readonly fetchMembership: FootballDependencies['readSeasonMembership'];
   private readonly fetchHtml: FootballDependencies['readHtml'];
   private readonly parseListings: FootballDependencies['parseListings'];
@@ -145,6 +146,7 @@ export class FootballCoordinator {
     this.schedules = dependencies.schedules;
     this.sources = dependencies.sources;
     this.fetchSchedule = dependencies.readSchedule;
+    this.closeSchedule = dependencies.closeSchedule;
     this.fetchMembership = dependencies.readSeasonMembership;
     this.fetchHtml = dependencies.readHtml;
     this.parseListings = dependencies.parseListings;
@@ -251,9 +253,17 @@ export class FootballCoordinator {
             const previous = this.store.partition(source.id);
             const acceptedAt = this.now();
             const wasFresh = previous && !this.errors.has(source.id) && acceptedAt-previous.at<=90000;
-            this.store.savePartition(source.id,{...result,at:acceptedAt});
+            const historyDay=new Date(now-24*3600_000).toISOString().slice(0,10);
+            const games=result.historyErrors?.length&&previous?
+              [...new Map([...previous.games.filter(game=>game.date?.slice(0,10)===historyDay),...result.games]
+                .map(game=>[game.id,game] as const)).values()]:result.games;
+            this.store.savePartition(source.id,{...result,games,at:acceptedAt});
             const accepted = this.store.partition(source.id);
             this.errors.delete(source.id);
+            if(result.historyErrors?.length) {
+              this.refreshedSchedules.delete(source.id);
+              this.errors.set(`${source.id}-history`,result.historyErrors.join('; ').slice(0,120));
+            } else this.errors.delete(`${source.id}-history`);
             if(result.games.length || previous?.games.length || this.workingFeeds.size) {
               if(!wasFresh || feedCalendarDay(previous.at)!==feedCalendarDay(acceptedAt) ||
                 projectedCoverage!==this.refreshedSchedules.has(source.id) ||
@@ -270,7 +280,7 @@ export class FootballCoordinator {
           };
           const result = await this.fetchSchedule(source,now,this.controller.signal,accept);
           if(this.stopped)return;
-          if(result.horizonErrors?.length)this.refreshedSchedules.delete(source.id);
+          if(result.horizonErrors?.length||result.historyErrors?.length)this.refreshedSchedules.delete(source.id);
           else this.refreshedSchedules.add(source.id);
           accept(result);
           if(result.horizonErrors?.length)this.errors.set(`${source.id}-horizon`,result.horizonErrors.join('; ').slice(0,240));
@@ -1268,6 +1278,7 @@ export class FootballCoordinator {
         ...(!times[index] || this.now()-times[index]>90000 ? [`${key.toUpperCase()} schedule is unavailable or stale.`] :
           this.errors.has(key) ? [`${key.toUpperCase()} schedule refresh failed; showing saved scores.`] : []),
         ...(this.errors.has(`${key}-horizon`) ? [`${key.toUpperCase()} future schedule is incomplete: ${this.errors.get(`${key}-horizon`)}`] : []),
+        ...(this.errors.has(`${key}-history`) ? [`${key.toUpperCase()} recent schedule history is incomplete: ${this.errors.get(`${key}-history`)}`] : []),
       ]).concat(this.errors.has('working-feed-cache')?['Working feeds could not be saved for the next restart.']:[])};
     };
     const now = this.now();
@@ -1836,6 +1847,7 @@ export class FootballCoordinator {
     for(const deferred of this.deferredProbes.values())clearTimeout(deferred.timer);
     this.deferredProbes.clear();
     await Promise.allSettled([this.refreshing,this.discovering,this.detailWork,...[...this.activeProbes.values()].map(job=>job.promise)]);
+    await this.closeSchedule?.();
     this.sessions.clear(); this.candidates.clear(); this.store.close();
   }
 }

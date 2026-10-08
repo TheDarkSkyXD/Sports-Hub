@@ -155,3 +155,32 @@ test('a restored board stays visible while its first schedule pass is pending',a
     rmSync(dir,{recursive:true,force:true});
   }
 });
+
+test('partial yesterday coverage keeps saved games and advances current scores',async () => {
+  const dir=mkdtempSync(join(tmpdir(),'football-board-history-'));
+  const path=join(dir,'state.sqlite');
+  const prior={...nfl,id:'99',date:'2026-09-25T18:00:00.000Z'};
+  const seed=createFootballCoordinator(path,{
+    now:()=>at,schedules:[schedules[0]],sources:[],
+    readSchedule:async()=>({games:[prior,nfl],at,league:'nfl' as const}),
+  });
+  try {await seed.refresh(true);} finally {await seed.stop();}
+  const refreshed={...nfl,home:{...nfl.home,score:'14'}};
+  const coordinator=createFootballCoordinator(path,{
+    now:()=>at+30_000,schedules:[schedules[0]],sources:[],
+    readSchedule:async()=>({games:[refreshed],at:at+30_000,league:'nfl' as const,historyErrors:['20260925:timeout']}),
+  });
+  try {
+    await coordinator.refresh(true);
+    const reply=await coordinator.command({kind:'board'});
+    assert.equal(reply.kind,'board');
+    if(reply.kind==='board') {
+      assert.deepEqual(reply.board.games.map(game=>game.id).sort(),['100','99']);
+      assert.equal(reply.board.games.find(game=>game.id==='100')?.home.score,'14');
+      assert.deepEqual(reply.board.leagues.nfl.errors,['NFL recent schedule history is incomplete: 20260925:timeout']);
+    }
+  } finally {
+    await coordinator.stop();
+    rmSync(dir,{recursive:true,force:true});
+  }
+});

@@ -410,8 +410,8 @@ test('schedule requests both college groups and rejects partial event parsing', 
     assert.equal(urls.filter(value => new URL(value).searchParams.get('groups') === '81').length,9);
     assert.ok(urls.every(value => /^\d{8}$/.test(new URL(value).searchParams.get('dates') || '')));
     assert.ok(urls.every(value => new URL(value).searchParams.get('limit') === '200'));
-    assert.equal(new URL(urls[0]).searchParams.get('dates'),'20260925');
-    assert.equal(new URL(urls[16]).searchParams.get('dates'),'20261003');
+    assert.equal(new URL(urls[0]).searchParams.get('dates'),'20260926');
+    assert.ok(urls.some(value=>new URL(value).searchParams.get('dates')==='20261003'));
     assert.deepEqual(mergeSchedulePartitions(college.map(result => result.games))[0].partitions,['fbs','fcs']);
     globalThis.fetch = async () => Response.json({events:[event,{id:'broken'}]});
     await assert.rejects(readSchedule(SCHEDULES[1],now,new AbortController().signal),/schedule-incomplete-or-duplicate/);
