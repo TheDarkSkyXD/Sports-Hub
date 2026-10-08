@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, CircleHelp, Clock3, LoaderCircle, RefreshCw } from 'lucide-react';
 import Image from 'next/image';
 import { SourcesSnapshotSchema, isMotorsportsLeague, type CandidateSummary, type Game, type MatchupGame, type LinkEvidence, type MissingPlayerReason, type SourcesSnapshot, type SportsurgeCatalogView, type StreameastCatalogView } from '@/lib/football/shared';
-import { retainedStreameastDetail } from './source-inventory-view';
+import { candidateEvidence, retainedStreameastDetail } from './source-inventory-view';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const sourceOrder=new Map([['sportsurge',0],['sportsurge-v2',1],['streameast',2]]);
@@ -91,10 +91,6 @@ const age=(value:number,now:number)=>{
   const minutes=Math.max(0,Math.floor((now-value)/60_000));
   return `${minutes} ${minutes>1?'mins':'min'} ago`;
 };
-const duration=(milliseconds:number)=>{
-  const seconds=Math.max(0,Math.floor(milliseconds/1000));
-  return seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m ${seconds%60}s`;
-};
 const countLabel=(value:number,incomplete:boolean)=>incomplete?value===0?'—':`${value}+`:String(value);
 const publicLinkLabel=(value:string)=>{const url=new URL(value);return `${url.hostname}${url.pathname}${url.hash}`;};
 type BrandedGame={id:string;league?:Game['league'];home?:MatchupGame['home'];away?:MatchupGame['away']};
@@ -177,27 +173,6 @@ const catalogFailureLabel:Record<Extract<SportsurgeCatalogView['state'],{kind:'p
   blocked:'Source blocked','rate-limited':'Rate limited; collection paused',timeout:'Timed out',
   'parser-changed':'Page format changed',unavailable:'Source unavailable','invalid-detail-url':'Invalid game link',limit:'Collection limit reached',
 };
-const candidateEvidence=(candidate:CandidateSummary,now:number)=>{
-  switch(candidate.availability.kind) {
-    case 'unknown':return 'Media not checked yet';
-    case 'checking':{
-      const progress=candidate.availability.progress;
-      switch(progress.kind) {
-        case 'queued':return `Queued for media check · Waiting ${duration(now-progress.since)}`;
-        case 'active':return `Checking media · ${duration(now-progress.since)} elapsed`;
-        case 'deferred':return `Check incomplete${progress.phase?` during ${progress.phase}`:''} · Retrying in ${duration(progress.retryAt-now)}`;
-        default:{const exhaustive:never=progress;return exhaustive;}
-      }
-    }
-    case 'playable':return candidate.availability.proof==='decoded'?'Working · Playback decoded':'Media verified · Playback not yet confirmed';
-    case 'unavailable':return {
-      upstream:'Source media unavailable',unsupported:'Player unsupported',
-      'invalid-media':'No valid video returned',timeout:'Media check timed out',playback:'Playback failed','no-feed':'No feed available from source',
-    }[candidate.availability.reason];
-    default:{const exhaustive:never=candidate.availability;return exhaustive;}
-  }
-};
-
 const missingReasonLabel:Record<MissingPlayerReason,string>={
   'no-compatible-media':'No supported feed found',
   'not-yet-published':'Player not yet published',
@@ -261,7 +236,7 @@ function SourceLinks({source,links,snapshot,now}:{source:Source;links:Source['li
     return <SourceGameCard key={key} title={game?.name??gameLinks[0].title}
       summary={`${available} available ${available===1?'feed':'feeds'} · ${gameLinks.length} ${gameLinks.length===1?'listing':'listings'}`}>
       <SourceFeedChecks candidates={candidates} at={snapshot.at} now={now}/>
-      <ul>{gameLinks.map(link=><li key={link.url}>{source.id==='sportsurge-v2'?<span>{link.title}</span>:<a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>}
+      <ul>{gameLinks.map(link=><li key={link.url}><a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>
         {link.freshness==='stale-live'&&<span>Last seen {time(link.observedAt)}</span>}
         <ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={candidates}/></li>)}</ul>
     </SourceGameCard>;
@@ -331,7 +306,7 @@ function SportsurgeRun({run,league,snapshot,now,isCurrent,links}:{run:Sportsurge
         <SourceFeedChecks candidates={candidates} at={snapshot.at} now={now}/>
         {isCurrent&&links.filter(link=>link.freshness==='stale-live'&&catalogGameKey(link)===key).map(link=><p key={link.url}>Retained listing: {link.title} · Last seen {time(link.observedAt)}</p>)}
         {listings.map(listing=><div key={listing.url} className="source-inventory-listing">
-          <p>{listing.gameId?'Matched to ESPN':matchReasonLabel[listing.matchReason || 'other']} · {listing.detail.kind==='collected'?`${listing.detail.providers.length} provider rows`:listing.detail.kind==='failed'?`Detail failed (${catalogFailureLabel[listing.detail.reason]})`:'Detail pending'}</p>
+          <p><a href={listing.url} target="_blank" rel="noopener noreferrer">Game listing ↗</a> · {listing.gameId?'Matched to ESPN':matchReasonLabel[listing.matchReason || 'other']} · {listing.detail.kind==='collected'?`${listing.detail.providers.length} provider rows`:listing.detail.kind==='failed'?`Detail failed (${catalogFailureLabel[listing.detail.reason]})`:'Detail pending'}</p>
           {listing.detail.kind==='collected'&&<ul>{listing.detail.providers.map(provider=><li key={provider.id}>
             {provider.destination.kind==='link'?<span>{provider.label} · Listed for the custom player</span>:
               <span>{provider.label} · {provider.destination.kind==='malformed'?'Malformed':'Rejected'} ({provider.destination.reason}){provider.destination.kind==='rejected'&&provider.destination.display?` · ${provider.destination.display}`:''}</span>}
@@ -517,8 +492,8 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
           <p role="status">{sourceScopeMessage(source,league)}</p>
           <p>{source.collectionMode==='listings-only'?'Listings only':'Compatible feed discovery'}{source.pending?' · Integration pending':''}</p>
           {source.id!=='sportsurge-v2'&&source.id!=='streameast'&&<CollectionHealth source={source}/>}
-          {source.id!=='sportsurge-v2'&&<div className="source-inventory-public-links"><a href={source.catalogUrl} target="_blank" rel="noopener noreferrer">Listing endpoint ↗</a>
-            {source.publicUrls.filter(url=>url!==source.catalogUrl).map(url=><a key={url} href={url} target="_blank" rel="noopener noreferrer">{publicLinkLabel(url)} ↗</a>)}</div>}
+          <div className="source-inventory-public-links"><a href={source.catalogUrl} target="_blank" rel="noopener noreferrer">Listing endpoint ↗</a>
+            {source.publicUrls.filter(url=>url!==source.catalogUrl).map(url=><a key={url} href={url} target="_blank" rel="noopener noreferrer">{publicLinkLabel(url)} ↗</a>)}</div>
           {(source.id==='sportsurge-v2'||source.id==='streameast')&&<CollectorHistory source={source} snapshot={snapshot} league={league} now={renderNow}/>}
           {(source.id==='sportsurge-v2'||source.id==='streameast')&&<RetainedCatalogLinks source={source} links={links}
             snapshot={snapshot} league={league} now={renderNow}/>}
@@ -547,7 +522,7 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
           {game.candidates.length>0&&<div className="source-inventory-candidates"><strong>Feed check results</strong><ul>{game.candidates.map(candidate=><li key={candidate.id}><span>{candidate.label}</span><span className="source-inventory-check" data-state={candidate.availability.kind}>{candidateEvidence(candidate,renderNow)}{candidate.availability.kind==='playable'||candidate.availability.kind==='unavailable'?` · Checked ${time(candidate.availability.checkedAt)} · ${age(candidate.availability.checkedAt,snapshot.at)}`:''}</span></li>)}</ul></div>}
           {game.sharedRoutes.map(route=><p className="source-inventory-shared-route" key={route.id}>{route.candidateIds.map(id=>game.candidates.find(candidate=>candidate.id===id)?.label||id).join(' and ')} reach the same published server route. These remain separate player entries.</p>)}
           <ul>{game.sourceLinks.map(link=><li key={`${link.sourceId}:${link.url}`}><span>{snapshot.sources.find(source=>source.id===link.sourceId)?.name || link.sourceId}</span>
-            {link.sourceId==='sportsurge-v2'?<span>{link.title}</span>:<a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>}{link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}<ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={game.candidates.filter(candidate=>candidate.sourceIds.includes(link.sourceId))}/></li>)}</ul>
+            <a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>{link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}<ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={game.candidates.filter(candidate=>candidate.sourceIds.includes(link.sourceId))}/></li>)}</ul>
         </details>)}<div className="source-inventory-game-pagination">{visibleGames.length<listedGames.length?
           <button type="button" className="button subtle" onClick={()=>updateFilters({gameLimit:Math.min(gameLimit+GAME_PAGE_SIZE,listedGames.length)})}>Load more games</button>:
            <span>All {listedGames.length} games shown</span>}</div></div>}
