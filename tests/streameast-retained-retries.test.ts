@@ -24,7 +24,8 @@ function catalog(startedAt: number, detail: StreameastCatalog['events'][number][
   return {
     runId: startedAt === at ? '11111111-1111-4111-8111-111111111111' :
       startedAt === at + 5 * minute ? '22222222-2222-4222-8222-222222222222' :
-        '33333333-3333-4333-8333-333333333333',
+        startedAt === at + 6 * minute ? '33333333-3333-4333-8333-333333333333' :
+          '44444444-4444-4444-8444-444444444444',
     sequence: 0, startedAt,
     state: options.state === 'complete' ? { kind: 'complete', at: startedAt } : { kind: 'collecting' },
     categories: { nfl: { kind: 'collected', at: startedAt }, ncaaf: { kind: 'collected', at: options.categoryAt ?? startedAt } },
@@ -236,6 +237,31 @@ test('a failed category without a current event does not revive historical serve
     failed.categories.ncaaf = { kind: 'failed', at: at + 31 * minute, reason: 'rate-limited' };
     failed.events = [];
     await run.publish(failed);
+    assert.equal((await run.candidates()).length, 0);
+  } finally { await run.stop(); }
+});
+
+test('a later run reusing older detail cannot outrank a newer collected-empty detail', async () => {
+  const run = fixture();
+  try {
+    await run.publish(catalog(at, collected(at), { state: 'complete' }));
+    await run.coordinator.command({ kind: 'set-feed-check-interval', minutes: 15 });
+    run.clockWithoutProjection(5);
+    await run.publish(catalog(at + 5 * minute, collected(at + 5 * minute, [])));
+    run.clockWithoutProjection(6);
+    const collecting = catalog(at + 6 * minute, { kind: 'pending' });
+    const ack = await run.coordinator.command({ kind: 'streameast-catalog', catalog: collecting });
+    assert.equal(ack.kind, 'catalog-ack');
+    assert.ok(ack.kind === 'catalog-ack' && ack.reuseDetails?.kind === 'streameast');
+    if (ack.reuseDetails?.kind !== 'streameast') throw new Error('expected collected detail reuse');
+    await run.publish({ ...collecting, sequence: 1, state: { kind: 'complete', at: at + 6 * minute },
+      events: ack.reuseDetails.events });
+    await run.advance(25);
+    await run.coordinator.command({ kind: 'set-feed-check-interval', minutes: 5 });
+    await drain();
+    assert.equal((await run.candidates()).filter(row => row.availability.kind === 'unavailable').length, 3);
+    await run.advance(31);
+    await run.publish(catalog(at + 31 * minute, { kind: 'failed', at: at + 31 * minute, reason: 'rate-limited' }));
     assert.equal((await run.candidates()).length, 0);
   } finally { await run.stop(); }
 });

@@ -1174,8 +1174,7 @@ export class FootballCoordinator {
     const current=stored.current?.catalog;
     const catalogs=[...(current?.state.kind==='complete'?[]:stored.lastComplete?[stored.lastComplete.catalog]:[]),...(current?[current]:[])];
     if(!catalogs.length)return;
-    const history=[stored.lastComplete,stored.previous].filter(stored=>stored!==null)
-      .sort((left,right)=>right.receivedAt-left.receivedAt);
+    const history=[stored.lastComplete,stored.previous].filter(stored=>stored!==null);
     const currentUrls=new Set(current?.events.map(event=>event.url)||[]);
     const now=this.now();
     const match=createObservationMatcher(this.games);
@@ -1192,8 +1191,10 @@ export class FootballCoordinator {
       const freshlyCollected=event.detail.kind==='collected'&&now-event.detail.at<30*60000;
       let candidates=freshlyCollected?streameastCandidates(event,game.id):[];
       if(catalog===current&&event.detail.kind!=='collected'&&category.at<=now+60_000&&now-category.at<30*60_000) {
-        const prior=history.flatMap(stored=>stored.catalog.events.filter(prior=>
-          sameStreameastEvent(event,prior)&&prior.detail.kind==='collected'))[0];
+        const prior=history.flatMap(stored=>stored.catalog.events.flatMap(prior=>
+          sameStreameastEvent(event,prior)&&prior.detail.kind==='collected'?
+            [{event:prior,at:prior.detail.at,receivedAt:stored.receivedAt}]:[]))
+          .sort((left,right)=>right.at-left.at||right.receivedAt-left.receivedAt)[0]?.event;
         if(prior)candidates=streameastCandidates(prior,game.id).filter(candidate=>
           candidate.locator.provider==='streameast-server');
         for(const candidate of candidates)this.retainedStreameastPublication.set(this.probeKey(candidate),
