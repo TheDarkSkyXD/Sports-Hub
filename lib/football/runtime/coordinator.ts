@@ -78,6 +78,7 @@ export class FootballCoordinator {
   private finalDeadlines = new Map<string,number>();
   private cleanedFinals = new Set<string>();
   private candidates = new Map<string,Candidate[]>();
+  private retainedStreameastPublication = new Map<string,{id:string;observedAt:number;categoryAt:number}>();
   private sessions = new Map<string,OwnedSession>();
   private errors = new Map<string,string>();
   private revision = 0;
@@ -457,7 +458,15 @@ export class FootballCoordinator {
   }
   private currentCandidate(candidate:Candidate):boolean {
     return candidate.observedAt<=this.now()+60_000&&
-      (this.now()-candidate.observedAt<30*60_000||this.retainedPlayable(candidate));
+      (this.now()-candidate.observedAt<30*60_000||this.retainedPlayable(candidate)||this.currentStreameastPublication(candidate));
+  }
+  private currentStreameastPublication(candidate:Candidate):boolean {
+    const publication=this.retainedStreameastPublication.get(this.probeKey(candidate));
+    const game=this.games.find(game=>game.id===candidate.gameId);
+    return !!publication&&publication.id===candidate.id&&publication.observedAt===candidate.observedAt&&
+      publication.categoryAt<=this.now()+60_000&&this.now()-publication.categoryAt<30*60_000&&
+      candidate.sourceIds.includes('streameast')&&this.sources.some(source=>source.id==='streameast')&&
+      this.feedGame(game);
   }
   private listingPending(url:string):boolean {
     return [...this.pendingListings.values()].includes(new URL(url).hostname);
@@ -1159,11 +1168,13 @@ export class FootballCoordinator {
       .sort((a,b)=>this.rankCandidates(a,b)).map(candidate=>this.candidateSummary(candidate))};
   }
   private reconcileStreameastCandidates(): void {
+    this.retainedStreameastPublication.clear();
     if(!this.sources.some(source=>source.id==='streameast'))return;
     const stored=this.store.streameastCatalog();
     const current=stored.current?.catalog;
     const catalogs=[...(current?.state.kind==='complete'?[]:stored.lastComplete?[stored.lastComplete.catalog]:[]),...(current?[current]:[])];
     if(!catalogs.length)return;
+    const history=[stored.lastComplete,stored.previous].filter(stored=>stored!==null);
     const currentUrls=new Set(current?.events.map(event=>event.url)||[]);
     const now=this.now();
     const match=createObservationMatcher(this.games);
@@ -1177,11 +1188,23 @@ export class FootballCoordinator {
       const result=verifiedStreameastMatch(event,raw,game);
       if(result.kind!=='matched'||!this.feedGame(game))continue;
       if(catalog===current)currentListed.add(game.id);
-      if(event.detail.kind!=='collected'||now-event.detail.at>=30*60000)continue;
+      const freshlyCollected=event.detail.kind==='collected'&&now-event.detail.at<30*60000;
+      let candidates=freshlyCollected?streameastCandidates(event,game.id):[];
+      if(catalog===current&&event.detail.kind!=='collected'&&category.at<=now+60_000&&now-category.at<30*60_000) {
+        const prior=history.flatMap(stored=>stored.catalog.events.flatMap(prior=>
+          sameStreameastEvent(event,prior)&&prior.detail.kind==='collected'?
+            [{event:prior,at:prior.detail.at,receivedAt:stored.receivedAt}]:[]))
+          .sort((left,right)=>right.at-left.at||right.receivedAt-left.receivedAt)[0]?.event;
+        if(prior)candidates=streameastCandidates(prior,game.id).filter(candidate=>
+          candidate.locator.provider==='streameast-server');
+        for(const candidate of candidates)this.retainedStreameastPublication.set(this.probeKey(candidate),
+          {id:candidate.id,observedAt:candidate.observedAt,categoryAt:category.at});
+      }
+      if(!freshlyCollected&&!candidates.length)continue;
       const previous=this.candidates.get(game.id)||[];
       const selected=this.pinnedCandidateIds(game.id,now);
       const retained=previous.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id)||this.retainedPlayable(candidate));
-      this.candidates.set(game.id,[...new Map([...retained,...streameastCandidates(event,game.id)]
+      this.candidates.set(game.id,[...new Map([...retained,...candidates]
         .map(candidate=>[candidate.id,candidate] as const)).values()]);
     }
     if(current?.state.kind==='complete')for(const [gameId,prior] of this.candidates)if(!currentListed.has(gameId)) {
