@@ -50,6 +50,8 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
     if (!first || !second || first===second) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
     const strict=prepared.filter(({game,home,away})=>{
       if (observation.league && game.league!==observation.league) return false;
+      if (observation.sourceId==='tvapp-nba' && game.league!=='nba' && game.league!=='wnba' && game.league!=='ncaab') return false;
+      if (observation.sourceId==='tvapp' && game.league!=='nfl' && game.league!=='ncaaf') return false;
       return home.has(first) && away.has(second) || home.has(second) && away.has(first);
     });
     const anchored=(anchorName:string,otherName:string,anchorId:string,otherId:string):boolean=>{
@@ -60,7 +62,7 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
         !!activeAnchor&&activeAnchor.size===1&&activeAnchor.has(anchorId)&&
         !!activeOther&&activeOther.has(otherId)&&[...activeOther].every(owner=>otherOwners.has(owner));
     };
-    const contextual=observation.league==='nfl'?[]:prepared.filter(({game})=>{
+    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='ncaab'||observation.sourceId==='tvapp-nba'?[]:prepared.filter(({game})=>{
       if(game.league!=='ncaaf'||!collegeAliases.has(game.home.id||'')||!collegeAliases.has(game.away.id||''))return false;
       const home=identity(game,game.home),away=identity(game,game.away);
       return anchored(first,second,home,away)||anchored(second,first,away,home)||

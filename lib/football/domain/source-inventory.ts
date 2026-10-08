@@ -136,7 +136,7 @@ export function sourceInventory(input:Input):SourcesSnapshot {
   const add=(observation:Observation,fallback=false,event:StreameastCatalog['events'][number]|null=null,
     sourceLive=false,catalogEvidence?:LinkEvidence,eventId?:string):void=>{
     const expectedId=event?.espnEventId===null||!event?.espnEventId?undefined:
-      event.league==='ncaaf'?`ncaaf-${event.espnEventId}`:event.espnEventId;
+      event.league==='nfl'?event.espnEventId:`${event.league}-${event.espnEventId}`;
     if(confirmedFinishedGameId(observation,games,at,expectedId)||eventId&&
       confirmedFinishedBoundEvent(observation,eventId,input.sourceEventBindings||[],games))return;
     if (!sourceById.has(observation.sourceId)) return;

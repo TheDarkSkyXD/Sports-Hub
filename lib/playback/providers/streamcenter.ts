@@ -4,7 +4,7 @@ import { parseStreamcenterPlayer } from './streamcenter-player.ts';
 import { edgestreamResource, publishedManifest, validEdgestreamResourceUrl, type MediaSession } from './edgestream.ts';
 
 type StreamcenterLocator = Extract<CandidateLocator,{provider:'streamcenter'}>;
-const sourcePath=/^\/api\/stream-link\/iframe\/event-espn-league-football-college-football-(\d{5,12})\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/;
+const sourcePath=/^\/api\/stream-link\/iframe\/event-espn-league-(?:football-college-football|basketball-(?:nba|wnba))-(\d{5,12})\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/;
 const playerPath=/^\/embed\/ch\d{1,4}\.php$/;
 
 function exactHttps(value: string): URL | null {
@@ -27,7 +27,7 @@ export function streamcenterProvider(fetcher: typeof fetch = fetch): PlaybackPro
   return {
     provider:'streamcenter',
     async open(locator,signal): Promise<ProviderPlayback> {
-      const publicUrl=`https://streamcenter.st/api/stream-link/iframe/event-espn-league-football-college-football-${locator.eventId}/${locator.linkId}`;
+      const publicUrl=`https://streamcenter.st/api/stream-link/iframe/event-espn-league-${locator.league==='nba'?'basketball-nba':locator.league==='wnba'?'basketball-wnba':'football-college-football'}-${locator.eventId}/${locator.linkId}`;
       if (!sourcePath.test(new URL(publicUrl).pathname)) throw new Error('Unsupported Streamcenter link');
       const active=AbortSignal.any([signal,AbortSignal.timeout(10000)]);
       const source=await fetcher(publicUrl,{cache:'no-store',redirect:'manual',signal:active,headers:{Accept:'text/html'}});

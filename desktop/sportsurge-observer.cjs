@@ -15,6 +15,7 @@ const MAX_FRAMES = 32;
 const SPORTSPATRIKA_MAX_FRAMES = 64;
 const NFLSTREAMS_MAX_FRAMES = 64;
 const TVAPP_EMBED_MAX_FRAMES = 64;
+const FXTREND_PPV_MAX_FRAMES = 64;
 const MAX_BYTES = 24 * 1024 * 1024;
 const blockedV4 = [
   [0x00000000,8],[0x0a000000,8],[0x64400000,10],[0x7f000000,8],
@@ -76,23 +77,28 @@ function dudestreamCfbEmbeddedPair(event,server) {
 function offlinePlayerFrame(source, frames, embeddedEventUrl) {
   const sourceUrl = publicUrl(source);
   if (!sourceUrl || sourceUrl.search || sourceUrl.port) return null;
-  const direct = sourceUrl.hostname === 'vipbox.fm' && /^\/live\/(?:nfl|ncaaf)\/[a-z0-9]+(?:-[a-z0-9]+)*-[1-9]\d{0,3}$/.test(sourceUrl.pathname) ||
-    sourceUrl.hostname === 'strikeout.im' && /^\/(?:nfl|college-football)\/[1-9]\d{0,3}\/[a-z0-9]+(?:-[a-z0-9]+)*-stream$/.test(sourceUrl.pathname) ||
+  const direct = sourceUrl.hostname === 'vipbox.fm' && /^\/live\/(?:nfl|ncaaf|nba)\/[a-z0-9]+(?:-[a-z0-9]+)*-[1-9]\d{0,3}$/.test(sourceUrl.pathname) ||
+    sourceUrl.hostname === 'strikeout.im' && /^\/(?:nfl|college-football|nba)\/[1-9]\d{0,3}\/[a-z0-9]+(?:-[a-z0-9]+)*-stream$/.test(sourceUrl.pathname) ||
     sourceUrl.hostname === 'www.vipboxtv.sk' && /^\/cfb\/[1-9]\d{0,3}\/stream-[a-z0-9]+(?:-[a-z0-9]+)*-live$/.test(sourceUrl.pathname);
   const embedded = embeddedEventUrl ? publicUrl(embeddedEventUrl) : null;
   const team = embedded?.hostname === 'ms.buffstream.io' && !embedded.search && !embedded.port ?
-    /^\/(?:nfl|cfb)-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(embedded.pathname)?.[1] : null;
+    /^\/(nfl|cfb|nba)-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(embedded.pathname) : null;
   const pair = sourceUrl.hostname === 'embedsports.me' ?
-    /^\/american-football\/([a-z0-9]+(?:-[a-z0-9]+)*)-vs-([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$/.exec(sourceUrl.pathname) : null;
+    /^\/(american-football|basketball)\/([a-z0-9]+(?:-[a-z0-9]+)*)-vs-([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$/.exec(sourceUrl.pathname) : null;
   const dudestream = dudestreamCfbEmbeddedPair(embedded,sourceUrl);
-  const selected = embeddedEventUrl ? !!pair && (dudestream || !!team && (team === pair[1] || team === pair[2])) : direct;
+  const selected = embeddedEventUrl ? !!pair && (dudestream || !!team &&
+    (team[1]==='nba' ? pair[1]==='basketball' : pair[1]==='american-football') &&
+    (team[2] === pair[2] || team[2] === pair[3])) : direct;
   if (!selected) return null;
+  const playerPath=embeddedEventUrl ? team?.[1]==='nba' ? '/sd0embed/NBA' : '/sd0embed/NFL' :
+    sourceUrl.hostname==='vipbox.fm'&&sourceUrl.pathname.startsWith('/live/nba/')||
+    sourceUrl.hostname==='strikeout.im'&&sourceUrl.pathname.startsWith('/nba/') ? '/sd0embed/NBA' : '/sd0embed/NFL';
   const players = frames.filter(frame => {
     try {
       const url = new URL(frame.url);
       const owned = !embeddedEventUrl || (dudestream ? belongsToDudestreamPage(frame,source,embeddedEventUrl) :
         belongsToEmbeddedServer(frame,source));
-      return url.protocol === 'https:' && url.pathname === '/sd0embed/NFL' &&
+      return url.protocol === 'https:' && url.pathname === playerPath &&
         ['fallafar.me','posamari.me','dervlin.me','ninguno.cc','lonpapil.eu'].includes(url.hostname) &&
         owned;
     }
@@ -207,6 +213,12 @@ function tvappEmbedEntry(value) {
   const url = publicUrl(value);
   return !!url && url.origin === 'https://embed.st' && !url.search && !url.port &&
     /^\/embed\/[a-z0-9-]{1,32}\/[a-zA-Z0-9_-]{1,120}\/[1-9][0-9]{0,2}$/.test(url.pathname);
+}
+
+function fxtrendPpvEntry(value) {
+  const url = publicUrl(value);
+  return !!url && url.origin === 'https://fxtrend.st' && !url.search && !url.port &&
+    /^\/event\/ppv-[a-z0-9]+(?:-[a-z0-9]+)*-vs-[a-z0-9]+(?:-[a-z0-9]+)*\/(?:core|vector|vertex|hotel)\/[1-9][0-9]{0,2}$/.test(url.pathname);
 }
 
 function aianimalvibesPlayer(value) {
@@ -559,7 +571,8 @@ function createObserverSlot(index) {
         issuerRequests:0,
         frameLimit:embeddedEventUrl && new URL(embeddedEventUrl).hostname==='nflstreams.org' ? NFLSTREAMS_MAX_FRAMES :
           sportspatrikaEntry(url) ? SPORTSPATRIKA_MAX_FRAMES :
-            tvappEmbedEntry(url) ? TVAPP_EMBED_MAX_FRAMES : MAX_FRAMES,
+            tvappEmbedEntry(url) ? TVAPP_EMBED_MAX_FRAMES :
+              fxtrendPpvEntry(url) ? FXTREND_PPV_MAX_FRAMES : MAX_FRAMES,
         deadline: Date.now()+OBSERVE_MS, probeKeys: new Set(), probeTimers: new Set(),
         timer: setTimeout(() => endActive(current,null),OBSERVE_MS) };
       active = current;

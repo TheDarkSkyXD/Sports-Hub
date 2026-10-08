@@ -13,7 +13,7 @@ const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minu
 const noSubscribe = () => () => {};
 const isClient = () => true;
 const isServer = () => false;
-export function GameTiming({ game, relativeDay = false }: { game: Pick<Game, 'date' | 'status'>; relativeDay?: boolean }) {
+export function GameTiming({ game, relativeDay = false }: { game: Pick<Game, 'date' | 'status'> & {league?:Game['league']}; relativeDay?: boolean }) {
   const now = useGameClock(relativeDay);
   const mounted = useSyncExternalStore(noSubscribe, isClient, isServer);
   const timing = gameTiming(game, null);

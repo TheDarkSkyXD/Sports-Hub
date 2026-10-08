@@ -7,8 +7,12 @@ export type SourcePlayer = { id: string; label: string; url: string };
 export const LEAGUES = {
   nfl: { label: 'NFL' },
   ncaaf: { label: 'NCAA' },
+  nba: { label: 'NBA' },
+  wnba: { label: 'WNBA' },
+  ncaab: { label: 'NCAA BB' },
 } satisfies Record<League, { label: string }>;
-export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|ncaaf-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
+export function isBasketballLeague(league: League): boolean { return league === 'nba' || league === 'wnba' || league === 'ncaab'; }
+export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|ncaab|nba|wnba)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
 export function parsePlayers(html: string): SourcePlayer[] {
   const embeds = [...html.matchAll(/<iframe\b[^>]*>/gi)].flatMap(([tag]) => {
     const source = tag.match(/(?:^|\s)src\s*=\s*(['"])(https:\/\/gooz\.aapmains\.net\/new-stream-embed\/(\d+))\1/i);
@@ -64,7 +68,8 @@ export function parseScoreboard(data: unknown, league: League = 'nfl'): Schedule
     const situation = object(competition?.situation);
     const names = items(object(items(competition?.broadcasts)[0])?.names).filter((name): name is string => typeof name === 'string');
     const season = object(event?.season)?.year;
-    return [ScheduleGameSchema.parse({ id: league === 'ncaaf' ? `ncaaf-${id}` : id, league, lifecycle, season: typeof season === 'number' ? season : undefined, name: text(event?.name) || `${awayTeam.displayName} at ${homeTeam.displayName}`, date: text(event?.date), home: team(home, homeTeam), away: team(away, awayTeam), status: gameStatus, detail, redzone: situation?.isRedZone === true && gameStatus === 'in', down: text(situation?.downDistanceText), possession: situation?.possession === home.id ? text(homeTeam.abbreviation) : situation?.possession === away.id ? text(awayTeam.abbreviation) : undefined, lastPlay: text(object(situation?.lastPlay)?.text), venue: text(object(competition?.venue)?.fullName), broadcast: names.length ? names.join(' / ') : undefined })];
+    const basketball = league === 'nba' || league === 'wnba' || league === 'ncaab';
+    return [ScheduleGameSchema.parse({ id: league === 'nfl' ? id : `${league}-${id}`, league, lifecycle, season: typeof season === 'number' ? season : undefined, name: text(event?.name) || `${awayTeam.displayName} at ${homeTeam.displayName}`, date: text(event?.date), home: team(home, homeTeam), away: team(away, awayTeam), status: gameStatus, detail, redzone: !basketball && situation?.isRedZone === true && gameStatus === 'in', down: basketball ? undefined : text(situation?.downDistanceText), possession: basketball ? undefined : situation?.possession === home.id ? text(homeTeam.abbreviation) : situation?.possession === away.id ? text(awayTeam.abbreviation) : undefined, lastPlay: text(object(situation?.lastPlay)?.text), venue: text(object(competition?.venue)?.fullName), broadcast: names.length ? names.join(' / ') : undefined })];
   });
 }
 export function validFeedUrl(input: string): string | null {

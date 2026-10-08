@@ -260,8 +260,8 @@ export class FootballStore {
       const parsed=ObservationSchema.safeParse(JSON.parse(row.payload));
       if(!parsed.success)return [];
       const result=JSON.parse(row.result) as Match;
-      const sportsurgeId=/^https:\/\/v2\.sportsurge\.net\/watch-(\d{1,12})-(cfb|nfl)-/.exec(parsed.data.url);
-      const eventId=sportsurgeId?`${sportsurgeId[2]==='cfb'?'ncaaf':'nfl'}:${sportsurgeId[1]}`:null;
+      const sportsurgeId=/^https:\/\/v2\.sportsurge\.net\/watch-(\d{1,12})-(cfb|nfl|nba)-/.exec(parsed.data.url);
+      const eventId=sportsurgeId?`${sportsurgeId[2]==='cfb'?'ncaaf':sportsurgeId[2]}:${sportsurgeId[1]}`:null;
       const boundGameId=confirmedFinishedBoundEvent(parsed.data,eventId||parsed.data.id,bindings,canonicalGames);
       const bound=result.kind==='matched'&&finals.some(game=>game.id===result.gameId)||
         confirmedFinishedGameId(parsed.data,finals,now)!==null||
@@ -287,8 +287,8 @@ export class FootballStore {
         typeof row.outcome!=='string')return [];
       const outcome=SourceAttemptSchema.shape.outcome.safeParse(row.outcome);
       if(!outcome.success)return [];
-      const category=/^(.*):(ncaaf|nfl)$/.exec(row.source_id);
-      const league=category?.[2]==='ncaaf'?'ncaaf':category?.[2]==='nfl'?'nfl':null;
+      const category=/^(.*):(ncaaf|nfl|nba)$/.exec(row.source_id);
+      const league=category?.[2]==='ncaaf'?'ncaaf':category?.[2]==='nfl'?'nfl':category?.[2]==='nba'?'nba':null;
       return [{sourceId:category?category[1]:row.source_id,league,
         at:row.at,outcome:outcome.data,count:row.count}];
     });

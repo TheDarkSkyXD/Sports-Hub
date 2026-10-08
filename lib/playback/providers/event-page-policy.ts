@@ -39,12 +39,25 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
   const event = exactPage(eventUrl), server = exactPage(serverUrl);
   if (!event || !server) return false;
   if(event.hostname==='ms.buffstream.io'&&server.hostname==='embedsports.me'){
-    const team=/^\/(?:nfl|cfb)-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(event.pathname);
-    const pair=/^\/american-football\/([a-z0-9]+(?:-[a-z0-9]+)*)-vs-([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$/.exec(server.pathname);
-    return !!team&&!!pair&&(team[1]===pair[1]||team[1]===pair[2]);
+    const team=/^\/(nfl|cfb|nba)-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(event.pathname);
+    const pair=/^\/(american-football|basketball)\/([a-z0-9]+(?:-[a-z0-9]+)*)-vs-([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$/.exec(server.pathname);
+    return !!team&&!!pair&&(team[1]==='nba' ? pair[1]==='basketball' : pair[1]==='american-football')&&
+      (team[2]===pair[2]||team[2]===pair[3]);
   }
   if (event.hostname === 'tvapp1.pk') return eventUrl===serverUrl && /^\/watch\/\d{1,20}$/.test(event.pathname);
   if ((event.hostname === 'methstreams.st' || event.hostname === 'crackstreams.st') && server.hostname === 'fxtrend.st') {
+    if (/^\/event\/ppv-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(event.pathname))
+      return new RegExp(`^${event.pathname}/(?:core|vector|vertex|hotel)/[1-9]\\d{0,2}$`).test(server.pathname);
+    const publishedPpv=/^\/event\/ppv-([a-z0-9-]+)\/(?:core|vector|vertex|hotel)\/[1-9]\d{0,2}$/.exec(server.pathname);
+    if(publishedPpv){
+      const pair=(slug:string)=>{
+        const teams=slug.split('-vs-');
+        return teams.length===2&&teams.every(team=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(team))?teams.sort():null;
+      };
+      const eventTeams=event.pathname.startsWith('/event/')?pair(event.pathname.slice('/event/'.length)):null;
+      const serverTeams=pair(publishedPpv[1]);
+      return !!eventTeams&&!!serverTeams&&eventTeams[0]===serverTeams[0]&&eventTeams[1]===serverTeams[1];
+    }
     if (/^\/event\/m-[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}$/.test(event.pathname)) {
       return server.pathname===event.pathname ||
         new RegExp(`^${event.pathname}/(?:core|vector|vertex|foxtrot|main|hotel)/[1-9]\\d{0,2}$`).test(server.pathname);
@@ -53,7 +66,7 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
       /^\/event\/live_(?:cfb|nfl)_[a-z0-9]+(?:-[a-z0-9]+)*-live-streaming-\d{1,20}\/(?:vector|vertex|foxtrot)\/[1-9]\d{0,2}$/.test(server.pathname);
   }
   if (event.hostname === 'vipbox.fm' && server.hostname === event.hostname) {
-    const match = /^\/onair\/(ncaaf|nfl)\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
+    const match = /^\/onair\/(ncaaf|nfl|nba)\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
     return !!match && new RegExp(`^/live/${match[1]}/${match[2]}-[1-9]\\d{0,3}$`).test(server.pathname);
   }
   if (event.hostname === 'www.vipboxtv.sk' && server.hostname === event.hostname) {
@@ -61,11 +74,11 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
     return !!match && new RegExp(`^/cfb/[1-9]\\d{0,3}/stream-${match[1]}-live$`).test(server.pathname);
   }
   if (event.hostname === 'strikeout.im' && server.hostname === event.hostname) {
-    const match = /^\/(college-football|nfl)\/stream-([a-z0-9]+(?:-[a-z0-9]+)*)-live$/.exec(event.pathname);
+    const match = /^\/(college-football|nfl|nba)\/stream-([a-z0-9]+(?:-[a-z0-9]+)*)-live$/.exec(event.pathname);
     return !!match && new RegExp(`^/${match[1]}/[1-9]\\d{0,3}/${match[2]}-stream$`).test(server.pathname);
   }
   if (event.hostname === 'ppv.st' && server.hostname === 'embedindia.st') {
-    const match = /^\/live\/(cfb|nfl)\/(\d{4}-\d{2}-\d{2})\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
+    const match = /^\/live\/(cfb|nfl|nba|wnba)\/(\d{4}-\d{2}-\d{2})\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
     if (!match) return false;
     const path=`/embed/${match[1]}/${match[2]}/${match[3]}`;
     return server.pathname===path || server.pathname===`${path}/skycast`;
