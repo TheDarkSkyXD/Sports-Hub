@@ -8,7 +8,7 @@ export type CandidateProbeResult =
   | {kind:'deferred';retryAfterMs:number;phase?:MediaPhase};
 
 export type ScheduleSource = { id: string; league: League; sport?: 'football' | 'basketball' | 'hockey' | 'baseball' | 'racing'; path: string; group: string | null };
-export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[]; parserVersion?: number };
+export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[]; parserVersion?: number; leagues?: readonly League[] };
 export type SchedulePartition = { games: Game[]; at: number; week?: number };
 export type ScheduleResult = SchedulePartition & { league: League; horizonErrors?: string[] };
 export type ListingResult = { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' };

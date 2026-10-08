@@ -32,6 +32,7 @@ const eslintConfig = defineConfig([
         { pattern: "hooks/**/*.{ts,tsx}", category: "ui" },
         { pattern: "app/**/route.ts", category: "route" },
         { pattern: "lib/football/shared.ts", category: "shared" },
+        { pattern: "lib/football/source-registry.{ts,json}", category: "source-config" },
         { pattern: "lib/football/domain/college-teams.generated.ts", category: "team-catalog" },
         { pattern: "lib/football/domain/*.ts", category: "domain" },
         { pattern: "lib/football/adapters/{schedule,sources,nflstreams,buffstream}.ts", category: "adapter" },
@@ -68,6 +69,8 @@ const eslintConfig = defineConfig([
       "boundaries/dependencies": ["error", {
         default: "disallow",
         policies: [
+          { from: { file: { categories: "source-config" } }, allow: { to: { file: { categories: { anyOf: ["source-config", "shared"] } } } } },
+          { from: { file: { categories: { anyOf: ["ui", "domain", "adapter", "coordinator", "provider-adapter", "provider-parser", "desktop", "test"] } } }, allow: { to: { file: { categories: "source-config" } } } },
           {
             from: { file: { categories: "story" } },
             allow: { to: { file: { categories: { anyOf: ["ui", "shared", "pure-lib", "story-fixture"] } } } },

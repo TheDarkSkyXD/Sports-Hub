@@ -1,0 +1,559 @@
+[
+  {
+    "id": "sportsurge",
+    "url": "https://isportsurge.ws/index6",
+    "family": "sportsurge",
+    "leagues": [
+      "nfl",
+      "ncaaf",
+      "nba",
+      "nhl",
+      "mlb"
+    ]
+  },
+  {
+    "id": "crackstreams-cfb",
+    "url": "https://ws.crackstreams.me/cfb-streams-live42",
+    "family": "buffstream",
+    "leagues": [
+      "ncaaf"
+    ]
+  },
+  {
+    "id": "buffstream-cfb",
+    "url": "https://ms.buffstream.io/cfb-streams-live-26",
+    "family": "buffstream",
+    "leagues": [
+      "ncaaf"
+    ]
+  },
+  {
+    "id": "livetv",
+    "name": "LiveTV",
+    "url": "https://livetv.sx/enx/allupcomingsports/27/",
+    "family": "livetv",
+    "leagues": [
+      "nfl",
+      "ncaaf"
+    ]
+  },
+  {
+    "id": "vipbox-cfb",
+    "url": "https://vipbox.fm/ncaaf-schedule",
+    "family": "vipbox",
+    "leagues": [
+      "ncaaf"
+    ]
+  },
+  {
+    "id": "vipbox-nfl",
+    "url": "https://vipbox.fm/nfl-schedule",
+    "family": "vipbox",
+    "leagues": [
+      "nfl"
+    ]
+  },
+  {
+    "id": "vipboxtv-cfb",
+    "url": "https://www.vipboxtv.sk/ncaaf-stream",
+    "family": "vipbox",
+    "leagues": [
+      "ncaaf"
+    ]
+  },
+  {
+    "id": "strikeout-nfl",
+    "name": "Strikeout NFL",
+    "url": "https://strikeout.im/nfl",
+    "family": "vipbox",
+    "leagues": [
+      "nfl"
+    ]
+  },
+  {
+    "id": "strikeout-cfb",
+    "url": "https://strikeout.im/ncaaf",
+    "family": "vipbox",
+    "leagues": [
+      "ncaaf"
+    ]
+  },
+  {
+    "id": "nflstreams",
+    "name": "NFLStreams",
+    "url": "https://nflstreams.org/",
+    "family": "nflstreams",
+    "parserVersion": 4,
+    "leagues": [
+      "nfl"
+    ]
+  },
+  {
+    "id": "streameast",
+    "name": "StreamEast",
+    "url": "https://v2.streameast.ga/cfb-streams/",
+    "family": "streameast",
+    "kind": "browser-catalog",
+    "publicUrls": [
+      "https://v2.streameast.ga/cfb-streams/",
+      "https://v2.streameast.ga/nfl-streams/",
+      "https://v2.streameast.ga/nba-streams/",
+      "https://v2.streameast.ga/nhl-streams/",
+      "https://v2.streameast.ga/mlb-streams/",
+      "https://v2.streameast.ga/wnba-streams/",
+      "https://v2.streameast.ga/ncaab-streams/",
+      "https://v2.streameast.ga/f1-streams/"
+    ],
+    "leagues": [
+      "ncaaf",
+      "nfl",
+      "nba",
+      "nhl",
+      "mlb",
+      "wnba",
+      "ncaab",
+      "f1"
+    ],
+    "browserCategories": [
+      {
+        "league": "ncaaf",
+        "url": "https://v2.streameast.ga/cfb-streams/",
+        "pathCode": "cfb",
+        "emptyTitles": [
+          "No College Football games available",
+          "No CFB games available"
+        ],
+        "espnPath": "football/college-football"
+      },
+      {
+        "league": "nfl",
+        "url": "https://v2.streameast.ga/nfl-streams/",
+        "pathCode": "nfl",
+        "emptyTitles": [
+          "No NFL games available"
+        ],
+        "espnPath": "football/nfl"
+      },
+      {
+        "league": "nba",
+        "url": "https://v2.streameast.ga/nba-streams/",
+        "pathCode": "nba",
+        "emptyTitles": [
+          "No NBA games available"
+        ],
+        "espnPath": "basketball/nba"
+      },
+      {
+        "league": "nhl",
+        "url": "https://v2.streameast.ga/nhl-streams/",
+        "pathCode": "nhl",
+        "emptyTitles": [
+          "No NHL games available"
+        ],
+        "espnPath": "hockey/nhl"
+      },
+      {
+        "league": "mlb",
+        "url": "https://v2.streameast.ga/mlb-streams/",
+        "pathCode": "mlb",
+        "emptyTitles": [
+          "No MLB games available"
+        ],
+        "espnPath": "baseball/mlb"
+      },
+      {
+        "league": "wnba",
+        "url": "https://v2.streameast.ga/wnba-streams/",
+        "pathCode": null,
+        "emptyTitles": [
+          "No WNBA games available"
+        ]
+      },
+      {
+        "league": "ncaab",
+        "url": "https://v2.streameast.ga/ncaab-streams/",
+        "pathCode": null,
+        "emptyTitles": [
+          "No NCAAB games available"
+        ]
+      },
+      {
+        "league": "f1",
+        "url": "https://v2.streameast.ga/f1-streams/",
+        "pathCode": null,
+        "emptyTitles": [
+          "No F1 races available"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buffstream-nfl",
+    "url": "https://ms.buffstream.io/nfl-streams-live-31",
+    "family": "buffstream",
+    "leagues": [
+      "nfl"
+    ]
+  },
+  {
+    "id": "methstreams",
+    "url": "https://methstreams.st/NFL",
+    "family": "event",
+    "leagues": [
+      "nfl",
+      "ncaaf"
+    ]
+  },
+  {
+    "id": "crackstreams-st",
+    "name": "Crackstreams NFL",
+    "url": "https://crackstreams.st/NFL",
+    "family": "event",
+    "leagues": [
+      "nfl",
+      "ncaaf"
+    ]
+  },
+  {
+    "id": "tvapp",
+    "name": "TVApp",
+    "url": "https://api-backups.handleapi.win/matches/sport/american-football",
+    "family": "tvapp",
+    "kind": "catalog",
+    "parserVersion": 4,
+    "publicUrls": [
+      "https://tvapp1.pk/cfb-streams",
+      "https://tvapp1.pk/nfl-streams",
+      "https://thetvapp67.st/cfb-streams",
+      "https://thetvapp67.st/nfl-streams"
+    ],
+    "leagues": [
+      "nfl",
+      "ncaaf"
+    ]
+  },
+  {
+    "id": "tvapp-nba",
+    "name": "TVApp Basketball",
+    "url": "https://api-backups.handleapi.win/matches/sport/basketball",
+    "family": "tvapp",
+    "kind": "catalog",
+    "parserVersion": 4,
+    "publicUrls": [],
+    "leagues": [
+      "nba",
+      "wnba",
+      "ncaab"
+    ]
+  },
+  {
+    "id": "tvapp-nhl",
+    "name": "TVApp Hockey",
+    "url": "https://api-backups.handleapi.win/matches/sport/hockey",
+    "family": "tvapp",
+    "kind": "catalog",
+    "parserVersion": 4,
+    "publicUrls": [],
+    "leagues": [
+      "nhl",
+      "ncaah",
+      "ncaawh"
+    ]
+  },
+  {
+    "id": "tvapp-mlb",
+    "name": "TVApp Baseball",
+    "url": "https://api-backups.handleapi.win/matches/sport/baseball",
+    "family": "tvapp",
+    "kind": "catalog",
+    "parserVersion": 4,
+    "publicUrls": [],
+    "leagues": [
+      "mlb"
+    ]
+  },
+  {
+    "id": "ppv",
+    "name": "PPV",
+    "url": "https://api.ppv.st/api/streams",
+    "family": "ppv",
+    "kind": "catalog",
+    "publicUrls": [
+      "https://ppv.st/#26"
+    ],
+    "leagues": [
+      "nfl",
+      "ncaaf",
+      "nba",
+      "wnba",
+      "nhl",
+      "mlb",
+      "f1"
+    ]
+  },
+  {
+    "id": "methstreams-f1",
+    "name": "Methstreams Motorsports",
+    "url": "https://methstreams.st/F1",
+    "family": "motorsports",
+    "leagues": [
+      "f1",
+      "nascar-cup",
+      "nascar-truck",
+      "motogp",
+      "motorsport"
+    ]
+  },
+  {
+    "id": "crackstreams-f1",
+    "name": "Crackstreams Motorsports",
+    "url": "https://crackstreams.st/F1",
+    "family": "motorsports",
+    "leagues": [
+      "f1",
+      "nascar-cup",
+      "nascar-truck",
+      "motogp",
+      "motorsport"
+    ]
+  },
+  {
+    "id": "streamcenter",
+    "name": "Streamcenter",
+    "url": "https://streamcenter.st/game-cards/embed?sport=football",
+    "family": "streamcenter",
+    "publicUrls": [
+      "https://streame.center/"
+    ],
+    "leagues": [
+      "ncaaf"
+    ]
+  },
+  {
+    "id": "streamcenter-nba",
+    "name": "Streamcenter Basketball",
+    "url": "https://streamcenter.st/game-cards/embed?sport=basketball",
+    "family": "streamcenter",
+    "publicUrls": [
+      "https://streame.center/"
+    ],
+    "leagues": [
+      "nba",
+      "wnba"
+    ]
+  },
+  {
+    "id": "streamcenter-nhl",
+    "name": "Streamcenter Hockey",
+    "url": "https://streamcenter.st/game-cards/embed?sport=hockey",
+    "family": "streamcenter",
+    "publicUrls": [
+      "https://streame.center/"
+    ],
+    "leagues": [
+      "nhl"
+    ]
+  },
+  {
+    "id": "streamcenter-mlb",
+    "name": "Streamcenter Baseball",
+    "url": "https://streamcenter.st/game-cards/embed?sport=baseball",
+    "family": "streamcenter",
+    "publicUrls": [
+      "https://streame.center/"
+    ],
+    "leagues": [
+      "mlb"
+    ]
+  },
+  {
+    "id": "sportsurge-v2",
+    "name": "Sportsurge v2",
+    "url": "https://v2.sportsurge.net/watch-cfb-streams/",
+    "family": "sportsurge",
+    "kind": "browser-catalog",
+    "publicUrls": [
+      "https://v2.sportsurge.net/watch-cfb-streams/",
+      "https://v2.sportsurge.net/watch-nfl-streams/",
+      "https://v2.sportsurge.net/watch-basketball-streams/",
+      "https://v2.sportsurge.net/watch-hockey-streams/",
+      "https://v2.sportsurge.net/watch-baseball-streams/"
+    ],
+    "leagues": [
+      "ncaaf",
+      "nfl",
+      "nba",
+      "nhl",
+      "mlb"
+    ],
+    "browserCategories": [
+      {
+        "league": "ncaaf",
+        "url": "https://v2.sportsurge.net/watch-cfb-streams/",
+        "pathCode": "cfb"
+      },
+      {
+        "league": "nfl",
+        "url": "https://v2.sportsurge.net/watch-nfl-streams/",
+        "pathCode": "nfl"
+      },
+      {
+        "league": "nba",
+        "url": "https://v2.sportsurge.net/watch-basketball-streams/",
+        "pathCode": "basketball"
+      },
+      {
+        "league": "nhl",
+        "url": "https://v2.sportsurge.net/watch-hockey-streams/",
+        "pathCode": "hockey"
+      },
+      {
+        "league": "mlb",
+        "url": "https://v2.sportsurge.net/watch-baseball-streams/",
+        "pathCode": "baseball"
+      }
+    ]
+  },
+  {
+    "id": "swac",
+    "name": "SWAC TV",
+    "url": "https://ott.gideo.video/api/legacy?cmd=getCategoryChildren&AccountID=Southwestern-Athletic-Conference&CategoryID=e1dbe7ec9a7e686b42b53ab33c3e30e4",
+    "family": "swac",
+    "kind": "catalog",
+    "publicUrls": [
+      "https://tv.swac.org/"
+    ],
+    "leagues": [
+      "ncaaf"
+    ]
+  },
+  {
+    "id": "vipbox-nba",
+    "url": "https://vipbox.fm/basketball-schedule",
+    "family": "vipbox",
+    "leagues": [
+      "nba"
+    ]
+  },
+  {
+    "id": "strikeout-nba",
+    "url": "https://strikeout.im/nba",
+    "family": "vipbox",
+    "leagues": [
+      "nba"
+    ]
+  },
+  {
+    "id": "methstreams-nba",
+    "url": "https://methstreams.st/NBA",
+    "family": "event",
+    "leagues": [
+      "nba",
+      "wnba",
+      "ncaab"
+    ]
+  },
+  {
+    "id": "crackstreams-nba",
+    "url": "https://crackstreams.st/NBA",
+    "family": "event",
+    "leagues": [
+      "nba",
+      "wnba",
+      "ncaab"
+    ]
+  },
+  {
+    "id": "buffstream-nba",
+    "url": "https://ms.buffstream.io/nba-streams-live-15",
+    "family": "buffstream",
+    "leagues": [
+      "nba"
+    ]
+  },
+  {
+    "id": "vipbox-nhl",
+    "url": "https://vipbox.fm/hockey-schedule",
+    "family": "vipbox",
+    "leagues": [
+      "nhl"
+    ]
+  },
+  {
+    "id": "strikeout-nhl",
+    "url": "https://strikeout.im/nhl",
+    "family": "vipbox",
+    "leagues": [
+      "nhl"
+    ]
+  },
+  {
+    "id": "methstreams-nhl",
+    "url": "https://methstreams.st/NHL",
+    "family": "event",
+    "leagues": [
+      "nhl",
+      "ncaah",
+      "ncaawh"
+    ]
+  },
+  {
+    "id": "crackstreams-nhl",
+    "url": "https://crackstreams.st/NHL",
+    "family": "event",
+    "leagues": [
+      "nhl",
+      "ncaah",
+      "ncaawh"
+    ]
+  },
+  {
+    "id": "buffstream-nhl",
+    "url": "https://ms.buffstream.io/nhl-streams-live-29",
+    "family": "buffstream",
+    "leagues": [
+      "nhl"
+    ]
+  },
+  {
+    "id": "strikeout-mlb",
+    "url": "https://strikeout.im/mlb",
+    "family": "vipbox",
+    "leagues": [
+      "mlb"
+    ]
+  },
+  {
+    "id": "methstreams-mlb",
+    "url": "https://methstreams.st/MLB",
+    "family": "event",
+    "leagues": [
+      "mlb"
+    ]
+  },
+  {
+    "id": "crackstreams-mlb",
+    "url": "https://crackstreams.st/MLB",
+    "family": "event",
+    "leagues": [
+      "mlb"
+    ]
+  },
+  {
+    "id": "buffstream-mlb",
+    "url": "https://ms.buffstream.io/mlb-streams-live-29",
+    "family": "buffstream",
+    "leagues": [
+      "mlb"
+    ]
+  },
+  {
+    "id": "mlbbox-mlb",
+    "name": "MLBBox",
+    "url": "https://mlbbox.me/mlb-streams",
+    "family": "vipbox",
+    "leagues": [
+      "mlb"
+    ]
+  }
+]

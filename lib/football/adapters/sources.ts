@@ -18,61 +18,8 @@ const TVAPP_BASKETBALL_API = 'https://api-backups.handleapi.win/matches/sport/ba
 const TVAPP_HOCKEY_API = 'https://api-backups.handleapi.win/matches/sport/hockey';
 const TVAPP_BASEBALL_API = 'https://api-backups.handleapi.win/matches/sport/baseball';
 const PPV_API = 'https://api.ppv.st/api/streams';
-const STREAMCENTER_CATALOG = 'https://streamcenter.st/game-cards/embed?sport=football';
-const STREAMCENTER_BASKETBALL = 'https://streamcenter.st/game-cards/embed?sport=basketball';
-const STREAMCENTER_HOCKEY = 'https://streamcenter.st/game-cards/embed?sport=hockey';
-const STREAMCENTER_BASEBALL = 'https://streamcenter.st/game-cards/embed?sport=baseball';
-export const SOURCES = [
-  {id:'sportsurge',url:'https://isportsurge.ws/index6',family:'sportsurge'},
-  {id:'crackstreams-cfb',url:'https://ws.crackstreams.me/cfb-streams-live42',family:'buffstream'},
-  {id:'buffstream-cfb',url:'https://ms.buffstream.io/cfb-streams-live-26',family:'buffstream'},
-  {id:'livetv',name:'LiveTV',url:'https://livetv.sx/enx/allupcomingsports/27/',family:'livetv'},
-  {id:'vipbox-cfb',url:'https://vipbox.fm/ncaaf-schedule',family:'vipbox'},
-  {id:'vipbox-nfl',url:'https://vipbox.fm/nfl-schedule',family:'vipbox'},
-  {id:'vipboxtv-cfb',url:'https://www.vipboxtv.sk/ncaaf-stream',family:'vipbox'},
-  {id:'strikeout-nfl',name:'Strikeout NFL',url:'https://strikeout.im/nfl',family:'vipbox'},
-  {id:'strikeout-cfb',url:'https://strikeout.im/ncaaf',family:'vipbox'},
-  {id:'nflstreams',name:'NFLStreams',url:'https://nflstreams.org/',family:'nflstreams',parserVersion:4},
-  {id:'streameast',name:'StreamEast',url:'https://v2.streameast.ga/cfb-streams/',family:'streameast',kind:'browser-catalog',publicUrls:[
-    'https://v2.streameast.ga/cfb-streams/','https://v2.streameast.ga/nfl-streams/',
-  ]},
-  {id:'buffstream-nfl',url:'https://ms.buffstream.io/nfl-streams-live-31',family:'buffstream'},
-  {id:'methstreams',url:'https://methstreams.st/NFL',family:'event'},
-  {id:'crackstreams-st',name:'Crackstreams NFL',url:'https://crackstreams.st/NFL',family:'event'},
-  {id:'tvapp',name:'TVApp',url:TVAPP_API,family:'tvapp',kind:'catalog',parserVersion:4,publicUrls:[
-    'https://tvapp1.pk/cfb-streams','https://tvapp1.pk/nfl-streams',
-    'https://thetvapp67.st/cfb-streams','https://thetvapp67.st/nfl-streams',
-  ]},
-  {id:'tvapp-nba',name:'TVApp Basketball',url:TVAPP_BASKETBALL_API,family:'tvapp',kind:'catalog',parserVersion:4,publicUrls:[]},
-  {id:'tvapp-nhl',name:'TVApp Hockey',url:TVAPP_HOCKEY_API,family:'tvapp',kind:'catalog',parserVersion:4,publicUrls:[]},
-  {id:'tvapp-mlb',name:'TVApp Baseball',url:TVAPP_BASEBALL_API,family:'tvapp',kind:'catalog',parserVersion:4,publicUrls:[]},
-  {id:'ppv',name:'PPV',url:PPV_API,family:'ppv',kind:'catalog',publicUrls:['https://ppv.st/#26']},
-  {id:'methstreams-f1',name:'Methstreams Motorsports',url:'https://methstreams.st/F1',family:'motorsports'},
-  {id:'crackstreams-f1',name:'Crackstreams Motorsports',url:'https://crackstreams.st/F1',family:'motorsports'},
-  {id:'streamcenter',name:'Streamcenter',url:STREAMCENTER_CATALOG,family:'streamcenter',publicUrls:['https://streame.center/']},
-  {id:'streamcenter-nba',name:'Streamcenter Basketball',url:STREAMCENTER_BASKETBALL,family:'streamcenter',publicUrls:['https://streame.center/']},
-  {id:'streamcenter-nhl',name:'Streamcenter Hockey',url:STREAMCENTER_HOCKEY,family:'streamcenter',publicUrls:['https://streame.center/']},
-  {id:'streamcenter-mlb',name:'Streamcenter Baseball',url:STREAMCENTER_BASEBALL,family:'streamcenter',publicUrls:['https://streame.center/']},
-  {id:'sportsurge-v2',name:'Sportsurge v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'browser-catalog',publicUrls:[
-    'https://v2.sportsurge.net/watch-cfb-streams/','https://v2.sportsurge.net/watch-nfl-streams/',
-  ]},
-  {id:'swac',name:'SWAC TV',url:SWAC_CATALOG_URL,family:'swac',kind:'catalog',publicUrls:['https://tv.swac.org/']},
-  {id:'vipbox-nba',url:'https://vipbox.fm/basketball-schedule',family:'vipbox'},
-  {id:'strikeout-nba',url:'https://strikeout.im/nba',family:'vipbox'},
-  {id:'methstreams-nba',url:'https://methstreams.st/NBA',family:'event'},
-  {id:'crackstreams-nba',url:'https://crackstreams.st/NBA',family:'event'},
-  {id:'buffstream-nba',url:'https://ms.buffstream.io/nba-streams-live-15',family:'buffstream'},
-  {id:'vipbox-nhl',url:'https://vipbox.fm/hockey-schedule',family:'vipbox'},
-  {id:'strikeout-nhl',url:'https://strikeout.im/nhl',family:'vipbox'},
-  {id:'methstreams-nhl',url:'https://methstreams.st/NHL',family:'event'},
-  {id:'crackstreams-nhl',url:'https://crackstreams.st/NHL',family:'event'},
-  {id:'buffstream-nhl',url:'https://ms.buffstream.io/nhl-streams-live-29',family:'buffstream'},
-  {id:'strikeout-mlb',url:'https://strikeout.im/mlb',family:'vipbox'},
-  {id:'methstreams-mlb',url:'https://methstreams.st/MLB',family:'event'},
-  {id:'crackstreams-mlb',url:'https://crackstreams.st/MLB',family:'event'},
-  {id:'buffstream-mlb',url:'https://ms.buffstream.io/mlb-streams-live-29',family:'buffstream'},
-  {id:'mlbbox-mlb',name:'MLBBox',url:'https://mlbbox.me/mlb-streams',family:'vipbox'},
-] as const;
+export { SOURCE_REGISTRY as SOURCES } from '../source-registry.ts';
+import { SOURCE_REGISTRY as SOURCES } from '../source-registry.ts';
 const vipboxSourceIds = new Set<string>(SOURCES.filter(source => source.family === 'vipbox').map(source => source.id));
 function vipboxMatchupTitle(sourceId:string,title:string):string {
   return sourceId==='vipbox-nfl'||sourceId==='strikeout-nfl'
