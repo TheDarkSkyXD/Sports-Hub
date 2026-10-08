@@ -156,14 +156,14 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     if(finished.finishedGameId(observation,at,expectedId)||eventId&&
       finished.finishedBoundEvent(observation,eventId,input.sourceEventBindings||[]))return;
     if (!sourceById.has(observation.sourceId)) return;
-    const url=publicObservationUrl(observation.sourceId==='livesportpro'?'https://livesportpro.com/':observation.url,publicHosts);
+    const url=publicObservationUrl(observation.url,publicHosts);
     if (!url || observation.observedAt>at+60_000) return;
     const stale=fallback || observation.observedAt<windowStartAt;
     const kickoff=observation.kickoff;
     if (stale && (!observation.teams || kickoff===null || !liveDates.some(game=>
       (!observation.league || game.league===observation.league) && Math.abs(game.date-kickoff)<=3*60*60_000))) return;
     const links=linksBySource.get(observation.sourceId) || new Map();
-    const linkKey=observation.sourceId==='livesportpro'?observation.id:url;
+    const linkKey=url;
     if (links.has(linkKey)) return;
     const matchEvidence:SourceEventEvidence=event?streameastEvidence(event):sourceEvidence??
       listingEventEvidence(observation.sourceId);

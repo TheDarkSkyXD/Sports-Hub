@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const sourceOrder=new Map([['sportsurge',0],['sportsurge-v2',1],['streameast',2]]);
 type Source = SourcesSnapshot['sources'][number];
+const listingHref=(source:Source|undefined,url:string)=>source?.id==='livesportpro'?source.publicUrls[0]??url:url;
 type InventoryLeague=Game['league'];
 type SourceStatus = 'integration-pending'|'waiting'|'collector-unavailable'|'collecting'|'complete'|'partial'|'interrupted'|'unrecorded'|'league-collected'|'league-failed'|NonNullable<Source['lastAttempt']>['outcome'];
 type SourceFilter = 'all'|'attention'|'checked'|'listings';
@@ -236,7 +237,7 @@ function SourceLinks({source,links,snapshot,now}:{source:Source;links:Source['li
     return <SourceGameCard key={key} title={game?.name??gameLinks[0].title}
       summary={`${available} available ${available===1?'feed':'feeds'} · ${gameLinks.length} ${gameLinks.length===1?'listing':'listings'}`}>
       <SourceFeedChecks candidates={candidates} at={snapshot.at} now={now}/>
-      <ul>{gameLinks.map(link=><li key={link.url}><a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>
+      <ul>{gameLinks.map(link=><li key={link.url}><a href={listingHref(source,link.url)} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>
         {link.freshness==='stale-live'&&<span>Last seen {time(link.observedAt)}</span>}
         <ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={candidates}/></li>)}</ul>
     </SourceGameCard>;
@@ -522,7 +523,7 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
           {game.candidates.length>0&&<div className="source-inventory-candidates"><strong>Feed check results</strong><ul>{game.candidates.map(candidate=><li key={candidate.id}><span>{candidate.label}</span><span className="source-inventory-check" data-state={candidate.availability.kind}>{candidateEvidence(candidate,renderNow)}{candidate.availability.kind==='playable'||candidate.availability.kind==='unavailable'?` · Checked ${time(candidate.availability.checkedAt)} · ${age(candidate.availability.checkedAt,snapshot.at)}`:''}</span></li>)}</ul></div>}
           {game.sharedRoutes.map(route=><p className="source-inventory-shared-route" key={route.id}>{route.candidateIds.map(id=>game.candidates.find(candidate=>candidate.id===id)?.label||id).join(' and ')} reach the same published server route. These remain separate player entries.</p>)}
           <ul>{game.sourceLinks.map(link=><li key={`${link.sourceId}:${link.url}`}><span>{snapshot.sources.find(source=>source.id===link.sourceId)?.name || link.sourceId}</span>
-            <a href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>{link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}<ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={game.candidates.filter(candidate=>candidate.sourceIds.includes(link.sourceId))}/></li>)}</ul>
+            <a href={listingHref(snapshot.sources.find(source=>source.id===link.sourceId),link.url)} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>{link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}<ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={game.candidates.filter(candidate=>candidate.sourceIds.includes(link.sourceId))}/></li>)}</ul>
         </details>)}<div className="source-inventory-game-pagination">{visibleGames.length<listedGames.length?
           <button type="button" className="button subtle" onClick={()=>updateFilters({gameLimit:Math.min(gameLimit+GAME_PAGE_SIZE,listedGames.length)})}>Load more games</button>:
            <span>All {listedGames.length} games shown</span>}</div></div>}

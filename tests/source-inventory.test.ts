@@ -95,3 +95,27 @@ test('scheduled games publish fresh selectable servers without exposing locators
     sourceIds:fresh.sourceIds,observedAt:fresh.observedAt,availability:{kind:'playable',proof:'media',checkedAt:at}}]);
   assert.equal(JSON.stringify(snapshot).includes('playerId'),false);
 });
+
+test('LiveSportPro keeps distinct event links for matched and unclassified listings',()=>{
+  const urls=[
+    'https://api.kultsport.com/api/matches/all#florida-ole-miss-a',
+    'https://api.kultsport.com/api/matches/all#florida-ole-miss-b',
+    'https://api.kultsport.com/api/matches/all#unknown-game-a',
+    'https://api.kultsport.com/api/matches/all#unknown-game-b',
+  ];
+  const observations=[
+    observed('lsp:one','livesportpro',urls[0],['Florida Gators','Ole Miss Rebels']),
+    observed('lsp:two','livesportpro',urls[1],['Florida Gators','Ole Miss Rebels']),
+    observed('lsp:three','livesportpro',urls[2],['Unknown A','Unknown B']),
+    observed('lsp:four','livesportpro',urls[3],['Unknown C','Unknown D']),
+  ];
+  const snapshot=sourceInventory({at,revision:1,lastDiscoveryAt:at,browserCollectorsAvailable:true,
+    sources:[{id:'livesportpro',url:'https://api.kultsport.com/api/matches/all',family:'livesportpro',
+      kind:'catalog',publicUrls:['https://livesportpro.com/'],leagues:['ncaaf']}],
+    observations,games:[florida],candidates:new Map(),attempts:{livesportpro:{at,outcome:'parsed'}},
+    sportsurgeCatalog:{current:null,lastComplete:null,previous:null},
+    streameastCatalog:{current:null,lastComplete:null,previous:null}});
+  assert.deepEqual(snapshot.sources[0].links.map(link=>link.url),urls);
+  assert.deepEqual(snapshot.games[0].sourceLinks.map(link=>link.url),urls.slice(0,2));
+  assert.deepEqual(snapshot.sources[0].links.filter(link=>link.gameId===null).map(link=>link.url),urls.slice(2));
+});
