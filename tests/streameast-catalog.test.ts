@@ -29,9 +29,9 @@ test('the sweep visits and retains every free server and skips paid and unclassi
   const empty='<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">No NFL games available</h2></div>';
   const visited:string[]=[];
   const result:StreameastCatalog=await runStreameastSweep({
-    read:async(url:string,page:string)=>{
+    read:async(url:string,page:string,league:string)=>{
       visited.push(url);
-      if(page==='category')return url.includes('/cfb-streams/')?category:empty;
+      if(page==='category')return url.includes('/cfb-streams/')?category:empty.replace('NFL games',league==='f1'?'F1 races':`${league.toUpperCase()} games`);
       if(page==='detail')return detailHtml;
       if(url===freeOne)return '<iframe src="https://streame.center/stream-east/ch33.php"></iframe>';
       if(url===freeTwo)return '<iframe src="https://streame.center/stream-east/ch34.php"></iframe>';
@@ -54,7 +54,7 @@ test('the sweep visits and retains every free server and skips paid and unclassi
 test('a missing server list fails while a recognized paid-only list is collected empty',()=>{
   assert.equal(parseDetail('<div></div>',event,at,new Map()).reason,'parser-changed');
   const paidOnly=`<div class="stream-alt-list"><a class="stream-alt-item stream-alt-item-pro" href="${premium}"><span class="stream-alt-pro-icon"></span></a></div>`;
-  assert.deepEqual(parseDetail(paidOnly,event,at,new Map()),{kind:'collected',at,servers:[]});
+  assert.deepEqual(parseDetail(paidOnly,event,at,new Map()),{kind:'collected',at,servers:[],publication:{premium:1,unknown:0}});
   assert.deepEqual(freeServerUrls(paidOnly,event),[]);
   assert.equal(activeFreeServerUrl(paidOnly,event),null);
 });
@@ -65,7 +65,7 @@ test('the current paid-only event template yields zero free servers for the exac
       <li class="se-stream is-pro is-active"><a class="se-stream__link" href="${premium}">NCAAF Local</a></li>
       <li class="se-stream se-stream--share"><button>Share</button></li>
     </ul><div class="se-progate"><p class="se-progate__match">${event.title}</p></div></main>`;
-  assert.deepEqual(parseDetail(paidOnly,event,at,new Map()),{kind:'collected',at,servers:[]});
+  assert.deepEqual(parseDetail(paidOnly,event,at,new Map()),{kind:'collected',at,servers:[],publication:{premium:1,unknown:0}});
   assert.deepEqual(freeServerUrls(paidOnly,event),[]);
   assert.equal(parseDetail(paidOnly,{...event,title:'Other game'},at,new Map()).reason,'parser-changed');
   assert.equal(parseDetail(paidOnly.replace('is-pro',''),event,at,new Map()).reason,'parser-changed');
@@ -79,7 +79,7 @@ test('a same-event upcoming placeholder has no published free server yet',()=>{
     <nav class="se-streams se-streams--share-only"><ul class="se-streams__list">
       <li class="se-stream se-stream--share"><button>Share</button></li>
     </ul></nav></main>`;
-  assert.deepEqual(parseDetail(upcoming,event,at,new Map()),{kind:'collected',at,servers:[]});
+  assert.deepEqual(parseDetail(upcoming,event,at,new Map()),{kind:'collected',at,servers:[],publication:{premium:0,unknown:0}});
   assert.equal(parseDetail(upcoming.replace('12345','99999'),event,at,new Map()).reason,'parser-changed');
   assert.equal(parseDetail(upcoming.replace('Stream starting soon','Watch now'),event,at,new Map()).reason,'parser-changed');
   assert.equal(parseDetail(upcoming.replace('se-stream--share','is-pro').replace('<button>Share</button>',`<a class="se-stream__link" href="${premium}">Premium</a>`),event,at,new Map()).reason,'parser-changed');
@@ -101,9 +101,11 @@ test('historical mixed catalogs expose only free rows and accept identical free-
   assert.equal(raw.events[0].detail.servers.length,4);
   assert.deepEqual(sanitized.events[0].detail.servers.map(server=>server.id),['1','2']);
   const view=streameastCatalogView({catalog:raw,receivedAt:at},[],at);
-  assert.equal(view.serverRows,2);
+  assert.equal(view.serverRows,4);
   assert.equal(view.freeRows,2);
-  assert.equal(view.premiumRows,0);
+  assert.equal(view.premiumRows,1);
+  assert.equal(view.unknownRows,2);
+  assert.deepEqual(sanitized.events[0].detail.publication,{premium:1,unknown:1});
   assert.deepEqual(view.games[0].detail.kind==='collected'?view.games[0].detail.servers.map(server=>server.id):[],['1','2']);
   const previous={catalog:raw,receivedAt:at};
   assert.equal(streameastDecision(previous,sanitized),'replay');

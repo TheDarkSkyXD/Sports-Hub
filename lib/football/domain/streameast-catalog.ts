@@ -1,10 +1,15 @@
+import { browserCategory } from '../source-registry.ts';
 import { createFinishedGameMatcher, createSourceEventMatcher, type SourceEventEvidence } from './matching.ts';
 import type { Candidate,CandidateLocator,Game,Observation,SourceMatchReason,StreameastCatalog,StreameastCatalogView,StoredStreameastCatalog } from '../shared.ts';
 
-const EVENT_PATH=/^\/(cfb|nfl)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/;
+const EVENT_PATH=/^\/([a-z0-9-]+)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/;
 
 function freeDetail(detail:StreameastCatalog['events'][number]['detail']):StreameastCatalog['events'][number]['detail'] {
-  return detail.kind==='collected' ? {...detail,servers:detail.servers.filter(server=>server.availability.kind.startsWith('free-'))} : detail;
+  if(detail.kind!=='collected')return detail;
+  const premium=detail.servers.filter(server=>server.availability.kind==='premium').length;
+  const unknown=detail.servers.filter(server=>server.availability.kind==='unknown').length;
+  return {...detail,servers:detail.servers.filter(server=>server.availability.kind.startsWith('free-')),
+    ...(detail.publication?{publication:detail.publication}:premium||unknown?{publication:{premium,unknown}}:{})};
 }
 
 function freeCatalog(catalog:StreameastCatalog):StreameastCatalog {
@@ -24,6 +29,7 @@ export function sanitizeStreameastCatalog(input:StreameastCatalog,now=Date.now()
   if(Object.values(catalog.categories).some(category=>category.kind!=='pending'&&!current(category.at)))return null;
   let latest=catalog.startedAt;
   for(const category of Object.values(catalog.categories))if(category.kind!=='pending')latest=Math.max(latest,category.at);
+  if(Object.keys(catalog.categories).some(league=>!browserCategory('streameast',league)))return null;
   const urls=new Set<string>();
   const ids=new Set<string>();
   for(const event of catalog.events) {
@@ -31,7 +37,7 @@ export function sanitizeStreameastCatalog(input:StreameastCatalog,now=Date.now()
     try {url=new URL(event.url);} catch{return null;}
     const match=EVENT_PATH.exec(url.pathname);
     if(url.origin!=='https://v2.streameast.ga'||url.username||url.password||url.search||url.hash||!match||
-      match[1] !== (event.league==='ncaaf'?'cfb':'nfl')||urls.has(url.href)||ids.has(event.id))return null;
+      match[1] !== browserCategory('streameast',event.league)?.pathCode || !catalog.categories[event.league] || !event.id.startsWith(`${event.league}:`)||urls.has(url.href)||ids.has(event.id))return null;
     urls.add(url.href);ids.add(event.id);
     const detail=event.detail;
     const retained=detail.kind==='collected'&&detail.retainedFromRunId!==undefined;
@@ -131,6 +137,8 @@ export function streameastCatalogView(stored:StoredStreameastCatalog,games:Game[
   });
   const details=views.map(view=>view.detail);
   const rows=details.flatMap(detail=>detail.kind==='collected'?detail.servers:[]);
+  const premium=details.reduce((count,detail)=>count+(detail.kind==='collected'?detail.publication?.premium||0:0),0);
+  const unknown=details.reduce((count,detail)=>count+(detail.kind==='collected'?detail.publication?.unknown||0:0),0);
   const compatible=new Set(views.flatMap((view,index)=>view.gameId&&activeEvents[index].detail.kind==='collected'?
     streameastCandidates(activeEvents[index],view.gameId).map(candidate=>`${view.gameId}:${candidate.id}`):[]));
   return {runId:catalog.runId,startedAt:catalog.startedAt,receivedAt,interrupted:catalog.state.kind==='collecting'&&now-receivedAt>180000,
@@ -138,9 +146,9 @@ export function streameastCatalogView(stored:StoredStreameastCatalog,games:Game[
     collectedDetails:details.filter(detail=>detail.kind==='collected').length,
     pendingDetails:details.filter(detail=>detail.kind==='pending').length,
     failedDetails:details.filter(detail=>detail.kind==='failed').length,
-    serverRows:rows.length,freeRows:rows.filter(row=>row.availability.kind.startsWith('free-')).length,
-    premiumRows:rows.filter(row=>row.availability.kind==='premium').length,
-    unknownRows:rows.filter(row=>row.availability.kind==='unknown'||row.availability.kind==='free-unresolved').length,
+    serverRows:rows.length+premium+unknown,freeRows:rows.length,
+    premiumRows:premium,
+    unknownRows:unknown+rows.filter(row=>row.availability.kind==='free-unresolved').length,
     unsupportedFreeRows:rows.filter(row=>row.availability.kind==='free-unsupported').length,
     matchedCompatibleChannels:compatible.size,rejectedGames:catalog.rejectedGames,games:views};
 }

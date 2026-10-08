@@ -379,14 +379,25 @@
       "https://v2.sportsurge.net/watch-nfl-streams/",
       "https://v2.sportsurge.net/watch-basketball-streams/",
       "https://v2.sportsurge.net/watch-hockey-streams/",
-      "https://v2.sportsurge.net/watch-baseball-streams/"
+      "https://v2.sportsurge.net/watch-baseball-streams/",
+      "https://v2.sportsurge.net/watch-f1-streams/",
+      "https://v2.sportsurge.net/watch-wnba-streams/",
+      "https://v2.sportsurge.net/watch-ncaab-streams/",
+      "https://v2.sportsurge.net/watch-motogp-streams/",
+      "https://v2.sportsurge.net/watch-nascar-streams/"
     ],
     "leagues": [
       "ncaaf",
       "nfl",
       "nba",
       "nhl",
-      "mlb"
+      "mlb",
+      "f1",
+      "wnba",
+      "ncaab",
+      "motogp",
+      "nascar-cup",
+      "nascar-truck"
     ],
     "browserCategories": [
       {
@@ -413,6 +424,36 @@
         "league": "mlb",
         "url": "https://v2.sportsurge.net/watch-baseball-streams/",
         "pathCode": "baseball"
+      },
+      {
+        "league": "f1",
+        "url": "https://v2.sportsurge.net/watch-f1-streams/",
+        "pathCode": "f1"
+      },
+      {
+        "league": "wnba",
+        "url": "https://v2.sportsurge.net/watch-wnba-streams/",
+        "pathCode": null
+      },
+      {
+        "league": "ncaab",
+        "url": "https://v2.sportsurge.net/watch-ncaab-streams/",
+        "pathCode": null
+      },
+      {
+        "league": "motogp",
+        "url": "https://v2.sportsurge.net/watch-motogp-streams/",
+        "pathCode": null
+      },
+      {
+        "league": "nascar-cup",
+        "url": "https://v2.sportsurge.net/watch-nascar-streams/",
+        "pathCode": null
+      },
+      {
+        "league": "nascar-truck",
+        "url": "https://v2.sportsurge.net/watch-nascar-streams/",
+        "pathCode": null
       }
     ]
   },

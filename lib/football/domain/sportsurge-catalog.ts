@@ -1,8 +1,9 @@
+import { browserCategory } from '../source-registry.ts';
 import { createFinishedGameMatcher, createSourceEventMatcher, type SourceEventEvidence } from './matching.ts';
 import { createHash } from 'node:crypto';
 import type { Candidate, Game, Observation, SourceEventBinding, SourceMatchReason, SportsurgeCatalog, SportsurgeCatalogView, SportsurgeProvider, StoredSportsurgeCatalog } from '../shared.ts';
 
-const DETAIL_PATH=/^\/watch-(\d{1,12})-(cfb|nfl)-[a-z0-9]+(?:-[a-z0-9]+)*\/$/;
+const DETAIL_PATH=/^\/watch-(\d{1,12})-([a-z0-9]+)-[a-z0-9]+(?:-[a-z0-9]+)*\/$/;
 const CREDENTIAL_KEY=/^(?:token|access_token|auth|authorization|key|signature|sig|st|e|x-amz-.+)$/i;
 
 function safeDestination(value:string):SportsurgeProvider['destination'] {
@@ -25,13 +26,14 @@ export function sameSportsurgeEvent(left:SportsurgeCatalog['events'][number],rig
 }
 
 export function sanitizeSportsurgeCatalog(catalog:SportsurgeCatalog,history:readonly StoredSportsurgeCatalog[]=[]):SportsurgeCatalog|null {
+  if(Object.keys(catalog.categories).some(league=>!browserCategory('sportsurge-v2',league)))return null;
   const urls=new Set<string>();
   for (const event of catalog.events) {
     let url:URL;
     try { url=new URL(event.url); } catch { return null; }
     const match=DETAIL_PATH.exec(url.pathname);
     if (url.origin!=='https://v2.sportsurge.net' || url.username || url.password || url.search || url.hash || !match ||
-      event.id!==`${event.league}:${match[1]}` || match[2] !== (event.league==='ncaaf'?'cfb':'nfl') || urls.has(event.url)) return null;
+      event.id!==`${event.league}:${match[1]}` || match[2] !== browserCategory('sportsurge-v2',event.league)?.pathCode || !catalog.categories[event.league] || urls.has(event.url)) return null;
     urls.add(event.url);
     const detail=event.detail;
     const retained=detail.kind==='collected'&&detail.retainedFromRunId!==undefined;

@@ -12,6 +12,7 @@ directories:
 files:
   - package.json
   - desktop/**
+  - lib/football/source-registry.json
   # `!node_modules/**` keeps the dev tree out, which a blanket `node_modules/**` does not:
   # that ships all 29,000 dev packages. These are electron-updater's transitive graph,
   # listed explicitly because this app has no other production dependency and there is no

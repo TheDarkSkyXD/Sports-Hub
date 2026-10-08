@@ -82,7 +82,8 @@ test('every distinct detail is visited beyond the generic 80-slot budget and a l
   assert.equal(result.events[84].detail.kind,'failed');
   assert.equal(result.state.kind,'partial');
   assert.equal(checkpoints.at(-1)?.events.length,85);
-  assert.equal(checkpoints.length,174);
+  assert.deepEqual(Object.keys(checkpoints[0].categories),Object.keys(CATEGORY_URLS));
+  assert.equal(checkpoints.every(checkpoint=>SportsurgeCatalogSchema.safeParse(checkpoint).success),true);
   const verified=SportsurgeCatalogSchema.safeParse(checkpoints.at(-1));
   assert.equal(verified.success,true);
 });

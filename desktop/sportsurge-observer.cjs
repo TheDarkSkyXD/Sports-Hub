@@ -5,7 +5,7 @@ const http = require('node:http');
 const net = require('node:net');
 const { createObservedMedia } = require('./observed-media.cjs');
 const { handleCertificateIssuerRequest } = require('./certificate-issuer-proxy.cjs');
-const { eventUrl:streameastEventUrl,serverUrl:streameastServerUrl,publishedFreePlayer } = require('./streameast-catalog.cjs');
+const { eventUrl:streameastEventUrl,serverUrl:streameastServerUrl,publishedFreePlayer,CATEGORIES:STREAMEAST_CATEGORIES } = require('./streameast-catalog.cjs');
 
 const OBSERVE_MS = 20000;
 const OBSERVER_SLOTS = 4;
@@ -233,8 +233,8 @@ function createNavigationPolicy(value,allowStreameastServer=false) {
   const initial = new URL(value);
   const event = ['https://streameast.ga','https://v2.streameast.ga'].includes(initial.origin) &&
     !initial.search && !initial.hash &&
-    ( /^\/(?:cfb|nfl)\/[a-z0-9]+(?:-[a-z0-9]+)*\/$/.test(initial.pathname) ||
-      allowStreameastServer && /^\/(?:cfb|nfl)\/[a-z0-9]+(?:-[a-z0-9]+)*\/\d{1,4}$/.test(initial.pathname));
+    Object.keys(STREAMEAST_CATEGORIES).some(league=>streameastEventUrl(
+      `https://v2.streameast.ga${allowStreameastServer?initial.pathname.replace(/\d{1,4}$/,''):initial.pathname}`,league));
   const canonical = event ? `https://v2.streameast.ga${initial.pathname}` : null;
   const mygoodstreamShort = initial.origin === 'https://mygoodstream.pw' &&
     /^\/short\/[A-Za-z0-9]{8,32}$/.test(initial.pathname);
@@ -806,7 +806,7 @@ function createSportsurgeObserver({ controlToken, port = 0 }) {
       if(rawSelection?.kind==='streameast-server'&&
         typeof rawSelection.eventUrl==='string'&&typeof rawSelection.sourceEventId==='string'&&
         typeof rawSelection.serverId==='string'){
-        const match=/^(ncaaf|nfl):(\d{1,12})$/.exec(rawSelection.sourceEventId);
+        const match=/^([a-z0-9-]+):(\d{1,12})$/.exec(rawSelection.sourceEventId);
         const league=match?.[1];
         const sourceEvent={id:rawSelection.sourceEventId,url:rawSelection.eventUrl,league};
         const original=league&&streameastEventUrl(rawSelection.eventUrl,league);

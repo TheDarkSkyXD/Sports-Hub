@@ -7,7 +7,7 @@ function failure(error) {
 
 async function runStreameastSweep({read,send,signal,now=Date.now,runId=randomUUID()}) {
   const catalog={runId,sequence:0,startedAt:now(),state:{kind:'collecting'},
-    categories:{ncaaf:{kind:'pending'},nfl:{kind:'pending'}},events:[],rejectedGames:[]};
+    categories:Object.fromEntries(Object.keys(CATEGORY_URLS).map(league=>[league,{kind:'pending'}])),events:[],rejectedGames:[]};
   let accepted=structuredClone(catalog);
   let pending=[];
   const publish=async()=>{
@@ -45,7 +45,7 @@ async function runStreameastSweep({read,send,signal,now=Date.now,runId=randomUUI
   };
   await publish();
   let unresolvedRead=false;
-  for (const league of ['ncaaf','nfl']) {
+  for (const league of Object.keys(CATEGORY_URLS)) {
     if (signal.aborted) throw new Error('unavailable');
     try {
       const result=parseCategory(await read(CATEGORY_URLS[league],'category',league,signal),league);
