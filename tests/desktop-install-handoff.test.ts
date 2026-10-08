@@ -119,6 +119,7 @@ test('Install keeps the window open until the local server stops, then starts th
     stop: () => { events.push('observer stopped'); },
   };
   const dependency = (name: string) => {
+    if (name === './closed-stdio.cjs') return {};
     if (name === 'electron') return {
       app, autoUpdater, BrowserWindow: FakeWindow,
       ipcMain: { handle: (channel: string, handler: (event: unknown) => Promise<unknown>) => handlers.set(channel, handler) },
