@@ -4,6 +4,7 @@ import { SCHEDULES, readSchedule } from '../lib/football/adapters/schedule.ts';
 import { SOURCES, allowedDiscoveryUrl, compatiblePlayers, parseListings } from '../lib/football/adapters/sources.ts';
 import { matchObservation } from '../lib/football/domain/matching.ts';
 import { isBasketballLeague, parseScoreboard, validGameId } from '../lib/sunday.ts';
+import { validEventPagePair } from '../lib/playback/providers/event-page-policy.ts';
 
 const tipoff = Date.parse('2026-10-08T01:30:00Z');
 const scoreboard = (id: string, away: string, home: string, at = tipoff) => ({events:[{
@@ -80,6 +81,14 @@ test('WNBA PPV and Streamcenter listings bind only to the WNBA schedule game',()
   assert.equal(ppvResult.observations.length,1);
   assert.equal(ppvResult.observations[0].league,'wnba');
   assert.deepEqual(matchObservation(ppvResult.observations[0],[wnba,ncaab],tipoff),{kind:'matched',gameId:wnba.id});
+  const player='https://embedindia.st/embed/wnba/2026-10-07/lv-gs';
+  assert.equal(validEventPagePair(url,player),true);
+  assert.equal(validEventPagePair(url,player.replace('/wnba/','/nba/')),false);
+  const detail=JSON.stringify({id:30097,name:'Las Vegas Aces vs. Golden State Valkyries',tag:'WNBA',
+    uri_name:event,starts_at:tipoff/1000,iframe:player,substreams:[]});
+  const players=compatiblePlayers(wnba.id,ppvResult.observations[0],detail);
+  assert.equal(players.length,1);
+  assert.equal(players[0].locator.provider,'event-page');
   const link='/api/stream-link/iframe/event-espn-league-basketball-wnba-401918298/7bd8aeb5-7758-4a38-9487-a7c48f13288e';
   const listing=`<article class="game-card-row"><p class="game-card-league">WNBA</p><time datetime="${new Date(tipoff).toISOString()}"></time><span class="game-card-team" title="Las Vegas Aces"></span><span class="game-card-team" title="Golden State Valkyries"></span><a class="game-card-open-link" href="${link}">English</a></article>`;
   const streamResult=parseListings(streamcenter,listing,tipoff);
@@ -88,6 +97,26 @@ test('WNBA PPV and Streamcenter listings bind only to the WNBA schedule game',()
   assert.equal(streamResult.observations[0].league,'wnba');
   assert.deepEqual(matchObservation(streamResult.observations[0],[wnba,ncaab],tipoff),{kind:'matched',gameId:wnba.id});
   assert.equal(compatiblePlayers(wnba.id,streamResult.observations[0],'<html></html>').length,0);
+});
+
+test('TVApp football rows cannot attach to basketball games with the same teams and tipoff',()=>{
+  const source=SOURCES.find(item=>item.id==='tvapp');
+  assert.ok(source);
+  const basketball=parseScoreboard(scoreboard('401999900','Duke Blue Devils','North Carolina Tar Heels'),'ncaab')[0];
+  const football=parseScoreboard(scoreboard('401999901','Duke Blue Devils','North Carolina Tar Heels'),'ncaaf')[0];
+  const result=parseListings(source,JSON.stringify([{
+    id:'duke-vs-north-carolina-12345',title:'Duke Blue Devils vs North Carolina Tar Heels',
+    category:'american-football',date:tipoff,
+    teams:{away:{name:'Duke Blue Devils'},home:{name:'North Carolina Tar Heels'}},
+  }]),tipoff);
+  assert.equal(result.outcome,'parsed');
+  assert.equal(result.observations.length,1);
+  const observation=result.observations[0];
+  assert.equal(observation.league,null);
+  assert.deepEqual(matchObservation(observation,[basketball],tipoff),
+    {kind:'unmatched',reason:'unknown-teams',possibleGameIds:[]});
+  assert.deepEqual(matchObservation(observation,[basketball,football],tipoff),
+    {kind:'matched',gameId:football.id});
 });
 
 test('TVApp basketball rows cannot attach to college football games with the same team names',()=>{

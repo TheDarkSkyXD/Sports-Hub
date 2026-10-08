@@ -60,7 +60,7 @@ test('NBA TVApp listing skips its schedule row and matches the NBA game',()=>{
   const result=parseListings(source,body,tipoff);
   assert.equal(result.outcome,'parsed');
   assert.equal(result.observations.length,1);
-  assert.equal(result.observations[0].league,'nba');
+  assert.equal(result.observations[0].league,null);
   assert.deepEqual(matchObservation(result.observations[0],[game],tipoff),{kind:'matched',gameId:game.id});
 });
 
@@ -72,7 +72,7 @@ test('NBA Streamcenter card and PPV basketball event retain league identity',()=
     <time datetime="${new Date(tipoff).toISOString()}"></time>
     <span class="game-card-team" title="${teams[0]}"></span><span class="game-card-team" title="${teams[1]}"></span>
     <a class="game-card-open-link" href="/api/stream-link/iframe/event-espn-league-basketball-nba-401914129/5566bee6-9708-490c-9e61-5c64d0b4b3c0">English</a></article>
-    <article class="game-card-row"><p class="game-card-league">WNBA</p></article>`;
+    <article class="game-card-row"><p class="game-card-league">NHL</p></article>`;
   const streamResult=parseListings(streamcenter,html,tipoff);
   assert.equal(streamResult.outcome,'parsed');
   assert.equal(streamResult.observations.length,1);
@@ -85,8 +85,12 @@ test('NBA Streamcenter card and PPV basketball event retain league identity',()=
     ]},
   ]}),tipoff);
   assert.equal(ppvResult.outcome,'parsed');
-  assert.equal(ppvResult.observations.length,1);
-  assert.deepEqual(matchObservation(ppvResult.observations[0],[game],tipoff),{kind:'matched',gameId:game.id});
+  assert.equal(ppvResult.observations.length,2);
+  const nba=ppvResult.observations.find(item=>item.league==='nba');
+  const wnba=ppvResult.observations.find(item=>item.league==='wnba');
+  assert.ok(nba&&wnba);
+  assert.deepEqual(matchObservation(nba,[game],tipoff),{kind:'matched',gameId:game.id});
+  assert.equal(wnba.url,'https://ppv.st/live/wnba/2026-10-07/lv-gs');
 });
 
 test('NBA event page validators accept exact provider routes only',()=>{
