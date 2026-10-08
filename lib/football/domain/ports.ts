@@ -1,10 +1,11 @@
 import type { CandidateLocator, CollectionAttempt, DetailEvidence, Game, League, Match, MissingPlayerReason, Observation, ResolvedPlayer, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
 import type { WorkingFeed } from './working-feed.ts';
 
+export type MediaPhase = 'activation'|'capture'|'ownership'|'replay';
 export type CandidateProbeResult =
   | {kind:'playable';proof:'media'|'decoded'}
-  | {kind:'unavailable';reason:'upstream'|'unsupported'|'invalid-media'|'timeout'}
-  | {kind:'deferred';retryAfterMs:number};
+  | {kind:'unavailable';reason:'upstream'|'unsupported'|'invalid-media'|'timeout'|'no-feed';phase?:MediaPhase}
+  | {kind:'deferred';retryAfterMs:number;phase?:MediaPhase};
 
 export type ScheduleSource = { id: string; league: League; sport?: 'football' | 'basketball' | 'hockey' | 'baseball' | 'racing'; path: string; group: string | null };
 export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[]; parserVersion?: number };

@@ -87,15 +87,16 @@ export const SourceEventBindingSchema=z.object({
 });
 export type SourceEventBinding=z.infer<typeof SourceEventBindingSchema>;
 export type Match = { kind: 'matched'; gameId: string } | { kind: 'unmatched'; reason: string; possibleGameIds: string[] };
+export const MediaPhaseSchema=z.enum(['activation','capture','ownership','replay']);
 export const CandidateAvailabilitySchema = z.discriminatedUnion('kind',[
   z.object({kind:z.literal('unknown')}),
   z.object({kind:z.literal('checking'),progress:z.discriminatedUnion('kind',[
     z.object({kind:z.literal('queued'),since:z.number()}),
     z.object({kind:z.literal('active'),since:z.number()}),
-    z.object({kind:z.literal('deferred'),since:z.number(),retryAt:z.number()}),
+    z.object({kind:z.literal('deferred'),since:z.number(),retryAt:z.number(),phase:MediaPhaseSchema.optional()}),
   ])}),
   z.object({kind:z.literal('playable'),checkedAt:z.number(),proof:z.enum(['media','decoded'])}),
-  z.object({kind:z.literal('unavailable'),checkedAt:z.number(),retryAt:z.number(),reason:z.enum(['upstream','unsupported','invalid-media','timeout','playback'])}),
+  z.object({kind:z.literal('unavailable'),checkedAt:z.number(),retryAt:z.number(),reason:z.enum(['upstream','unsupported','invalid-media','timeout','playback','no-feed']),phase:MediaPhaseSchema.optional()}),
 ]);
 export type CandidateAvailability = z.infer<typeof CandidateAvailabilitySchema>;
 export const CandidateSummarySchema = z.object({
