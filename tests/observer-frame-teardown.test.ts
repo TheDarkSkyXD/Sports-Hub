@@ -145,7 +145,7 @@ test('a media probe finds the valid player next to a removed iframe', async () =
   operation.start();
   harness.request({ id: 1, url: mediaUrl, resourceType: 'media' });
   harness.sendHeaders({ id: 1, url: mediaUrl, requestHeaders: {
-    referer: player.url, 'user-agent': 'Observer test',
+    referer: player.url, 'user-agent': 'Observer test', cookie: 'session=published-player',
   }, initiatorOrigin: 'https://player.example' });
   harness.receiveHeaders({ id: 1, url: mediaUrl, statusCode: 200, responseHeaders: {
     'content-type': ['application/vnd.apple.mpegurl'],
@@ -153,6 +153,7 @@ test('a media probe finds the valid player next to a removed iframe', async () =
   const result = await operation.promise;
   assert.equal(result?.url, mediaUrl);
   assert.equal(result?.referer, player.url);
+  assert.equal(result?.mediaCookie, 'session=published-player');
 });
 
 test('only exact fxtrend PPV servers can continue past 32 frames and capture published media',async()=>{

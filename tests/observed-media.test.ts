@@ -51,7 +51,8 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
       async clearAuthCache() { authCachesCleared++; },
     }; } },
   });
-  const root = { url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium', origin: 'https://embed.example' };
+  const root = { url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium', origin: 'https://embed.example',
+    mediaCookie: 'session=published-player' };
   let capability = await transport.register(root);
   const server = createServer((request, response) => {
     transport.read(capability, new URL(request.url || '/', 'http://local').searchParams.get('url'), request.headers.range, response);
@@ -68,6 +69,10 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
     assert.equal(response.headers.get('content-range'), 'bytes 0-3/4');
     assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [0x47, 1, 2, 3]);
     assert.deepEqual(requests[0].headers, { 'User-Agent': 'Observed Chromium', Accept: '*/*', Origin: 'https://embed.example', Range: 'bytes=0-3' });
+    const sameOrigin = await read('https://media.example/segment.ts');
+    assert.equal(sameOrigin.status, 200);
+    await sameOrigin.arrayBuffer();
+    assert.equal(requests.at(-1)?.headers.Cookie, 'session=published-player');
     for (const url of ['http://media.example/segment.ts', 'https://127.0.0.1/segment.ts', 'https://user@media.example/segment.ts']) {
       assert.equal((await read(url)).status, 404);
     }
