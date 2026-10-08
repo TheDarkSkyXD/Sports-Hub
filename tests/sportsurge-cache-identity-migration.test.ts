@@ -68,18 +68,24 @@ async function candidates(coordinator:ReturnType<ReturnType<typeof fixture>['sta
 }
 
 test('restart retires a metadata-less cached route when the same current route has verified matchup metadata',async()=>{
-  const run=fixture({catalog:true,otherRoute:true});
-  const coordinator=run.start();
-  try {
-    await coordinator.refresh(true);await drain();
-    const row=await candidates(coordinator);
-    assert.equal(row?.workingChoiceCount,1,'a different cached destination remains working');
-    assert.deepEqual(row?.candidates.filter(candidate=>candidate.availability.kind==='playable').map(candidate=>candidate.id),
-      [run.feeds[1].candidate.id]);
-    assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false,
-      initialCandidateId:run.feeds[0].candidate.id})).kind,'error');
-  }finally{await coordinator.stop();
-    assert.deepEqual(run.readRows().map(feed=>feed.candidate.id),[run.feeds[1].candidate.id]);run.cleanup();}
+  for(const otherRoute of [false,true]){
+    const run=fixture({catalog:true,otherRoute});
+    const coordinator=run.start();
+    try {
+      await coordinator.refresh(true);await drain();
+      await coordinator.refresh(true);await drain();
+      const row=await candidates(coordinator);
+      assert.equal(row?.workingChoiceCount,otherRoute?1:0,'only the different cached destination stays working');
+      assert.deepEqual(row?.candidates.filter(candidate=>candidate.availability.kind==='playable').map(candidate=>candidate.id),
+        otherRoute?[run.feeds[1].candidate.id]:[]);
+      assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false})).kind,
+        otherRoute?'playback':'error');
+      assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false,
+        initialCandidateId:run.feeds[0].candidate.id})).kind,'error');
+    }finally{await coordinator.stop();try{
+      assert.deepEqual(run.readRows().map(feed=>feed.candidate.id),otherRoute?[run.feeds[1].candidate.id]:[]);
+    }finally{run.cleanup();}}
+  }
 });
 
 test('a newly verified catalog retires an active old route and prevents stale authorization',async()=>{

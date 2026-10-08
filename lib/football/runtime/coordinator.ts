@@ -1220,6 +1220,18 @@ export class FootballCoordinator {
       rows.push(candidate);
       byGame.set(game.id,rows);
     }
+    const superseded=[...this.candidates.values()].flat().filter(candidate=>{
+      const locator=candidate.locator;
+      if(locator.provider!=='sportsurge-v2')return false;
+      return (byGame.get(candidate.gameId)||[]).some(current=>{
+        const replacement=current.locator;
+        return replacement.provider==='sportsurge-v2'&&replacement.expectedMatchup&&
+          (candidate.id===current.id||candidate.id.startsWith(`${current.id}:`))&&
+          locator.eventId===replacement.eventId&&locator.providerId===replacement.providerId&&locator.url===replacement.url&&
+          JSON.stringify(locator)!==JSON.stringify(replacement);
+      });
+    });
+    this.retireReassignedCandidates(superseded);
     for(const [gameId,prior] of this.candidates) {
       const retained=prior.filter(candidate=>!candidate.sourceIds.includes('sportsurge-v2') ||
         this.pinnedCandidateIds(gameId).has(candidate.id)||this.retainedPlayable(candidate));
@@ -1496,7 +1508,8 @@ export class FootballCoordinator {
     const candidates = this.candidates.get(session.gameId) || [];
     if (command.kind==='authorize') {
       const candidate = candidates.find(candidate=>candidate.id===command.candidateId);
-      if (!candidate || session.candidateId!==candidate.id || session.generation!==command.generation) return {kind:'error',status:410,message:'Stream generation expired.'};
+      if (!candidate || session.candidateId!==candidate.id || session.generation!==command.generation||
+        !this.currentSelection(candidate,owned.selection)) return {kind:'error',status:410,message:'Stream generation expired.'};
       owned.lastSeen=this.now();
       return {kind:'authorized',candidate,session};
     }
