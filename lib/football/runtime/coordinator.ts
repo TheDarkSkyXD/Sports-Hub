@@ -1189,8 +1189,8 @@ export class FootballCoordinator {
       const result=verifiedStreameastMatch(event,raw,game);
       if(result.kind!=='matched'||!this.feedGame(game))continue;
       if(catalog===current)currentListed.add(game.id);
-      let candidates=event.detail.kind==='collected'&&now-event.detail.at<30*60000?
-        streameastCandidates(event,game.id):[];
+      const freshlyCollected=event.detail.kind==='collected'&&now-event.detail.at<30*60000;
+      let candidates=freshlyCollected?streameastCandidates(event,game.id):[];
       if(catalog===current&&event.detail.kind!=='collected'&&category.at<=now+60_000&&now-category.at<30*60_000) {
         const prior=history.flatMap(stored=>stored.catalog.events.filter(prior=>
           sameStreameastEvent(event,prior)&&prior.detail.kind==='collected'))[0];
@@ -1199,7 +1199,7 @@ export class FootballCoordinator {
         for(const candidate of candidates)this.retainedStreameastPublication.set(this.probeKey(candidate),
           {id:candidate.id,observedAt:candidate.observedAt,categoryAt:category.at});
       }
-      if(!candidates.length)continue;
+      if(!freshlyCollected&&!candidates.length)continue;
       const previous=this.candidates.get(game.id)||[];
       const selected=this.pinnedCandidateIds(game.id,now);
       const retained=previous.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id)||this.retainedPlayable(candidate));

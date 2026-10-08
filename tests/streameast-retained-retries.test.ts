@@ -192,6 +192,17 @@ test('the newest matching collected-empty detail blocks older server rows', asyn
   } finally { await run.stop(); }
 });
 
+test('a fresh collected-empty detail immediately removes unavailable server rows', async () => {
+  const run = fixture();
+  try {
+    await run.publish(catalog(at, collected(at), { state: 'complete' }));
+    await run.advance(5);
+    assert.equal((await run.candidates()).filter(row => row.availability.kind === 'unavailable').length, 3);
+    await run.publish(catalog(at + 5 * minute, collected(at + 5 * minute, [])));
+    assert.equal((await run.candidates()).length, 0);
+  } finally { await run.stop(); }
+});
+
 test('an ESPN identity change cannot recover an earlier event route', async () => {
   const run = fixture();
   try {
