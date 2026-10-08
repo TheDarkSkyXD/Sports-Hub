@@ -44,7 +44,7 @@ test('captured Buff team channels bind one live game only after exact published 
     for(const changed of [{...observation,rawTime:'08:21 pm ET'},{...observation,observedAt:at-1800000},
       {...observation,observedAt:at+60001},{...observation,title:'changed'}])
       assert.equal(resolvedLiveChannelMatch(changed,matchObservation(changed,[game],at),[game],detail,at).kind,'unmatched');
-    for(const games of [[],[{...game,lifecycle:'scheduled' as const,status:'pre' as const}],
+    for(const games of [[],[{...game,lifecycle:'scheduled' as const,status:'pre' as const,date:'2026-10-07T00:20:00Z'}],
       [{...game,lifecycle:'final' as const,status:'post' as const,finalObservedAt:at}],
       [game,{...game,id:'ambiguous'}]])
       assert.equal(resolvedLiveChannelMatch(observation,matchObservation(observation,games,at),games,detail,at).kind,'unmatched');
