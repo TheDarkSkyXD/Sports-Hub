@@ -1,4 +1,5 @@
 import { load } from 'cheerio';
+import { conflictingPublishedFootballMatchup } from './sportsurge-matchup.ts';
 import type { CandidateLocator } from '../../football/shared.ts';
 import { boundedText, type PlaybackProvider, type ProviderPlayback } from '../provider.ts';
 import { observedPublicPage, get, hlsUrl, publicHttpsRequest, resource, sportsurgeUrl, type Requester } from './public-page.ts';
@@ -8,6 +9,8 @@ type SportsurgeLocator = Extract<CandidateLocator, { provider: 'sportsurge-v2' }
 const MAX_PAGE_BYTES = 1024 * 1024;
 const STATIC_LOOKUP_MS = 25000;
 const MAX_PAGE_HOPS = 2;
+
+class ConflictingMatchupError extends Error {}
 
 function sportspatrikaPlayer(url: URL): boolean {
   return url.origin === 'https://embed.sportspatrika.com' && url.pathname === '/live/embed.php' &&
@@ -77,6 +80,8 @@ export function sportsurgeV2Provider(requester: Requester = (url, signal, header
             throw new Error('Sportsurge destination did not publish HLS');
           }
           const html = await boundedText(response, MAX_PAGE_BYTES);
+          if(locator.expectedMatchup&&conflictingPublishedFootballMatchup(locator.expectedMatchup,
+            load(html)('title').first().text().trim()))throw new ConflictingMatchupError('Sportsurge provider published a conflicting matchup');
           const sources = pageSources(html, url);
           if (sources.media.length) return { root: resource(sources.media[0], url, 'playlist', requester), close() {} };
           if (sources.frames.length !== 1) break;
@@ -86,7 +91,7 @@ export function sportsurgeV2Provider(requester: Requester = (url, signal, header
         }
         throw new Error('Sportsurge destination did not publish supported HLS');
       } catch (error) {
-        if (signal.aborted) throw error;
+        if (signal.aborted||error instanceof ConflictingMatchupError) throw error;
         const observed = await observedPublicPage(browserDestination, signal, purpose);
         if (observed) return observed;
         throw error;

@@ -47,6 +47,7 @@ const eslintConfig = defineConfig([
           { pattern: "lib/playback/providers/event-page-policy.ts", category: "provider-parser" },
           { pattern: "lib/playback/providers/swac-catalog.ts", category: "provider-parser" },
           { pattern: "lib/playback/providers/tvapp-catalog.ts", category: "provider-parser" },
+          { pattern: "lib/playback/providers/sportsurge-matchup.ts", category: "provider-parser" },
         { pattern: "lib/playback/providers/edgestream.ts", category: "provider-resource" },
         { pattern: "lib/playback/providers/public-page.ts", category: "provider-resource" },
         { pattern: "lib/playback/providers/streameast-pixel.ts", category: "provider-resource" },

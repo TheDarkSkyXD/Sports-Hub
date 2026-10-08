@@ -53,7 +53,7 @@ test('a concrete wrong-game Sportsurge page cannot supply static media or reach 
 });
 
 test('correct aliases and generic player titles retain media access, including old locators',async()=>{
-  for(const title of ['Jax State vs Kennesaw St','Live Football Player','Miami vs Kennesaw State']){
+  for(const title of ['Jax State vs Kennesaw St','Kennesaw St at Jax State','Live Football Player','Troy vs Kennesaw State']){
     const html=`<title>${title}</title><video><source src="${media}"></video>`;
     const playback=await sportsurgeV2Provider(requester(html)).open(makeLocator(),new AbortController().signal);
     assert.equal(playback.root.identity,media);
