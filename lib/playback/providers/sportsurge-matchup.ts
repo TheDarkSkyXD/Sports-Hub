@@ -1,6 +1,6 @@
 import { COLLEGE_TEAM_CATALOG } from '../../football/domain/college-teams.generated.ts';
 
-type ExpectedMatchup={league:'nfl'|'ncaaf';teams:readonly [string,string]};
+type ExpectedMatchup={league:'nfl'|'ncaaf'|'nba';teams:readonly [string,string]};
 
 const normalizedName=(value:string)=>value.normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
   .toLowerCase().replace(/\band\b/g,'&').replace(/[^a-z0-9]/g,'');

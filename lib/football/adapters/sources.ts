@@ -14,8 +14,10 @@ import {nflstreamsPlayers,parseNflstreamsListings} from './nflstreams.ts';
 import {buffstreamPlayers} from './buffstream.ts';
 
 const TVAPP_API = 'https://api-backups.handleapi.win/matches/sport/american-football';
+const TVAPP_BASKETBALL_API = 'https://api-backups.handleapi.win/matches/sport/basketball';
 const PPV_API = 'https://api.ppv.st/api/streams';
 const STREAMCENTER_CATALOG = 'https://streamcenter.st/game-cards/embed?sport=football';
+const STREAMCENTER_BASKETBALL = 'https://streamcenter.st/game-cards/embed?sport=basketball';
 export const SOURCES = [
   {id:'sportsurge',url:'https://isportsurge.ws/index6',family:'sportsurge'},
   {id:'crackstreams-cfb',url:'https://ws.crackstreams.me/cfb-streams-live42',family:'buffstream'},
@@ -37,12 +39,19 @@ export const SOURCES = [
     'https://tvapp1.pk/cfb-streams','https://tvapp1.pk/nfl-streams',
     'https://thetvapp67.st/cfb-streams','https://thetvapp67.st/nfl-streams',
   ]},
+  {id:'tvapp-nba',name:'TVApp NBA',url:TVAPP_BASKETBALL_API,family:'tvapp',kind:'catalog',parserVersion:4,publicUrls:[]},
   {id:'ppv',name:'PPV',url:PPV_API,family:'ppv',kind:'catalog',publicUrls:['https://ppv.st/#26']},
   {id:'streamcenter',name:'Streamcenter',url:STREAMCENTER_CATALOG,family:'streamcenter',publicUrls:['https://streame.center/']},
+  {id:'streamcenter-nba',name:'Streamcenter NBA',url:STREAMCENTER_BASKETBALL,family:'streamcenter',publicUrls:['https://streame.center/']},
   {id:'sportsurge-v2',name:'Sportsurge v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'browser-catalog',publicUrls:[
     'https://v2.sportsurge.net/watch-cfb-streams/','https://v2.sportsurge.net/watch-nfl-streams/',
   ]},
   {id:'swac',name:'SWAC TV',url:SWAC_CATALOG_URL,family:'swac',kind:'catalog',publicUrls:['https://tv.swac.org/']},
+  {id:'vipbox-nba',url:'https://vipbox.fm/basketball-schedule',family:'vipbox'},
+  {id:'strikeout-nba',url:'https://strikeout.im/nba',family:'vipbox'},
+  {id:'methstreams-nba',url:'https://methstreams.st/NBA',family:'event'},
+  {id:'crackstreams-nba',url:'https://crackstreams.st/NBA',family:'event'},
+  {id:'buffstream-nba',url:'https://ms.buffstream.io/nba-streams-live-15',family:'buffstream'},
 ] as const;
 const vipboxSourceIds = new Set<string>(SOURCES.filter(source => source.family === 'vipbox').map(source => source.id));
 function vipboxMatchupTitle(sourceId:string,title:string):string {
@@ -64,7 +73,7 @@ export function allowedDiscoveryUrl(value: string): boolean {
     if(url.hostname==='tv.swac.org')return swacProgramId(value)!==null;
     return hosts.has(url.hostname) || !url.search && !url.hash && (
       url.hostname === 'tvapp1.pk' && /^\/watch\/[a-zA-Z0-9-]{1,120}$/.test(url.pathname) ||
-      url.hostname === 'ppv.st' && /^\/live\/(?:cfb|nfl)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(url.pathname));
+      url.hostname === 'ppv.st' && /^\/live\/(?:cfb|nfl|nba)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(url.pathname));
   } catch { return false; }
 }
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex').slice(0,24);
@@ -76,7 +85,7 @@ export async function readHtml(url: string, signal: AbortSignal): Promise<string
     const parsed = PpvCatalog.safeParse(JSON.parse(body));
     if (!parsed.success) throw new Error('parser-changed');
     const path = new URL(url).pathname.slice('/live/'.length);
-    const events = parsed.data.streams.filter(group => group.category === 'American Football')
+    const events = parsed.data.streams.filter(group => group.category === 'American Football' || group.category === 'Basketball')
       .flatMap(group => group.streams).filter(value => {
         const event = PpvEvent.safeParse(value);
         return event.success && event.data.uri_name === path;
@@ -88,6 +97,7 @@ export async function readHtml(url: string, signal: AbortSignal): Promise<string
     const results=await Promise.allSettled([
       readPage('https://isportsurge.ws/nfl/livestreams3',signal),
       readPage('https://isportsurge.ws/cfb/livestreams2',signal),
+      readPage('https://isportsurge.ws/nba/livestreams3',signal),
     ]);
     if(signal.aborted)throw signal.reason instanceof Error?signal.reason:new DOMException('Aborted','AbortError');
     const pages=results.flatMap(result=>result.status==='fulfilled'?[load(result.value)('body').html()||'']:[]);
@@ -98,7 +108,7 @@ export async function readHtml(url: string, signal: AbortSignal): Promise<string
     if(!pages.length)throw new SourceFetchError(failure.message,retryAfterMs);
     throw new PartialListingReadError(`<main>${pages.join('')}</main>`,failure,retryAfterMs);
   }
-  return readPage(url,signal,url === TVAPP_API || url === PPV_API || url === SWAC_CATALOG_URL ? 'application/json' : 'text/html');
+  return readPage(url,signal,url === TVAPP_API || url === TVAPP_BASKETBALL_API || url === PPV_API || url === SWAC_CATALOG_URL ? 'application/json' : 'text/html');
 }
 
 async function readPage(url: string, signal: AbortSignal, accept = 'text/html'): Promise<string> {
@@ -193,7 +203,9 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
       const result = TvappMatch.safeParse(value);
       if (!result.success) return invalid();
       const match = result.data;
-      if (match.id === 'ppv-nfl-network' && match.title === 'NFL Network' && match.date === 0) continue;
+      if ((match.id === 'ppv-nfl-network' && match.title === 'NFL Network' ||
+        match.id === 'nflstreams_live' && match.title === 'NFL Streams Schedule') && match.date === 0) continue;
+      if ((source.id==='tvapp-nba') !== (match.category==='basketball')) continue;
       if (match.date < Date.UTC(2000,0,1) || match.date >= Date.UTC(2100,0,1)) return invalid();
       if (match.date > now+7*86400000) continue;
       const title = match.title.replace(/\s+/g,' ').trim();
@@ -207,20 +219,20 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
       const url = `https://tvapp1.pk/watch/${slug}`;
       const rawTime = new Date(match.date).toISOString();
       if (!add({id:`${source.id}:${digest(match.id)}`,sourceId:source.id,url,title,teams,
-        league:null,kickoff:match.date,rawTime,observedAt:now,parserVersion:3})) return invalid();
+        league:match.category==='basketball'?'nba':null,kickoff:match.date,rawTime,observedAt:now,parserVersion:3})) return invalid();
     }
   } else if (source.family === 'ppv') {
     const result = PpvCatalog.safeParse(input);
     if (!result.success) return invalid();
-    const groups = result.data.streams.filter(group => group.category === 'American Football');
-    if (groups.length !== 1) return invalid();
-    for (const value of groups[0].streams) {
+    const groups = result.data.streams.filter(group => group.category === 'American Football' || group.category === 'Basketball');
+    if (!groups.length || new Set(groups.map(group=>group.category)).size!==groups.length) return invalid();
+    for (const value of groups.flatMap(group=>group.streams)) {
       const result = PpvEvent.safeParse(value);
       if (!result.success) return invalid();
       const event = result.data;
-      const league = event.tag === 'College Football' ? 'ncaaf' : event.tag === 'NFL' ? 'nfl' : null;
-      if (!league || !event.uri_name.startsWith(`${league === 'ncaaf' ? 'cfb' : 'nfl'}/`)) continue;
-      if (!/^(?:cfb|nfl)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(event.uri_name)) return invalid();
+      const league = event.tag === 'College Football' ? 'ncaaf' : event.tag === 'NFL' ? 'nfl' : event.tag === 'NBA' ? 'nba' : null;
+      if (!league || !event.uri_name.startsWith(`${league === 'ncaaf' ? 'cfb' : league}/`)) continue;
+      if (!/^(?:cfb|nfl|nba)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(event.uri_name)) return invalid();
       if (event.starts_at <= 0) continue;
       const kickoff = event.starts_at*1000;
       if (kickoff < Date.UTC(2000,0,1) || kickoff >= Date.UTC(2100,0,1)) return invalid();
@@ -255,16 +267,17 @@ export function parseListings(source: ListingSource, html: string, now: number):
     if (source.family === 'buffstream' && publishedUrl.protocol === 'http:' &&
       publishedUrl.hostname === 'ms.buffstream.io' && !publishedUrl.username && !publishedUrl.password &&
       !publishedUrl.port && !publishedUrl.search && !publishedUrl.hash &&
-      /^\/(?:nfl|cfb)-streams\/[a-z0-9-]+-live-stream$/.test(publishedUrl.pathname)) {
+      /^\/(?:nfl|cfb|nba)-streams\/[a-z0-9-]+-live-stream$/.test(publishedUrl.pathname)) {
       publishedUrl.protocol = 'https:';
       url = publishedUrl.href;
     }
     if (!allowedDiscoveryUrl(url)) return;
     const path = new URL(url).pathname;
     if(source.id==='buffstream-cfb'&&!path.startsWith('/cfb-streams/')||
-      source.id==='buffstream-nfl'&&!path.startsWith('/nfl-streams/'))return;
-    if (/^\/(?:nfl|cfb)\/livestreams\d*\/?$/i.test(path)) return;
-    if (!/\/(?:watch\/(?:nfl|cfb)\/|onair\/(?:nfl|ncaaf)\/|(?:nfl|cfb|college-football)\/.*(?:live|stream)|(?:nfl|cfb)-streams\/.+-live-stream|event\/)/i.test(path)) return;
+      source.id==='buffstream-nfl'&&!path.startsWith('/nfl-streams/')||
+      source.id==='buffstream-nba'&&!path.startsWith('/nba-streams/'))return;
+    if (/^\/(?:nfl|cfb|nba)\/livestreams\d*\/?$/i.test(path)) return;
+    if (!/\/(?:watch\/(?:nfl|cfb|nba(?:-preseason)?)\/|onair\/(?:nfl|ncaaf|nba)\/|(?:nfl|cfb|nba|college-football)\/.*(?:live|stream)|(?:nfl|cfb|nba)-streams\/.+-live-stream|event\/)/i.test(path)) return;
     const row = source.family === 'sportsurge' ? anchor : anchor.closest('tr,[data-start],article,li,.event,.match,.card').first();
     const container = row.length ? row : anchor;
     const title = anchor.text().replace(/\s+/g,' ').trim().slice(0,300);
@@ -279,7 +292,7 @@ export function parseListings(source: ListingSource, html: string, now: number):
     const rowTeams = source.family === 'buffstream' ? container.find('a[href]').toArray().flatMap(node => {
       const teamAnchor = $(node);
       const href = teamAnchor.attr('href') || '';
-      return /^https?:\/\/ms\.buffstream\.io\/(?:nfl|cfb)-streams\/[a-z0-9-]+-live-stream$/.test(href)
+      return /^https?:\/\/ms\.buffstream\.io\/(?:nfl|cfb|nba)-streams\/[a-z0-9-]+-live-stream$/.test(href)
         ? [teamAnchor.text().replace(/\s+Live Stream\s*$/i,'').trim()] : [];
     }) : [];
     const fullNames = structuredNames.length ? structuredNames : rowTeams.length === 2 ? rowTeams : [];
@@ -292,11 +305,11 @@ export function parseListings(source: ListingSource, html: string, now: number):
       container.attr('content') || container.find('[content]').first().attr('content') || textTime ||
       (source.family==='buffstream'?container.find('td').toArray().map(cell=>$(cell).text().trim())
         .find(text=>/^(?:0?[1-9]|1[0-2]):[0-5]\d\s*(?:am|pm)\s*ET$/i.test(text))||'':'');
-    const inferredLeague: League | null = /\/(?:watch\/cfb|cfb|ncaaf|college-football)(?:\/|-)/i.test(path) ? 'ncaaf' : /\/(?:watch\/nfl|nfl)(?:\/|-)/i.test(path) ? 'nfl' : null;
+    const inferredLeague: League | null = /\/(?:watch\/cfb|cfb|ncaaf|college-football)(?:\/|-)/i.test(path) ? 'ncaaf' : /\/(?:watch\/nfl|nfl)(?:\/|-)/i.test(path) ? 'nfl' : /\/(?:watch\/nba|nba)(?:\/|-)/i.test(path) ? 'nba' : null;
     const section = source.family === 'event' ? anchor.closest('section.lg').attr('id') || '' : '';
     const league = /college-football/.test(section) ? 'ncaaf' : source.family === 'event' ? null : inferredLeague;
     const id = `${source.id}:${digest(url)}`;
-    const numeric = /^\/watch\/(nfl|cfb)\/[^/]+\/(\d+)$/.exec(path);
+    const numeric = /^\/watch\/(nfl|cfb|nba)\/[^/]+\/(\d+)$/.exec(path);
     const kickoff = parseKickoff(rawTime);
     const previous = observations.get(id);
     if (previous) {
@@ -311,7 +324,7 @@ export function parseListings(source: ListingSource, html: string, now: number):
         kickoff:conflictingTimeIds.has(id) ? null : previous.kickoff ?? kickoff});
       return;
     }
-    observations.set(id,{id,sourceId:source.id,url,title:matchupTitle!==cleaned ? cleaned : teams ? teams.join(' vs ') : title,teams,league,rawTime,kickoff,observedAt:now,parserVersion:2,legacyId:numeric ? `${numeric[1] === 'cfb' ? 'ncaaf-' : ''}source-${numeric[2]}` : undefined});
+    observations.set(id,{id,sourceId:source.id,url,title:matchupTitle!==cleaned ? cleaned : teams ? teams.join(' vs ') : title,teams,league,rawTime,kickoff,observedAt:now,parserVersion:2,legacyId:numeric && numeric[1]!=='nba' ? `${numeric[1] === 'cfb' ? 'ncaaf-' : ''}source-${numeric[2]}` : undefined});
   });
   const values = [...observations.values()];
   const knownEmpty = /no matches available right now|sorry, no games scheduled on this date|no (?:live )?(?:games|events) (?:available|scheduled|found)/i.test($('body').text());
@@ -321,7 +334,7 @@ export function parseListings(source: ListingSource, html: string, now: number):
   return {observations:values,outcome:values.length ? 'parsed' : knownEmpty||vipboxCollegeEmpty ? 'empty' : source.family === 'unknown' ? 'unsupported' : 'parser-changed'};
 }
 
-const streamcenterLink = /^\/api\/stream-link\/iframe\/event-espn-league-football-college-football-(\d{5,12})\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/;
+const streamcenterLink = /^\/api\/stream-link\/iframe\/event-espn-league-(football-college-football|basketball-nba)-(\d{5,12})\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/;
 
 function parseStreamcenterListings(source: ListingSource, html: string, now: number): ReturnType<typeof parseListings> {
   const $ = load(html);
@@ -329,7 +342,8 @@ function parseStreamcenterListings(source: ListingSource, html: string, now: num
   let invalid = false;
   $('article.game-card-row').each((_index,element) => {
     const card = $(element);
-    if (card.find('.game-card-league').text().trim() !== 'NCAA Football') return;
+    const league=card.find('.game-card-league').text().trim()==='NCAA Football'?'ncaaf':card.find('.game-card-league').text().trim()==='NBA'?'nba':null;
+    if (!league || (source.id==='streamcenter-nba') !== (league==='nba')) return;
     const teams = card.find('.game-card-team[title]').map((_i,node) => $(node).attr('title')?.trim()).get();
     const rawTime = card.find('time[datetime]').first().attr('datetime') || '';
     const kickoff = parseKickoff(rawTime);
@@ -337,10 +351,10 @@ function parseStreamcenterListings(source: ListingSource, html: string, now: num
     card.find('a.game-card-open-link[href]').each((_i,node) => {
       const href = $(node).attr('href') || '';
       const match = streamcenterLink.exec(href);
-      if (!match) { invalid=true; return; }
+      if (!match || match[1] !== (league==='nba'?'basketball-nba':'football-college-football')) { invalid=true; return; }
       const url = new URL(href,'https://streamcenter.st').href;
       observations.push({id:`${source.id}:${digest(href)}`,sourceId:source.id,url,
-        title:`${teams[0]} vs ${teams[1]}`,teams:[teams[0],teams[1]],league:'ncaaf',kickoff,rawTime,
+        title:`${teams[0]} vs ${teams[1]}`,teams:[teams[0],teams[1]],league,kickoff,rawTime,
         observedAt:now,parserVersion:2});
     });
   });
@@ -351,8 +365,8 @@ function parseStreamcenterListings(source: ListingSource, html: string, now: num
 export function enrichObservation(observation: Observation, html: string): Observation {
   if(observation.sourceId==='livetv')return enrichLiveTvObservation(observation,html);
   if(observation.sourceId==='nflstreams')return observation;
-  if(observation.sourceId==='buffstream-nfl'||observation.sourceId==='buffstream-cfb')return observation;
-  if (['streamcenter','ppv','tvapp','swac'].includes(observation.sourceId)) return observation;
+  if(['buffstream-nfl','buffstream-cfb','buffstream-nba'].includes(observation.sourceId))return observation;
+  if (['streamcenter','streamcenter-nba','ppv','tvapp','tvapp-nba','swac'].includes(observation.sourceId)) return observation;
   const $ = load(html);
   if (vipboxSourceIds.has(observation.sourceId) && $('meta[property="og:url"]').first().attr('content') === observation.url) {
     const config = $('script').map((_index,node) => $(node).html()).get()
@@ -410,7 +424,7 @@ const ChannelEvent = z.union([
 ]);
 
 export function missingPlayerReason(observation:Observation,html:string):MissingPlayerReason {
-  if(!['tvapp','methstreams','crackstreams-st','sportsurge','livetv'].includes(observation.sourceId))return 'no-compatible-media';
+  if(!['tvapp','tvapp-nba','methstreams','methstreams-nba','crackstreams-st','crackstreams-nba','sportsurge','livetv'].includes(observation.sourceId))return 'no-compatible-media';
   const $=load(html);
   $('script,style,noscript').remove();
   const text=$('body').text().replace(/\s+/g,' ').trim();
@@ -429,7 +443,7 @@ export function missingPlayerReason(observation:Observation,html:string):Missing
 export function compatiblePlayers(gameId: string, observation: Observation, html: string): ResolvedPlayer[] {
   if(observation.sourceId==='livetv')return liveTvPlayers(gameId,observation,html);
   if(observation.sourceId==='nflstreams')return nflstreamsPlayers(gameId,observation,html);
-  if(['buffstream-nfl','buffstream-cfb','crackstreams-cfb'].includes(observation.sourceId))return buffstreamPlayers(gameId,observation,html);
+  if(['buffstream-nfl','buffstream-cfb','buffstream-nba','crackstreams-cfb'].includes(observation.sourceId))return buffstreamPlayers(gameId,observation,html);
   if(observation.sourceId==='swac'){
     let input:unknown;
     try{input=JSON.parse(html);}catch{return [];}
@@ -438,7 +452,7 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
       observation.title!==parsed.teams.join(' vs ') || observation.teams?.join('|')!==parsed.teams.join('|'))return [];
     return [{id:`swac:${parsed.event.id}`,locator:{provider:'swac',eventId:parsed.event.id},label:'SWAC TV'}];
   }
-  if (observation.sourceId === 'tvapp') {
+  if (observation.sourceId === 'tvapp' || observation.sourceId === 'tvapp-nba') {
     if(missingPlayerReason(observation,html)==='not-yet-published')return [];
     const $=load(html);
     if(!observation.teams || observation.kickoff===null || $('link[rel="canonical"]').attr('href')!==observation.url ||
@@ -449,9 +463,9 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
     const player=eventPagePlayer(gameId,observation.url,observation.url,'TVApp');
     return player?[player]:[];
   }
-  if (observation.sourceId === 'methstreams' || observation.sourceId === 'crackstreams-st') {
+  if (observation.sourceId === 'methstreams' || observation.sourceId === 'methstreams-nba' || observation.sourceId === 'crackstreams-st' || observation.sourceId === 'crackstreams-nba') {
     const $ = load(html);
-    const host=observation.sourceId==='methstreams'?'methstreams.st':'crackstreams.st';
+    const host=observation.sourceId.startsWith('methstreams')?'methstreams.st':'crackstreams.st';
     if(new URL(observation.url).hostname!==host || !observation.teams || observation.kickoff===null ||
       $('link[rel="canonical"]').attr('href')!==observation.url || $('meta[property="og:url"]').attr('content')!==observation.url)return [];
     const events=$('script[type="application/ld+json"]').toArray().flatMap(node=>{
@@ -472,18 +486,18 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
       const row=$(node),label=row.find('.sl-nm').text().trim();
       if(!label || !row.attr('aria-label')?.startsWith(`Watch ${event.name} on ${label} `))return;
       const url=row.attr('href') || '';
-      const player=eventPagePlayer(gameId,observation.url,url,`${observation.sourceId==='methstreams'?'Methstreams':'Crackstreams'} · ${label}`);
+      const player=eventPagePlayer(gameId,observation.url,url,`${observation.sourceId.startsWith('methstreams')?'Methstreams':'Crackstreams'} · ${label}`);
       if(player)players.set(url,player);
     });
     return [...players.values()];
   }
-  if (observation.sourceId === 'streamcenter') {
+  if (observation.sourceId === 'streamcenter' || observation.sourceId === 'streamcenter-nba') {
     const path = new URL(observation.url).pathname;
     const link = streamcenterLink.exec(path);
-    if (!link || gameId !== `ncaaf-${link[1]}`) return [];
+    if (!link || gameId !== `${link[1]==='basketball-nba'?'nba':'ncaaf'}-${link[2]}`) return [];
     if (!parseStreamcenterPlayer(html)) return [];
-    return [{id:`streamcenter-${link[1]}-${link[2]}`,
-      locator:{provider:'streamcenter',eventId:link[1],linkId:link[2]},label:'Streamcenter'}];
+    return [{id:`streamcenter-${link[2]}-${link[3]}`,
+      locator:{provider:'streamcenter',eventId:link[2],linkId:link[3],...(link[1]==='basketball-nba'?{league:'nba' as const}:{})},label:'Streamcenter'}];
   }
   if (observation.sourceId === 'ppv') {
     let input:unknown;
@@ -493,7 +507,7 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
     const event = parsed.data;
     const expected = `https://ppv.st/live/${event.uri_name}`;
     if (observation.url !== expected || observation.kickoff !== event.starts_at*1000 ||
-      !['College Football','NFL'].includes(event.tag)) return [];
+      !['College Football','NFL','NBA'].includes(event.tag)) return [];
     const pages = new Map<string,ResolvedPlayer>();
     for (const row of [event,...event.substreams]) {
       if (!row.iframe || row.tag !== event.tag || row.name !== event.name ||
@@ -533,11 +547,11 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
 
 export async function tvappPlayers(gameId:string,observation:Observation,html:string,_signal:AbortSignal,
   _read:(url:string,signal:AbortSignal)=>Promise<string>=readPage):Promise<ResolvedPlayer[]> {
-  if(observation.sourceId!=='tvapp'||!observation.teams||observation.kickoff===null||
+  if(!['tvapp','tvapp-nba'].includes(observation.sourceId)||!observation.teams||observation.kickoff===null||
     compatiblePlayers(gameId,observation,html).length!==1)return [];
   const teams=observation.teams,kickoff=observation.kickoff;
   const signal=_signal,read=_read;
-  const catalog:unknown=JSON.parse(await read(TVAPP_API,signal));
+  const catalog:unknown=JSON.parse(await read(observation.sourceId==='tvapp-nba'?TVAPP_BASKETBALL_API:TVAPP_API,signal));
   if(!Array.isArray(catalog))throw new Error('parser-changed');
   const matching=catalog.flatMap(value=>{
     const event=tvappIdentity(value);

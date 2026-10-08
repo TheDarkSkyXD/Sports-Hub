@@ -8,6 +8,7 @@ export const SCHEDULES = [
   {id:'nfl',league:'nfl',path:'nfl',group:null},
   {id:'fbs',league:'ncaaf',path:'college-football',group:'80'},
   {id:'fcs',league:'ncaaf',path:'college-football',group:'81'},
+  {id:'nba',league:'nba',sport:'basketball',path:'nba',group:null},
 ] as const;
 
 type FutureDay = { date: string; games: Game[]; expiresAt: number };
@@ -72,12 +73,12 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
     if (entry.date <= today || entry.date > lastFutureDate) cache.delete(key);
   }
   const futureDates = Array.from({length:7},(_,index) => date(now + (index+1)*24*3600000));
-  const keyFor = (day: string) => `${partition.path}|${partition.group ?? ''}|${day}`;
+  const keyFor = (day: string) => `${partition.sport ?? 'football'}|${partition.path}|${partition.group ?? ''}|${day}`;
   const cached = futureDates.map(day => cache.get(keyFor(day)));
   const games = new Map<string,Game>();
   const horizonErrors: string[] = [];
   const fetchDay = async (day: string, withWeek = false): Promise<{games:Game[];week?:number}> => {
-    const url = new URL(`https://site.api.espn.com/apis/site/v2/sports/football/${partition.path}/scoreboard`);
+    const url = new URL(`https://site.api.espn.com/apis/site/v2/sports/${partition.sport ?? 'football'}/${partition.path}/scoreboard`);
     url.searchParams.set('limit','200');
     url.searchParams.set('dates',day);
     if (partition.group) url.searchParams.set('groups',partition.group);

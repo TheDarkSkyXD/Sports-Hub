@@ -6,7 +6,7 @@ export type CandidateProbeResult =
   | {kind:'unavailable';reason:'upstream'|'unsupported'|'invalid-media'|'timeout'}
   | {kind:'deferred';retryAfterMs:number};
 
-export type ScheduleSource = { id: string; league: League; path: string; group: string | null };
+export type ScheduleSource = { id: string; league: League; sport?: 'football' | 'basketball'; path: string; group: string | null };
 export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[]; parserVersion?: number };
 export type SchedulePartition = { games: Game[]; at: number; week?: number };
 export type ScheduleResult = SchedulePartition & { league: League; horizonErrors?: string[] };

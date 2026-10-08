@@ -405,7 +405,7 @@ test('schedule requests both college groups and rejects partial event parsing', 
     return Response.json({events:[event],week:{number:4}});
   };
   try {
-    const college = await Promise.all(SCHEDULES.slice(1).map(partition => readSchedule(partition,now,new AbortController().signal)));
+    const college = await Promise.all(SCHEDULES.filter(partition=>partition.league==='ncaaf').map(partition => readSchedule(partition,now,new AbortController().signal)));
     assert.equal(urls.filter(value => new URL(value).searchParams.get('groups') === '80').length,9);
     assert.equal(urls.filter(value => new URL(value).searchParams.get('groups') === '81').length,9);
     assert.ok(urls.every(value => /^\d{8}$/.test(new URL(value).searchParams.get('dates') || '')));

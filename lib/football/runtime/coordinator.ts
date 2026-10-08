@@ -264,7 +264,7 @@ export class FootballCoordinator {
     return this.refreshing;
   }
   private scheduleFresh(game: Game): boolean {
-    const keys = game.partitions?.length ? game.partitions : game.league === 'nfl' ? ['nfl'] : [];
+    const keys = game.partitions?.length ? game.partitions : game.league === 'nfl' ? ['nfl'] : game.league === 'nba' ? ['nba'] : [];
     return keys.length > 0 && keys.every(key => !this.errors.has(key) && this.now()-(this.store.partition(key)?.at || 0) <= 90000);
   }
   private probeKey(candidate:Candidate):string {
@@ -1021,7 +1021,7 @@ export class FootballCoordinator {
         if(!this.observationFeedEligible(observation))return;
         const at=this.now();
         const rolloverGame=liveRolloverGame(original);
-        const playersFor=(id:string)=>observation.sourceId==='tvapp'&&this.tvappPlayers?
+        const playersFor=(id:string)=>['tvapp','tvapp-nba'].includes(observation.sourceId)&&this.tvappPlayers?
           this.tvappPlayers(id,observation,html,signal):Promise.resolve(this.compatiblePlayers(id,observation,html));
         const rolloverPlayers=rolloverGame&&observation.kickoff===original.kickoff?
           await playersFor(rolloverGame.id):[];
@@ -1131,7 +1131,7 @@ export class FootballCoordinator {
       ]).concat(this.errors.has('working-feed-cache')?['Working feeds could not be saved for the next restart.']:[])};
     };
     const now = this.now();
-    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),feedCheckIntervalMinutes:this.store.feedCheckIntervalMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs'])},games:this.games.filter(game => {
+    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),feedCheckIntervalMinutes:this.store.feedCheckIntervalMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs']),nba:feed(['nba'])},games:this.games.filter(game => {
       if(game.lifecycle==='final')return now<game.graceEndsAt;
       return (game.partitions || []).some(key => now-(this.store.partition(key)?.at || 0)<24*3600000) ||
         game.finalObservedAt !== undefined || (this.candidates.get(game.id)||[]).some(candidate=>this.selectable(candidate)) ||
@@ -1404,7 +1404,7 @@ export class FootballCoordinator {
       if(!catalog)return {kind:'error',status:400,message:'Invalid StreamEast catalog checkpoint.'};
       const skipDetailEventIds=catalog.events.filter(event=>{
         const category=catalog.categories[event.league];
-        const expected=event.espnEventId===null?undefined:event.league==='ncaaf'?`ncaaf-${event.espnEventId}`:event.espnEventId;
+        const expected=event.espnEventId===null?undefined:event.league==='nfl'?event.espnEventId:`${event.league}-${event.espnEventId}`;
         const observation=streameastObservation(event,category.kind==='pending'?catalog.startedAt:category.at);
         const raw=createObservationMatcher(this.games)(observation,this.now());
         const result=verifiedStreameastMatch(event,raw,this.games.find(game=>game.id===(raw.kind==='matched'?raw.gameId:'')));
