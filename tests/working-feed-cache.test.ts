@@ -24,7 +24,7 @@ function fixture() {
   let sourceIds = ['fixture'], locators: CandidateLocator[] = [{ provider: 'gooz', playerId: '100' }], partitionIds = ['nfl'];
   const partitionResults = new Map<string, Game[] | Promise<Game[]>>();
   const probes: CandidateLocator[] = [];
-  let detailReads = 0;
+  let listingReads = 0, detailReads = 0;
   const eventUrl = (sourceId: string, gameId: string) => {
     const locator = locators[sourceIds.indexOf(sourceId)];
     return locator?.provider === 'event-page' ? locator.eventUrl : `https://fixture.example/event/${gameId}/${listingVersion}`;
@@ -34,7 +34,10 @@ function fixture() {
     sources: sourceIds.map(id => ({ id, url: `https://fixture.example/list/${id}`, family: 'fixture',
       publicUrls: locators.flatMap(locator => locator.provider === 'event-page' ? [locator.eventUrl] : []) })),
     readSchedule: async source => { if (failSchedule) throw new Error('schedule offline'); return { games: await (partitionResults.get(source.id) ?? current), league: 'nfl', at: clock }; },
-    readHtml: async () => { detailReads++; return '<main>published</main>'; },
+    readHtml: async url => {
+      if (new URL(url).pathname.startsWith('/list/')) listingReads++; else detailReads++;
+      return '<main>published</main>';
+    },
     parseListings: source => ({ outcome: visible ? 'parsed' : 'empty', observations: visible ? current.map(row => ({
       id: `${source.id}:${row.id}`, sourceId: source.id, url: eventUrl(source.id, row.id),
       title: row.name, league: row.league, teams: [row.away.name, row.home.name], kickoff: Date.parse(row.date!),
@@ -45,7 +48,7 @@ function fixture() {
       [{ id: `${observation.sourceId}-${index}`, label: `Free ${index}`, locator }]),
     probeCandidate: async locator => { probes.push(locator); return probe(locator); },
   });
-  return { path, probes, start, detailReads: () => detailReads,
+  return { path, probes, start, reads: () => ({ listingReads, detailReads }),
     setClock: (value: number) => { clock = value; }, hide: () => { visible = false; },
     setGames: (value: Game[]) => { current = value; }, setSources: (value: string[]) => { sourceIds = value; },
     setLocators: (value: CandidateLocator[]) => { locators = value; }, setScheduleFailure: (value: boolean) => { failSchedule = value; },
@@ -128,7 +131,7 @@ test('old live and scheduled working choices are visible before schedule refresh
   }
 });
 
-test('a held schedule refresh leaves saved working feeds open without network or media reads', async () => {
+test('a held schedule refresh collects listings while saved working feeds open without detail or media reads', async () => {
   for (const scheduled of [false, true]) {
     const run = fixture();
     if (scheduled) run.setGames([{ ...game, lifecycle: 'scheduled', status: 'pre', date: '2026-10-05T17:00:00Z' }]);
@@ -138,7 +141,7 @@ test('a held schedule refresh leaves saved working feeds open without network or
     try {
       await coordinator.refresh(true); await drain();
       const candidate = (await snapshot(coordinator)).games[0].candidates[0];
-      const reads = run.detailReads();
+      const reads = run.reads();
       await coordinator.stop(); run.hide(); run.setClock(at + (scheduled ? 25 * 60 : 31) * 60_000);
       run.partitionResults.set('nfl', new Promise<Game[]>(resolve => { release = resolve; }));
       coordinator = run.start(); pending = coordinator.refresh(true); await drain();
@@ -157,7 +160,7 @@ test('a held schedule refresh leaves saved working feeds open without network or
       }
       assert.equal((await coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: false })).kind, 'error');
       assert.equal(run.probes.length, 1);
-      assert.equal(run.detailReads(), reads);
+      assert.deepEqual(run.reads(), { ...reads, listingReads: reads.listingReads + 1 });
     } finally {
       release?.([]); await pending;
       await coordinator.stop(); run.cleanup();
@@ -189,7 +192,7 @@ test('stale saved proof excludes unverified sibling routes and yesterday live ga
       if (sessionReply.kind === 'session') assert.equal(sessionReply.candidates.length, 1);
     }
     await coordinator.stop(); run.setClock(at + 25 * 60 * 60_000); coordinator = run.start();
-    assert.equal((await snapshot(coordinator)).games.length, 0);
+    assert.deepEqual((await snapshot(coordinator)).games.map(row => [row.gameId, row.candidates]), [[game.id, []]]);
     const board = await coordinator.command({ kind: 'board' });
     assert.equal(board.kind, 'board');
     if (board.kind === 'board') assert.equal(board.board.games.find(row => row.id === game.id), undefined);

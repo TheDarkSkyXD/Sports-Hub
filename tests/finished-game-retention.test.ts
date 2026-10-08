@@ -18,12 +18,15 @@ const live: Game = { id: '10001', league: 'nfl', name: 'Away at Home', date: new
 async function drain() { for (let index = 0; index < 60; index++) await new Promise<void>(resolve => setImmediate(resolve)); }
 function fixture() {
   const directory = mkdtempSync(join(tmpdir(), 'finished-retention-')), path = join(directory, 'state.sqlite');
-  let now = at, games: Game[] = [live], reads = 0, probes = 0, published = true;
+  let now = at, games: Game[] = [live], listingReads = 0, detailReads = 0, probes = 0, published = true;
   const start = () => createFootballCoordinator(path, {
     now: () => now, schedules: [{ id: 'nfl', league: 'nfl', path: '/fixture', group: null }],
     sources: [{ id: 'fixture', url: 'https://fixture.example/list', family: 'fixture' }],
     readSchedule: async () => ({ games, league: 'nfl', at: now }),
-    readHtml: async () => { reads++; return '<main>fixture</main>'; },
+    readHtml: async url => {
+      if (url === 'https://fixture.example/list') listingReads++; else detailReads++;
+      return '<main>fixture</main>';
+    },
     parseListings: () => ({ outcome: published ? 'parsed' : 'empty', observations: published ? [{
       id: 'fixture-game', sourceId: 'fixture', url: 'https://fixture.example/event', title: live.name,
       league: 'nfl', teams: [live.away.name, live.home.name], kickoff: at, rawTime: '', observedAt: now, parserVersion: 2,
@@ -33,7 +36,7 @@ function fixture() {
       locator: { provider: 'gooz' as const, playerId: String(index) } })),
     probeCandidate: async () => { probes++; return { kind: 'playable', proof: 'media' }; },
   });
-  return { path, start, counts: () => ({ reads, probes }), clock: (value: number) => { now = value; },
+  return { path, start, counts: () => ({ listingReads, detailReads, probes }), clock: (value: number) => { now = value; },
     finish: () => { published = false; games = [recordFinal({ ...live, lifecycle: 'final', status: 'post' }, now)]; },
     disappear: () => { games = []; },
     sql: (statement: string) => { const db = new DatabaseSync(path); try { db.exec(statement); } finally { db.close(); } },
@@ -93,6 +96,7 @@ test('finished games and saved servers survive missing schedules and cold restor
     const counts = run.counts();
     run.clock(at + 10 * 60_000); run.finish();
     await coordinator.refresh(true); await drain();
+    assert.deepEqual(run.counts(), { ...counts, listingReads: counts.listingReads + 1 });
     run.disappear(); await coordinator.refresh(true); await drain();
     await coordinator.stop(); run.clock(at + 10 * 60_000 + day - 1); coordinator = run.start();
     assert.deepEqual((await sources(coordinator)).games[0].candidates, before);
@@ -115,7 +119,7 @@ test('finished games and saved servers survive missing schedules and cold restor
     assert.equal(switched.session.generation, 1);
     assert.equal((await coordinator.command({ kind: 'authorize', sessionId: switched.session.id, candidateId: 'server-2', generation: 1 })).kind, 'authorized');
     assert.equal((await coordinator.command({ kind: 'check-sources', gameIds: [live.id], retry: true })).kind, 'error');
-    assert.deepEqual(run.counts(), counts);
+    assert.deepEqual(run.counts(), { ...counts, listingReads: counts.listingReads + 1 });
     run.clock(at + 10 * 60_000 + day);
     assert.deepEqual((await sources(coordinator)).games, []);
     assert.equal((await coordinator.command({ kind: 'authorize', sessionId: switched.session.id, candidateId: 'server-2', generation: 1 })).kind, 'error');
@@ -125,7 +129,7 @@ test('finished games and saved servers survive missing schedules and cold restor
     if (expired.kind === 'board') assert.deepEqual(expired.board.games, []);
     await coordinator.stop(); coordinator = run.start();
     assert.deepEqual((await sources(coordinator)).games, []);
-    assert.deepEqual(run.counts(), counts);
+    assert.deepEqual(run.counts(), { ...counts, listingReads: counts.listingReads + 1 });
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 

@@ -60,7 +60,8 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} reuses
     assert.equal(reads.filter(page => page === 'detail').length, 2);
     const before = await coordinator.command({ kind: 'sources' });
     assert.equal(before.kind, 'sources');
-    if (before.kind === 'sources') assert.deepEqual(before.snapshot.games.map(row => row.workingChoiceCount), [2, 2]);
+    if (before.kind === 'sources') assert.deepEqual(before.snapshot.games.map(row => [row.gameId, row.workingChoiceCount]),
+      [['10001', 2], ['10002', 2], ['10003', 0]]);
     clock += 60000; listed = [1, 2, 3]; reads.length = 0;
     const second = await sweep(); await drain();
     assert.equal(second.state.kind, 'complete');
