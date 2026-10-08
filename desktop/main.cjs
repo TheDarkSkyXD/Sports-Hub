@@ -205,6 +205,7 @@ app.whenReady().then(async () => {
   update.start();
   await win.loadURL(origin).catch(() => { mainFrameFailed = true; });
 }).catch(async error => {
+  if (runtimeStop.kind !== 'running') return;
   try {
     fs.mkdirSync(logDir,{recursive:true});
     fs.appendFileSync(path.join(logDir,'startup.log'),String(error)+'\n');
