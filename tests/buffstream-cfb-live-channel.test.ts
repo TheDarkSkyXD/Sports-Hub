@@ -88,7 +88,8 @@ test('CFB clock allowance remains live-only, exact-team, fresh and source-scoped
     provider:'event-page',gameId:'ncaaf-401871999',eventUrl:observation.url,serverUrl:'https://embedsports.me/american-football/jacksonville-state-vs-kennesaw-state-stream-1'}}]},at),result);
   assert.deepEqual(compatiblePlayers(game.id,observation,detail(observation.url).replace('rel="canonical"','rel="other"')),[]);
   assert.deepEqual(compatiblePlayers(game.id,observation,detail(observation.url).replace('jacksonville-state-vs-kennesaw-state','other-team-vs-kennesaw-state')),[]);
-  assert.equal(validEventPagePair(observation.url,'https://embedsports.me/american-football/other-team-vs-kennesaw-state-stream-1'),true);
+  assert.deepEqual(compatiblePlayers(game.id,{...observation,sourceId:'buffstream-nfl',league:'nfl'},detail(observation.url)),[]);
+  assert.deepEqual(compatiblePlayers(game.id,{...observation,league:'nfl'},detail(observation.url)),[]);
   assert.equal(validEventPagePair(observation.url,'https://embedsports.me/american-football/jacksonville-state-vs-kennesaw-state-stream-1?paid=true'),false);
   assert.equal(parseListings(source,'<a href="http://ms.buffstream.io/nfl-streams/detroit-lions-live-stream">Detroit Lions vs Carolina Panthers2026-10-07 - 07:00 pm ET</a>',at).observations.length,0);
   const nfl=SOURCES.find(item=>item.id==='buffstream-nfl')!;

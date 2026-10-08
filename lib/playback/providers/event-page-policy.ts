@@ -39,7 +39,7 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
   const event = exactPage(eventUrl), server = exactPage(serverUrl);
   if (!event || !server) return false;
   if(event.hostname==='ms.buffstream.io'&&server.hostname==='embedsports.me'){
-    const team=/^\/nfl-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(event.pathname);
+    const team=/^\/(?:nfl|cfb)-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(event.pathname);
     const pair=/^\/american-football\/([a-z0-9]+(?:-[a-z0-9]+)*)-vs-([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$/.exec(server.pathname);
     return !!team&&!!pair&&(team[1]===pair[1]||team[1]===pair[2]);
   }
