@@ -6,7 +6,8 @@ import {validEventPagePair} from '../../playback/providers/event-page-policy.ts'
 export function buffstreamPlayers(gameId:string,observation:Observation,html:string):ResolvedPlayer[] {
   const league=observation.sourceId==='buffstream-nfl'&&observation.league==='nfl'?'NFL':
     (observation.sourceId==='buffstream-cfb'||observation.sourceId==='crackstreams-cfb')&&observation.league==='ncaaf'?'CFB':
-    observation.sourceId==='buffstream-nba'&&observation.league==='nba'?'NBA':null;
+    observation.sourceId==='buffstream-nba'&&observation.league==='nba'?'NBA':
+    observation.sourceId==='buffstream-nhl'&&observation.league==='nhl'?'NHL':null;
   if(!league||!observation.teams||
     !observation.url.startsWith(`https://ms.buffstream.io/${league.toLowerCase()}-streams/`))return [];
   const $=load(html);
@@ -19,7 +20,7 @@ export function buffstreamPlayers(gameId:string,observation:Observation,html:str
     const serverUrl=$(node).attr('src')||'';
     if(!validEventPagePair(observation.url,serverUrl))return;
     const path=new URL(serverUrl).pathname;
-    const number=/\/(?:american-football|basketball)\/(.+)-stream-([12])$/.exec(path);
+    const number=/\/(?:american-football|basketball|ice-hockey)\/(.+)-stream-([12])$/.exec(path);
     if(!number||![`${teams[0]}-vs-${teams[1]}`,`${teams[1]}-vs-${teams[0]}`].includes(number[1]))return;
     const id=createHash('sha256').update(JSON.stringify([gameId,observation.url,serverUrl])).digest('hex').slice(0,24);
     players.set(serverUrl,{id:`event-page:${id}`,label:`Buffstream ${league} · Server ${number[2]}`,

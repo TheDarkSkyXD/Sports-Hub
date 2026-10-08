@@ -3,7 +3,7 @@ import { COLLEGE_TEAM_CATALOG } from '../../football/domain/college-teams.genera
 
 const catalogTeamsSchema=z.object({home:z.object({name:z.string().min(1)}),away:z.object({name:z.string().min(1)})});
 export const TvappMatch=z.object({id:z.string().min(1),title:z.string().min(1),
-  category:z.enum(['american-football','basketball']),date:z.number().int(),teams:catalogTeamsSchema.nullish()});
+  category:z.enum(['american-football','basketball','hockey']),date:z.number().int(),teams:catalogTeamsSchema.nullish()});
 export const TvappSourceRef=z.object({source:z.string().regex(/^[a-z0-9-]{1,32}$/),
   id:z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/)});
 export const TvappDetailMatch=TvappMatch.extend({sources:z.array(TvappSourceRef).max(32)});

@@ -39,9 +39,9 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
   const event = exactPage(eventUrl), server = exactPage(serverUrl);
   if (!event || !server) return false;
   if(event.hostname==='ms.buffstream.io'&&server.hostname==='embedsports.me'){
-    const team=/^\/(nfl|cfb|nba)-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(event.pathname);
-    const pair=/^\/(american-football|basketball)\/([a-z0-9]+(?:-[a-z0-9]+)*)-vs-([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$/.exec(server.pathname);
-    return !!team&&!!pair&&(team[1]==='nba' ? pair[1]==='basketball' : pair[1]==='american-football')&&
+    const team=/^\/(nfl|cfb|nba|nhl)-streams\/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$/.exec(event.pathname);
+    const pair=/^\/(american-football|basketball|ice-hockey)\/([a-z0-9]+(?:-[a-z0-9]+)*)-vs-([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$/.exec(server.pathname);
+    return !!team&&!!pair&&(team[1]==='nba' ? pair[1]==='basketball' : team[1]==='nhl'?pair[1]==='ice-hockey':pair[1]==='american-football')&&
       (team[2]===pair[2]||team[2]===pair[3]);
   }
   if (event.hostname === 'tvapp1.pk') return eventUrl===serverUrl && /^\/watch\/\d{1,20}$/.test(event.pathname);
@@ -66,7 +66,7 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
       /^\/event\/live_(?:cfb|nfl)_[a-z0-9]+(?:-[a-z0-9]+)*-live-streaming-\d{1,20}\/(?:vector|vertex|foxtrot)\/[1-9]\d{0,2}$/.test(server.pathname);
   }
   if (event.hostname === 'vipbox.fm' && server.hostname === event.hostname) {
-    const match = /^\/onair\/(ncaaf|nfl|nba)\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
+    const match = /^\/onair\/(ncaaf|nfl|nba|nhl)\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
     return !!match && new RegExp(`^/live/${match[1]}/${match[2]}-[1-9]\\d{0,3}$`).test(server.pathname);
   }
   if (event.hostname === 'www.vipboxtv.sk' && server.hostname === event.hostname) {
@@ -74,11 +74,11 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
     return !!match && new RegExp(`^/cfb/[1-9]\\d{0,3}/stream-${match[1]}-live$`).test(server.pathname);
   }
   if (event.hostname === 'strikeout.im' && server.hostname === event.hostname) {
-    const match = /^\/(college-football|nfl|nba)\/stream-([a-z0-9]+(?:-[a-z0-9]+)*)-live$/.exec(event.pathname);
+    const match = /^\/(college-football|nfl|nba|nhl)\/stream-([a-z0-9]+(?:-[a-z0-9]+)*)-live$/.exec(event.pathname);
     return !!match && new RegExp(`^/${match[1]}/[1-9]\\d{0,3}/${match[2]}-stream$`).test(server.pathname);
   }
   if (event.hostname === 'ppv.st' && server.hostname === 'embedindia.st') {
-    const match = /^\/live\/(cfb|nfl|nba|wnba)\/(\d{4}-\d{2}-\d{2})\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
+    const match = /^\/live\/(cfb|nfl|nba|wnba|nhl)\/(\d{4}-\d{2}-\d{2})\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
     if (!match) return false;
     const path=`/embed/${match[1]}/${match[2]}/${match[3]}`;
     return server.pathname===path || server.pathname===`${path}/skycast`;
