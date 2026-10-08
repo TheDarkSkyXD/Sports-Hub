@@ -15,6 +15,7 @@ const MAX_FRAMES = 32;
 const SPORTSPATRIKA_MAX_FRAMES = 64;
 const NFLSTREAMS_MAX_FRAMES = 64;
 const TVAPP_EMBED_MAX_FRAMES = 64;
+const FXTREND_PPV_MAX_FRAMES = 64;
 const MAX_BYTES = 24 * 1024 * 1024;
 const blockedV4 = [
   [0x00000000,8],[0x0a000000,8],[0x64400000,10],[0x7f000000,8],
@@ -212,6 +213,12 @@ function tvappEmbedEntry(value) {
   const url = publicUrl(value);
   return !!url && url.origin === 'https://embed.st' && !url.search && !url.port &&
     /^\/embed\/[a-z0-9-]{1,32}\/[a-zA-Z0-9_-]{1,120}\/[1-9][0-9]{0,2}$/.test(url.pathname);
+}
+
+function fxtrendPpvEntry(value) {
+  const url = publicUrl(value);
+  return !!url && url.origin === 'https://fxtrend.st' && !url.search && !url.port &&
+    /^\/event\/ppv-[a-z0-9]+(?:-[a-z0-9]+)*-vs-[a-z0-9]+(?:-[a-z0-9]+)*\/(?:core|vector|vertex|hotel)\/[1-9][0-9]{0,2}$/.test(url.pathname);
 }
 
 function aianimalvibesPlayer(value) {
@@ -564,7 +571,8 @@ function createObserverSlot(index) {
         issuerRequests:0,
         frameLimit:embeddedEventUrl && new URL(embeddedEventUrl).hostname==='nflstreams.org' ? NFLSTREAMS_MAX_FRAMES :
           sportspatrikaEntry(url) ? SPORTSPATRIKA_MAX_FRAMES :
-            tvappEmbedEntry(url) ? TVAPP_EMBED_MAX_FRAMES : MAX_FRAMES,
+            tvappEmbedEntry(url) ? TVAPP_EMBED_MAX_FRAMES :
+              fxtrendPpvEntry(url) ? FXTREND_PPV_MAX_FRAMES : MAX_FRAMES,
         deadline: Date.now()+OBSERVE_MS, probeKeys: new Set(), probeTimers: new Set(),
         timer: setTimeout(() => endActive(current,null),OBSERVE_MS) };
       active = current;
