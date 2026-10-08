@@ -65,7 +65,7 @@ async function withFakeDeadline(run:(advance:(ms:number)=>void)=>Promise<void>) 
 }
 
 for(const reactsToAbort of [false,true])test(reactsToAbort ?
-  'the probe deadline publishes timeout before an abort-driven defer result' :
+  'the probe deadline defers before an abort-driven result' :
   'four stalled probes time out, free a slot, and use the saved five-minute retry',async()=>{
   const held:Array<ReturnType<typeof hold>>=[],started:string[]=[];
   const run=fixture(5,async (locator,signal)=>{
@@ -91,7 +91,7 @@ for(const reactsToAbort of [false,true])test(reactsToAbort ?
       const snapshot=await sources(run.coordinator);
       for(const row of snapshot.games.filter(row=>row.gameId!==run.games[4].id)){
         const availability=row.candidates[0]?.availability;
-        assert.deepEqual(availability,{kind:'unavailable',reason:'timeout',checkedAt:at+65_000,retryAt:at+365_000});
+        assert.deepEqual(availability,{kind:'checking',progress:{kind:'deferred',since:at+65_000,retryAt:at+365_000}});
       }
     });
   } finally {
@@ -128,7 +128,7 @@ test('a late playable result cannot replace a newer check result',async()=>{
       advance(65_000);
       await until(async()=>{
         const availability=(await sources(run.coordinator)).games[0]?.candidates[0]?.availability;
-        return availability?.kind==='unavailable'&&availability.reason==='timeout';
+        return availability?.kind==='checking'&&availability.progress.kind==='deferred';
       },'the first check should time out');
       assert.deepEqual(await run.coordinator.command({kind:'check-sources',gameIds:[run.games[0].id],retry:true}),{kind:'ok'});
       await until(()=>calls===2,'the replacement check should begin');

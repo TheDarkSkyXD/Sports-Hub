@@ -137,6 +137,15 @@ test('probe falls back to a larger video rendition when the smallest has invalid
   assert.deepEqual(run.reads.map(read=>read.uri),['index.m3u8','low.m3u8','low.ts','high.m3u8','high.ts']);
 });
 
+test('a timed variant does not hide a playable sibling or condemn mixed variants',async()=>{
+  const master='#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=200,RESOLUTION=640x360\nlow.m3u8\n'+
+    '#EXT-X-STREAM-INF:BANDWIDTH=500,RESOLUTION=1920x1080\nhigh.m3u8\n';
+  const playable=fixture({'index.m3u8':master,'high.m3u8':playlist(),'segment.ts':transportStream});
+  assert.deepEqual(await probeCandidate(locator,signal(),playable.open),{kind:'playable',proof:'media'});
+  const mixed=fixture({'index.m3u8':master,'low.m3u8':playlist(),'segment.ts':'<html>broken</html>'});
+  assert.deepEqual(await probeCandidate(locator,signal(),mixed.open),{kind:'deferred',retryAfterMs:300_000,phase:'replay'});
+});
+
 test('probe retries a shared video playlist when the next variant has working audio',async()=>{
   const run=fixture({'index.m3u8':'#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="broken",NAME="Broken",DEFAULT=YES,URI="broken.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="working",NAME="Working",DEFAULT=YES,URI="working.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=200,RESOLUTION=640x360,AUDIO="broken"\nvideo.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=500,RESOLUTION=640x360,AUDIO="working"\nvideo.m3u8\n',
     'video.m3u8':'#EXTM3U\n#EXTINF:4,\nvideo.ts\n','video.ts':transportStream,
@@ -176,7 +185,7 @@ test('a failed media read retains its replay phase',async()=>{
   const result=await probeCandidate(locator,signal(),async()=>({
     ...opened,root:{...opened.root,read:async()=>{throw new Error('media replay failed');}},
   }));
-  assert.deepEqual(result,{kind:'unavailable',reason:'upstream',phase:'replay'});
+  assert.deepEqual(result,{kind:'deferred',retryAfterMs:300_000,phase:'replay'});
   assert.equal(run.closed(),1);
 });
 

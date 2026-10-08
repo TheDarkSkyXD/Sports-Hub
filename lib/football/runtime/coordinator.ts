@@ -633,6 +633,10 @@ export class FootballCoordinator {
       this.terminalByGame.get(job.candidate.gameId)?.delete(job.key);
       this.revision++;
     }
+    if(retry)for(const [key,deferred] of this.deferredProbes)if(gameIds.includes(deferred.candidate.gameId)){
+      clearTimeout(deferred.timer);
+      this.deferredProbes.delete(key);
+    }
     const queued=new Set(this.probeQueue.map(job=>job.key));
     const hasPlayable=(candidate:Candidate):boolean=>this.terminal(candidate)?.kind==='playable';
     const demand=this.probeDemand();
@@ -745,13 +749,13 @@ export class FootballCoordinator {
       };
       const onAbort=()=>finish(canceled);
       const timer=setTimeout(()=>{
-        finish({kind:'unavailable',reason:'timeout'});
+        finish({kind:'deferred',retryAfterMs:MEDIA_RECHECK_MS});
         deadline.abort();
       },PROBE_TIMEOUT_MS);
       job.controller.signal.addEventListener('abort',onAbort,{once:true});
       void Promise.resolve().then(()=>job.controller.signal.aborted ? canceled :
         this.probeCandidate(job.candidate.locator,signal))
-        .then(finish,()=>finish({kind:'unavailable',reason:'upstream'}));
+        .then(finish,()=>finish({kind:'deferred',retryAfterMs:MEDIA_RECHECK_MS}));
     });
   }
   private pumpProbes():void {
@@ -800,7 +804,7 @@ export class FootballCoordinator {
           this.projectCandidates();
         }
         else {
-          const delay=Math.max(1000,Math.min(60_000,result.retryAfterMs));
+          const delay=Math.max(MEDIA_RECHECK_MS,result.retryAfterMs);
           if(usesBrowserProbe(job.candidate)&&!result.phase)this.browserProbeAfter=Math.max(this.browserProbeAfter,checkedAt+delay);
           const timer=setTimeout(()=>{
             this.deferredProbes.delete(job.key);
@@ -813,8 +817,11 @@ export class FootballCoordinator {
         if(this.stopped||job.controller.signal.aborted||this.activeProbes.get(job.key)!==job||!this.currentProbeJob(job,false)||
           job.revision!==(this.healthRevision.get(job.key)||0))return;
         const checkedAt=this.now();
-        this.recordTerminal(job.candidate,{kind:'unavailable',reason:'upstream',checkedAt,retryAt:checkedAt+MEDIA_RECHECK_MS});
-        this.projectCandidates();
+        const timer=setTimeout(()=>{
+          this.deferredProbes.delete(job.key);
+          if(!this.stopped)this.checkSources([],false);
+        },MEDIA_RECHECK_MS);
+        this.deferredProbes.set(job.key,{since:checkedAt,until:checkedAt+MEDIA_RECHECK_MS,timer,candidate:job.candidate,phase:undefined});
         this.revision++;
       }).finally(()=>{
         if(this.activeProbes.get(job.key)===job){this.activeProbes.delete(job.key);this.revision++;}
