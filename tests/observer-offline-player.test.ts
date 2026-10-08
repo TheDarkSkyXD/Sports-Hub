@@ -71,6 +71,20 @@ test('Buffstream SD0 player belongs to the selected embedded server subtree', ()
   assert.equal(offlinePlayerFrame(server, [player]), null);
 });
 
+test('Dudestream CFB SD0 player belongs only to its selected embedded server subtree', () => {
+  const event='https://dudestream1.com/cfb96/';
+  const server='https://embedsports.me/american-football/jacksonville-state-vs-kennesaw-state-stream-1';
+  const root={url:event,parent:null,isDestroyed:()=>false};
+  const selected={url:server,parent:root,isDestroyed:()=>false};
+  const player={url:'https://posamari.me/sd0embed/NFL?pid=5',parent:selected,isDestroyed:()=>false};
+  assert.equal(offlinePlayerFrame(server,[player],event),player);
+  assert.equal(offlinePlayerFrame(server,[player,{...player}],event),null);
+  assert.equal(offlinePlayerFrame(server,[{...player,parent:{...selected,url:'https://embedsports.me/american-football/other-vs-team-stream-1'}}],event),null);
+  assert.equal(offlinePlayerFrame(server,[player],'https://dudestream1.com/cfb97/'),null);
+  assert.equal(offlinePlayerFrame(server,[player],'https://dudestream1.com/nfl2/'),null);
+  assert.equal(offlinePlayerFrame(server,[player]),null);
+});
+
 test('the published SD0 Play control starts one visible paused video without clicking other controls', () => {
   let clicks=0,plays=0;
   const video={paused:true,muted:false,getBoundingClientRect:()=>({width:913,height:514}),play(){plays++;return Promise.resolve();}};
