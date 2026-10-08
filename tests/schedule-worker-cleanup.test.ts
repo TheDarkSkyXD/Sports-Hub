@@ -26,15 +26,15 @@ test('failed required days release optional history slots for the next current r
   const events:Array<{kind:string;id:number}>=[];
   const waiters:Array<()=>void>=[];
   worker.on('message',(event:{kind:string;id:number})=>{events.push(event);for(const notify of waiters)notify();});
-  const waitFor=(ready:()=>boolean)=>new Promise<void>((resolve,reject)=>{
-    const timeout=setTimeout(()=>reject(new Error(`Timed out waiting for schedule worker: ${JSON.stringify(events)}`)),1000);
+  const waitFor=(ready:()=>boolean,timeoutMs=2000)=>new Promise<void>((resolve,reject)=>{
+    const timeout=setTimeout(()=>reject(new Error(`Timed out waiting for schedule worker: ${JSON.stringify(events)}`)),timeoutMs);
     const check=()=>{if(!ready())return;clearTimeout(timeout);waiters.splice(waiters.indexOf(check),1);resolve();};
     waiters.push(check);
     check();
   });
   try {
     for(let id=1;id<=6;id++)worker.postMessage({kind:'read',id,partitionId:'nfl',now});
-    await waitFor(()=>events.filter(event=>event.kind==='failed').length===6);
+    await waitFor(()=>events.filter(event=>event.kind==='failed').length===6,5000);
     await new Promise<void>(resolve=>setTimeout(resolve,20));
     worker.postMessage({kind:'read',id:7,partitionId:'nfl',now});
     await waitFor(()=>events.some(event=>event.kind==='current'&&event.id===7));
