@@ -7,7 +7,11 @@ const { publicNetworkUrl, createNavigationPolicy, aianimalvibesPlayer } = requir
 
 test('only the published Aianimalvibes football player can trigger observation playback', () => {
   assert.equal(aianimalvibesPlayer('https://ch.aianimalvibes.com/football/728'), true);
+  assert.equal(aianimalvibesPlayer('https://ch.aianimalvibes.com/cfb/66184'), true);
   for (const url of [
+    'https://ch.aianimalvibes.com/cfb/66184?ad=1',
+    'https://ch.aianimalvibes.com/cfb/66184/other',
+    'https://ch.aianimalvibes.com.evil.example/cfb/66184',
     'https://ch.aianimalvibes.com/football/728?ad=1',
     'https://ch.aianimalvibes.com/football/728#player',
     'https://ch.aianimalvibes.com:8443/football/728',

@@ -165,7 +165,7 @@ function tvappEmbedEntry(value) {
 function aianimalvibesPlayer(value) {
   const url = publicUrl(value);
   return !!url && url.origin === 'https://ch.aianimalvibes.com' &&
-    /^\/football\/[0-9]{1,10}$/.test(url.pathname) && !url.search && !url.port;
+    /^\/(?:football|cfb)\/[0-9]{1,10}$/.test(url.pathname) && !url.search && !url.port;
 }
 
 function createNavigationPolicy(value,allowStreameastServer=false) {

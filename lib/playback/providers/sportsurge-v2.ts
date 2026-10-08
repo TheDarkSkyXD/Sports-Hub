@@ -18,7 +18,7 @@ function sportspatrikaPlayer(url: URL): boolean {
 }
 
 function aianimalvibesPlayer(url: URL): boolean {
-  return url.origin === 'https://ch.aianimalvibes.com' && /^\/football\/[0-9]{1,10}$/.test(url.pathname) &&
+  return url.origin === 'https://ch.aianimalvibes.com' && /^\/(?:football|cfb)\/[0-9]{1,10}$/.test(url.pathname) &&
     !url.search && !url.hash;
 }
 
