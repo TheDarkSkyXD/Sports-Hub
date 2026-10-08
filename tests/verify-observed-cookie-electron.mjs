@@ -19,7 +19,7 @@ const cross='https://other.fixture.example:8443';
 const cookie='session=fixture-secret';
 const segment=Buffer.alloc(188*3);
 for(let offset=0;offset<segment.length;offset+=188)segment[offset]=0x47;
-const playlist='#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:4,\nsegment.ts\n';
+const playlist='#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:4,\n/segments/segment.ts\n';
 const evidence={playlist:0,segment:0,cross:0,playlistCookies:[],segmentCookies:[]};
 let server;
 let child;
@@ -48,17 +48,17 @@ function fixtureRequest(request,response){
     response.writeHead(200,{'content-type':'text/html; charset=utf-8',
       'set-cookie':`${cookie}; Path=/; Secure; SameSite=Lax`});
     response.end(`<video width="800" height="450" muted playsinline></video>
-      <script>fetch('/live.m3u8',{credentials:'include'}).catch(()=>{})</script>`);
+      <script>fetch('/hls/live.m3u8',{credentials:'include'}).catch(()=>{})</script>`);
     return;
   }
-  if(host==='fixture.example:8443' && request.url==='/live.m3u8'){
+  if(host==='fixture.example:8443' && request.url==='/hls/live.m3u8'){
     evidence.playlistCookies.push(request.headers.cookie===cookie);
     if(request.headers.cookie!==cookie){response.writeHead(403);response.end();return;}
     evidence.playlist++;
     response.writeHead(200,{'content-type':'application/vnd.apple.mpegurl'});
     response.end(playlist);return;
   }
-  if(host==='fixture.example:8443' && request.url==='/segment.ts'){
+  if(host==='fixture.example:8443' && request.url==='/segments/segment.ts'){
     evidence.segmentCookies.push(request.headers.cookie===cookie);
     if(request.headers.cookie!==cookie){response.writeHead(403);response.end();return;}
     evidence.segment++;
@@ -110,7 +110,7 @@ try{
   },body:JSON.stringify({url:`${fixture}/watch`,purpose:'probe'}),signal:AbortSignal.timeout(25000)});
   assert.equal(observed.status,200,`observer returned ${observed.status}: ${await observed.clone().text()}`);
   const result=await observed.json();
-  assert.equal(result.url,`${fixture}/live.m3u8`);
+  assert.equal(result.url,`${fixture}/hls/live.m3u8`);
   assert.equal(result.referer,`${fixture}/watch`);
   assert.equal('mediaCookie' in result,false);
   assert.equal(JSON.stringify(result).includes(cookie),false);
@@ -118,10 +118,10 @@ try{
   const requestMedia=(url)=>fetch(`${origin}/media`,{method:'POST',headers:{
     'content-type':'application/json','x-sunday-control-token':token,
   },body:JSON.stringify({capability:result.capability,url}),signal:AbortSignal.timeout(10000)});
-  const root=await requestMedia(`${fixture}/live.m3u8`);
+  const root=await requestMedia(`${fixture}/hls/live.m3u8`);
   assert.equal(root.status,200,'native replay must retain the observed cookie');
   assert.equal(await root.text(),playlist);
-  const media=await requestMedia(`${fixture}/segment.ts`);
+  const media=await requestMedia(`${fixture}/segments/segment.ts`);
   assert.equal(media.status,200,'same-origin segment must retain the observed cookie');
   assert.deepEqual(Buffer.from(await media.arrayBuffer()),segment);
   const other=await requestMedia(`${cross}/cross.ts`);

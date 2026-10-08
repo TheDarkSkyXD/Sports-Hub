@@ -281,7 +281,8 @@ export function sourceInventory(input:Input):SourcesSnapshot {
         {kind:'missing',checkedAt:catalogEvidence.checkedAt,
           reason:event.detail.kind==='collected'&&(event.detail.publication?.unknown||event.detail.servers.some(server=>server.availability.kind==='unknown'))?
             'parser-changed':event.detail.kind==='collected'&&event.detail.servers.some(server=>server.availability.kind==='free-unsupported')?
-              'unsupported-player':event.detail.kind==='collected'&&(event.detail.publication?.premium||event.detail.servers.some(server=>server.availability.kind==='premium'))?
+              'unsupported-player':event.detail.kind==='collected'&&event.detail.servers.some(server=>server.availability.kind==='free-unresolved')?
+                'no-compatible-media':event.detail.kind==='collected'&&(event.detail.publication?.premium||event.detail.servers.some(server=>server.availability.kind==='premium'))?
                 'paid-only':event.detail.kind==='collected'&&event.detail.publication?'no-published-player':'parser-changed',retryAt:null}:catalogEvidence;
       if (runIndex===0 && observation.kickoff===null) {
         const historical=streameastHistory.flatMap((events,index)=>{

@@ -120,7 +120,7 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     const secret = randomUUID();
     const authorization = Buffer.from(`Basic ${Buffer.from(`media:${secret}`).toString('base64')}`);
     const mediaSession = partition.session;
-    const entry = { id, partition, generation,
+    const entry = { id, partition, generation, cookieOrigin: root.origin,
       session: mediaSession, sockets: new Set(), requests: new Set(), proxy: null, timer: null, issuerRequests: 0,
       headers: { 'User-Agent': userAgent, Accept: '*/*', ...(origin ? { Origin: origin } : {}),
         ...(requestReferer ? { Referer: requestReferer } : {}) }, secret };
@@ -176,9 +176,8 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
       if (stopped || !capabilities.has(id)) return null;
       await mediaSession.setProxy({ mode: 'fixed_servers', proxyRules: `http://127.0.0.1:${proxy.address().port}`, proxyBypassRules: '<-loopback>' });
       if (stopped || !capabilities.has(id)) return null;
-      const path = root.pathname.slice(0,root.pathname.lastIndexOf('/')+1);
       for (const {name,value} of capturedCookies(mediaCookie)) {
-        await mediaSession.cookies.set({url:root.href,name,value,path,secure:true});
+        await mediaSession.cookies.set({url:root.href,name,value,path:'/',secure:true});
         if (stopped || !capabilities.has(id)) return null;
       }
       touch(entry);
@@ -194,7 +193,7 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     }
     if (entry.requests.size >= 8) { response.writeHead(429); response.end(); return; }
     touch(entry);
-    const request = network.request({ url: url.href, session: entry.session, method: 'GET', redirect: 'manual', useSessionCookies: true });
+    const request = network.request({ url: url.href, session: entry.session, method: 'GET', redirect: 'manual', useSessionCookies: url.origin === entry.cookieOrigin });
     entry.requests.add(request);
     for (const [name, value] of Object.entries(entry.headers)) {
       if (name === 'Referer') {

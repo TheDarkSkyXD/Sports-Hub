@@ -71,6 +71,14 @@ test('paid, unclassified and legacy StreamEast details cannot claim no published
     assert.deepEqual(snapshot.sources[0].links[0].evidence,{kind:'missing',checkedAt:at,reason,retryAt:null});
     assert.equal(snapshot.sources[0].scopes[0].feeds.kind,publication&&reason==='no-published-player'?'no-feeds':'incomplete');
   }
+  const unresolved=StreameastCatalogSchema.parse({runId:'11111111-1111-4111-8111-111111111111',sequence:0,
+    startedAt:at,state:{kind:'collecting'},categories:{nfl:{kind:'collected',at},ncaaf:{kind:'pending'}},
+    events:[{...event,detail:{kind:'collected',at,publication:{premium:0,unknown:0},servers:[{
+      id:'1',label:'Free server',url:`${event.url}1`,availability:{kind:'free-unresolved'}}]}}],rejectedGames:[]});
+  const snapshot=sourceInventory({...base,sources:[{id:'streameast',url:'https://v2.streameast.ga/nfl-streams/',
+    family:'streameast',kind:'browser-catalog',leagues:['nfl']}],streameastCatalog:{current:{catalog:unresolved,receivedAt:at},lastComplete:null,previous:null}});
+  assert.equal(snapshot.sources[0].scopes[0].feeds.kind,'incomplete');
+  assert.deepEqual(snapshot.sources[0].links[0].evidence,{kind:'missing',checkedAt:at,reason:'no-compatible-media',retryAt:null});
 });
 
 test('duplicate provider event identities prevent a complete empty scope',()=>{

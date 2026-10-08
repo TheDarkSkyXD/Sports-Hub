@@ -47,7 +47,7 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
     idleMs: 1000,
     network: { request({ url,session,useSessionCookies }: { url: string; session:{cookieJar:FixtureCookie[]};useSessionCookies:boolean }) {
       const request = new ChromiumRequest(url);
-      const cookie=useSessionCookies && session.cookieJar.find(item=>new URL(item.url).origin===new URL(url).origin &&
+      const cookie=useSessionCookies && session.cookieJar.find(item=>new URL(item.url).hostname===new URL(url).hostname &&
         new URL(url).pathname.startsWith(item.path));
       if(cookie)request.headers.Cookie=`${cookie.name}=${cookie.value}`;
       requests.push(request);
@@ -84,6 +84,10 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
     assert.equal(sameOrigin.status, 200);
     await sameOrigin.arrayBuffer();
     assert.equal(requests.at(-1)?.headers.Cookie, 'session=published-player');
+    const otherPort=await read('https://media.example:8443/segment.ts');
+    assert.equal(otherPort.status,200);
+    await otherPort.arrayBuffer();
+    assert.equal(requests.at(-1)?.headers.Cookie,undefined);
     for (const url of ['http://media.example/segment.ts', 'https://127.0.0.1/segment.ts', 'https://user@media.example/segment.ts']) {
       assert.equal((await read(url)).status, 404);
     }
