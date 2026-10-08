@@ -1,4 +1,4 @@
-import { ScheduleGameSchema } from './football/shared.ts';
+import { ScheduleGameSchema, isRaceGame } from './football/shared.ts';
 import { gameTiming } from './game-timing.ts';
 import type { Team, League, Game, ScheduleGame } from './football/shared.ts';
 export type { Team, League, Game, LeagueFeedStatus, Board } from './football/shared.ts';
@@ -14,9 +14,14 @@ export const LEAGUES = {
   ncaah: { label: 'NCAA Hockey' },
   ncaawh: { label: "NCAA Women's Hockey" },
   mlb: { label: 'MLB' },
+  f1: { label: 'F1' },
+  'nascar-cup':{label:'NASCAR Cup'},
+  'nascar-truck':{label:'NASCAR Trucks'},
+  motogp:{label:'MotoGP'},
+  motorsport:{label:'Motorsport'},
 } satisfies Record<League, { label: string }>;
 export function isBasketballLeague(league: League): boolean { return league === 'nba' || league === 'wnba' || league === 'ncaab'; }
-export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
+export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
 export function parsePlayers(html: string): SourcePlayer[] {
   const embeds = [...html.matchAll(/<iframe\b[^>]*>/gi)].flatMap(([tag]) => {
     const source = tag.match(/(?:^|\s)src\s*=\s*(['"])(https:\/\/gooz\.aapmains\.net\/new-stream-embed\/(\d+))\1/i);
@@ -44,6 +49,7 @@ export function scoreboardFeedData(data: unknown, format: 'site' | 'cdn'): unkno
 export function parseScoreboard(data: unknown, league: League = 'nfl'): ScheduleGame[] {
   const events = object(data)?.events;
   if (!Array.isArray(events)) throw new Error('Scoreboard format changed');
+  if (league === 'f1'||league==='nascar-cup'||league==='nascar-truck') return parseRaceScoreboard(events,league);
   return events.flatMap((raw): ScheduleGame[] => {
     const event = object(raw);
     const competition = object(items(event?.competitions)[0]);
@@ -76,10 +82,41 @@ export function parseScoreboard(data: unknown, league: League = 'nfl'): Schedule
     return [ScheduleGameSchema.parse({ id: league === 'nfl' ? id : `${league}-${id}`, league, lifecycle, season: typeof season === 'number' ? season : undefined, name: text(event?.name) || `${awayTeam.displayName} at ${homeTeam.displayName}`, date: text(event?.date), home: team(home, homeTeam), away: team(away, awayTeam), status: gameStatus, detail, redzone: !noFootballSituation && situation?.isRedZone === true && gameStatus === 'in', down: noFootballSituation ? undefined : text(situation?.downDistanceText), possession: noFootballSituation ? undefined : situation?.possession === home.id ? text(homeTeam.abbreviation) : situation?.possession === away.id ? text(awayTeam.abbreviation) : undefined, lastPlay: text(object(situation?.lastPlay)?.text), venue: text(object(competition?.venue)?.fullName), broadcast: names.length ? names.join(' / ') : undefined })];
   });
 }
+const sessions:Record<string,{session:'practice-1'|'practice-2'|'practice-3'|'sprint-qualifying'|'sprint'|'qualifying'|'race';label:string}> = {
+  FP1:{session:'practice-1',label:'Practice 1'},FP2:{session:'practice-2',label:'Practice 2'},
+  FP3:{session:'practice-3',label:'Practice 3'},SS:{session:'sprint-qualifying',label:'Sprint Qualifying'},
+  SR:{session:'sprint',label:'Sprint'},Qual:{session:'qualifying',label:'Qualifying'},Race:{session:'race',label:'Race'},
+};
+function parseRaceScoreboard(events:unknown[],league:'f1'|'nascar-cup'|'nascar-truck'):ScheduleGame[] {
+  return events.flatMap(raw=>{
+    const event=object(raw),eventId=text(event?.id),eventName=text(event?.name);
+    const circuit=text(object(event?.circuit)?.fullName);
+    const round=league==='f1'?text(object(object(event?.circuit)?.address)?.city)||eventName:
+      /\bat\s+(.+)$/i.exec(eventName||'')?.[1];
+    const season=object(event?.season)?.year;
+    if(!eventId||!/^\d{1,20}$/.test(eventId)||!round||!eventName||league==='f1'&&!circuit)return [];
+    return items(event?.competitions).flatMap(rawSession=>{
+      const competition=object(rawSession),sessionId=text(competition?.id);
+      const type=league==='f1'?sessions[text(object(competition?.type)?.abbreviation)||'']:
+        {session:'race' as const,label:'Race'};
+      const date=text(competition?.date),statusType=object(object(competition?.status)?.type);
+      if(!sessionId||!/^\d{1,20}$/.test(sessionId)||!type||!date||!Number.isFinite(Date.parse(date)))return [];
+      const state=statusType?.state;
+      const final=statusType?.name==='STATUS_FINAL'&&statusType.completed===true&&state==='post';
+      const lifecycle=final?'final':state==='in'&&statusType?.completed!==true?'live':statusType?.name==='STATUS_SCHEDULED'&&state==='pre'?'scheduled':'unknown';
+      const gameStatus=final?'post':state==='pre'||state==='in'?state:'unknown';
+      const broadcasts=items(object(items(competition?.broadcasts)[0])?.names).filter((name):name is string=>typeof name==='string');
+      return [ScheduleGameSchema.parse({id:`${league}-${sessionId}`,league,name:league==='f1'?`${eventName} · ${type.label}`:eventName,date,
+        race:{eventId,sessionId,session:type.session,round,circuit},season:typeof season==='number'?season:undefined,
+        status:gameStatus,lifecycle,detail:final?'Final':lifecycle==='scheduled'?'Scheduled':text(statusType?.shortDetail)||'Status unavailable',
+        broadcast:broadcasts.length?broadcasts.join(' / '):undefined})];
+    });
+  });
+}
 export function validFeedUrl(input: string): string | null {
   try { const url = new URL(input.trim()); return (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost','127.0.0.1','[::1]'].includes(url.hostname))) && !url.username && !url.password ? url.href : null; } catch { return null; }
 }
-export function priority(game: Game): number { return (game.status === 'in' ? 100 : game.status === 'pre' ? 30 : 0) + (game.redzone ? 60 : 0) + (game.status === 'in' && Math.abs(Number(game.home.score) - Number(game.away.score)) <= 8 ? 15 : 0); }
+export function priority(game: Game): number { return (game.status === 'in' ? 100 : game.status === 'pre' ? 30 : 0) + (isRaceGame(game)?0:(game.redzone ? 60 : 0) + (game.status === 'in' && Math.abs(Number(game.home.score) - Number(game.away.score)) <= 8 ? 15 : 0)); }
 
 export function sortGamesForDisplay<T extends Pick<Game, 'date' | 'status' | 'lifecycle'>>(games: readonly T[], now: number): T[] {
   const today = new Date(now).toDateString();

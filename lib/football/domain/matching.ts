@@ -1,4 +1,4 @@
-import type { Game, Match, Observation, SourceEventBinding } from '../shared.ts';
+import { isRaceGame, isMotorsportsLeague, type Game, type Match, type MatchupGame, type Observation, type RaceGame, type SourceEventBinding } from '../shared.ts';
 import { COLLEGE_TEAM_CATALOG } from './college-teams.generated.ts';
 import { feedEligible } from './feed-eligibility.ts';
 
@@ -23,11 +23,13 @@ for (const team of COLLEGE_TEAM_CATALOG) {
 }
 
 export function createObservationMatcher(games: Game[], mode: 'current' | 'inventory-live' = 'current'): (observation: Observation, now: number) => Match {
-  const identity = (game: Game, team: Game['home']) => `${game.league}:${team.id || normalizedName(team.name)}`;
-  const aliases = (game: Game, team: Game['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || []), ...(hockeyAliases.get(team.id || '') || [])].map(normalizedName).filter(Boolean)]);
+  const identity = (game: MatchupGame, team: MatchupGame['home']) => `${game.league}:${team.id || normalizedName(team.name)}`;
+  const aliases = (game: MatchupGame, team: MatchupGame['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || []), ...(hockeyAliases.get(team.id || '') || [])].map(normalizedName).filter(Boolean)]);
+  const matchups=games.filter((game):game is MatchupGame=>!isRaceGame(game));
+  const races=games.filter(isRaceGame);
   const liveOwners = new Map<string,Set<string>>();
-  const gameAliases = new Map<Game,[Set<string>,Set<string>]>();
-  for (const game of games) {
+  const gameAliases = new Map<MatchupGame,[Set<string>,Set<string>]>();
+  for (const game of matchups) {
     const pair: [Set<string>,Set<string>] = [aliases(game,game.home),aliases(game,game.away)];
     gameAliases.set(game,pair);
     for (const [index,team] of [game.home,game.away].entries()) for (const alias of pair[index]) {
@@ -37,15 +39,16 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
       liveOwners.set(key,owners);
     }
   }
-  const names = (game: Game, team: Game['home'], index: 0 | 1) => new Set([...(gameAliases.get(game)?.[index] || [])].filter(alias => {
+  const names = (game: MatchupGame, team: MatchupGame['home'], index: 0 | 1) => new Set([...(gameAliases.get(game)?.[index] || [])].filter(alias => {
     const owner = identity(game,team);
     const live = liveOwners.get(`${game.league}:${alias}`);
     const catalog = game.league === 'ncaaf' ? collegeOwners.get(alias) : undefined;
     return (!live || live.size === 1 && live.has(owner)) && (!catalog || catalog.size === 1 && catalog.has(owner));
   }));
-  const prepared=games.map(game=>({game,home:names(game,game.home,0),away:names(game,game.away,1),
+  const prepared=matchups.map(game=>({game,home:names(game,game.home,0),away:names(game,game.away,1),
     date:game.date ? Date.parse(game.date) : NaN}));
   return (observation,now) => {
+    if(observation.league&&isMotorsportsLeague(observation.league))return matchRaceObservation(observation,races,now,mode);
     if (!observation.teams) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
     const stale=now-observation.observedAt>30*60_000;
     if (observation.observedAt > now + 60_000 || stale && mode==='current')
@@ -87,6 +90,38 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
     if (game.lifecycle==='final') return {kind:'unmatched',reason:'finished-game',possibleGameIds:[game.id]};
     return {kind:'matched',gameId:game.id};
   };
+}
+function raceSessionInTitle(title:string,session:RaceGame['race']['session'],league:RaceGame['league']):boolean {
+  const value=title.toLowerCase();
+  const sprintQual=/sprint[\s-]*(?:qualifying|quali|q\b|shootout)/.test(value);
+  if(session==='sprint-qualifying')return sprintQual;
+  if(session==='sprint')return !sprintQual&&/\bsprint\b/.test(value);
+  if(session==='qualifying')return !sprintQual&&/\b(?:qualifying|quali)\b/.test(value);
+  if(session==='practice')return /\b(?:free\s+)?practice\b/.test(value)&&
+    !/\bpractice\s*[1-4]\b|\bfp[1-4]\b/.test(value);
+  if(session.startsWith('practice-')){
+    if(!/\b(?:free\s+)?practice\b|\bfp[1-4]\b/.test(value))return false;
+    const number=/\b(?:practice\s*|fp)([1-4])\b/.exec(value)?.[1];
+    return number?session===`practice-${number}`:league==='f1';
+  }
+  return !/\b(?:practice|qualifying|quali|sprint|fp[123])\b/.test(value)&&
+    (league!=='f1'||/\brace\b/.test(value));
+}
+function matchRaceObservation(observation:Observation,games:RaceGame[],now:number,mode:'current'|'inventory-live'):Match {
+  const stale=now-observation.observedAt>30*60_000;
+  if(observation.observedAt>now+60_000||stale&&mode==='current')return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[]};
+  if(observation.teams||observation.kickoff===null)return {kind:'unmatched',reason:'unverified-race',possibleGameIds:[]};
+  const kickoff=observation.kickoff;
+  const title=normalizedName(observation.title);
+  const dated=games.filter(game=>game.league===observation.league&&
+    title.includes(normalizedName(game.race.round))&&
+    raceSessionInTitle(observation.title,game.race.session,game.league)&&
+    Math.abs(Date.parse(game.date)-kickoff)<=(game.league==='nascar-cup'||game.league==='nascar-truck'?90:20)*60_000);
+  if(dated.length!==1)return {kind:'unmatched',reason:dated.length?'ambiguous-race':'unknown-race',possibleGameIds:dated.map(game=>game.id)};
+  const game=dated[0];
+  if(stale&&game.lifecycle!=='live')return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[game.id]};
+  if(game.lifecycle==='final')return {kind:'unmatched',reason:'finished-game',possibleGameIds:[game.id]};
+  return {kind:'matched',gameId:game.id};
 }
 
 export function matchObservation(observation: Observation, games: Game[], now: number): Match {
@@ -140,10 +175,16 @@ export function mergeSchedulePartitions(partitions: Game[][]): Game[] {
   for (const games of partitions) for (const game of games) {
     if (conflicting.has(game.id)) continue;
     const previous = merged.get(game.id);
-    if (previous && (previous.league !== game.league ||
-      (previous.home.id || normalizedName(previous.home.name)) !== (game.home.id || normalizedName(game.home.name)) ||
-      (previous.away.id || normalizedName(previous.away.name)) !== (game.away.id || normalizedName(game.away.name)) ||
-      (previous.date && game.date && Math.abs(Date.parse(previous.date)-Date.parse(game.date)) > 3 * 60 * 60_000))) {
+    const identityConflict=previous&&(
+      previous.league!==game.league ||
+      isRaceGame(previous)&&isRaceGame(game)&&(
+        previous.race.eventId!==game.race.eventId||previous.race.sessionId!==game.race.sessionId||
+        previous.race.session!==game.race.session||previous.race.round!==game.race.round) ||
+      !isRaceGame(previous)&&!isRaceGame(game)&&(
+        (previous.home.id || normalizedName(previous.home.name)) !== (game.home.id || normalizedName(game.home.name)) ||
+        (previous.away.id || normalizedName(previous.away.name)) !== (game.away.id || normalizedName(game.away.name))) ||
+      previous.date&&game.date&&Math.abs(Date.parse(previous.date)-Date.parse(game.date))>3*60*60_000);
+    if (identityConflict) {
       merged.delete(game.id);
       conflicting.add(game.id);
       continue;

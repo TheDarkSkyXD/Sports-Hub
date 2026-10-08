@@ -52,6 +52,7 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
   }
   if (event.hostname === 'tvapp1.pk') return eventUrl===serverUrl && /^\/watch\/[a-zA-Z0-9-]{1,120}$/.test(event.pathname);
   if ((event.hostname === 'methstreams.st' || event.hostname === 'crackstreams.st') && server.hostname === 'fxtrend.st') {
+    if(/^\/event\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(event.pathname)&&server.pathname===event.pathname)return true;
     if (/^\/event\/ppv-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(event.pathname))
       return new RegExp(`^${event.pathname}/(?:core|vector|vertex|hotel)/[1-9]\\d{0,2}$`).test(server.pathname);
     const publishedPpv=/^\/event\/ppv-([a-z0-9-]+)\/(?:core|vector|vertex|hotel)\/[1-9]\d{0,2}$/.exec(server.pathname);
@@ -84,6 +85,13 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
     return !!match && new RegExp(`^/${match[1]}/[1-9]\\d{0,3}/${match[2]}-stream$`).test(server.pathname);
   }
   if (event.hostname === 'ppv.st' && server.hostname === 'embedindia.st') {
+    const race=/^\/live\/f1\/(\d{4})\/([a-z0-9]+(?:-[a-z0-9]+)*)\/(fp[123]|sprint-q|sprint|qualifying|race)$/.exec(event.pathname);
+    if(race){
+      const path=`/embed/f1/${race[1]}/${race[2]}/${race[3]}`;
+      if(server.pathname===path)return true;
+      const session=race[3].startsWith('fp')?`practice-${race[3][2]}`:race[3]==='sprint-q'?'sprint-qualifying':race[3];
+      return new RegExp(`^/embed/${race[2]}-grand-prix---${session}-[1-9]\\d{0,9}$`).test(server.pathname);
+    }
     const match = /^\/live\/(cfb|nfl|nba|wnba|nhl|mlb)\/(\d{4}-\d{2}-\d{2})\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname);
     if (!match) return false;
     const path=`/embed/${match[1]}/${match[2]}/${match[3]}`;

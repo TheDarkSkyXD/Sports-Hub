@@ -161,6 +161,10 @@
   object-fit: contain;
 }
 
+.source-settings .source-inventory-logo img[src="/series-logos/motogp.png"] {
+  filter: brightness(0) invert(1);
+}
+
 .source-settings .source-inventory-logo-fallback {
   color: #d8dee7;
   font-size: 9px;
@@ -496,3 +500,15 @@ main{padding:32px 36px 0;max-width:1920px;margin:auto}.eyebrow{font-size:10px;le
 }
 .game-center.remove-hover{border-color:#ff937d;box-shadow:0 0 0 2px #ff624b66}
 .center-remove-cue{border:1px dashed #ff937d;border-radius:5px;background:#ff624b20;color:#ffc3b7;text-align:center;padding:11px;margin-bottom:12px;font-size:12px;font-weight:600}
+.race-identity{display:flex;align-items:center;gap:12px;min-width:0;padding:8px 0;color:#f4f4f5}
+.race-identity img{object-fit:contain;flex:none}
+.race-identity img[src="/series-logos/motogp.png"]{filter:brightness(0) invert(1)}
+.race-identity>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.race-identity strong{font-size:14px;line-height:1.25;white-space:normal}
+.race-identity span{font-size:12px;color:#aab1b9}
+.race-identity.large{justify-content:center;text-align:center;flex-direction:column;padding:20px 12px}
+.race-identity.large strong{font-size:18px}
+.tile-race{font-size:13px;font-weight:700;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.schedule-card>.race-identity{min-height:165px}
+.mini-game>.race-identity{min-height:68px}
+.center-game>.race-identity{min-height:75px}
