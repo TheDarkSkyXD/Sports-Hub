@@ -88,7 +88,7 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     entry.timer.unref();
   }
 
-  async function register({ url, userAgent, origin, requestReferer }) {
+  async function register({ url, userAgent, origin, requestReferer, mediaCookie }) {
     if (stopped) return null;
     const root = validateUrl(url);
     if (!root) throw new Error('Observed media URL is invalid');
@@ -107,6 +107,8 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     const mediaSession = partition.session;
     const entry = { id, partition, generation,
       session: mediaSession, sockets: new Set(), requests: new Set(), proxy: null, timer: null, issuerRequests: 0,
+      mediaOrigin: root.origin,
+      mediaCookie: typeof mediaCookie === 'string' && /^[\x20-\x7e]{1,8192}$/.test(mediaCookie) ? mediaCookie : null,
       headers: { 'User-Agent': userAgent, Accept: '*/*', ...(origin ? { Origin: origin } : {}),
         ...(requestReferer ? { Referer: requestReferer } : {}) }, secret };
     mediaSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
@@ -176,6 +178,7 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     const request = network.request({ url: url.href, session: entry.session, method: 'GET', redirect: 'manual', useSessionCookies: false });
     entry.requests.add(request);
     for (const [name, value] of Object.entries(entry.headers)) request.setHeader(name, value);
+    if (entry.mediaCookie && url.origin === entry.mediaOrigin) request.setHeader('Cookie', entry.mediaCookie);
     if (range) request.setHeader('Range', range);
     request.on('login', (authInfo, callback) => {
       if (authInfo.isProxy && authInfo.host === '127.0.0.1') callback('media', entry.secret);

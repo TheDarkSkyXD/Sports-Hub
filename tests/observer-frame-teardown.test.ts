@@ -129,7 +129,7 @@ test('a removed sibling does not break selected StreamEast player uniqueness', a
   assert.ok(another);
   harness.window().webContents.emit('did-frame-navigate', {}, playerUrl, 200, '', false, 1, 2);
   assert.equal(secondSelection.playerFrame, undefined);
-  assert.equal(await another.promise, null);
+  assert.deepEqual(await another.promise, {kind:'incomplete',phase:'ownership',reason:'ambiguous-player',retryAfterMs:30000});
 });
 
 test('a media probe finds the valid player next to a removed iframe', async () => {
@@ -182,7 +182,7 @@ test('only exact fxtrend PPV servers can continue past 32 frames and capture pub
       const result=await Promise.race([operation.promise,
         new Promise(resolve=>setTimeout(()=>resolve('still observing'),50))]);
       operation.cancel();
-      assert.equal(result,null,page);
+      assert.deepEqual(result,{kind:'incomplete',phase:'capture',reason:'frame-budget',retryAfterMs:30000},page);
     }
   };
   for(const type of ['core/1','vector/1','vertex/1','hotel/2'])
@@ -262,7 +262,7 @@ test('a frame disposed after script execution ends its observation and leaves th
       first.promise,
       new Promise(resolve => setTimeout(() => resolve('stalled'), 100)),
     ]);
-    assert.equal(result, null);
+    assert.deepEqual(result,{kind:'incomplete',phase:'ownership',reason:'script-failed',retryAfterMs:30000});
     mainFrame.framesInSubtree = [{
       url: 'https://player.example/watch', isDestroyed: () => false,
       executeJavaScript: async () => true,
