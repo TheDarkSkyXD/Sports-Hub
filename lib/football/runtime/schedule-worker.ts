@@ -40,5 +40,5 @@ port.on('message',(input:ReadMessage|CancelMessage)=>{
     if(requests.has(input.id))port.postMessage({kind:'complete',id:input.id,result});
   },error=>{
     if(requests.has(input.id))port.postMessage({kind:'failed',id:input.id,failure:failure(error)});
-  }).finally(()=>requests.delete(input.id));
+  }).finally(()=>{requests.delete(input.id);controller.abort();});
 });
