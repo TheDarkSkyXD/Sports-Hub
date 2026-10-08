@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { DEFAULT_FEED_CHECK_INTERVAL_MINUTES, DEFAULT_FINISHED_GAME_RETENTION_MINUTES, FeedCheckIntervalMinutesSchema, FinishedGameRetentionMinutesSchema, DetailEvidenceSchema, GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema, SourceEventBindingSchema, StoredSportsurgeCatalogSchema, StoredStreameastCatalogSchema } from '../shared.ts';
 import type { CollectionAttempt, DetailEvidence, Game, Match, Observation, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
 import { recordFinal } from '../domain/lifecycle.ts';
-import { confirmedFinishedBoundEvent, confirmedFinishedGameId } from '../domain/matching.ts';
+import { createFinishedGameMatcher } from '../domain/matching.ts';
 import { SOURCE_REFRESH_MS, rebaseRetryDeadline, retryDeadline } from '../domain/source-policy.ts';
 import { WorkingFeedSchema, type WorkingFeed } from '../domain/working-feed.ts';
 
@@ -255,6 +255,8 @@ export class FootballStore {
       if(parsed.success)for(const game of parsed.data.games)if(!current.has(game.id))current.set(game.id,game);
     }
     const canonicalGames=[...current.values()];
+    const selectedFinals=createFinishedGameMatcher(finals);
+    const canonical=createFinishedGameMatcher(canonicalGames);
     const ids=this.db.prepare('SELECT id,payload,result FROM observations').all().flatMap(row=>{
       if(typeof row.id!=='string'||typeof row.payload!=='string'||typeof row.result!=='string')return [];
       const parsed=ObservationSchema.safeParse(JSON.parse(row.payload));
@@ -262,9 +264,9 @@ export class FootballStore {
       const result=JSON.parse(row.result) as Match;
       const sportsurgeId=/^https:\/\/v2\.sportsurge\.net\/watch-(\d{1,12})-(cfb|nfl|nba)-/.exec(parsed.data.url);
       const eventId=sportsurgeId?`${sportsurgeId[2]==='cfb'?'ncaaf':sportsurgeId[2]}:${sportsurgeId[1]}`:null;
-      const boundGameId=confirmedFinishedBoundEvent(parsed.data,eventId||parsed.data.id,bindings,canonicalGames);
+      const boundGameId=canonical.finishedBoundEvent(parsed.data,eventId||parsed.data.id,bindings);
       const bound=result.kind==='matched'&&finals.some(game=>game.id===result.gameId)||
-        confirmedFinishedGameId(parsed.data,finals,now)!==null||
+        selectedFinals.finishedGameId(parsed.data,now)!==null||
         boundGameId!==null&&finals.some(game=>game.id===boundGameId);
       return bound?[row.id]:[];
     });

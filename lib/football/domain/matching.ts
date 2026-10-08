@@ -22,7 +22,7 @@ for (const team of COLLEGE_TEAM_CATALOG) {
   }
 }
 
-export function createObservationMatcher(games: Game[], mode: 'current' | 'inventory-live' = 'current'): (observation: Observation, now: number) => Match {
+export function createObservationMatcher(games: readonly Game[], mode: 'current' | 'inventory-live' = 'current'): (observation: Observation, now: number) => Match {
   const identity = (game: MatchupGame, team: MatchupGame['home']) => `${game.league}:${team.id || normalizedName(team.name)}`;
   const aliases = (game: MatchupGame, team: MatchupGame['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || []), ...(hockeyAliases.get(team.id || '') || [])].map(normalizedName).filter(Boolean)]);
   const matchups=games.filter((game):game is MatchupGame=>!isRaceGame(game));
@@ -149,24 +149,29 @@ export function matchSourceLiveGame(result:Match,games:readonly Game[],now:numbe
     ?{kind:'matched',gameId:game.id}:result;
 }
 
-export function confirmedFinishedGameId(observation:Observation,games:Game[],now:number,expectedGameId?:string):string|null {
-  if(observation.kickoff===null)return null;
-  const result=createObservationMatcher(games,'inventory-live')({...observation,observedAt:now},now);
-  return result.kind==='unmatched'&&result.reason==='finished-game'&&result.possibleGameIds.length===1&&
-    (!expectedGameId||result.possibleGameIds[0]===expectedGameId)?result.possibleGameIds[0]:null;
-}
-
-export function confirmedFinishedBoundEvent(observation:Observation,eventId:string,bindings:readonly SourceEventBinding[],games:Game[]):string|null {
-  if(observation.kickoff!==null)return null;
-  const teams=observation.teams;
-  if(!teams)return null;
-  const pair=(teams:readonly string[])=>teams.map(normalizedName).sort().join('|');
-  const binding=bindings.find(row=>row.sourceId===observation.sourceId&&row.eventId===eventId&&
-    row.url===observation.url&&row.league===observation.league&&pair(row.teams)===pair(teams));
-  if(!binding||!games.some(game=>game.id===binding.gameId&&game.lifecycle==='final'))return null;
-  const current=createObservationMatcher(games,'inventory-live')(observation,observation.observedAt);
-  return current.kind==='unmatched'&&current.possibleGameIds.length===1&&
-    current.possibleGameIds[0]===binding.gameId?binding.gameId:null;
+export function createFinishedGameMatcher(games:readonly Game[]) {
+  const match=createObservationMatcher(games,'inventory-live');
+  const finalIds=new Set(games.filter(game=>game.lifecycle==='final').map(game=>game.id));
+  return {
+    finishedGameId(observation:Observation,now:number,expectedGameId?:string):string|null {
+      if(observation.kickoff===null)return null;
+      const result=match({...observation,observedAt:now},now);
+      return result.kind==='unmatched'&&result.reason==='finished-game'&&result.possibleGameIds.length===1&&
+        (!expectedGameId||result.possibleGameIds[0]===expectedGameId)?result.possibleGameIds[0]:null;
+    },
+    finishedBoundEvent(observation:Observation,eventId:string,bindings:readonly SourceEventBinding[]):string|null {
+      if(observation.kickoff!==null)return null;
+      const teams=observation.teams;
+      if(!teams)return null;
+      const pair=(teams:readonly string[])=>teams.map(normalizedName).sort().join('|');
+      const binding=bindings.find(row=>row.sourceId===observation.sourceId&&row.eventId===eventId&&
+        row.url===observation.url&&row.league===observation.league&&pair(row.teams)===pair(teams));
+      if(!binding||!finalIds.has(binding.gameId))return null;
+      const current=match(observation,observation.observedAt);
+      return current.kind==='unmatched'&&current.possibleGameIds.length===1&&
+        current.possibleGameIds[0]===binding.gameId?binding.gameId:null;
+    },
+  };
 }
 
 export function mergeSchedulePartitions(partitions: Game[][]): Game[] {

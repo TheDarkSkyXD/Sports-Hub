@@ -1,4 +1,4 @@
-import { confirmedFinishedBoundEvent, confirmedFinishedGameId, createObservationMatcher, matchSourceLiveGame, matchUndatedSportsurge } from './matching.ts';
+import { createFinishedGameMatcher, createObservationMatcher, matchSourceLiveGame, matchUndatedSportsurge } from './matching.ts';
 import { createHash } from 'node:crypto';
 import type { Candidate, Game, Match, Observation, SourceEventBinding, SourceMatchReason, SportsurgeCatalog, SportsurgeCatalogView, SportsurgeProvider, StoredSportsurgeCatalog } from '../shared.ts';
 
@@ -135,12 +135,13 @@ export function sportsurgeCatalogView(stored:StoredSportsurgeCatalog,games:Game[
   const {catalog,receivedAt}=stored;
   const match=createObservationMatcher(games);
   const matchInventory=createObservationMatcher(games,'inventory-live');
+  const finished=createFinishedGameMatcher(games);
   const activeEvents=catalog.events.filter(event=>{
     const category=catalog.categories[event.league];
     const observedAt=category.kind==='pending'?catalog.startedAt:category.at;
     const observation=sportsurgeObservation(event,observedAt);
-    return !confirmedFinishedGameId(observation,games,now)&&
-      !confirmedFinishedBoundEvent(observation,event.id,bindings,games);
+    return !finished.finishedGameId(observation,now)&&
+      !finished.finishedBoundEvent(observation,event.id,bindings);
   });
   const views=activeEvents.map(event=>{
     const category=catalog.categories[event.league];

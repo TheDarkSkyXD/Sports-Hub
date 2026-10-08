@@ -4,7 +4,7 @@ import { detailIdentity } from './source-policy.ts';
 import { resolvedLiveChannelMatch } from './live-channel.ts';
 import { feedDateEligible, feedEligible } from './feed-eligibility.ts';
 import type { ListingSource } from './ports.ts';
-import { confirmedFinishedBoundEvent, confirmedFinishedGameId, createObservationMatcher, matchSourceLiveGame, matchUndatedSportsurge, normalizedName } from './matching.ts';
+import { createFinishedGameMatcher, createObservationMatcher, matchSourceLiveGame, matchUndatedSportsurge, normalizedName } from './matching.ts';
 import { sportsurgeCatalogView, sportsurgeObservation } from './sportsurge-catalog.ts';
 import { streameastCatalogView, streameastObservation, verifiedStreameastMatch } from './streameast-catalog.ts';
 
@@ -94,6 +94,7 @@ export function sourceInventory(input:Input):SourcesSnapshot {
   const sourceById=new Map(sources.map(source=>[source.id,source]));
   const publicHosts=new Set(sources.flatMap(source=>[source.url,...(source.publicUrls || [])].map(value=>new URL(value).hostname)));
   const match=createObservationMatcher(games,'inventory-live');
+  const finished=createFinishedGameMatcher(games);
   const freshGames=games.filter(game=>input.freshGameIds?.has(game.id));
   const visibleObservation=(observation:Observation,result:Match):boolean=>{
     if(result.kind==='matched') {
@@ -137,8 +138,8 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     sourceLive=false,catalogEvidence?:LinkEvidence,eventId?:string):void=>{
     const expectedId=event?.espnEventId===null||!event?.espnEventId?undefined:
       event.league==='nfl'?event.espnEventId:`${event.league}-${event.espnEventId}`;
-    if(confirmedFinishedGameId(observation,games,at,expectedId)||eventId&&
-      confirmedFinishedBoundEvent(observation,eventId,input.sourceEventBindings||[],games))return;
+    if(finished.finishedGameId(observation,at,expectedId)||eventId&&
+      finished.finishedBoundEvent(observation,eventId,input.sourceEventBindings||[]))return;
     if (!sourceById.has(observation.sourceId)) return;
     const url=publicObservationUrl(observation.url,publicHosts);
     if (!url || observation.observedAt>at+60_000) return;
