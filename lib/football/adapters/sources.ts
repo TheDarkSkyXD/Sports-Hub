@@ -39,10 +39,10 @@ export const SOURCES = [
     'https://tvapp1.pk/cfb-streams','https://tvapp1.pk/nfl-streams',
     'https://thetvapp67.st/cfb-streams','https://thetvapp67.st/nfl-streams',
   ]},
-  {id:'tvapp-nba',name:'TVApp NBA',url:TVAPP_BASKETBALL_API,family:'tvapp',kind:'catalog',parserVersion:4,publicUrls:[]},
+  {id:'tvapp-nba',name:'TVApp Basketball',url:TVAPP_BASKETBALL_API,family:'tvapp',kind:'catalog',parserVersion:4,publicUrls:[]},
   {id:'ppv',name:'PPV',url:PPV_API,family:'ppv',kind:'catalog',publicUrls:['https://ppv.st/#26']},
   {id:'streamcenter',name:'Streamcenter',url:STREAMCENTER_CATALOG,family:'streamcenter',publicUrls:['https://streame.center/']},
-  {id:'streamcenter-nba',name:'Streamcenter NBA',url:STREAMCENTER_BASKETBALL,family:'streamcenter',publicUrls:['https://streame.center/']},
+  {id:'streamcenter-nba',name:'Streamcenter Basketball',url:STREAMCENTER_BASKETBALL,family:'streamcenter',publicUrls:['https://streame.center/']},
   {id:'sportsurge-v2',name:'Sportsurge v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'browser-catalog',publicUrls:[
     'https://v2.sportsurge.net/watch-cfb-streams/','https://v2.sportsurge.net/watch-nfl-streams/',
   ]},
@@ -73,7 +73,7 @@ export function allowedDiscoveryUrl(value: string): boolean {
     if(url.hostname==='tv.swac.org')return swacProgramId(value)!==null;
     return hosts.has(url.hostname) || !url.search && !url.hash && (
       url.hostname === 'tvapp1.pk' && /^\/watch\/[a-zA-Z0-9-]{1,120}$/.test(url.pathname) ||
-      url.hostname === 'ppv.st' && /^\/live\/(?:cfb|nfl|nba)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(url.pathname));
+      url.hostname === 'ppv.st' && /^\/live\/(?:cfb|nfl|nba|wnba)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(url.pathname));
   } catch { return false; }
 }
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex').slice(0,24);
@@ -219,7 +219,7 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
       const url = `https://tvapp1.pk/watch/${slug}`;
       const rawTime = new Date(match.date).toISOString();
       if (!add({id:`${source.id}:${digest(match.id)}`,sourceId:source.id,url,title,teams,
-        league:match.category==='basketball'?'nba':null,kickoff:match.date,rawTime,observedAt:now,parserVersion:3})) return invalid();
+        league:null,kickoff:match.date,rawTime,observedAt:now,parserVersion:3})) return invalid();
     }
   } else if (source.family === 'ppv') {
     const result = PpvCatalog.safeParse(input);
@@ -230,9 +230,9 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
       const result = PpvEvent.safeParse(value);
       if (!result.success) return invalid();
       const event = result.data;
-      const league = event.tag === 'College Football' ? 'ncaaf' : event.tag === 'NFL' ? 'nfl' : event.tag === 'NBA' ? 'nba' : null;
+      const league = event.tag === 'College Football' ? 'ncaaf' : event.tag === 'NFL' ? 'nfl' : event.tag === 'NBA' ? 'nba' : event.tag === 'WNBA' ? 'wnba' : null;
       if (!league || !event.uri_name.startsWith(`${league === 'ncaaf' ? 'cfb' : league}/`)) continue;
-      if (!/^(?:cfb|nfl|nba)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(event.uri_name)) return invalid();
+      if (!/^(?:cfb|nfl|nba|wnba)\/\d{4}-\d{2}-\d{2}\/[a-z0-9-]+$/.test(event.uri_name)) return invalid();
       if (event.starts_at <= 0) continue;
       const kickoff = event.starts_at*1000;
       if (kickoff < Date.UTC(2000,0,1) || kickoff >= Date.UTC(2100,0,1)) return invalid();
@@ -334,7 +334,7 @@ export function parseListings(source: ListingSource, html: string, now: number):
   return {observations:values,outcome:values.length ? 'parsed' : knownEmpty||vipboxCollegeEmpty ? 'empty' : source.family === 'unknown' ? 'unsupported' : 'parser-changed'};
 }
 
-const streamcenterLink = /^\/api\/stream-link\/iframe\/event-espn-league-(football-college-football|basketball-nba)-(\d{5,12})\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/;
+const streamcenterLink = /^\/api\/stream-link\/iframe\/event-espn-league-(football-college-football|basketball-(?:nba|wnba))-(\d{5,12})\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/;
 
 function parseStreamcenterListings(source: ListingSource, html: string, now: number): ReturnType<typeof parseListings> {
   const $ = load(html);
@@ -342,8 +342,9 @@ function parseStreamcenterListings(source: ListingSource, html: string, now: num
   let invalid = false;
   $('article.game-card-row').each((_index,element) => {
     const card = $(element);
-    const league=card.find('.game-card-league').text().trim()==='NCAA Football'?'ncaaf':card.find('.game-card-league').text().trim()==='NBA'?'nba':null;
-    if (!league || (source.id==='streamcenter-nba') !== (league==='nba')) return;
+    const label=card.find('.game-card-league').text().trim();
+    const league=label==='NCAA Football'?'ncaaf':label==='NBA'?'nba':label==='WNBA'?'wnba':null;
+    if (!league || (source.id==='streamcenter-nba') !== (league==='nba'||league==='wnba')) return;
     const teams = card.find('.game-card-team[title]').map((_i,node) => $(node).attr('title')?.trim()).get();
     const rawTime = card.find('time[datetime]').first().attr('datetime') || '';
     const kickoff = parseKickoff(rawTime);
@@ -351,7 +352,7 @@ function parseStreamcenterListings(source: ListingSource, html: string, now: num
     card.find('a.game-card-open-link[href]').each((_i,node) => {
       const href = $(node).attr('href') || '';
       const match = streamcenterLink.exec(href);
-      if (!match || match[1] !== (league==='nba'?'basketball-nba':'football-college-football')) { invalid=true; return; }
+      if (!match || match[1] !== (league==='ncaaf'?'football-college-football':`basketball-${league}`)) { invalid=true; return; }
       const url = new URL(href,'https://streamcenter.st').href;
       observations.push({id:`${source.id}:${digest(href)}`,sourceId:source.id,url,
         title:`${teams[0]} vs ${teams[1]}`,teams:[teams[0],teams[1]],league,kickoff,rawTime,
@@ -494,10 +495,10 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
   if (observation.sourceId === 'streamcenter' || observation.sourceId === 'streamcenter-nba') {
     const path = new URL(observation.url).pathname;
     const link = streamcenterLink.exec(path);
-    if (!link || gameId !== `${link[1]==='basketball-nba'?'nba':'ncaaf'}-${link[2]}`) return [];
+    if (!link || gameId !== `${link[1]==='football-college-football'?'ncaaf':link[1].slice('basketball-'.length)}-${link[2]}`) return [];
     if (!parseStreamcenterPlayer(html)) return [];
     return [{id:`streamcenter-${link[2]}-${link[3]}`,
-      locator:{provider:'streamcenter',eventId:link[2],linkId:link[3],...(link[1]==='basketball-nba'?{league:'nba' as const}:{})},label:'Streamcenter'}];
+      locator:{provider:'streamcenter',eventId:link[2],linkId:link[3],...(link[1]==='basketball-nba'?{league:'nba' as const}:link[1]==='basketball-wnba'?{league:'wnba' as const}:{})},label:'Streamcenter'}];
   }
   if (observation.sourceId === 'ppv') {
     let input:unknown;
@@ -507,7 +508,7 @@ export function compatiblePlayers(gameId: string, observation: Observation, html
     const event = parsed.data;
     const expected = `https://ppv.st/live/${event.uri_name}`;
     if (observation.url !== expected || observation.kickoff !== event.starts_at*1000 ||
-      !['College Football','NFL','NBA'].includes(event.tag)) return [];
+      !['College Football','NFL','NBA','WNBA'].includes(event.tag)) return [];
     const pages = new Map<string,ResolvedPlayer>();
     for (const row of [event,...event.substreams]) {
       if (!row.iframe || row.tag !== event.tag || row.name !== event.name ||

@@ -9,6 +9,8 @@ export const SCHEDULES = [
   {id:'fbs',league:'ncaaf',path:'college-football',group:'80'},
   {id:'fcs',league:'ncaaf',path:'college-football',group:'81'},
   {id:'nba',league:'nba',sport:'basketball',path:'nba',group:null},
+  {id:'wnba',league:'wnba',sport:'basketball',path:'wnba',group:null},
+  {id:'ncaab',league:'ncaab',sport:'basketball',path:'mens-college-basketball',group:'50'},
 ] as const;
 
 type FutureDay = { date: string; games: Game[]; expiresAt: number };
@@ -79,7 +81,8 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
   const horizonErrors: string[] = [];
   const fetchDay = async (day: string, withWeek = false): Promise<{games:Game[];week?:number}> => {
     const url = new URL(`https://site.api.espn.com/apis/site/v2/sports/${partition.sport ?? 'football'}/${partition.path}/scoreboard`);
-    url.searchParams.set('limit','200');
+    const limit = partition.league === 'ncaab' ? 500 : 200;
+    url.searchParams.set('limit',String(limit));
     url.searchParams.set('dates',day);
     if (partition.group) url.searchParams.set('groups',partition.group);
     const request = async () => {
@@ -87,7 +90,7 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
       if (!response.ok) { await response.body?.cancel(); throw new Error(`http-${response.status}`); }
       const input: unknown = await response.json();
       if (!input || typeof input !== 'object' || !('events' in input) || !Array.isArray(input.events)) throw new Error('scoreboard-format-changed');
-      if (input.events.length >= 200) throw new Error('schedule-may-be-truncated');
+      if (input.events.length >= limit) throw new Error('schedule-may-be-truncated');
       const daily = parseScoreboard(input,partition.league).map(game => {
         return GameSchema.parse(game.lifecycle === 'final'
           ? recordFinal({...game,partitions:[partition.id]},now)

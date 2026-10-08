@@ -50,6 +50,8 @@ export const productBoard: Board = {
     nfl: { week: 4, scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
     ncaaf: { week: 5, scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
     nba: { scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
+    wnba: { scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
+    ncaab: { scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
   },
   games: [
     { id: '401', league: 'nfl', lifecycle: 'live', status: 'in', name: 'Green Bay Packers at Chicago Bears',
