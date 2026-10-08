@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { sourceInventory } from '../lib/football/domain/source-inventory.ts';
 import { feedWindow } from '../lib/football/domain/feed-eligibility.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
-import { SourcesSnapshotSchema, type Candidate, type DetailEvidence, type Game, type Observation } from '../lib/football/shared.ts';
+import { GameSchema, LeagueSchema, SourcesSnapshotSchema, isMotorsportsLeague, isRaceGame, type Candidate, type DetailEvidence, type Game, type Observation } from '../lib/football/shared.ts';
 
 const at=Date.parse('2026-10-08T17:00:00Z');
 const source={id:'fixture',url:'https://fixture.example/schedule',family:'fixture',leagues:['nfl'] as const};
@@ -144,5 +144,47 @@ test('all choices beyond the dispatch queue are checked with bounded concurrency
       await new Promise<void>(resolve=>setImmediate(resolve));
     }
     assert.fail('remaining choices did not leave the probe backlog');
+  } finally {await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('the common pipeline collects today and tomorrow across every supported league',async()=>{
+  const directory=mkdtempSync(join(tmpdir(),'universal-all-leagues-'));
+  const games=LeagueSchema.options.flatMap(league=>[0,1].map(day=>{
+    const date=new Date(at+(day*24+1)*3600_000).toISOString();
+    const common={id:`${league}-${day+1}`,league,date,partitions:[league],status:'pre',lifecycle:'scheduled',detail:'Scheduled'};
+    return GameSchema.parse(isMotorsportsLeague(league)?{...common,name:`${league} Fixture Grand Prix Race`,
+      race:{eventId:'1',sessionId:String(day+1),session:'race',round:'Fixture Grand Prix'}}:
+      {...common,name:`${league} Away at ${league} Home`,home:{...game.home,name:`${league} Home`},
+        away:{...game.away,name:`${league} Away`},redzone:false});
+  }));
+  const listings:Observation[]=games.map(game=>({...observation,id:game.id,url:`https://fixture.example/event/${game.id}`,
+    league:game.league,title:isRaceGame(game)?game.name:`${game.away.name} vs ${game.home.name}`,
+    teams:isRaceGame(game)?null:[game.away.name,game.home.name],kickoff:Date.parse(game.date??''),rawTime:game.date??''}));
+  const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{now:()=>at,
+    sources:[{...source,leagues:LeagueSchema.options}],
+    schedules:LeagueSchema.options.map(league=>({id:league,league,path:league,group:null})),
+    readSchedule:async partition=>({league:partition.league,games:games.filter(game=>game.league===partition.league),at}),
+    readHtml:async()=>'<main>fixture</main>',parseListings:()=>({outcome:'parsed',observations:listings}),
+    compatiblePlayers:gameId=>[{id:`choice-${gameId}`,label:'Published feed',locator:{provider:'gooz',playerId:'1'}}],
+    probeCandidate:async()=>({kind:'playable',proof:'media'})});
+  let last='';
+  try {
+    await coordinator.refresh();
+    for(let index=0;index<250;index++){
+      const reply=await coordinator.command({kind:'sources'});
+      if(reply.kind!=='sources')assert.fail('expected sources reply');
+      if(index===249)last=JSON.stringify(reply.snapshot.games.map(row=>({id:row.gameId,feeds:row.feeds,links:row.sourceLinks.length})));
+      if(reply.snapshot.games.length===28&&reply.snapshot.games.every(row=>row.feeds.kind==='feeds'&&row.feeds.mediaVerified===1)){
+        assert.deepEqual(reply.snapshot.games.map(row=>row.gameId).sort(),[
+          'f1-1','f1-2','mlb-1','mlb-2','motogp-1','motogp-2','motorsport-1','motorsport-2',
+          'nascar-cup-1','nascar-cup-2','nascar-truck-1','nascar-truck-2','nba-1','nba-2',
+          'ncaab-1','ncaab-2','ncaaf-1','ncaaf-2','ncaah-1','ncaah-2','ncaawh-1','ncaawh-2',
+          'nfl-1','nfl-2','nhl-1','nhl-2','wnba-1','wnba-2']);
+        assert.equal(reply.snapshot.sources[0].scopes.length,14);
+        return;
+      }
+      await new Promise<void>(resolve=>setImmediate(resolve));
+    }
+    assert.fail(`all supported leagues did not complete their feed checks ${last}`);
   } finally {await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
