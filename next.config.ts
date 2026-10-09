@@ -21,7 +21,11 @@ const nextConfig: NextConfig = {
   // prior packaged apps into the next build nests each install until paths
   // exceed MAX_PATH.
   outputFileTracingExcludes: {
-    '/*': ['./dist-electron/**/*', './work/**/*', ...(localBuildId ? [
+    '/*': ['./dist-electron/**/*', './work/**/*',
+      './native/collector/src/**/*', './native/collector/target/**/*',
+      './native/collector/Cargo.toml', './native/collector/Cargo.lock',
+      './native/collector/build.rs', './native/collector/bridge.d.cts',
+      ...(localBuildId ? [
       './.desktop-runtime/!(local-builds)/**/*',
       `./.desktop-runtime/local-builds/!(${localBuildId})/**/*`,
       './.desktop-runtime/local-builds/*.json',
