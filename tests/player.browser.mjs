@@ -44,7 +44,7 @@ const games = Array.from({ length: 4 }, (_, i) => ({
 const results = [];
 const desktopApp = desktop ? await electron.launch({
   executablePath: await prepareDevelopmentElectron(),
-  args: [path.resolve('desktop/main.cjs'), `--user-data-dir=${path.join(artifacts, 'profile')}`],
+  args: [path.resolve('desktop/main.cjs'), '--dev', `--user-data-dir=${path.join(artifacts, 'profile')}`],
   env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
 }) : null;
 const desktopPage = desktopApp ? await desktopApp.firstWindow() : null;

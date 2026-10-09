@@ -1,10 +1,15 @@
 const { spawn } = require('node:child_process');
 
 const [nextCli, mode, port] = process.argv.slice(2);
-if (!process.connected || !nextCli || !['start', 'dev', 'standalone'].includes(mode) || !/^\d{1,5}$/.test(port || '')) process.exit(1);
+const command = mode === 'build' || mode === 'prepare';
+if (!process.connected || !nextCli || !['start', 'dev', 'standalone', 'build', 'prepare'].includes(mode) ||
+    !(command ? /^\.desktop-runtime\/local-builds\/[a-f0-9-]+$/.test(port || '') : /^\d{1,5}$/.test(port || ''))) process.exit(1);
 
-const next = spawn(process.execPath,mode === 'standalone' ? [nextCli] : [nextCli,mode,'--hostname','127.0.0.1','--port',port],{
-  cwd:process.cwd(),env:{...process.env,PORT:port,HOSTNAME:'127.0.0.1'},windowsHide:true,stdio:['ignore','inherit','inherit'],
+const args = mode === 'standalone' ? [nextCli] : mode === 'build'
+  ? [nextCli, 'build', ...(process.env.SUNDAY_ROOM_BUILD_WEBPACK === '1' ? ['--webpack'] : [])]
+  : mode === 'prepare' ? [nextCli, port] : [nextCli, mode, '--hostname', '127.0.0.1', '--port', port];
+const next = spawn(process.execPath,args,{
+  cwd:process.cwd(),env:{...process.env,...(command ? {} : {PORT:port,HOSTNAME:'127.0.0.1'})},windowsHide:true,stdio:['ignore','inherit','inherit'],
 });
 let stopRequested = false;
 let killPending = false;
@@ -77,6 +82,7 @@ process.on('SIGTERM',stop);
 next.on('error',() => process.exit(1));
 next.on('exit',code => {
   nextExited = true;
+  if (command && !stopRequested) { process.send({ kind: 'complete', code }); return; }
   if (!stopRequested) process.exit(code || 1);
   else if (!killPending) process.exit(treeCommandSucceeded ? 0 : 1);
 });

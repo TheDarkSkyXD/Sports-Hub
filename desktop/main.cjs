@@ -63,6 +63,7 @@ function announceUpdate(version) {
   }
 }
 const root = app.isPackaged ? path.join(process.resourcesPath,'server') : path.resolve(__dirname,'..');
+const serverMode = app.isPackaged ? 'packaged' : process.argv.includes('--dev') || process.env.SUNDAY_ROOM_FORCE_DEV === '1' ? 'dev' : 'compiled';
 const logDir = app.isPackaged ? path.join(app.getPath('userData'),'logs') : path.join(root,'.desktop-runtime');
 let win;
 let localServer;
@@ -103,7 +104,7 @@ async function startServer(observerOrigin) {
   const port = await localServerPort();
   origin = `http://127.0.0.1:${port}`;
   localServer = createLocalServer({
-    root, origin, port, userData:app.getPath('userData'), controlToken, observerOrigin, packaged:app.isPackaged, logDir,
+    root, origin, port, userData:app.getPath('userData'), controlToken, observerOrigin, mode:serverMode, logDir,
     onReady:() => {
       sportsurgeCollector?.requestSweep();
       streameastCollector?.requestSweep();
@@ -146,7 +147,7 @@ app.whenReady().then(async () => {
     win.setAppDetails({
       appId,
       appIconPath: process.execPath,
-      relaunchCommand: app.isPackaged ? quote(process.execPath) : `${quote(process.execPath)} ${quote(path.join(__dirname, 'main.cjs'))}`,
+      relaunchCommand: app.isPackaged ? quote(process.execPath) : `${quote(process.execPath)} ${quote(path.join(__dirname, 'main.cjs'))}${serverMode === 'dev' ? ' --dev' : ''}`,
       relaunchDisplayName: 'Sunday Room',
     });
   }

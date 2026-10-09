@@ -1,6 +1,16 @@
 import type { NextConfig } from "next";
+import { createRequire } from "node:module";
+
+const { sourceIdentity } = createRequire(import.meta.url)("./desktop/source-identity.cjs");
+const localDistDir = process.env.SUNDAY_ROOM_NEXT_DIST_DIR;
+if (localDistDir && !/^\.desktop-runtime\/local-builds\/[a-f0-9-]+$/.test(localDistDir)) {
+  throw new Error("Invalid local Next build directory");
+}
 
 const nextConfig: NextConfig = {
+  ...(localDistDir ? { distDir: localDistDir } : {}),
+  ...(localDistDir ? { typescript: { tsconfigPath: `.desktop-runtime/local-build-config/${localDistDir.split('/').at(-1)}.json` } } : {}),
+  generateBuildId: () => sourceIdentity(process.cwd(), process.env.SUNDAY_ROOM_BUILD_PUBLIC_ENV),
   devIndicators: false,
   output: "standalone",
   outputFileTracingIncludes: {

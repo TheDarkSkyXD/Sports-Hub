@@ -1,14 +1,20 @@
-import { cp, mkdir, readFile, stat } from 'node:fs/promises';
+import { cp, mkdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 
-const standalone = path.resolve('.next/standalone');
+const distDir = process.argv[2] ?? '.next';
+if (distDir !== '.next' && !/^\.desktop-runtime\/local-builds\/[a-f0-9-]+$/.test(distDir))
+  throw new Error('Invalid desktop build directory');
+const standalone = path.resolve(distDir, 'standalone');
+if (distDir !== '.next' && await realpath(path.join(standalone, 'node_modules')) === await realpath('node_modules'))
+  throw new Error('This checkout links node_modules outside the standalone build. Install dependencies inside the checkout before building the local desktop server.');
 const server = path.join(standalone, 'server.js');
-const staticFiles = path.resolve('.next/static');
+const staticFiles = path.resolve(distDir, 'static');
 
 await stat(server);
+if (distDir !== '.next') await cp(server, path.join(standalone, 'server.cjs'));
 await stat(staticFiles);
-await mkdir(path.join(standalone, '.next'), { recursive: true });
-await cp(staticFiles, path.join(standalone, '.next/static'), { recursive: true, force: true });
+await mkdir(path.join(standalone, distDir), { recursive: true });
+await cp(staticFiles, path.join(standalone, distDir, 'static'), { recursive: true, force: true });
 await cp(path.resolve('public'), path.join(standalone, 'public'), { recursive: true, force: true });
 
 const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));
