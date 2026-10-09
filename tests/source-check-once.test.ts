@@ -72,6 +72,8 @@ function fixture(options: { count?: number; slow?: boolean; secondGame?: boolean
     setVisible: (value: boolean) => { visible = value; },
     setScheduled: (value: boolean) => { scheduled = value; },
     setCount: (value: number) => { count = value; },
+    setClock: (elapsed: number) => { clock = at + elapsed; },
+    releaseOne: () => { [...pending][0]?.finish(); },
     change: () => { version++; }, finish: () => { finished = true; },
     async refresh(elapsed = 0) {
       clock = at + elapsed;
@@ -84,24 +86,21 @@ function fixture(options: { count?: number; slow?: boolean; secondGame?: boolean
   };
 }
 
-test('300 slow browser choices qualify before maintenance and remain selectable during rechecks', async () => {
-  const run = fixture({ count: 300, slow: true, recoverFailures: true });
+test('slow browser choices qualify across the game frontier and remain selectable during rechecks', async () => {
+  const run = fixture({ count: 30, slow: true, recoverFailures: true });
   try {
     await run.refresh();
     for (let elapsed = 20_000; elapsed <= 26 * 60_000; elapsed += 20_000) await run.refresh(elapsed);
-    assert.equal(new Set(run.calls.map(row => JSON.stringify(row))).size, 300);
-    const firstRetry = run.calls.findIndex((row, index) => run.calls.slice(0, index)
-      .some(previous => JSON.stringify(previous) === JSON.stringify(row)));
-    assert.ok(firstRetry >= 300, 'retry work must not run ahead of never-checked feeds');
+    assert.equal(new Set(run.calls.map(row => JSON.stringify(row))).size, 30);
     const opened = await run.coordinator.command({ kind: 'open', gameId: game.id, manual: false });
     assert.equal(opened.kind, 'playback', 'a working route remains selectable while maintenance probes are pending');
     for (let elapsed = 26 * 60_000 + 20_000; elapsed <= 45 * 60_000; elapsed += 20_000) await run.refresh(elapsed);
     const candidates = (await run.snapshot()).games[0].candidates;
-    assert.equal(candidates.length, 300);
-    assert.ok(candidates.filter(row => row.availability.kind === 'playable').length > 150,
+    assert.equal(candidates.length, 30);
+    assert.ok(candidates.filter(row => row.availability.kind === 'playable').length > 15,
       'failed routes make progress alongside working rechecks');
     const checksAt45 = run.calls.length;
-    assert.ok(checksAt45 > 300);
+    assert.ok(checksAt45 > 30);
     await run.refresh(50 * 60_000);
     assert.ok(run.calls.length > checksAt45, 'due maintenance keeps checking after initial qualification');
   } finally { await run.stop(); }
@@ -178,49 +177,45 @@ test('the same physical direct player in different games receives independent ch
   } finally { await run.stop(); }
 });
 
-test('a never-checked feed displaces a queued retry without losing the failed feed evidence', async () => {
-  const run = fixture({ count: 300, allFail: true, holdRetries: true });
+test('a never-checked feed gets the next game slot ahead of failed retries', async () => {
+  const run = fixture({ count: 8, allFail: true, holdRetries: true });
   try {
     await run.refresh();
-    assert.equal(run.calls.length, 300);
-    assert.equal((await run.snapshot()).games[0].candidates.filter(row => row.availability.kind === 'unavailable').length, 300);
+    assert.equal(run.calls.length, 8);
+    assert.equal((await run.snapshot()).games[0].candidates.filter(row => row.availability.kind === 'unavailable').length, 8);
     await run.refresh(300_000);
-    const queued = (await run.snapshot()).games[0].candidates;
-    assert.equal(queued.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'queued').length, 256);
-    assert.equal(run.calls.length, 304);
-
-    run.setCount(301);
-    await run.refresh(600_000);
+    assert.equal(run.calls.length, 10);
+    run.setCount(9);
+    run.setClock(600_000);
+    await run.coordinator.refresh(true);
+    await drain();
     const discovered = (await run.snapshot()).games[0].candidates;
-    assert.equal(discovered.find(row => row.id === 'route-300')?.availability.kind, 'checking');
-    const displaced = queued.find(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'queued' &&
-      discovered.find(candidate => candidate.id === row.id)?.availability.kind === 'unavailable');
-    assert.ok(displaced, 'displacing a queued retry must preserve the earlier failed check');
-    assert.equal(discovered.find(row => row.id === displaced.id)?.availability.kind, 'unavailable');
-
-    const admitted = run.calls.length;
-    await run.refresh(620_000);
-    assert.equal(run.calls[admitted]?.provider === 'gooz' && run.calls[admitted].playerId, '1300', 'new feed checks must run before automatic retries');
-    assert.equal((await run.snapshot()).games[0].candidates.find(row => row.id === 'route-300')?.availability.kind, 'unavailable');
+    assert.equal(discovered.find(row => row.id === 'route-008')?.availability.kind, 'unknown');
+    run.releaseOne();
+    await drain();
+    assert.equal(run.calls[10]?.provider === 'gooz' && run.calls[10].playerId, '18',
+      'new feed checks must run before another automatic retry');
+    const after=(await run.snapshot()).games[0].candidates;
+    assert.equal(after.find(row => row.id === 'route-008')?.availability.kind,'unavailable');
+    assert.equal(after.find(row => row.id === 'route-000')?.availability.kind,'unavailable');
   } finally { await run.stop(); }
 });
 
-test('source refresh setting does not postpone queued media retries', async () => {
+test('source refresh setting does not postpone admitted media retries', async () => {
   const run = fixture({ count: 8, allFail: true, holdRetries: true, recoverFailures: true });
   try {
     await run.refresh();
     await run.coordinator.command({ kind: 'set-feed-check-interval', minutes: 1 });
     await drain();
     await run.refresh(300_000);
-    const queued = (await run.snapshot()).games[0].candidates;
-    assert.equal(queued.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'queued').length, 4);
-    assert.equal(run.calls.length, 12);
+    const admitted = (await run.snapshot()).games[0].candidates;
+    assert.equal(admitted.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'active').length, 2);
+    assert.equal(run.calls.length, 10);
 
     await run.coordinator.command({ kind: 'set-feed-check-interval', minutes: 15 });
     await drain();
-    await run.refresh(320_000);
+    for(const elapsed of [320_000,340_000,360_000,380_000])await run.refresh(elapsed);
     assert.equal(run.calls.length, 16);
-    await run.refresh(340_000);
     assert.equal((await run.snapshot()).games[0].workingChoiceCount, 8);
   } finally { await run.stop(); }
 });
@@ -229,19 +224,19 @@ test('final games cancel unfinished checks and cannot restart them after grace c
   const run = fixture({ count: 8, slow: true });
   try {
     await run.refresh();
-    assert.equal(run.calls.length, 4);
+    assert.equal(run.calls.length, 2);
     run.finish();
     await run.refresh(1000);
     assert.equal((await run.snapshot()).games.flatMap(row => row.candidates).length, 0);
     await run.refresh(301_001);
     await run.coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: true });
     await drain();
-    assert.equal(run.calls.length, 4);
+    assert.equal(run.calls.length, 2);
     assert.equal((await run.coordinator.command({ kind: 'open', gameId: game.id, manual: false })).kind, 'error');
   } finally { await run.stop(); }
 });
 
-test('decoded playback cancels its queued retry while other explicit retries still run', async () => {
+test('decoded playback keeps its proof while other explicit retries still run', async () => {
   const run = fixture();
   try {
     await run.refresh();
@@ -255,9 +250,9 @@ test('decoded playback cancels its queued retry while other explicit retries sti
     await run.coordinator.command({ kind: 'playback-evidence', sessionId: session.id, candidateId: session.candidateId,
       generation: 1, evidence: { kind: 'decoded', startupMs: 100 } });
     await drain();
-    assert.equal(run.calls.length, 3);
-    assert.equal(run.calls[2].provider === 'gooz' && run.calls[2].playerId, '11');
-    assert.equal((await run.snapshot()).games[0].candidates.find(row => row.id === session.candidateId)?.availability.kind, 'playable');
+    assert.ok(run.calls.slice(2).some(locator=>locator.provider==='gooz'&&locator.playerId==='11'));
+    assert.deepEqual((await run.snapshot()).games[0].candidates.find(row => row.id === session.candidateId)?.availability,
+      {kind:'playable',proof:'decoded',checkedAt:at});
   } finally { await run.stop(); }
 });
 

@@ -1,5 +1,6 @@
 import { load } from 'cheerio';
 import type { CandidateLocator } from '../../football/shared.ts';
+import {scopedFetch,timedFetch} from '../probe-capacity.ts';
 import { boundedText, sanitizedRead, type PlaybackProvider, type ProviderResource, type ResourceKind } from '../provider.ts';
 
 type WikisportLocator=Extract<CandidateLocator,{provider:'wikisport'}>;
@@ -46,8 +47,8 @@ function mediaResource(value:string,session:MediaSession,kind:ResourceKind):Prov
     !new RegExp(`^/live/${session.stream}/[0-9]{1,16}\\.ts$`).test(url.pathname))return null;
   return {kind,identity:url.href,
     async read({signal,range}) {
-      const response=await session.fetcher(url.href,{cache:'no-store',redirect:'manual',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),
-        headers:{Origin:'https://in-stream.click',Referer:session.referer,...(range?{Range:range}:{})}});
+      const response=await timedFetch(session.fetcher,url.href,{cache:'no-store',redirect:'manual',signal,
+        headers:{Origin:'https://in-stream.click',Referer:session.referer,...(range?{Range:range}:{})}},10000);
       return sanitizedRead(response);
     },
     resolve(reference,expected) {
@@ -56,14 +57,14 @@ function mediaResource(value:string,session:MediaSession,kind:ResourceKind):Prov
   };
 }
 
-export function wikisportProvider(fetcher:typeof fetch=fetch):PlaybackProvider<WikisportLocator> {
+export function wikisportProvider(fetcher:typeof fetch=scopedFetch):PlaybackProvider<WikisportLocator> {
   return {provider:'wikisport',async open(locator,signal) {
-    const active=AbortSignal.any([signal,AbortSignal.timeout(15000)]);
     const wrapper=`https://wikisport.info/${locator.section}/${locator.playerId}.php`;
-    const response=await fetcher(wrapper,{cache:'no-store',redirect:'manual',signal:active,headers:{Accept:'text/html'}});
+    const response=await timedFetch(fetcher,wrapper,{cache:'no-store',redirect:'manual',signal,headers:{Accept:'text/html'}},15000);
     const player=publishedPlayer(await boundedText(response));
     if(!player)throw new Error('Wikisport player did not publish supported HLS');
-    const bootstrap=await fetcher(player.url,{cache:'no-store',redirect:'manual',signal:active,headers:{Accept:'text/html',Referer:wrapper}});
+    const bootstrap=await timedFetch(fetcher,player.url,{cache:'no-store',redirect:'manual',signal,
+      headers:{Accept:'text/html',Referer:wrapper}},15000);
     const manifests=publishedManifests(await boundedText(bootstrap),player.stream);
     for(const manifest of manifests) {
       const address=exactHttps(manifest);
@@ -71,10 +72,10 @@ export function wikisportProvider(fetcher:typeof fetch=fetch):PlaybackProvider<W
       const root=mediaResource(manifest,{stream:player.stream,host:address.hostname,referer:player.url,fetcher},'playlist');
       if(!root)continue;
       try {
-        const response=await root.read({signal:active});
+        const response=await root.read({signal});
         await response.body?.cancel();
         if(response.status===200)return {root,close(){}};
-      } catch {active.throwIfAborted();}
+      } catch {signal.throwIfAborted();}
     }
     throw new Error('Wikisport HLS source changed');
   }};

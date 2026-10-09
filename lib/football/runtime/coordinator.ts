@@ -21,19 +21,14 @@ type SelectionOwner = {key:string;owner:FeedOwner};
 type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;phase:RecoveryPhase;requestId?:string;decodedGeneration?:number;selection?:SelectionOwner};
 type ProbePhase = {kind:'queued';since:number}|{kind:'active';since:number};
 type ProbeWork = {priority:'forced'|'unknown'|'retry'}|{priority:'recheck';expectedCheckedAt:number};
-type ProbeJob = ProbeWork & {key:string;candidate:Candidate;owner:FeedOwner;controller:AbortController;revision:number;phase:ProbePhase;promise?:Promise<void>};
+type ProbeJob = ProbeWork & {key:string;candidate:Candidate;owner:FeedOwner;controller:AbortController;revision:number;phase:ProbePhase;admittedDemand:boolean;admittedNear:boolean;promise?:Promise<void>};
 type TerminalHealth = (Extract<CandidateAvailability,{kind:'playable'}> & {owner:FeedOwner}) | Extract<CandidateAvailability,{kind:'unavailable'}>;
-const PROBE_LIMIT=4;
-const PROBE_TIMEOUT_MS=65_000;
+const PROBE_LIMIT=256;
 const PROBE_QUEUE_LIMIT=256;
 const MEDIA_RECHECK_MS=5*60_000;
-const PROBE_PRIORITY={forced:0,unknown:1,retry:2,recheck:2};
+const PROBE_PRIORITY={forced:0,recheck:1,unknown:2,retry:3};
 const DECODED_STARTUP_WINDOW_MS=10*60_000;
 const LISTING_PARSER_VERSION=3;
-function usesBrowserProbe(candidate:Candidate):boolean {
-  return candidate.locator.provider==='event-page'||candidate.locator.provider==='tvapp'||candidate.locator.provider==='catalog-stream'||
-    candidate.locator.provider==='sportsurge-v2'||candidate.locator.provider==='streameast-server';
-}
 function detailGeneration(observation:Observation):string {
   return JSON.stringify([observation.sourceId,observation.url,observation.teams,observation.kickoff,observation.observedAt,observation.parserVersion]);
 }
@@ -116,11 +111,17 @@ export class FootballCoordinator {
   private probeQueue:ProbeJob[]=[];
   private activeProbes=new Map<string,ProbeJob>();
   private deferredProbes=new Map<string,{since:number;until:number;timer:ReturnType<typeof setTimeout>;candidate:Candidate;phase:Extract<CandidateProbeResult,{kind:'deferred'}>['phase']}>();
-  private browserProbeAfter=0;
+  private forcedRetries=new Set<string>();
+  private promotedProbes=new Map<string,number>();
   private sourceRefreshMs=SOURCE_REFRESH_MS;
   private checkTargets=new Map<string,number>();
   private probeAdmissions=0;
+  private urgentAdmissions=0;
+  private unknownAdmissions=0;
+  private protectedBackgroundKey:string|undefined;
   private probePump:ReturnType<typeof setImmediate>|undefined;
+  private probeReplan:ReturnType<typeof setImmediate>|undefined;
+  private readonly probeKeys=new WeakMap<Candidate,string>();
   private backgroundCursor=0;
   private readonly now: () => number;
   private readonly browserCollectorsAvailable:boolean;
@@ -300,7 +301,11 @@ export class FootballCoordinator {
     return keys.length > 0 && keys.every(key => !this.errors.has(key) && this.now()-(this.store.partition(key)?.at || 0) <= 90000);
   }
   private probeKey(candidate:Candidate):string {
-    return JSON.stringify([candidate.gameId,this.probeIdentity(candidate.locator)]);
+    const existing=this.probeKeys.get(candidate);
+    if(existing!==undefined)return existing;
+    const key=JSON.stringify([candidate.gameId,this.probeIdentity(candidate.locator)]);
+    this.probeKeys.set(candidate,key);
+    return key;
   }
   private feedGame(game:Game|undefined):game is Game {
     return !!game&&this.scheduleFresh(game)&&feedEligible(game,this.now());
@@ -551,14 +556,12 @@ export class FootballCoordinator {
     if(health?.kind==='playable')return this.retainedPlayable(candidate)?
       {kind:'playable',proof:health.proof,checkedAt:health.checkedAt}:{kind:'unknown'};
     const active=this.activeProbes.get(key);
-    if(active)return {kind:'checking',progress:{kind:'active',since:active.phase.since}};
+    if(active)return {kind:'checking',progress:{kind:active.phase.kind,since:active.phase.since}};
     const queued=this.probeQueue.find(job=>job.key===key);
     if(queued)return {kind:'checking',progress:{kind:'queued',since:queued.phase.since}};
     const deferred=this.deferredProbes.get(key);
     if(deferred&&deferred.until>this.now())return {kind:'checking',progress:{kind:'deferred',since:deferred.since,retryAt:deferred.until,...(deferred.phase?{phase:deferred.phase}:{})}};
     if(health?.kind==='unavailable')return health;
-    if(this.currentCandidate(candidate)&&this.feedGame(this.games.find(game=>game.id===candidate.gameId)))
-      return {kind:'checking',progress:{kind:'queued',since:candidate.observedAt}};
     return {kind:'unknown'};
   }
   private selectable(candidate:Candidate):boolean {
@@ -592,6 +595,10 @@ export class FootballCoordinator {
     for(const [observation,controller] of this.detailControllers)
       if(!this.observationFeedEligible(observation))controller.abort();
     this.probeQueue=this.probeQueue.filter(job=>this.currentProbeJob(job,true));
+    const currentKeys=new Set([...this.candidates.values()].flat().filter(candidate=>this.currentCandidate(candidate)).map(candidate=>this.probeKey(candidate)));
+    if(this.protectedBackgroundKey&&!currentKeys.has(this.protectedBackgroundKey))this.protectedBackgroundKey=undefined;
+    for(const key of this.forcedRetries)if(!currentKeys.has(key))this.forcedRetries.delete(key);
+    for(const key of this.promotedProbes.keys())if(!currentKeys.has(key))this.promotedProbes.delete(key);
     for(const job of this.activeProbes.values())if(!this.currentProbeJob(job,false))job.controller.abort();
     for(const gameId of this.terminalByGame.keys()) {
       const game=this.games.find(row=>row.id===gameId);
@@ -621,21 +628,45 @@ export class FootballCoordinator {
     return game?.lifecycle==='scheduled'&&kickoff>=this.now()&&kickoff<=this.now()+60*60_000?1:2;
   }
   private checkSources(gameIds:string[],retry:boolean):void {
+    if(this.probeReplan){clearImmediate(this.probeReplan);this.probeReplan=undefined;}
     const now=this.now();
+    for(const [key,deferred] of this.deferredProbes)if(deferred.until<=now){
+      clearTimeout(deferred.timer);
+      this.deferredProbes.delete(key);
+    }
     for(const gameId of gameIds) {
       this.checkTargets.delete(gameId);
       this.checkTargets.set(gameId,now);
     }
     for(const [gameId,requestedAt] of this.checkTargets)if(now-requestedAt>90_000)this.checkTargets.delete(gameId);
     while(this.checkTargets.size>16)this.checkTargets.delete(this.checkTargets.keys().next().value!);
+    if(retry)for(const gameId of gameIds)for(const candidate of this.candidates.get(gameId)||[])
+      if(this.currentCandidate(candidate)&&this.terminal(candidate)?.kind==='unavailable')
+        this.forcedRetries.add(this.probeKey(candidate));
+    if(retry)for(const job of this.activeProbes.values())if(gameIds.includes(job.candidate.gameId)&&
+      job.priority==='retry'&&job.phase.kind==='queued'&&!job.controller.signal.aborted){
+      this.forcedRetries.add(job.key);
+      this.promotedProbes.set(job.key,0);
+      job.controller.abort();
+    }
     if(retry)for(const job of this.probeQueue)if(job.priority==='retry'&&gameIds.includes(job.candidate.gameId)) {
       job.priority='forced';
+      this.forcedRetries.delete(job.key);
       this.terminalByGame.get(job.candidate.gameId)?.delete(job.key);
       this.revision++;
+    }
+    if(retry)for(const [key,deferred] of this.deferredProbes)if(gameIds.includes(deferred.candidate.gameId)){
+      clearTimeout(deferred.timer);
+      this.deferredProbes.delete(key);
     }
     const queued=new Set(this.probeQueue.map(job=>job.key));
     const hasPlayable=(candidate:Candidate):boolean=>this.terminal(candidate)?.kind==='playable';
     const demand=this.probeDemand();
+    const firstFeedDemand=new Set([...demand].filter(gameId=>this.checkTargets.has(gameId)||
+      !(this.candidates.get(gameId)||[]).some(candidate=>this.selectable(candidate))));
+    const admittedByGame=new Map<string,number>();
+    for(const job of [...this.activeProbes.values(),...this.probeQueue])
+      admittedByGame.set(job.candidate.gameId,(admittedByGame.get(job.candidate.gameId)||0)+1);
     const eligible=this.games.filter(game=>this.feedGame(game)).map(game=>({
       gameId:game.id,urgency:this.gameUrgency(game),kickoff:game.date?Date.parse(game.date):Infinity,
       candidates:(this.candidates.get(game.id)||[]).filter(candidate=>this.currentCandidate(candidate)).sort((a,b)=>this.rankCandidates(a,b))
@@ -673,43 +704,84 @@ export class FootballCoordinator {
       const key=this.probeKey(candidate);
       if(seen.has(key)||this.activeProbes.has(key)||queued.has(key)||this.deferredProbes.has(key))continue;
       seen.add(key);
-      const force=retry&&gameIds.includes(candidate.gameId);
+      const force=this.forcedRetries.has(key);
       const prior=this.terminal(candidate);
-      if(prior?.kind==='unavailable') {
-        if(force)forced.push(candidate);
-        else if(now>=prior.retryAt)retries.push(candidate);
+      if(force&&prior?.kind!=='playable')forced.push(candidate);
+      else if(prior?.kind==='unavailable') {
+        if(now>=prior.retryAt)retries.push(candidate);
       } else if(prior?.kind==='playable') {
+        this.forcedRetries.delete(key);
         if(this.workingRecheckDue(candidate,prior.checkedAt,now))rechecks.push({candidate,priority:'recheck',expectedCheckedAt:prior.checkedAt});
-      } else unknown.push(candidate);
+      } else {this.forcedRetries.delete(key);unknown.push(candidate);}
     }
     const maintenance:Array<ProbeWork & {candidate:Candidate}>=[...rechecks,...retries.map(candidate=>({candidate,priority:'retry' as const}))];
     maintenance.sort((left,right)=>this.maintenanceDue(left)-this.maintenanceDue(right));
+    for(const job of this.activeProbes.values())if(job.priority==='unknown'&&job.phase.kind==='queued'&&
+      !job.controller.signal.aborted){
+      const promoted=firstFeedDemand.has(job.candidate.gameId)&&!job.admittedDemand?2:
+        nearKickoff.has(job.candidate.gameId)&&!job.admittedNear?3:Infinity;
+      if(promoted<Infinity){this.promotedProbes.set(job.key,promoted);job.controller.abort();}
+    }
+    const recheckGames=new Set(rechecks.map(work=>work.candidate.gameId));
+    const sameGamePriority=new Set([...forced.map(candidate=>candidate.gameId),...recheckGames]);
+    const priorityUnknown=unknown.filter(candidate=>
+      (admittedByGame.get(candidate.gameId)||0)<(demand.has(candidate.gameId)?2:1));
+    const queuedPriority=this.probeQueue.map(job=>job.priority==='forced'?0:job.priority==='recheck'?1:
+      firstFeedDemand.has(job.candidate.gameId)?2:nearKickoff.has(job.candidate.gameId)?3:Infinity);
+    const priorityLevel=Math.min(...this.promotedProbes.values(),...queuedPriority,
+      forced.length?0:Infinity,rechecks.length?1:Infinity,
+      priorityUnknown.some(candidate=>firstFeedDemand.has(candidate.gameId))?2:
+        priorityUnknown.some(candidate=>nearKickoff.has(candidate.gameId))?3:Infinity);
+    if(priorityLevel<Infinity)for(const job of this.activeProbes.values()){
+      if(job.phase.kind!=='queued'||job.controller.signal.aborted)continue;
+      const level=job.priority==='forced'?0:job.priority==='recheck'?1:
+        firstFeedDemand.has(job.candidate.gameId)?2:nearKickoff.has(job.candidate.gameId)?3:
+          job.priority==='retry'?5:4;
+      if(job.key===this.protectedBackgroundKey&&!sameGamePriority.has(job.candidate.gameId))continue;
+      if(sameGamePriority.has(job.candidate.gameId)&&job.priority==='unknown'||
+        level>priorityLevel){
+        if(job.key===this.protectedBackgroundKey)this.protectedBackgroundKey=undefined;
+        else if(!this.protectedBackgroundKey&&level>=2&&priorityLevel<level)this.protectedBackgroundKey=job.key;
+        job.controller.abort();
+      }
+    }
+    for(let index=this.probeQueue.length-1;index>=0;index--){
+      const job=this.probeQueue[index];
+      if(job.priority!=='unknown'||!recheckGames.has(job.candidate.gameId))continue;
+      this.probeQueue.splice(index,1);
+      admittedByGame.set(job.candidate.gameId,(admittedByGame.get(job.candidate.gameId)||1)-1);
+      this.revision++;
+    }
     const additions:Array<ProbeWork & {candidate:Candidate}>=[...forced.map(candidate=>({candidate,priority:'forced'} as const)),
-      ...unknown.map(candidate=>({candidate,priority:'unknown'} as const)),...maintenance];
+      ...maintenance.filter(work=>work.priority==='recheck'),
+      ...unknown.map(candidate=>({candidate,priority:'unknown'} as const)),
+      ...maintenance.filter(work=>work.priority==='retry')];
     for(const work of additions) {
       const {candidate,priority}=work;
+      if(this.promotedProbes.size&&!this.promotedProbes.has(this.probeKey(candidate))&&
+        (priority==='unknown'||priority==='retry'))continue;
+      const admitted=admittedByGame.get(candidate.gameId)||0;
+      if(admitted>=(demand.has(candidate.gameId)?2:1))continue;
       if(this.probeQueue.length>=PROBE_QUEUE_LIMIT) {
         const maintenanceReplacement=this.probeQueue.reduce((latest,job,index)=>
           (job.priority==='retry'||job.priority==='recheck')&&
           (latest<0||this.maintenanceDue(job)>=this.maintenanceDue(this.probeQueue[latest]))?index:latest,-1);
         if(priority==='retry'||priority==='recheck') {
           if(maintenanceReplacement<0||this.maintenanceDue(work)>=this.maintenanceDue(this.probeQueue[maintenanceReplacement]))continue;
-          this.probeQueue.splice(maintenanceReplacement,1);
+          const [removed]=this.probeQueue.splice(maintenanceReplacement,1);
+          admittedByGame.set(removed.candidate.gameId,(admittedByGame.get(removed.candidate.gameId)||1)-1);
         } else {
           const demanded=priority!=='forced'&&demand.has(candidate.gameId);
           const approaching=priority!=='forced'&&!demanded&&nearKickoff.has(candidate.gameId);
-          const directReplacement=priority!=='forced'&&!usesBrowserProbe(candidate)?this.probeQueue.findLastIndex(job=>
-            job.priority===priority&&usesBrowserProbe(job.candidate)&&
-            demand.has(job.candidate.gameId)===demand.has(candidate.gameId)&&
-            (urgencyByGame.get(job.candidate.gameId)??2)>=(urgencyByGame.get(candidate.gameId)??2)):-1;
-          if(maintenanceReplacement<0&&priority!=='forced'&&!demanded&&!approaching&&directReplacement<0)continue;
-          const displaced=maintenanceReplacement>=0?maintenanceReplacement:directReplacement>=0?directReplacement:demanded||approaching?this.probeQueue.findLastIndex(job=>job.priority!=='forced'&&
+          if(maintenanceReplacement<0&&priority!=='forced'&&!demanded&&!approaching)continue;
+          const displaced=maintenanceReplacement>=0?maintenanceReplacement:demanded||approaching?this.probeQueue.findLastIndex(job=>job.priority!=='forced'&&
             !demand.has(job.candidate.gameId)&&(!approaching||!nearKickoff.has(job.candidate.gameId))):
             this.probeQueue.findLastIndex(job=>job.priority!=='forced');
           if(displaced<0)continue;
           if(maintenanceReplacement<0&&demanded&&!demand.has(this.probeQueue[displaced].candidate.gameId)&&
             this.probeQueue.filter(job=>!demand.has(job.candidate.gameId)).length<=1)continue;
-          this.probeQueue.splice(displaced,1);
+          const [removed]=this.probeQueue.splice(displaced,1);
+          admittedByGame.set(removed.candidate.gameId,(admittedByGame.get(removed.candidate.gameId)||1)-1);
         }
       }
       const key=this.probeKey(candidate);
@@ -718,63 +790,69 @@ export class FootballCoordinator {
       if(!game)continue;
       const prior=this.terminal(candidate);
       const owner=prior?.kind==='playable'?prior.owner:this.gameOwner(game);
-      this.probeQueue.push({...work,key,owner,controller:new AbortController(),revision:this.healthRevision.get(key)||0,phase:{kind:'queued',since:now}});
+      this.probeQueue.push({...work,key,owner,controller:new AbortController(),revision:this.healthRevision.get(key)||0,
+        phase:{kind:'queued',since:now},admittedDemand:firstFeedDemand.has(candidate.gameId),admittedNear:nearKickoff.has(candidate.gameId)});
+      if(priority==='forced')this.forcedRetries.delete(key);
+      this.promotedProbes.delete(key);
+      admittedByGame.set(candidate.gameId,(admittedByGame.get(candidate.gameId)||0)+1);
       this.revision++;
     }
     const rank=new Map(ordered.map((candidate,index)=>[this.probeKey(candidate),index]));
     this.probeQueue.sort((left,right)=>PROBE_PRIORITY[left.priority]-PROBE_PRIORITY[right.priority]||
-      (PROBE_PRIORITY[left.priority]===2?this.maintenanceDue(left)-this.maintenanceDue(right):0)||
+      (left.priority===right.priority&&(left.priority==='recheck'||left.priority==='retry')?
+        this.maintenanceDue(left)-this.maintenanceDue(right):0)||
       (urgencyByGame.get(left.candidate.gameId)??2)-(urgencyByGame.get(right.candidate.gameId)??2)||
-      Number(usesBrowserProbe(left.candidate))-Number(usesBrowserProbe(right.candidate))||
       (rank.get(left.key)??Infinity)-(rank.get(right.key)??Infinity));
-    this.probePump??=setImmediate(()=>{this.probePump=undefined;this.pumpProbes();});
+    if(priorityLevel<Infinity)this.pumpProbes();
+    else this.probePump??=setImmediate(()=>{this.probePump=undefined;this.pumpProbes();});
+  }
+  private scheduleProbeReplan():void {
+    if(this.stopped||this.probeReplan)return;
+    this.probeReplan=setImmediate(()=>{
+      this.probeReplan=undefined;
+      if(!this.stopped)this.checkSources([],false);
+    });
   }
   private runProbe(job:ProbeJob):Promise<CandidateProbeResult> {
     const canceled:CandidateProbeResult={kind:'deferred',retryAfterMs:2000};
     if(job.controller.signal.aborted)return Promise.resolve(canceled);
-    const deadline=new AbortController();
-    const signal=AbortSignal.any([job.controller.signal,deadline.signal]);
     return new Promise(resolve=>{
       let settled=false;
       const finish=(result:CandidateProbeResult)=>{
         if(settled)return;
         settled=true;
-        clearTimeout(timer);
         job.controller.signal.removeEventListener('abort',onAbort);
         resolve(result);
       };
       const onAbort=()=>finish(canceled);
-      const timer=setTimeout(()=>{
-        finish({kind:'unavailable',reason:'timeout'});
-        deadline.abort();
-      },PROBE_TIMEOUT_MS);
       job.controller.signal.addEventListener('abort',onAbort,{once:true});
       void Promise.resolve().then(()=>job.controller.signal.aborted ? canceled :
-        this.probeCandidate(job.candidate.locator,signal))
-        .then(finish,()=>finish({kind:'unavailable',reason:'upstream'}));
+        this.probeCandidate(job.candidate.locator,job.controller.signal,progress=>{
+          if(this.stopped||job.controller.signal.aborted||this.activeProbes.get(job.key)!==job||
+            !this.currentProbeJob(job,false)||job.revision!==(this.healthRevision.get(job.key)||0))return;
+          const kind=progress.kind==='active'?'active':'queued';
+          if(kind==='active'&&this.protectedBackgroundKey===job.key)this.protectedBackgroundKey=undefined;
+          if(job.phase.kind!==kind){
+            job.phase={kind,since:this.now()};
+            this.revision++;
+          }
+        }))
+        .then(finish,()=>finish({kind:'deferred',retryAfterMs:MEDIA_RECHECK_MS}));
     });
   }
   private pumpProbes():void {
-    if(this.activeProbes.size===PROBE_LIMIT&&![...this.activeProbes.values()].some(job=>!usesBrowserProbe(job.candidate)||job.controller.signal.aborted)) {
-      const demand=this.probeDemand();
-      const nextDemand=this.probeQueue.find(job=>demand.has(job.candidate.gameId)&&this.currentProbeCandidate(job));
-      const nextBackground=this.probeQueue.find(job=>!demand.has(job.candidate.gameId)&&this.currentProbeCandidate(job));
-      const direct=[nextDemand,nextBackground].find(job=>job&&!usesBrowserProbe(job.candidate));
-      if(direct) {
-        const browser=[...this.activeProbes.values()].filter(job=>usesBrowserProbe(job.candidate)&&
-          !job.controller.signal.aborted&&PROBE_PRIORITY[job.priority]>=PROBE_PRIORITY[direct.priority]);
-        const replaceable=browser.find(job=>!demand.has(job.candidate.gameId))||
-          (demand.has(direct.candidate.gameId)?browser[0]:undefined);
-        replaceable?.controller.abort();
-      }
-    }
     while(!this.stopped&&this.activeProbes.size<PROBE_LIMIT&&this.probeQueue.length) {
       const demand=this.probeDemand();
       const backgroundTurn=this.probeAdmissions%4===3;
-      const ready=(job:ProbeJob)=>!usesBrowserProbe(job.candidate)||this.now()>=this.browserProbeAfter;
-      const firstReady=this.probeQueue.find(ready);
+      const firstReady=this.probeQueue[0];
       if(!firstReady)break;
-      const eligible=(job:ProbeJob)=>ready(job)&&PROBE_PRIORITY[job.priority]===PROBE_PRIORITY[firstReady.priority];
+      const urgent=firstReady.priority==='forced'||firstReady.priority==='recheck';
+      const lower=this.probeQueue.find(job=>job.priority==='unknown'||job.priority==='retry');
+      const lowerTurn=urgent&&!!lower&&this.urgentAdmissions>=3&&!this.protectedBackgroundKey;
+      const selectedPriority=lowerTurn&&lower?
+        this.unknownAdmissions>=3&&this.probeQueue.some(job=>job.priority==='retry')?'retry':
+          this.probeQueue.some(job=>job.priority==='unknown')?'unknown':'retry':firstReady.priority;
+      const eligible=(job:ProbeJob)=>job.priority===selectedPriority;
       const preferred=this.probeQueue.findIndex(job=>eligible(job)&&(backgroundTurn?!demand.has(job.candidate.gameId):demand.has(job.candidate.gameId)));
       const next=preferred<0?this.probeQueue.findIndex(eligible):preferred;
       if(next<0)break;
@@ -786,6 +864,12 @@ export class FootballCoordinator {
         if(terminal)this.terminalByGame.get(job.candidate.gameId)?.delete(job.key);
       }
       this.activeProbes.set(job.key,job);
+      if(urgent&&lowerTurn)this.protectedBackgroundKey=job.key;
+      if(job.priority==='forced'||job.priority==='recheck')this.urgentAdmissions++;
+      else {
+        this.urgentAdmissions=0;
+        this.unknownAdmissions=job.priority==='unknown'?this.unknownAdmissions+1:0;
+      }
       job.phase={kind:'active',since:this.now()};
       this.revision++;
       this.probeAdmissions++;
@@ -800,8 +884,7 @@ export class FootballCoordinator {
           this.projectCandidates();
         }
         else {
-          const delay=Math.max(1000,Math.min(60_000,result.retryAfterMs));
-          if(usesBrowserProbe(job.candidate)&&!result.phase)this.browserProbeAfter=Math.max(this.browserProbeAfter,checkedAt+delay);
+          const delay=Math.max(MEDIA_RECHECK_MS,result.retryAfterMs);
           const timer=setTimeout(()=>{
             this.deferredProbes.delete(job.key);
             if(!this.stopped)this.checkSources([],false);
@@ -813,13 +896,17 @@ export class FootballCoordinator {
         if(this.stopped||job.controller.signal.aborted||this.activeProbes.get(job.key)!==job||!this.currentProbeJob(job,false)||
           job.revision!==(this.healthRevision.get(job.key)||0))return;
         const checkedAt=this.now();
-        this.recordTerminal(job.candidate,{kind:'unavailable',reason:'upstream',checkedAt,retryAt:checkedAt+MEDIA_RECHECK_MS});
-        this.projectCandidates();
+        const timer=setTimeout(()=>{
+          this.deferredProbes.delete(job.key);
+          if(!this.stopped)this.checkSources([],false);
+        },MEDIA_RECHECK_MS);
+        this.deferredProbes.set(job.key,{since:checkedAt,until:checkedAt+MEDIA_RECHECK_MS,timer,candidate:job.candidate,phase:undefined});
         this.revision++;
       }).finally(()=>{
+        if(this.protectedBackgroundKey===job.key&&!job.controller.signal.aborted)this.protectedBackgroundKey=undefined;
         if(this.activeProbes.get(job.key)===job){this.activeProbes.delete(job.key);this.revision++;}
         this.pumpProbes();
-        if(!this.stopped)this.checkSources([],false);
+        this.scheduleProbeReplan();
       });
     }
   }
@@ -927,6 +1014,27 @@ export class FootballCoordinator {
     const priorDetailIds=new Set(this.detailCandidateIds);
     const evidence=new Map(this.store.detailEvidence().map(row=>[row.observationId,row]));
     const observations=this.store.observations();
+    const match=createSourceEventMatcher(this.games);
+    const publication=new Map<string,{conflicting:boolean;matchedGames:Set<string>}>();
+    for(const observation of observations){
+      const detail=evidence.get(observation.id);
+      if(detail?.outcome!=='resolved'||!matchesDetail(detail,observation))continue;
+      const result=match(observation,listingEventEvidence(observation.sourceId),this.now()).match;
+      if(result.kind!=='matched'&&!(result.kind==='unmatched'&&result.reason==='conflicting-date'))continue;
+      for(const player of detail.players){
+        const key=JSON.stringify([observation.sourceId,player.locator]);
+        const state=publication.get(key)||{conflicting:false,matchedGames:new Set<string>()};
+        if(result.kind==='matched')state.matchedGames.add(result.gameId);
+        else state.conflicting=true;
+        publication.set(key,state);
+      }
+    }
+    const invalidated=[...this.candidates.values()].flat().filter(candidate=>priorDetailIds.has(candidate.id)&&
+      candidate.locator.provider!=='event-page'&&candidate.locator.provider!=='tvapp'&&
+      candidate.locator.provider!=='catalog-stream'&&candidate.locator.provider!=='streameast-server'&&
+      candidate.sourceIds.some(id=>publication.get(JSON.stringify([id,candidate.locator]))?.conflicting)&&
+      !candidate.sourceIds.some(id=>publication.get(JSON.stringify([id,candidate.locator]))?.matchedGames.has(candidate.gameId)));
+    this.retireReassignedCandidates(invalidated);
     const changedIdentityIds=new Set(observations.flatMap(observation=>{
       const detail=evidence.get(observation.id);
       return detail?.outcome==='resolved'&&!matchesDetail(detail,observation)?[...this.candidates.values()].flat()
@@ -948,7 +1056,6 @@ export class FootballCoordinator {
     this.detailCandidateIds.clear();
     for(const rows of this.candidates.values())
       for(const candidate of rows)if(priorDetailIds.has(candidate.id))this.detailCandidateIds.add(candidate.id);
-    const match=createSourceEventMatcher(this.games);
     const freshGames=this.games.filter(game=>this.feedGame(game));
     for(const observation of observations) {
       if(!this.sources.some(source=>source.id===observation.sourceId))continue;
@@ -1721,6 +1828,7 @@ export class FootballCoordinator {
     this.stopped=true;
     clearInterval(this.tickTimer);
     clearImmediate(this.probePump);
+    clearImmediate(this.probeReplan);
     clearImmediate(this.detailPublication);
     this.controller.abort();
     for(const job of this.activeProbes.values())job.controller.abort();

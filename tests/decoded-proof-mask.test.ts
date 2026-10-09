@@ -45,6 +45,7 @@ test('new decoded proof stays visible while an older probe remains active', asyn
     compatiblePlayers: () => [{ id: 'server-1', label: 'Server 1', locator: { provider: 'gooz', playerId: '1' } }],
     probeCandidate: async () => {
       if (++calls === 1) return { kind: 'playable' as const, proof: 'media' as const };
+      if(calls>2)return {kind:'unavailable' as const,reason:'upstream' as const};
       await pendingProbe;
       olderProbeSettled=true;
       return { kind: 'unavailable' as const, reason: 'upstream' as const };
@@ -82,12 +83,17 @@ test('new decoded proof stays visible while an older probe remains active', asyn
       return olderProbeSettled&&reply.kind==='sources'&&
         reply.snapshot.games.find(row=>row.gameId===game.id)?.candidates[0]?.availability.kind==='playable';
     });
+    const decoded=await coordinator.command({kind:'sources'});
+    assert.equal(decoded.kind,'sources');
+    if(decoded.kind==='sources')assert.deepEqual(decoded.snapshot.games.find(row=>row.gameId===game.id)?.candidates[0]?.availability,
+      {kind:'playable',proof:'decoded',checkedAt:at});
     clock+=10*60_000+1;
     await coordinator.refresh(true);
-    const retained=await coordinator.command({kind:'sources'});
-    assert.equal(retained.kind,'sources');
-    if(retained.kind==='sources')assert.equal(retained.snapshot.games.find(row=>row.gameId===game.id)?.workingChoiceCount,1);
-    assert.equal(calls,2,'decoded proof should not trigger another media check');
+    await until(async()=>{
+      const reply=await coordinator.command({kind:'sources'});
+      return calls===3&&reply.kind==='sources'&&
+        reply.snapshot.games.find(row=>row.gameId===game.id)?.workingChoiceCount===0;
+    });
   } finally {
     releaseProbe();
     await coordinator.stop();

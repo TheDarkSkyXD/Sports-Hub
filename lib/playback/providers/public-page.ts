@@ -5,6 +5,7 @@ import { load } from 'cheerio';
 import { boundedText, ProviderDeferredError, ProviderNoFeedError, sanitizedRead, type ProviderPlayback, type ProviderResource, type ResourceKind } from '../provider.ts';
 import type { MediaPhase } from '../../football/shared.ts';
 import { wrapDlivePixelResource } from './streameast-pixel.ts';
+import {probeFetch,probeHttpResponse,probeObserverLease,releaseObserverAfterClose} from '../probe-capacity.ts';
 
 export type Requester = (url: URL, signal: AbortSignal, headers: Headers, timeoutMs?: number) => Promise<Response>;
 
@@ -47,7 +48,7 @@ export function sportsurgeUrl(value: string): URL | null {
   } catch { return null; }
 }
 
-export async function publicHttpsRequest(url: URL, signal: AbortSignal, headers: Headers,
+async function directPublicHttpsRequest(url: URL, signal: AbortSignal, headers: Headers,
   resolveAddresses: (host: string) => Promise<ReadonlyArray<{ address: string; family: number }>> = host => lookup(host, { all: true }),
   timeoutMs = 10000): Promise<Response> {
   if (!sportsurgeUrl(url.href)) throw new Error('Unsupported provider URL');
@@ -110,6 +111,12 @@ export async function publicHttpsRequest(url: URL, signal: AbortSignal, headers:
   });
 }
 
+export function publicHttpsRequest(url:URL,signal:AbortSignal,headers:Headers,
+  resolveAddresses:(host:string)=>Promise<ReadonlyArray<{address:string;family:number}>>=host=>lookup(host,{all:true}),
+  timeoutMs=10000):Promise<Response> {
+  return probeHttpResponse(signal,active=>directPublicHttpsRequest(url,active,headers,resolveAddresses,timeoutMs),timeoutMs);
+}
+
 export async function get(value: string, signal: AbortSignal, requester: Requester, referer?: URL, range?: string,
   timeoutMs?: number, userAgent='Mozilla/5.0'): Promise<{ url: URL; response: Response }> {
   let url = sportsurgeUrl(value);
@@ -148,9 +155,8 @@ export function resource(value: URL, referer: URL, kind: ResourceKind, requester
   return {
     kind, identity,
     async read({ signal, range }) {
-      const readSignal = kind === 'playlist' ? AbortSignal.any([signal, AbortSignal.timeout(HEADER_WAIT_MS)]) : signal;
-      const result = await get(current.href, readSignal, requester, referer, range,
-        kind === 'media' ? RESOURCE_READ_MS : undefined, userAgent);
+      const result = await get(current.href, signal, requester, referer, range,
+        kind === 'media' ? RESOURCE_READ_MS : HEADER_WAIT_MS, userAgent);
       current = result.url;
       if (kind === 'playlist' && !hlsUrl(current, result.response)) {
         await result.response.body?.cancel();
@@ -196,6 +202,9 @@ async function observedPublicRequest(request:PublicObservation, signal: AbortSig
     if (purpose === 'probe') throw new ProviderDeferredError(30000);
     return null;
   }
+  const release=purpose==='probe'?await probeObserverLease(signal):()=>{};
+  let transferred=false;
+  try {
   const response = await fetch(`${origin}/observe`, {
     method: 'POST', cache: 'no-store', redirect: 'manual',
     signal: AbortSignal.any([signal, AbortSignal.timeout(25000)]),
@@ -234,21 +243,27 @@ async function observedPublicRequest(request:PublicObservation, signal: AbortSig
     throw new Error('Browser observation transport was invalid');
   const capability = value.capability;
   let closed = false;
-  const requester:Requester = async (url, active, headers) => {
+  const requester:Requester = async (url, active, headers, timeoutMs) => {
     if (closed) throw new Error('Observed media session is closed');
-    return fetch(`${origin}/media`, {
+    return probeFetch(fetch,`${origin}/media`, {
       method:'POST',cache:'no-store',redirect:'manual',signal:active,
       headers:{'Content-Type':'application/json','x-sunday-control-token':token},
       body:JSON.stringify({capability,url:url.href,range:headers.get('range') ?? undefined}),
-    });
+    },timeoutMs);
   };
   const root = resource(media,referer,'playlist',requester,value.userAgent);
+  transferred=true;
   return {root:transport === 'dlive-pixel-gzip-ts' ? wrapDlivePixelResource(root) : root,close(){
     if (closed) return;
     closed = true;
-    void fetch(`${origin}/media/${capability}`,{method:'DELETE',redirect:'manual',
-      signal:AbortSignal.timeout(5000),headers:{'x-sunday-control-token':token}}).then(response=>response.body?.cancel()).catch(()=>{});
+    releaseObserverAfterClose(async()=>{
+      const response=await fetch(`${origin}/media/${capability}`,{method:'DELETE',redirect:'manual',
+        signal:AbortSignal.timeout(5000),headers:{'x-sunday-control-token':token}});
+      await response.body?.cancel();
+      return response.ok||response.status===404;
+    },release);
   }};
+  } finally {if(!transferred)release();}
 }
 
 export function observedPublicPage(destination: URL, signal: AbortSignal,
@@ -263,10 +278,9 @@ export function observedStreameastServerPage(choice:{serverUrl:URL;eventUrl:URL;
 
 export async function publishedPublicVideo(destination: URL, parent: URL, signal: AbortSignal,
   requester:Requester=(url,active,headers,timeoutMs)=>publicHttpsRequest(url,active,headers,undefined,timeoutMs)): Promise<ProviderPlayback | null> {
-  const active=AbortSignal.any([signal,AbortSignal.timeout(HEADER_WAIT_MS)]);
-  const response=await requester(destination,active,new Headers({
+  const response=await requester(destination,signal,new Headers({
     'User-Agent':'Mozilla/5.0',Accept:'text/html,application/vnd.apple.mpegurl',Referer:parent.href,Origin:parent.origin,
-  }));
+  }),HEADER_WAIT_MS);
   if (hlsUrl(destination,response)) {
     await response.body?.cancel();
     return {root:resource(destination,parent,'playlist',requester),close(){}};

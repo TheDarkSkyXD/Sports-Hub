@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { FootballStore } from '../lib/football/adapters/store.ts';
 import { recordFinal } from '../lib/football/domain/lifecycle.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
+import { createProbeResources, probeObserverLease } from '../lib/playback/probe-capacity.ts';
 import type { Candidate, Game, Observation } from '../lib/football/shared.ts';
 import type { ScheduleResult } from '../lib/football/domain/ports.ts';
 
@@ -611,7 +612,7 @@ test('accepted browser categories record one durable attempt and replay adds non
   } finally {db.close();rmSync(dir,{recursive:true,force:true});}
 });
 
-test('new live first feeds advance while existing sessions and background work keep turns',async()=>{
+test('new live first feeds advance within four observer permits',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'pipeline-fairness-'));
   const matches=Array.from({length:8},(_,index):Game=>({
     ...game(),id:`game-${index}`,name:`Away ${index} at Home ${index}`,
@@ -625,6 +626,7 @@ test('new live first feeds advance while existing sessions and background work k
   const calls:string[]=[];
   const pending:(()=>void)[]=[];
   let active=0,peak=0;
+  const resources=createProbeResources({httpLimit:8,observerLimit:4,activeBudgetMs:65_000});
   const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
     now:()=>at,sources:[source],
     readSchedule:async partition=>({games:partition.id==='nfl'?matches:[],league:partition.league,at}),
@@ -635,28 +637,30 @@ test('new live first feeds advance while existing sessions and background work k
       id:`${gameId}-${index}`,gameId,label:`Server ${index}`,sourceIds:[source.id],observedAt:at,
       locator:{provider:'gooz',playerId:String(Number(value.id.slice('listing-'.length))*6+index+1)},
     })),
-    probeCandidate:async(locator,signal)=>{
+    probeCandidate:(locator,signal,onProgress)=>resources.run(signal,onProgress,async activeSignal=>{
+      const release=await probeObserverLease(activeSignal);
+      try{
       assert.equal(locator.provider,'gooz');
       calls.push(locator.playerId);
       active++;peak=Math.max(peak,active);
       await new Promise<void>(resolve=>{
         pending.push(resolve);
-        signal.addEventListener('abort',resolve,{once:true});
+        activeSignal.addEventListener('abort',resolve,{once:true});
       });
       active--;
       return {kind:'playable',proof:'media'};
-    },
+      }finally{release();}
+    }),
   });
   try{
     await coordinator.refresh(true);
     await until(async()=>calls.length===4);
     assert.deepEqual(calls,['1','7','13','19']);
-    assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[matches[7].id],retry:false}),{kind:'ok'});
     for(let expected=5;expected<=8;expected++){
       pending.shift()?.();
       await until(async()=>calls.length===expected);
     }
-    assert.deepEqual(calls.slice(4,7),['25','31','37']);
+    assert.deepEqual(calls.slice(4,8),['25','31','37','43']);
     assert.equal(peak,4);
   } finally {
     for(const release of pending)release();
@@ -665,7 +669,7 @@ test('new live first feeds advance while existing sessions and background work k
   }
 });
 
-test('manually retried live servers reenter a full background probe queue without taking every slot',async()=>{
+test('manual live retries progress alongside a held background route',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'pipeline-probe-retry-'));
   const live=game('ncaaf');
   const scheduled:Game={...game('ncaaf',at+3600_000),id:'ncaaf-101',name:'Other at Elsewhere',
@@ -675,11 +679,11 @@ test('manually retried live servers reenter a full background probe queue withou
     ...observation('ncaaf'),id:`listing-${match.id}`,url:`https://fixture.example/detail/${match.id}`,
     title:match.name,teams:[match.away.name,match.home.name],kickoff:Date.parse(match.date || ''),parserVersion:2 as const,
   }));
-  let clock=at,targetChecks=0,backgroundChecks=0;
+  let targetChecks=0,backgroundChecks=0;
   const pending:(()=>void)[]=[];
   const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
-    now:()=>clock,sources:[source],
-    readSchedule:async partition=>({games:partition.id==='fcs'?[live,scheduled]:[],league:partition.league,at:clock}),
+    now:()=>at,sources:[source],
+    readSchedule:async partition=>({games:partition.id==='fcs'?[live,scheduled]:[],league:partition.league,at}),
     readHtml:async()=>'<main>published</main>',
     parseListings:()=>({outcome:'parsed',observations:listings}),
     enrichObservation:value=>value,
@@ -703,17 +707,11 @@ test('manually retried live servers reenter a full background probe queue withou
   };
   try {
     await coordinator.refresh(true);
-    await until(async()=>targetChecks===17&&pending.length===4);
+    await until(async()=>targetChecks===17&&pending.length===1);
     assert.deepEqual(new Set(await availability()),new Set(['unavailable']));
     await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false});
     assert.equal(targetChecks,17);
-    clock+=301_000;
-    await coordinator.refresh(true);
-    await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false});
-    assert.equal(targetChecks,17);
-    assert.deepEqual(new Set(await availability()),new Set(['unavailable']));
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:true}),{kind:'ok'});
-    assert.deepEqual(new Set(await availability()),new Set(['checking']));
     const backgroundBefore=backgroundChecks;
     await until(async()=>{
       for(const release of pending.splice(0))release();

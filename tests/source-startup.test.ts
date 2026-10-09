@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
+import {createProbeResources,probeObserverLease} from '../lib/playback/probe-capacity.ts';
 import type { FootballDependencies, ListingSource } from '../lib/football/domain/ports.ts';
 import type { Game, Observation, SportsurgeCatalog, StreameastCatalog } from '../lib/football/shared.ts';
 
@@ -85,11 +86,12 @@ test('a distant direct probe cannot repeatedly abort nearer browser probes',asyn
   });
   try {
     await coordinator.refresh(true);
-    await until(()=>starts===4,'the first browser probes should start');
+    await until(()=>starts===9,'all game frontiers should start');
     await coordinator.refresh(true);
     for(let turn=0;turn<100;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.equal(aborts,0,`nearer pending probes must remain running: ${starts} starts, ${direct} direct probes`);
-    assert.equal(starts,4);
+    assert.equal(starts,9);
+    assert.equal(direct,1);
   } finally {await close();}
 });
 
@@ -117,15 +119,16 @@ test('a busy browser observer defers the browser queue while direct checks still
     await until(()=>direct>0,'a late direct check should enter the paused, saturated browser queue');
     for(let turn=0;turn<30;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.equal(direct,1);
-    assert.ok(browsers<=4,`a busy observer should defer the queue, not receive ${browsers} calls`);
+    assert.ok(browsers>4,`independent candidate deferrals should advance the game frontier: ${browsers}`);
     busy=false;
-    clock+=2000;
-    await new Promise<void>(resolve=>setTimeout(resolve,2100));
-    await until(()=>recovered>0,'the existing deferred timers should resume browser checks after capacity returns');
+    clock+=300_001;
+    await coordinator.refresh(true);
+    await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:true});
+    await until(()=>recovered>0,'manual retry should resume a deferred browser check after capacity returns');
   } finally {lateDirect.release();await close();}
 });
 
-test('published StreamEast server pages share the browser probe backoff',async()=>{
+test('published StreamEast server pages defer independently',async()=>{
   const live=game(0,0,'live');
   let starts=0;
   const {coordinator,close}=fixture([live],[source('streameast')],{
@@ -138,9 +141,9 @@ test('published StreamEast server pages share the browser probe backoff',async()
   });
   try {
     await coordinator.refresh(true);
-    await until(()=>starts>=4,'the first four browser checks should start');
+    await until(()=>starts>=6,'each published server should receive a first check');
     for(let turn=0;turn<30;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
-    assert.equal(starts,4,'remaining server pages must wait for the browser backoff');
+    assert.equal(starts,6,'all first checks defer individually without a global browser backoff');
   } finally {await close();}
 });
 
@@ -209,7 +212,7 @@ test('six minutes of fresh scores retain working choices and saved proof survive
       assert.equal(reply.kind,'board');
       if(reply.kind==='board')assert.deepEqual(reply.board.leagues.nfl.errors,[]);
     }
-    assert.equal(probes,1,'fresh playable evidence should not be repeatedly probed');
+    assert.equal(probes,2,'working evidence is rechecked once at five minutes');
     scheduleFails=true;
     clock+=30_000;
     await coordinator.refresh(true);
@@ -221,41 +224,54 @@ test('six minutes of fresh scores retain working choices and saved proof survive
       assert.deepEqual(failed.board.leagues.nfl.errors,['NFL schedule refresh failed; showing saved scores.']);
     }
     assert.equal((await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false})).kind,'error');
-    assert.equal(probes,1);
+    assert.equal(probes,2);
     scheduleFails=false;
     await coordinator.refresh(true);
     await until(working,'a successful score refresh should restore the fresh working choice');
     clock+=90_001;
     assert.equal(await working(),true,'verified proof remains visible while score freshness expires');
     assert.equal((await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false})).kind,'error');
-    assert.equal(probes,1);
+    assert.equal(probes,2);
   } finally {await close();}
 });
 
 test('repeated checks do not churn a full paused queue with more demand than capacity',async()=>{
-  const live=game(0,0,'live'),near=game(1,30);
-  let probes=0;
-  const {coordinator,close}=fixture([live,near],[source('fixture')],{
+  const live=game(0,0,'live'),matches=[live,...Array.from({length:4},(_,index)=>game(index+1,30))];
+  const resources=createProbeResources({httpLimit:8,observerLimit:4,activeBudgetMs:65_000});
+  const held=gate();
+  let probes=0,aborts=0;
+  const {coordinator,close}=fixture(matches,[source('fixture')],{
     compatiblePlayers:(gameId,listing)=>Array.from({length:gameId===live.id?300:100},(_,index)=>({
       id:`browser-${gameId}-${index}`,label:'Free',locator:{provider:'event-page',gameId,eventUrl:listing.url,
         serverUrl:`https://fixture.example/server/${gameId}/${index}`}})),
-    probeCandidate:async()=>{probes++;return {kind:'deferred',retryAfterMs:60_000};},
+    probeCandidate:(locator,signal,onProgress)=>resources.run(signal,onProgress,async active=>{
+      const release=await probeObserverLease(active);
+      probes++;
+      active.addEventListener('abort',()=>{aborts++;},{once:true});
+      try{await held.promise;}finally{release();}
+      return {kind:'deferred',retryAfterMs:60_000};
+    }),
   });
   try {
     await coordinator.refresh(true);
     await until(async()=>{
       const reply=await coordinator.command({kind:'sources'});
-      return reply.kind==='sources'&&reply.snapshot.games.reduce((count,row)=>count+row.candidates.length,0)===400&&probes>0;
-    },'both games should publish their choices');
+      return reply.kind==='sources'&&reply.snapshot.games.reduce((count,row)=>count+row.candidates.length,0)===700&&probes===4;
+    },'five games should publish their choices and fill four physical observer slots');
     await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false});
     for(let turn=0;turn<10;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
     const before=await coordinator.command({kind:'sources'});
     for(let request=0;request<20;request++)await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false});
     const after=await coordinator.command({kind:'sources'});
     assert.equal(before.kind,'sources');assert.equal(after.kind,'sources');
-    if(before.kind==='sources'&&after.kind==='sources')assert.equal(after.snapshot.revision,before.snapshot.revision);
-    assert.ok(probes<=4);
-  } finally {await close();}
+    if(before.kind==='sources'&&after.kind==='sources'){
+      assert.equal(after.snapshot.revision,before.snapshot.revision);
+      assert.deepEqual(after.snapshot.games.map(row=>row.candidates.map(candidate=>candidate.id)),
+        before.snapshot.games.map(row=>row.candidates.map(candidate=>candidate.id)));
+    }
+    assert.equal(probes,4);
+    assert.equal(aborts,0);
+  } finally {held.release();await close();}
 });
 
 test('an unchanged refreshed listing retains fresh choices while its detail refresh is pending',async()=>{
@@ -284,7 +300,10 @@ test('an unchanged refreshed listing retains fresh choices while its detail refr
     await coordinator.refresh(true);
     const expired=await coordinator.command({kind:'sources'});
     assert.equal(expired.kind,'sources');
-    if(expired.kind==='sources')assert.equal(expired.snapshot.games[0]?.candidates.length,0);
+    if(expired.kind==='sources'){
+      assert.equal(expired.snapshot.games[0]?.candidates.length,1);
+      assert.equal(expired.snapshot.games[0]?.candidates[0]?.availability.kind,'playable');
+    }
   } finally {pending.release();await close();}
 });
 
@@ -477,7 +496,7 @@ test('near-kickoff details start before distant scheduled games in kickoff order
   } finally {pending.release();await close();}
 });
 
-test('a late near-kickoff choice enters a full distant probe queue and receives the next background turn',async()=>{
+test('a late near-kickoff choice enters the frontier before distant siblings',async()=>{
   const listing=gate(),live=game(0,0,'live'),distant=game(1,720),near=game(2,10);
   const calls:string[]=[],pending:(()=>void)[]=[];
   const {coordinator,close}=fixture([live,distant,near],[source('initial'),source('late')],{
@@ -497,23 +516,23 @@ test('a late near-kickoff choice enters a full distant probe queue and receives 
   });
   try {
     await coordinator.refresh(true);
-    await until(()=>calls.length===4,'four media checks should start');
-    assert.deepEqual(calls,['1000','1001','1002','2000']);
+    await until(()=>calls.length===3,'the live and distant games should enter the frontier');
+    assert.deepEqual(calls,['1000','1001','2000']);
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false}),{kind:'ok'});
     const full=await coordinator.command({kind:'sources'});
     assert.equal(full.kind,'sources');
     if(full.kind==='sources')assert.equal(full.snapshot.games.flatMap(row=>row.candidates)
-      .filter(candidate=>candidate.availability.kind==='checking').length,282);
+      .filter(candidate=>candidate.availability.kind==='checking').length,3);
     listing.release();
     await until(async()=>{
       const reply=await coordinator.command({kind:'sources'});
       return reply.kind==='sources'&&reply.snapshot.games.find(row=>row.gameId===near.id)?.candidates[0]?.availability.kind==='checking';
     },'the near-kickoff choice should enter the full probe queue');
-    for(let count=5;count<=8;count++){
-      pending.shift()?.();
-      await until(()=>calls.length===count,'each released media slot should admit another choice');
-    }
-    assert.deepEqual(calls.slice(4),['1003','1004','1005','3000']);
+    await until(()=>calls.length===4,'the near-kickoff check should start');
+    assert.equal(calls[3],'3000');
+    pending.shift()?.();
+    await until(()=>calls.length===5,'a released game slot should admit its next sibling');
+    assert.equal(calls[4],'1002');
   } finally {listing.release();await close();}
 });
 

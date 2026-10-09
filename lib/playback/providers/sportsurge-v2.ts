@@ -67,13 +67,12 @@ export function sportsurgeV2Provider(requester: Requester = (url, signal, header
         /^\/[a-z0-9]{7,32}$/.test(destination.pathname);
       let dudestreamCandidate: {parent:URL;server:URL}|null = null;
       let verifiedDudestream: {parent:URL;server:URL}|null = null;
-      const staticSignal = AbortSignal.any([signal,AbortSignal.timeout(STATIC_LOOKUP_MS)]);
       try {
         const visited = new Set<string>();
         for (let hop = 0; hop <= MAX_PAGE_HOPS; hop++) {
           if (visited.has(page.href)) break;
           visited.add(page.href);
-          const { url, response } = await get(page.href, staticSignal, requester);
+          const { url, response } = await get(page.href, signal, requester,undefined,undefined,STATIC_LOOKUP_MS);
           if (hlsUrl(url, response)) {
             await response.body?.cancel();
             return { root: resource(url, page, 'playlist', requester), close() {} };

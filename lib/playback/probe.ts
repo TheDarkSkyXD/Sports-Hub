@@ -1,9 +1,10 @@
 import { createDecipheriv } from 'node:crypto';
-import type { CandidateProbeResult } from '../football/domain/ports.ts';
+import type { CandidateProbeResult,ProbeProgress } from '../football/domain/ports.ts';
 import type { CandidateLocator } from '../football/shared.ts';
 import { openProvider } from './provider-registry.ts';
 export { providerProbeIdentity as probeIdentity } from './provider-registry.ts';
 import { ProviderDeferredError, ProviderNoFeedError, type ProviderPlayback, type ProviderResource } from './provider.ts';
+import {createProbeResources} from './probe-capacity.ts';
 
 type Range = { start: number; length: number };
 type Encryption = { uri: string; iv?: string };
@@ -158,7 +159,7 @@ async function checkPlaylist(resource: ProviderResource, signal: AbortSignal, bu
     const eligible = video.length ? video : variants.filter(variant=>!variant.CODECS ||
       !variant.CODECS.split(',').every(codec=>/^(?:mp4a|ac-3|ec-3|opus|flac|alac)(?:\.|$)/i.test(codec.trim())));
     const ordered = [...eligible].sort((left,right)=>Number(left.BANDWIDTH||0)-Number(right.BANDWIDTH||0));
-    let failure: unknown;
+    let failure: unknown,incomplete: unknown;
     for (const selected of ordered) {
       try {
         const branch = new Set(visited);
@@ -171,10 +172,12 @@ async function checkPlaylist(resource: ProviderResource, signal: AbortSignal, bu
         }
         return;
       } catch (error) {
-        if (signal.aborted || error instanceof ProviderDeferredError) throw error;
-        failure = error;
+        if (signal.aborted) throw error;
+        if(error instanceof ProbeFailure || error instanceof ProviderNoFeedError)failure=error;
+        else incomplete=error;
       }
     }
+    if(incomplete)throw incomplete;
     if (failure) throw failure;
     return invalid();
   }
@@ -213,12 +216,20 @@ export async function probeCandidate(locator: CandidateLocator, signal: AbortSig
     if (error instanceof ProviderDeferredError) return {kind:'deferred',retryAfterMs:error.retryAfterMs,
       ...(error.phase ? {phase:error.phase} : {})};
     if (error instanceof ProviderNoFeedError) return {kind:'unavailable',reason:'no-feed',phase:error.phase};
-    if (error instanceof Error && error.name==='TimeoutError') return {kind:'unavailable',reason:'timeout'};
+    if (error instanceof Error && error.name==='TimeoutError') return {kind:'deferred',retryAfterMs:300_000};
     if (error instanceof ProbeFailure) return {kind:'unavailable',reason:error.reason};
-    return playback ? {kind:'unavailable',reason:'upstream',phase:'replay'} :
-      {kind:'unavailable',reason:'upstream'};
+    return {kind:'deferred',retryAfterMs:300_000,...(playback?{phase:'replay' as const}:{})};
   } finally {
     signal.removeEventListener('abort',onAbort);
     closePlayback();
   }
 }
+
+export function createProbeCandidate(options={httpLimit:8,observerLimit:4,activeBudgetMs:65_000},
+  opener:typeof openProvider=openProvider) {
+  const resources=createProbeResources(options);
+  return (locator:CandidateLocator,signal:AbortSignal,onProgress:(progress:ProbeProgress)=>void):Promise<CandidateProbeResult>=>
+    resources.run(signal,onProgress,active=>probeCandidate(locator,active,opener));
+}
+
+export const configuredProbeCandidate=createProbeCandidate();

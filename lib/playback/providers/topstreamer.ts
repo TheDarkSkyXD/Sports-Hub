@@ -9,7 +9,6 @@ type Snapshot = { channel: string; variants: ReadonlyMap<string, Variant> };
 const PAGE_LIMIT = 1024 * 1024;
 const PLAYLIST_LIMIT = 256 * 1024;
 const PAGE_TIMEOUT_MS = 10000;
-const DISCOVERY_TIMEOUT_MS = 25000;
 const VARIANT_NAME = /^\d{1,2}_[a-z0-9-]{1,64}\.m3u8$/;
 const CHANNEL = /^[a-z0-9-]{1,64}$/;
 const PLAYLIST_TAG = /^#(?:EXTM3U|EXT-X-(?:VERSION|TARGETDURATION|MEDIA-SEQUENCE|DISCONTINUITY-SEQUENCE):\d+|EXT-X-INDEPENDENT-SEGMENTS|EXT-X-DISCONTINUITY|EXT-X-ENDLIST|EXTINF:\d+(?:\.\d+)?,?)$/;
@@ -96,7 +95,7 @@ function playlistRead(value: string): ProviderReadResult {
 }
 
 async function readPage(url: URL, referer: URL, signal: AbortSignal, requester: Requester): Promise<string> {
-  const {url:final,response} = await get(url.href,AbortSignal.any([signal,AbortSignal.timeout(PAGE_TIMEOUT_MS)]),
+  const {url:final,response} = await get(url.href,signal,
     requester,referer,undefined,PAGE_TIMEOUT_MS);
   if (final.href !== url.href || !/text\/html|application\/xhtml\+xml/i.test(response.headers.get('content-type') || '')) {
     await response.body?.cancel();
@@ -128,8 +127,7 @@ function nestedPlayer(html: string): URL | null {
 export async function publishedTopstreamerVideo(server: URL, parent: URL, signal: AbortSignal,
   requester: Requester = (url,active,headers,timeoutMs) => publicHttpsRequest(url,active,headers,undefined,timeoutMs)): Promise<ProviderPlayback | null> {
   signal.throwIfAborted();
-  const discovery = AbortSignal.any([signal,AbortSignal.timeout(DISCOVERY_TIMEOUT_MS)]);
-  const serverHtml = await readPage(server,parent,discovery,requester);
+  const serverHtml = await readPage(server,parent,signal,requester);
   const $ = load(serverHtml);
   const canonical = $('link[rel="canonical"]');
   const frame = $('.player-embed-wrap iframe[src]');
@@ -139,9 +137,9 @@ export async function publishedTopstreamerVideo(server: URL, parent: URL, signal
     frame.length !== 1) return null;
   const middle = exactHost(frame.attr('src') || '', 'trendy48.site');
   if (!middle || !/^\/top\/[a-z0-9-]{1,64}$/.test(middle.pathname)) return null;
-  const player = nestedPlayer(await readPage(middle,server,discovery,requester));
+  const player = nestedPlayer(await readPage(middle,server,signal,requester));
   if (!player || player.pathname.split('/').at(-1) !== middle.pathname.split('/').at(-1)) return null;
-  const initial = parseSnapshot(await readPage(player,middle,discovery,requester),player);
+  const initial = parseSnapshot(await readPage(player,middle,signal,requester),player);
   signal.throwIfAborted();
   if (!initial) return null;
 
