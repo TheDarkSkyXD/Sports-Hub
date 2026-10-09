@@ -219,7 +219,9 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     video.addEventListener('loadedmetadata', onVideoDimensions);
     video.addEventListener('resize', onVideoDimensions);
     if (/\.m3u8(?:\?|$)/i.test(feed.url) && Hls.isSupported()) {
-      hls = new Hls({ maxBufferLength: 45, backBufferLength: 90, liveSyncDurationCount: 3,
+      hls = new Hls({ ...(purpose === 'verification'
+        ? { maxBufferLength: 4, maxMaxBufferLength: 8, maxBufferSize: 8_000_000, backBufferLength: 0 }
+        : { maxBufferLength: 45, backBufferLength: 90 }), liveSyncDurationCount: 3,
         ...(startupTimeoutMs > 20000 ? {manifestLoadPolicy:{default:{
           ...Hls.DefaultConfig.manifestLoadPolicy.default,maxLoadTimeMs:startupTimeoutMs-5000,
         }}} : {}) });
