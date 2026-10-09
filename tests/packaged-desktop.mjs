@@ -30,6 +30,9 @@ try {
     'Packaged server resources must not embed local verification scratch');
   assert.ok(!existsSync(path.join(appPath, 'resources/server/.desktop-runtime')),
     'Packaged server resources must not embed the development Electron runtime');
+  for (const name of ['target', 'src', 'Cargo.toml', 'Cargo.lock'])
+    assert.equal(existsSync(path.join(appPath, 'resources/server/native/collector', name)), false,
+      `Rust build input leaked into packaged server resources: ${name}`);
 
   // electron-updater is a runtime dependency loaded at startup. A build that packaged
   // without it opened a window titled "Error" and served nothing, which the assertions
