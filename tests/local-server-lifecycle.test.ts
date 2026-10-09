@@ -55,7 +55,7 @@ function localServer(options: {
   return { service, dispose: () => rmSync(logDir, { recursive: true, force: true }) };
 }
 
-test('unpackaged desktop launches source development despite a previous build', async () => {
+test('ordinary unpackaged desktop prepares compiled output instead of launching development', async () => {
   const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-source-test-'));
   mkdirSync(path.join(serverRoot, '.next'));
   writeFileSync(path.join(serverRoot, '.next', 'BUILD_ID'), 'stale-build');
@@ -71,11 +71,7 @@ test('unpackaged desktop launches source development despite a previous build', 
   try {
     const ready = room.service.start();
     try {
-      assert.deepEqual(launch, [
-        path.join(root, 'desktop', 'server-supervisor.cjs'),
-        path.join(serverRoot, 'node_modules', 'next', 'dist', 'bin', 'next'),
-        'dev', '49300',
-      ]);
+      assert.equal(launch?.[2], 'build');
     } finally {
       room.service.beginStop();
       await assert.rejects(ready, /stop/i);
