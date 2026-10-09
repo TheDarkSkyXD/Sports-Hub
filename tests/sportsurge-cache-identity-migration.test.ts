@@ -40,7 +40,7 @@ function fixture(options:{catalog?:boolean;otherRoute?:boolean;oldCheckedAt?:num
     const locator=legacyLocator(url,id);
     const candidate={id:candidateId(url,id),gameId:game.id,label:id,sourceIds:['sportsurge-v2'],observedAt:at,locator};
     const identityHash=createHash('sha256').update(JSON.stringify([game.id,JSON.stringify(locator)])).digest('hex');
-    const feed:WorkingFeed={version:1,identityHash,candidate,owner:workingFeedOwner(game,['fbs']),
+    const feed:WorkingFeed={version:2,identityHash,candidate,owner:workingFeedOwner(game,['fbs']),
       checkedAt:options.oldCheckedAt??at,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     store.replaceWorkingIdentity(game.id,identityHash,[feed]);
     feeds.push(feed);

@@ -124,14 +124,16 @@ test('a playback failure removes only the retained route whose listing is gone',
   } finally { await run.stop(); }
 });
 
-test('final games retain proven working choices throughout their retention window without more checks', async () => {
+test('final games retain routes throughout their retention window without more checks', async () => {
   const run = fixture();
   try {
     await run.refresh(at);
     assert.equal((await run.snapshot()).games.length, 2);
     run.finish();
     await run.refresh(at + 301000);
-    assert.deepEqual((await run.snapshot()).games.map(row => row.workingChoiceCount), [2, 2]);
+    const retained = (await run.snapshot()).games;
+    assert.deepEqual(retained.map(row => row.candidates.length), [2, 2]);
+    assert.deepEqual(retained.map(row => row.workingChoiceCount), [0, 0]);
     assert.equal(run.checks(), 4);
     await run.refresh(at + 301000 + 24 * 60 * 60_000);
     assert.deepEqual((await run.snapshot()).games, []);

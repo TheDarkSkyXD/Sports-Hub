@@ -120,7 +120,7 @@ test('legacy Sportsurge keeps complete live proof while rereading detail after r
     await run.restart();
     const pendingRefresh=run.refresh();
     const cold=await run.snapshot();
-    assert.equal(cold.sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind,'collected');
+    assert.equal(cold.sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind,'pending');
     assert.equal(cold.sources.find(row=>row.id===source.id)?.lastAttempt?.at,initial);
     assert.equal(cold.games.find(row=>row.gameId===game.id)?.candidates.length,3);
     assert.equal(run.detailReads,1,'cold restore does not need a network detail read');

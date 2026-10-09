@@ -378,7 +378,7 @@ test('an obsolete saved game does not block checks for a listed game',async()=>{
   } finally {await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
 });
 
-test('availability gates open and switch while unchanged proof survives its old expiry window',async()=>{
+test('availability gates open and switch while expired proof requires re-verification',async()=>{
   let resolveFirst!:(result:CandidateProbeResult)=>void;
   const firstProbe=new Promise<CandidateProbeResult>(resolve=>{resolveFirst=resolve;});
   let calls=0;
@@ -425,14 +425,14 @@ test('availability gates open and switch while unchanged proof survives its old 
     await coordinator.refresh(true);
     const beforeExpiry=await coordinator.command({kind:'sources'});
     assert.equal(beforeExpiry.kind,'sources');
-    if(beforeExpiry.kind==='sources')assert.equal(beforeExpiry.snapshot.games.find(row=>row.gameId===game.id)?.candidates.find(row=>row.id===playable.id)?.availability.kind,'playable');
+    if(beforeExpiry.kind==='sources')assert.equal(beforeExpiry.snapshot.games.find(row=>row.gameId===game.id)?.candidates.find(row=>row.id===playable.id)?.availability.kind,'checking');
     clock.value++;
     await coordinator.refresh(true);
     const retained=await coordinator.command({kind:'sources'});
     assert.equal(retained.kind,'sources');
-    if(retained.kind==='sources')assert.equal(retained.snapshot.games.find(row=>row.gameId===game.id)?.candidates.find(row=>row.id===playable.id)?.availability.kind,'playable');
+    if(retained.kind==='sources')assert.equal(retained.snapshot.games.find(row=>row.gameId===game.id)?.candidates.find(row=>row.id===playable.id)?.availability.kind,'checking');
     assert.equal(calls,3,'the playable route is rechecked at each five-minute deadline');
-    assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false})).kind,'playback');
+    assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false})).kind,'error');
     assert.equal((await coordinator.command({kind:'authorize',sessionId:opened.playback.session.id,candidateId:playable.id,generation:0})).kind,'authorized');
   } finally {await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
 });

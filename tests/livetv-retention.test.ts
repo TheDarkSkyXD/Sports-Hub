@@ -77,7 +77,7 @@ for(const allPlayable of [false,true])test(`LiveTV restores two published feeds 
     const refresh=coordinator.refresh(true);
     if(allPlayable) {
       const cold=await snapshot();
-      assert.equal(cold.sources[0].links[0]?.evidence.kind,'collected');
+      assert.equal(cold.sources[0].links[0]?.evidence.kind,'pending');
       assert.equal(cold.games.find(row=>row.gameId===game.id)?.candidates.length,2);
     }
     release?.();barrier=null;

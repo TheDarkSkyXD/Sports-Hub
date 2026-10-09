@@ -242,7 +242,7 @@ test('a listing after the former thousand-row limit still reaches source setting
   } finally {await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 
-test('all choices across game frontiers are checked with eight physical HTTP operations',async()=>{
+test('all choices across game frontiers are checked within two playback slots',async()=>{
   const directory=mkdtempSync(join(tmpdir(),'universal-probe-backlog-'));
   const games=Array.from({length:20},(_,index)=>({...game,id:String(100+index),
     name:`Away ${index} at Home ${index}`,home:{...game.home,name:`Home ${index}`},away:{...game.away,name:`Away ${index}`}}));
@@ -276,7 +276,7 @@ test('all choices across game frontiers are checked with eight physical HTTP ope
         assert.equal(reply.snapshot.games.length,20);
         assert.equal(new Set(completed).size,300);
         assert.equal(new Set(completed.slice(0,20).map(id=>Math.floor(Number(id)/100))).size,20);
-        assert.equal(maximum,8);
+        assert.equal(maximum,2);
         return;
       }
       await new Promise<void>(resolve=>setImmediate(resolve));

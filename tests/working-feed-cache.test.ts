@@ -136,7 +136,7 @@ test('legacy media and decoded cache rows remain recheck hints, never Available 
   }
 });
 
-test('old live and scheduled working choices are visible before schedule refresh', async () => {
+test('old live and scheduled routes remain visible for recheck before schedule refresh', async () => {
   for (const scheduled of [false, true]) {
     const run = fixture();
     if (scheduled) run.setGames([{ ...game, lifecycle: 'scheduled', status: 'pre', date: '2026-10-05T17:00:00Z' }]);
@@ -146,7 +146,9 @@ test('old live and scheduled working choices are visible before schedule refresh
       const before = (await snapshot(coordinator)).games[0].candidates[0];
       await coordinator.stop(); run.hide(); run.setClock(at + 31 * 60_000);
       coordinator = run.start();
-      assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0], before);
+      const restored = (await snapshot(coordinator)).games[0].candidates[0];
+      assert.equal(restored.id, before.id);
+      assert.equal(restored.availability.kind, 'unknown');
       assert.equal(run.probes.length, 1);
       await coordinator.refresh(true); await drain();
       assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0],
@@ -156,7 +158,7 @@ test('old live and scheduled working choices are visible before schedule refresh
   }
 });
 
-test('a held schedule refresh collects listings while saved working feeds open without detail or media reads', async () => {
+test('a held schedule refresh retains saved routes without detail or media reads', async () => {
   for (const scheduled of [false, true]) {
     const run = fixture();
     if (scheduled) run.setGames([{ ...game, lifecycle: 'scheduled', status: 'pre', date: '2026-10-05T17:00:00Z' }]);
@@ -171,18 +173,13 @@ test('a held schedule refresh collects listings while saved working feeds open w
       run.partitionResults.set('nfl', new Promise<Game[]>(resolve => { release = resolve; }));
       coordinator = run.start(); pending = coordinator.refresh(true); await drain();
       const sources = await snapshot(coordinator);
-      assert.deepEqual(sources.games[0].candidates[0], candidate);
+      assert.equal(sources.games[0].candidates[0].id, candidate.id);
+      assert.equal(sources.games[0].candidates[0].availability.kind, 'unknown');
       const board = await coordinator.command({ kind: 'board' });
       assert.equal(board.kind, 'board');
-      if (board.kind === 'board') assert.equal(board.board.games.find(row => row.id === game.id)?.sourceUrl, `/play/${game.id}`);
+      if (board.kind === 'board') assert.equal(board.board.games.find(row => row.id === game.id)?.sourceUrl, undefined);
       const opened = await coordinator.command({ kind: 'open', gameId: game.id, manual: false });
-      assert.equal(opened.kind, 'playback');
-      if (opened.kind === 'playback') {
-        assert.deepEqual(opened.playback.candidates.map(row => row.id), [candidate.id]);
-        const session = opened.playback.session;
-        assert.equal((await coordinator.command({ kind: 'authorize', sessionId: session.id,
-          candidateId: session.candidateId, generation: session.generation })).kind, 'authorized');
-      }
+      assert.equal(opened.kind, 'error');
       assert.equal((await coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: false })).kind, 'error');
       assert.equal(run.probes.length, 1);
       assert.deepEqual(run.reads(), { ...reads, listingReads: reads.listingReads + 1 });
@@ -318,7 +315,7 @@ test('absence cleanup waits for every league partition and final cleanup needs n
         coordinator = run.start(); const refresh = coordinator.refresh(true); await drain();
         try {
           assert.equal(run.readRows().length, 1);
-          assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
+          assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'unknown');
         } finally { release([]); } await refresh; await drain();
         assert.equal(run.readRows().length, 0);
         continue;
@@ -378,7 +375,7 @@ test('an unchanged fresh schedule restores saved feeds when Chicago midnight ope
     await coordinator.refresh(true);await drain();
     const candidates=(await snapshot(coordinator)).games.find(row=>row.gameId===game.id)?.candidates;
     assert.equal(candidates?.length,1);
-    assert.deepEqual(candidates[0].availability,{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at});
+    assert.deepEqual(candidates[0].availability,{kind:'checking',progress:{kind:'deferred',since:Date.parse('2026-10-09T05:00:01Z'),retryAt:Date.parse('2026-10-09T05:05:01Z')}});
   }finally{await coordinator.stop();run.cleanup();}
 });
 
@@ -481,7 +478,7 @@ test('a failed startup schedule keeps stale working choices visible with durable
     await coordinator.refresh(true); await drain(); await coordinator.stop();
     run.hide(); run.setClock(at + 31 * 60_000); run.setScheduleFailure(true);
     coordinator = run.start(); await coordinator.refresh(true); await drain();
-    assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
+    assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'unknown');
     assert.equal(run.readRows().length, 1);
     run.setScheduleFailure(false); await coordinator.refresh(true); await drain();
     assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
