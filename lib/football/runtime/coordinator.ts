@@ -641,13 +641,15 @@ export class FootballCoordinator {
       return leftDecoded.startupMs-rightDecoded.startupMs;
     return compareCandidates(left,right);
   }
-  private reconcileProbeJobs():void {
-    const persisted=new Set<string>();
-    for(const candidate of [...this.candidates.values()].flat()) {
-      const key=this.probeKey(candidate);
-      if(persisted.has(key)||this.terminal(candidate)?.kind!=='playable')continue;
-      persisted.add(key);
-      this.persistWorkingIdentity(candidate);
+  private reconcileProbeJobs(persistWorkingFeeds=true):void {
+    if(persistWorkingFeeds){
+      const persisted=new Set<string>();
+      for(const candidate of [...this.candidates.values()].flat()) {
+        const key=this.probeKey(candidate);
+        if(persisted.has(key)||this.terminal(candidate)?.kind!=='playable')continue;
+        persisted.add(key);
+        this.persistWorkingIdentity(candidate);
+      }
     }
     for(const [observation,controller] of this.detailControllers)
       if(!this.observationFeedEligible(observation))controller.abort();
@@ -1357,7 +1359,7 @@ export class FootballCoordinator {
     const now = this.now();
     const due=[...this.finalDeadlines].filter(([id,deadline])=>deadline<=now&&!this.cleanedFinals.has(id)).map(([id])=>id);
     if(due.length){this.store.removeFinalEvidence(due,now);for(const id of due)this.cleanedFinals.add(id);this.revision++;}
-    this.reconcileProbeJobs();
+    this.reconcileProbeJobs(false);
     const completedGames = new Set<string>();
     for (const [id,owned] of this.sessions) {
       owned.value=reconcileSession(owned.value,this.games.find(game => game.id===owned.value.gameId),now);
@@ -1369,7 +1371,7 @@ export class FootballCoordinator {
       if (completedGames.has(id) || (this.finalDeadlines.get(id) || game?.graceEndsAt || Infinity)<=now) this.candidates.delete(id);
       else this.candidates.set(id,candidates.filter(candidate => this.currentCandidate(candidate) || [...this.sessions.values()].some(owned => owned.value.gameId===id && owned.value.candidateId===candidate.id)));
     }
-    this.reconcileProbeJobs();
+    this.reconcileProbeJobs(false);
     if (now-this.lastStoreSweep >= 3600000) { this.store.sweep(now); this.lastStoreSweep=now; }
   }
   private sessionReply(session: Session): Reply {
