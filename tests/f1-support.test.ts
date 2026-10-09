@@ -131,6 +131,11 @@ const requestCounts=(collector:FixtureCollector)=>[...new Map(motorsportUrls.map
 const queueListings=(collector:FixtureCollector)=>{
   for(const url of motorsportUrls)collector.enqueueFixture({url,body:listing()});
 };
+async function waitForFixture(predicate:()=>boolean,description:string) {
+  const deadline=Date.now()+5_000;
+  while(!predicate()&&Date.now()<deadline)await new Promise<void>(resolve=>setTimeout(resolve,2));
+  assert.ok(predicate(),description);
+}
 test('Methstreams and Crackstreams timed listings classify five race series by their published sections',()=>{
   for(const sourceId of ['methstreams-f1','crackstreams-f1']){
     const source=SOURCES.find(row=>row.id===sourceId);
@@ -210,11 +215,11 @@ test('failed or cancelled shared catalog reads allow the next refresh to recover
   const cancelled=new AbortController();
   for(const url of motorsportUrls)collector.enqueueFixture({url,pending:true});
   const pending=readMotorsports(collector,motorsport,now+2000,cancelled.signal,cache);
-  for(let attempt=0;attempt<100&&collector.fixtureRequests().length<4;attempt++)
-    await new Promise<void>(resolve=>setTimeout(resolve,1));
-  assert.equal(collector.fixtureRequests().length,4);
+  await waitForFixture(()=>collector.fixtureRequests().length===4,'both pending reads were admitted');
   cancelled.abort(new DOMException('Stopped','AbortError'));
   await assert.rejects(pending,error=>error instanceof Error&&error.name==='AbortError');
+  await waitForFixture(()=>motorsportUrls.every(url=>collector.fixtureCancels().includes(url)),
+    'both native reads acknowledged cancellation');
   for(const url of motorsportUrls)assert.ok(collector.fixtureCancels().includes(url));
   queueListings(collector);
   const recovered=await readMotorsports(collector,motorsport,now+3000,new AbortController().signal,cache);
@@ -269,11 +274,11 @@ test('parent cancellation does not retry motorsports timeouts',async()=>{
   const motogp=SCHEDULES.find(source=>source.id==='motogp');
   assert.ok(motogp);
   const pending=readMotorsports(collector,motogp,now+7000,controller.signal);
-  for(let attempt=0;attempt<100&&collector.fixtureRequests().length<2;attempt++)
-    await new Promise<void>(resolve=>setTimeout(resolve,1));
-  assert.equal(collector.fixtureRequests().length,2);
+  await waitForFixture(()=>collector.fixtureRequests().length===2,'both pending reads were admitted');
   controller.abort(new DOMException('Stopped','AbortError'));
   await assert.rejects(pending,error=>error instanceof Error&&error.name==='AbortError');
   assert.deepEqual(requestCounts(collector),motorsportUrls.map(url=>[url,1]));
+  await waitForFixture(()=>motorsportUrls.every(url=>collector.fixtureCancels().includes(url)),
+    'both native reads acknowledged cancellation');
   for(const url of motorsportUrls)assert.ok(collector.fixtureCancels().includes(url));
 });
