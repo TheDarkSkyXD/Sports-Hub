@@ -1,4 +1,4 @@
-import { confirmedFinishedGameId, createObservationMatcher } from './matching.ts';
+import { createFinishedGameMatcher, createObservationMatcher } from './matching.ts';
 import type { Candidate,CandidateLocator,Game,Match,Observation,SourceMatchReason,StreameastCatalog,StreameastCatalogView,StoredStreameastCatalog } from '../shared.ts';
 
 const EVENT_PATH=/^\/(cfb|nfl)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/;
@@ -115,11 +115,12 @@ function publicReason(value:string):SourceMatchReason {
 export function streameastCatalogView(stored:StoredStreameastCatalog,games:Game[],now:number):StreameastCatalogView {
   const {catalog,receivedAt}=stored;
   const match=createObservationMatcher(games);
+  const finished=createFinishedGameMatcher(games);
   const activeEvents=catalog.events.filter(event=>{
     const category=catalog.categories[event.league];
     const observedAt=category.kind==='pending'?catalog.startedAt:category.at;
     const expectedId=event.espnEventId===null?undefined:event.league==='ncaaf'?`ncaaf-${event.espnEventId}`:event.espnEventId;
-    return !confirmedFinishedGameId(streameastObservation(event,observedAt),games,now,expectedId);
+    return !finished.finishedGameId(streameastObservation(event,observedAt),now,expectedId);
   });
   const views=activeEvents.map(event=>{
     const category=catalog.categories[event.league];
