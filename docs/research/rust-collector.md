@@ -39,19 +39,33 @@ The frozen corpus includes 19 listing cases with 16 positive source families, se
 
 ## Measured parser cost
 
-Three sequential paired runs compare the frozen TypeScript baseline with addon `d735511abc67ad3af9f02d9e23b327de6cdf7df943224f8c7e31508c23653d98`. Each run asserts full-object parity before timing 100 rounds across 19 cases and consuming 2,500 observations.
+Three sequential paired runs compare the frozen TypeScript baseline with the final main-checkout addon `9d926962934d7d7e03eda3d06e3dee1477a25de0d81f6acd2a6121e5df9bcb89`. Each run asserts full-object parity before timing 100 rounds across 19 cases and consuming 2,500 observations.
 
 | Metric, median of three runs | TypeScript baseline | Rust addon |
 | --- | ---: | ---: |
-| Process CPU time | 969 ms | 439 ms |
-| Sampled peak process RSS | 180,768,768 bytes | 90,927,104 bytes |
+| Process CPU time | 984 ms | 563 ms |
+| Sampled peak process RSS | 180,862,976 bytes | 90,746,880 bytes |
 
-The parser workload used about 55% less CPU time and 50% less sampled peak RSS. The RSS samples cover the benchmark process after each parse. They do not measure instantaneous allocation peaks or the Electron process tree. These figures do not establish a 500 MiB whole-app footprint.
+The parser workload used about 43% less CPU time and 50% less sampled peak RSS. The RSS samples cover the benchmark process after each parse. They do not measure instantaneous allocation peaks or the Electron process tree. These figures do not establish a 500 MiB whole-app footprint.
 
 The first native implementation regressed CPU because it compiled fixed regular expressions per parsed row. That candidate was rejected. Fixed parser expressions now compile once per call site. No provider work was skipped to obtain the accepted timings.
 
 ## Verification record
 
-Rust format, strict Clippy across all targets, and 27 native tests passed. Typecheck, lint, and the full-object corpus replay passed. The actual addon passed two Electron 44.4.3 scenarios with ten worker reloads, three pending-read worker unloads, and all 19 listing objects per scenario. Live SWAC and PPV HTTP collection passed with JavaScript fetching disabled. These are two provider checks, not proof that every external site currently serves usable media.
+Rust format, strict Clippy across all targets, and 28 native tests passed. The full main-checkout suite passed 791 tests with one existing skip and no failures. Typecheck, lint, and the full-object corpus replay passed. The actual final addon passed two Electron 44.4.3 scenarios with ten worker reloads, three pending-read worker unloads, and all 19 listing objects per scenario. Live SWAC and PPV HTTP collection passed with JavaScript fetching disabled. These are two provider checks, not proof that every external site currently serves usable media.
 
-Independent implementation review reproduced and then cleared both resolver issues. A native 429 fixture preserved the original `SourceFetchError` and its one-hour retry delay. Malformed responses canceled three pending sibling reads promptly. Final full-suite, default build, and installed-artifact checks follow below after execution.
+Independent implementation review reproduced and then cleared both resolver issues. A native 429 fixture preserved the original `SourceFetchError` and its one-hour retry delay. Malformed responses canceled three pending sibling reads promptly. A real loopback HTTP server verified gzip, brotli, and deflate decoding. Compressed data that expands beyond 2 MiB is rejected by the native transport.
+
+The default Next.js 16.3.4 Turbopack build passed from the physical main checkout. That gate caught native-loader tracing that copied the project and then the Rust compiler cache into standalone output. The loader now opts out of dynamic artifact tracing, and Next explicitly excludes native build inputs. The preparation script stages the bridge, manifest, registry, and selected binary. Standalone and packaged artifact checks reject Rust source and compiler-cache leakage. Compiled-startup fixtures wait for lifecycle events under a test watchdog while retaining the existing stop responsiveness checks.
+
+The prepared standalone worker loaded all 47 sources and 14 league scopes, then stopped. A Windows x64 unpacked package built successfully. A copy launched from a temporary directory outside the checkout with Cargo and rustc unavailable on PATH. Its main and server resources contained the same native binary hash. The running app returned HTTP 200 for both game and source APIs, with 413 games, 1,173 listings, and 1,118 published candidates across 76 games. All 14 schedule scopes were complete at the captured snapshot, including MotoGP and Motorsport. Browser catalogs were active. Their first captured sweeps retained partial results with parser-changed diagnostics; this run does not establish every live provider category as complete.
+
+The package's embedded Electron Node runtime also fetched and parsed live SWAC and PPV pages with JavaScript fetching disabled. The main renderer console recorded no errors during the verification window. The isolated app was stopped after verification. The user's normal profile was not used.
+
+## Whole-app limit
+
+A 61-second sample during early use of that fresh packaged profile measured the owned process tree. Mean private memory was 1,704.71 MiB and peak private memory was 1,899.17 MiB, with at most 17 processes. The GPU process used 575.75 MiB at the peak-memory sample. Mean CPU use was 53.39% of one core, or 3.34% of the 16-core machine.
+
+The 500 MiB whole-app target remains unmet. This was a fresh packaged profile with automatic room selection and active browser collectors and checks. It is not a matched whole-app before/after comparison with the older source-launch measurements. The parser improvements above must not be reported as whole-app savings.
+
+Local execution evidence is retained in `.desktop-runtime/rust-collector/`, including `root-full-tests-final.log`, `default-build-packaging.log`, `packaged-launch.json`, `packaged-api-proof.json`, `packaged-candidate-proof.json`, `installed-native-http.json`, and `packaged-resources.json`. The committed fixture, benchmark, build, standalone, and package checks provide repeatable gates. [The decision trail](rust-collector-decisions.tsv) records rejected candidates and the verification corrections.
