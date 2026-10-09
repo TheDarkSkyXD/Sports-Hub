@@ -91,6 +91,21 @@ test('desktop preparation rejects a standalone worker without its source registr
   await assert.rejects(run(process.execPath,[prepare],{cwd:root,windowsHide:true}),/ENOENT.*source-registry\.json/s);
 });
 
+test('packaged standalone preserves the generated ES module server across preparation', async t => {
+  const root = await fixture(t);
+  const standalone = path.join(root, '.next/standalone');
+  await writeFile(path.join(standalone, 'package.json'), JSON.stringify({ type: 'module' }));
+  await writeFile(path.join(standalone, 'server.js'),
+    'import path from "node:path"; console.log(process.env.SUNDAY_ROOM_COLLECTOR_DIR, path.basename(import.meta.dirname));');
+  const env = { ...process.env };
+  delete env.SUNDAY_ROOM_COLLECTOR_DIR;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await run(process.execPath, [prepare], { cwd: root, windowsHide: true });
+    const launched = await run(process.execPath, [path.join(standalone, 'server.js')], { cwd: tmpdir(), env, windowsHide: true });
+    assert.equal(launched.stdout.trim(), `${path.join(standalone, 'native', 'collector')} standalone`);
+  }
+});
+
 test('custom standalone materializes traced aliases and runs ESM workers', async t => {
   const root = await fixture(t);
   const distDir = '.desktop-runtime/local-builds/1234abcd';
