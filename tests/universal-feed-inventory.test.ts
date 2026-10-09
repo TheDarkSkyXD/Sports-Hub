@@ -173,6 +173,50 @@ test('source collection starts while schedule requests are still pending',async(
   } finally {release();await refresh;await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 
+test('a later source cycle proceeds while a saved schedule refresh remains pending',async()=>{
+  const directory=mkdtempSync(join(tmpdir(),'universal-later-pending-schedule-'));
+  let release!:()=>void;
+  const pending=new Promise<void>(resolve=>{release=resolve;});
+  let clock=at,reads=0,sourceReads=0;
+  const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{now:()=>clock,sources:[source],
+    schedules:[{id:'nfl',league:'nfl',path:'football/nfl',group:null}],
+    readSchedule:async()=>{if(++reads>1)await pending;return {league:'nfl',games:[game],at:clock};},
+    readHtml:async()=>{sourceReads++;return '<main>Recognized empty schedule</main>';},
+    parseListings:()=>({outcome:'empty',observations:[]})});
+  try {
+    await coordinator.refresh(true);
+    for(let index=0;index<30&&sourceReads<1;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(sourceReads,1);
+    clock+=300_001;
+    const refreshing=coordinator.refresh(true);
+    for(let index=0;index<30&&sourceReads<2;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(sourceReads,2);
+    const reply=await coordinator.command({kind:'board'});
+    assert.equal(reply.kind,'board');
+    if(reply.kind==='board')assert.deepEqual(reply.board.games.map(row=>row.id),[game.id]);
+    release();
+    await refreshing;
+  } finally {release();await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('a fast forced schedule result starts one source collection cycle',async()=>{
+  const directory=mkdtempSync(join(tmpdir(),'universal-single-discovery-'));
+  const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{now:()=>at,sources:[source],
+    schedules:[{id:'nfl',league:'nfl',path:'football/nfl',group:null}],
+    readSchedule:async()=>({league:'nfl',games:[game],at}),
+    readHtml:async()=>'<main>Recognized empty schedule</main>',
+    parseListings:()=>({outcome:'empty',observations:[]})});
+  const measured=coordinator as unknown as {discover:(force:boolean)=>Promise<void>};
+  const discover=measured.discover.bind(coordinator);
+  let collections=0;
+  measured.discover=async force=>{collections++;await discover(force);};
+  try {
+    await coordinator.refresh(true);
+    for(let index=0;index<5;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(collections,1);
+  } finally {await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
+});
+
 test('a listing after the former thousand-row limit still reaches source settings',async()=>{
   const directory=mkdtempSync(join(tmpdir(),'universal-listing-backlog-'));
   const rows=Array.from({length:1001},(_,index)=>({...observation,id:`event-${index}`,url:`https://fixture.example/event/${index}`}));
