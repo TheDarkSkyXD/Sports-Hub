@@ -11,7 +11,7 @@ export type ProbeProgress={kind:'waiting'|'active';since:number};
 export type ScheduleSource = { id: string; league: League; sport?: 'football' | 'basketball' | 'hockey' | 'baseball' | 'racing'; path: string; group: string | null };
 export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[]; parserVersion?: number; leagues?: readonly League[] };
 export type SchedulePartition = { games: Game[]; at: number; week?: number };
-export type ScheduleResult = SchedulePartition & { league: League; horizonErrors?: string[] };
+export type ScheduleResult = SchedulePartition & { league: League; horizonErrors?: string[]; historyErrors?: string[] };
 export type ListingResult = { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' };
 
 export class PartialListingReadError extends Error {
@@ -63,6 +63,7 @@ export type FootballDependencies = {
   schedules: readonly ScheduleSource[];
   sources: readonly ListingSource[];
   readSchedule: (source: ScheduleSource, now: number, signal: AbortSignal, onCurrent?: (result: ScheduleResult) => void) => Promise<ScheduleResult>;
+  closeSchedule?: () => Promise<void>;
   readSeasonMembership: (season: number, signal: AbortSignal) => Promise<SeasonMembership>;
   readHtml: (url: string, signal: AbortSignal) => Promise<string>;
   parseListings: (source: ListingSource, html: string, now: number) => ListingResult;

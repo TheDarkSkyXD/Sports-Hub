@@ -49,6 +49,9 @@ while (pending.length) {
   }
 }
 await stat(path.join(standalone, 'lib/football/runtime/worker.ts'));
+await stat(path.join(standalone, 'lib/football/runtime/schedule-worker.ts'));
+await stat(path.join(standalone, 'lib/football/runtime/schedule-client.ts'));
+await stat(path.join(standalone, 'lib/football/runtime/schedule-queue.ts'));
 await stat(path.join(standalone, 'lib/football/runtime/composition.ts'));
 await stat(path.join(standalone, 'lib/football/source-registry.json'));
 for (const name of ['streamed', 'sportsfeed24', 'crichd', 'sportsbite', 'player-id'])
