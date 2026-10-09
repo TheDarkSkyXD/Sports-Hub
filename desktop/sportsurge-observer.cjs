@@ -230,6 +230,11 @@ function aianimalvibesPlayer(value) {
     /^\/(?:football|cfb)\/[0-9]{1,10}$/.test(url.pathname) && !url.search && !url.port;
 }
 
+function isSourceAdvertisement({ url, resourceType }) {
+  return resourceType === 'subFrame' && url.protocol === 'https:' &&
+    url.hostname === 'embed.st' && !url.port && url.pathname === '/ad.html';
+}
+
 function createNavigationPolicy(value,allowStreameastServer=false) {
   const initial = new URL(value);
   const event = ['https://streameast.ga','https://v2.streameast.ga'].includes(initial.origin) &&
@@ -422,6 +427,10 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
       if (current && details.resourceType === 'mainFrame' && url) debug('main frame rejected',url.origin,url.pathname);
       callback({ cancel: true });
       if (current && current.requests > MAX_REQUESTS) endActive(current,incomplete('capture','request-budget'));
+      return;
+    }
+    if (url && isSourceAdvertisement({ url, resourceType: details.resourceType })) {
+      callback({ cancel: true });
       return;
     }
     owners.set(details.id,current);
