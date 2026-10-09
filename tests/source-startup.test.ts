@@ -73,6 +73,7 @@ test('a fast listing publishes a working live choice while another listing is pe
 test('a distant direct probe cannot repeatedly abort nearer browser probes',async()=>{
   const matches=Array.from({length:9},(_,index)=>game(index,index===8?180:30));
   let starts=0,aborts=0,direct=0;
+  const pending:(()=>void)[]=[];
   const {coordinator,close}=fixture(matches,[source('fixture')],{
     compatiblePlayers:(gameId,listing)=>[{id:`server-${gameId}`,label:'Free',locator:gameId===matches[8].id?
       {provider:'gooz',playerId:gameId}:{provider:'event-page',gameId,eventUrl:listing.url,
@@ -80,19 +81,27 @@ test('a distant direct probe cannot repeatedly abort nearer browser probes',asyn
     probeCandidate:async(locator,signal)=>{
       starts++;
       if(locator.provider==='gooz')direct++;
-      await new Promise<void>(resolve=>signal.addEventListener('abort',()=>{aborts++;resolve();},{once:true}));
+      await new Promise<void>(resolve=>{
+        pending.push(resolve);
+        signal.addEventListener('abort',()=>{aborts++;resolve();},{once:true});
+      });
       return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try {
     await coordinator.refresh(true);
-    await until(()=>starts===9,'all game frontiers should start');
+    await until(()=>starts===2,'two physical checks should start');
     await coordinator.refresh(true);
     for(let turn=0;turn<100;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.equal(aborts,0,`nearer pending probes must remain running: ${starts} starts, ${direct} direct probes`);
+    for(let next=3;next<=9;next++){
+      pending.shift()?.();
+      await until(()=>starts===next,'released capacity should admit the next game');
+    }
     assert.equal(starts,9);
     assert.equal(direct,1);
-  } finally {await close();}
+    assert.equal(aborts,0);
+  } finally {for(const release of pending)release();await close();}
 });
 
 test('a busy browser observer defers the browser queue while direct checks still progress',async()=>{
@@ -256,8 +265,8 @@ test('repeated checks do not churn a full paused queue with more demand than cap
     await coordinator.refresh(true);
     await until(async()=>{
       const reply=await coordinator.command({kind:'sources'});
-      return reply.kind==='sources'&&reply.snapshot.games.reduce((count,row)=>count+row.candidates.length,0)===700&&probes===4;
-    },'five games should publish their choices and fill four physical observer slots');
+      return reply.kind==='sources'&&reply.snapshot.games.reduce((count,row)=>count+row.candidates.length,0)===700&&probes===2;
+    },'five games should publish their choices and fill two physical check slots');
     await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false});
     for(let turn=0;turn<10;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
     const before=await coordinator.command({kind:'sources'});
@@ -269,7 +278,7 @@ test('repeated checks do not churn a full paused queue with more demand than cap
       assert.deepEqual(after.snapshot.games.map(row=>row.candidates.map(candidate=>candidate.id)),
         before.snapshot.games.map(row=>row.candidates.map(candidate=>candidate.id)));
     }
-    assert.equal(probes,4);
+    assert.equal(probes,2);
     assert.equal(aborts,0);
   } finally {held.release();await close();}
 });
@@ -302,7 +311,7 @@ test('an unchanged refreshed listing retains fresh choices while its detail refr
     assert.equal(expired.kind,'sources');
     if(expired.kind==='sources'){
       assert.equal(expired.snapshot.games[0]?.candidates.length,1);
-      assert.equal(expired.snapshot.games[0]?.candidates[0]?.availability.kind,'playable');
+      assert.equal(expired.snapshot.games[0]?.candidates[0]?.availability.kind,'checking');
     }
   } finally {pending.release();await close();}
 });
@@ -516,8 +525,8 @@ test('a late near-kickoff choice enters the frontier before distant siblings',as
   });
   try {
     await coordinator.refresh(true);
-    await until(()=>calls.length===3,'the live and distant games should enter the frontier');
-    assert.deepEqual(calls,['1000','1001','2000']);
+    await until(()=>calls.length===2,'the live game should occupy both physical slots');
+    assert.deepEqual(calls,['1000','1001']);
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false}),{kind:'ok'});
     const full=await coordinator.command({kind:'sources'});
     assert.equal(full.kind,'sources');
@@ -528,11 +537,12 @@ test('a late near-kickoff choice enters the frontier before distant siblings',as
       const reply=await coordinator.command({kind:'sources'});
       return reply.kind==='sources'&&reply.snapshot.games.find(row=>row.gameId===near.id)?.candidates[0]?.availability.kind==='checking';
     },'the near-kickoff choice should enter the full probe queue');
-    await until(()=>calls.length===4,'the near-kickoff check should start');
-    assert.equal(calls[3],'3000');
     pending.shift()?.();
-    await until(()=>calls.length===5,'a released game slot should admit its next sibling');
-    assert.equal(calls[4],'1002');
+    await until(()=>calls.length===3,'the near-kickoff check should start after a slot releases');
+    assert.equal(calls[2],'3000');
+    pending.shift()?.();
+    await until(()=>calls.length===4,'another released slot should admit waiting work');
+    assert.equal(calls[3],'2000');
   } finally {listing.release();await close();}
 });
 

@@ -612,7 +612,7 @@ test('accepted browser categories record one durable attempt and replay adds non
   } finally {db.close();rmSync(dir,{recursive:true,force:true});}
 });
 
-test('new live first feeds advance within four observer permits',async()=>{
+test('new live first feeds advance through two native check slots',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'pipeline-fairness-'));
   const matches=Array.from({length:8},(_,index):Game=>({
     ...game(),id:`game-${index}`,name:`Away ${index} at Home ${index}`,
@@ -654,14 +654,16 @@ test('new live first feeds advance within four observer permits',async()=>{
   });
   try{
     await coordinator.refresh(true);
-    await until(async()=>calls.length===4);
-    assert.deepEqual(calls,['1','7','13','19']);
-    for(let expected=5;expected<=8;expected++){
+    await until(async()=>calls.length===2);
+    assert.deepEqual(calls,['1','7']);
+    const firstFeeds=['1','7','13','19','25','31','37','43'];
+    for(let expected=3;expected<=16&&!firstFeeds.every(id=>calls.includes(id));expected++){
       pending.shift()?.();
       await until(async()=>calls.length===expected);
     }
-    assert.deepEqual(calls.slice(4,8),['25','31','37','43']);
-    assert.equal(peak,4);
+    assert.deepEqual(calls.filter(id=>firstFeeds.includes(id)),firstFeeds);
+    assert.equal(calls.some(id=>!firstFeeds.includes(id)),true,'alternatives receive background turns');
+    assert.equal(peak,2);
   } finally {
     for(const release of pending)release();
     await coordinator.stop();

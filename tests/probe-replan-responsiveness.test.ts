@@ -70,8 +70,8 @@ test('a large restored inventory keeps public commands and timers responsive whi
     if(sources.kind==='sources')assert.equal(sources.snapshot.games.reduce((count,row)=>count+row.candidates.length,0),1200);
     assert.ok(elapsed<3000,`a media burst delayed the event loop for ${Math.round(elapsed)} ms`);
     assert.ok(commandElapsed<3000,`public commands waited ${Math.round(commandElapsed)} ms behind media checks`);
-    for(let turn=0;active<8&&turn<100;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
-    assert.equal(peak,8);
+    for(let turn=0;active<2&&turn<100;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(peak,2);
   }finally{
     releaseWork();
     await coordinator?.stop();
