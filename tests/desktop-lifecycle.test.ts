@@ -12,7 +12,7 @@ const { DesktopNsisUpdater } = require('../desktop/nsis-updater.cjs');
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 
 async function desktop(options: { stopFailures?: readonly string[]; observerStopGate?: Promise<void>;
-  downloadedUpdate?: boolean } = {}) {
+  downloadedUpdate?: boolean; packaged?: boolean; argv?: string[]; env?: NodeJS.ProcessEnv } = {}) {
   const userData = mkdtempSync(path.join(tmpdir(), 'sunday-desktop-lifecycle-'));
   const windows: FakeWindow[] = [];
   const running = new Set(['server', 'sportsurge', 'observer', 'streameast']);
@@ -21,8 +21,10 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
   const updaters: FakeUpdater[] = [];
   let exited = false;
   let exitCode: number | undefined;
+  let selectedServerMode: string | undefined;
 
   class FakeWindow extends EventEmitter {
+    details: { relaunchCommand: string } | undefined;
     visible = false;
     destroyed = false;
     minimized = false;
@@ -35,7 +37,7 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
     });
     constructor() { super(); windows.push(this); }
     async loadURL(url: string) { this.webContents.mainFrame.url = url; }
-    setAppDetails() {}
+    setAppDetails(details: { relaunchCommand: string }) { this.details = details; }
     show() { this.visible = true; }
     hide() { this.visible = false; }
     focus() { this.focused = true; }
@@ -54,7 +56,7 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
   }
 
   const app = Object.assign(new EventEmitter(), {
-    isPackaged: true,
+    isPackaged: options.packaged ?? true,
     setName() {},
     setAppUserModelId() {},
     getPath: () => userData,
@@ -104,7 +106,10 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
       powerMonitor: new EventEmitter(), Notification: { isSupported: () => false },
     };
     if (name === './port.cjs') return { localServerPort: async () => 4132 };
-    if (name === './local-server.cjs') return { createLocalServer: () => service('server') };
+    if (name === './local-server.cjs') return { createLocalServer: ({ mode }: { mode: string }) => {
+      selectedServerMode = mode;
+      return service('server');
+    } };
     if (name === './sportsurge-collector.cjs') return { createSportsurgeCollector: () => service('sportsurge') };
     if (name === './sportsurge-observer.cjs') return { createSportsurgeObserver: () => service('observer') };
     if (name === './streameast-collector.cjs') return { createStreameastCollector: () => service('streameast') };
@@ -126,7 +131,7 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
   });
   boot(dependency, path.resolve('desktop'), {
     platform: 'win32', resourcesPath: userData,
-    execPath: 'C:\\Programs\\Sunday Room\\Sunday Room.exe', env: {},
+    execPath: 'C:\\Programs\\Sunday Room\\Sunday Room.exe', env: options.env ?? {}, argv: options.argv ?? [],
   }, async () => ({ ok: true }), AbortSignal, console);
   await settle();
   const window = windows[0];
@@ -135,6 +140,7 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
   return {
     app, window, running, stopAttempts, hasExited: () => exited, exitCode: () => exitCode,
     installAttempts: () => updaters.at(-1)?.installAttempts,
+    selectedServerMode: () => selectedServerMode,
     shutdownLog: () => readFileSync(path.join(userData, 'logs', 'startup.log'), 'utf8'),
     prepareInstall: () => { assert.ok(installPreparation); return installPreparation(); },
     dispose: () => rmSync(userData, { recursive: true, force: true }),
@@ -149,6 +155,22 @@ test('launching a second instance makes the existing hidden window visible', asy
     assert.equal(room.window.visible, true, 'relaunch must show the existing desktop window');
     assert.equal(room.window.focused, true);
   } finally { room.dispose(); }
+});
+
+test('local desktop defaults to compiled and preserves explicit development on Windows relaunch', async () => {
+  const compiled = await desktop({ packaged: false, argv: ['electron', 'desktop/main.cjs'] });
+  try {
+    assert.equal(compiled.selectedServerMode(), 'compiled');
+    assert.equal(compiled.window.details?.relaunchCommand,
+      '"C:\\Programs\\Sunday Room\\Sunday Room.exe" "' + path.resolve('desktop/main.cjs') + '"');
+  } finally { compiled.dispose(); }
+
+  const development = await desktop({ packaged: false, argv: ['electron', 'desktop/main.cjs', '--dev'] });
+  try {
+    assert.equal(development.selectedServerMode(), 'dev');
+    assert.equal(development.window.details?.relaunchCommand,
+      '"C:\\Programs\\Sunday Room\\Sunday Room.exe" "' + path.resolve('desktop/main.cjs') + '" --dev');
+  } finally { development.dispose(); }
 });
 
 test('closing the desktop stops its services and exits', async () => {

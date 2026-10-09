@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { Worker } from 'node:worker_threads';
 
 const directory=mkdtempSync(join(tmpdir(),'sunday-standalone-feed-'));
-const worker=new Worker(resolve('.next/standalone/lib/football/runtime/worker.ts'),{
+const worker=new Worker(resolve(process.env.SUNDAY_ROOM_STANDALONE_ROOT ?? '.next/standalone','lib/football/runtime/worker.ts'),{
   workerData:{dataDir:directory,browserCollectorsAvailable:false},execArgv:['--experimental-strip-types'],
 });
 let timer;

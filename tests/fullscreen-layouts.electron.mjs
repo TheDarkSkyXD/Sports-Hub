@@ -30,7 +30,7 @@ try {
     '-hls_time', '2', '-hls_playlist_type', 'vod', '-hls_segment_filename', path.join(output, 'fixture-%03d.ts'),
     path.join(output, 'fixture.m3u8')], { windowsHide: true });
   desktop = await electron.launch({ executablePath: await prepareDevelopmentElectron(),
-    args: [path.join(root, 'desktop/main.cjs'), `--user-data-dir=${profile}`], cwd: root,
+    args: [path.join(root, 'desktop/main.cjs'), '--dev', `--user-data-dir=${profile}`], cwd: root,
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')) });
   const page = await desktop.firstWindow();
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:/, { timeout: 60000 });

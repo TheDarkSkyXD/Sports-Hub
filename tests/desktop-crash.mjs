@@ -10,7 +10,7 @@ let app;
 try {
   app = await electron.launch({
     executablePath: await prepareDevelopmentElectron(),
-    args: [path.resolve('desktop/main.cjs'), `--user-data-dir=${profile}`],
+    args: [path.resolve('desktop/main.cjs'), '--dev', `--user-data-dir=${profile}`],
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
     timeout: 120000,
   });

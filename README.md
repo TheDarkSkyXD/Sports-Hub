@@ -66,6 +66,8 @@ After installing dependencies, Windows users can double-click **[Start Sunday Ro
 
 The launcher starts Electron and its own local Next.js server on `127.0.0.1`. It uses port `51931` when available and selects another local port when that port is occupied or reserved. Keep the project folder and dependencies in place; this is a source-based launcher, not a packaged installer.
 
+The first launch compiles the local server. Later launches reuse the compiled output while the source, assets, dependencies, and build settings are unchanged. Relaunch after a source edit to compile it. Use `npm run desktop:dev` when you want live updates while editing.
+
 On Windows, desktop launches and Electron tests prepare a branded runtime in `.desktop-runtime/electron`. The taskbar and Task Manager use the Sunday Room logo. Preparation refreshes the runtime when Electron or `public/favicon.svg` changes and preserves the original Electron installation. Close development windows before a runtime refresh.
 
 Run `npm run desktop:branding` on Windows to check the running executable, native icons, and taskbar metadata. `npm run desktop:icons:check` checks that the desktop icons match `public/favicon.svg`. Release checks verify the packaged app before its installer is uploaded.
@@ -195,10 +197,10 @@ Run `npm run storybook:check` after adding a component. It follows static import
 ### Desktop development
 
 ```sh
-npm run desktop
+npm run desktop:dev
 ```
 
-The desktop shell always starts a development server from source. Save changes to see them in the app. Local development and Electron tests do not need a production build or `dist-electron`. A browser dev server on port 3001 can run independently of the desktop server, which prefers port 51931.
+This command starts the desktop development server with live updates. `npm run desktop` starts the compiled local server and builds it when the source has changed. Neither command needs `dist-electron`. A browser dev server on port 3001 can run independently of the desktop server, which prefers port 51931.
 
 Run `npm run desktop:smoke` to check the source Electron window and game-data API with a separate profile.
 
@@ -217,7 +219,8 @@ The `Electron release` workflow builds and tests the Windows installer on pull r
 | `npm run dev` | Start the local Next.js development server |
 | `npm run build` | Compile and type-check the production app |
 | `npm run start` | Serve the production browser build |
-| `npm run desktop` | Open Electron from source with its development server |
+| `npm run desktop` | Open Electron with a reusable compiled local server |
+| `npm run desktop:dev` | Open Electron with live source updates |
 | `npm run desktop:package` | Build the Windows x64 NSIS installer from the compiled app |
 | `npm run desktop:smoke` | Check the source Electron window and game-data API |
 | `npm run desktop:smoke:packaged` | Verify an isolated release package in CI |
@@ -316,7 +319,7 @@ Use `developer` for ongoing work and `main` for the published baseline. Keep cha
 | **Scores differ from the video clock** | Data and broadcasts have different delays. Use spoiler-free mode; direct feeds can be delayed within their buffer. |
 | **Electron cannot be found** | Run `npm ci`. If the binary download was skipped, run `node node_modules/electron/install.js`. |
 | **The desktop window will not start** | Check `.desktop-runtime/server.log` and, if present, `.desktop-runtime/startup.log` for a source checkout. For an installed app, check `logs/server.log` and `logs/startup.log` under the Electron user data directory. The viewer tries another local port when 51931 is occupied or reserved. |
-| **The viewer shows older code** | Check out the intended source branch and relaunch with `npm run desktop`. |
+| **The viewer shows older code** | Check out the intended source branch and relaunch with `npm run desktop`, or use `npm run desktop:dev` while editing. |
 | **Room preferences are unexpected** | Open **Room settings** → **Reset room and remove saved feeds** to clear saved choices and feed links. |
 
 ## Scope and availability

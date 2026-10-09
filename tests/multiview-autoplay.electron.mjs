@@ -48,7 +48,7 @@ const errors = [];
 try {
   desktop = await electron.launch({
     executablePath: await prepareDevelopmentElectron(),
-    args: [path.join(appRoot, 'desktop/main.cjs'), `--user-data-dir=${path.join(temporary, 'profile')}`],
+    args: [path.join(appRoot, 'desktop/main.cjs'), '--dev', `--user-data-dir=${path.join(temporary, 'profile')}`],
     cwd: appRoot,
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
   });

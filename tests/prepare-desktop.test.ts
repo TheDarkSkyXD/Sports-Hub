@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, rmdir, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, mkdtemp, readFile, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import type { TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { Worker } from 'node:worker_threads';
 
 const prepare = fileURLToPath(new URL('../scripts/prepare-desktop.mjs', import.meta.url));
 const run = promisify(execFile);
@@ -88,4 +89,43 @@ test('desktop preparation rejects a standalone worker without its source registr
   const root=await fixture(t);
   await rm(path.join(root,'.next/standalone/lib/football/source-registry.json'));
   await assert.rejects(run(process.execPath,[prepare],{cwd:root,windowsHide:true}),/ENOENT.*source-registry\.json/s);
+});
+
+test('custom standalone materializes traced aliases and runs ESM workers', async t => {
+  const root = await fixture(t);
+  const distDir = '.desktop-runtime/local-builds/1234abcd';
+  const source = path.join(root, '.next');
+  const output = path.join(root, distDir);
+  await mkdir(path.dirname(output), { recursive: true });
+  await cp(source, output, { recursive: true });
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }));
+  await writeFile(path.join(output, 'package.json'), JSON.stringify({ type: 'commonjs' }));
+  const standalone = path.join(output, 'standalone');
+  const workerFile = path.join(standalone, 'lib/football/runtime/worker.ts');
+  await writeFile(workerFile, 'import { parentPort } from "node:worker_threads"; parentPort?.postMessage("standalone ready");');
+  await mkdir(path.join(standalone, 'node_modules/sharp'), { recursive: true });
+  await writeFile(path.join(standalone, 'node_modules/sharp/index.js'), 'traced sharp');
+  await writeFile(path.join(root, 'node_modules/sharp/index.js'), 'source sharp');
+  const alias = path.join(standalone, distDir, 'node_modules/sharp-20c6a5da84e2135f');
+  await mkdir(path.dirname(alias), { recursive: true });
+  await symlink(path.join(root, 'node_modules/sharp'), alias, 'junction');
+
+  await run(process.execPath, [prepare, distDir], { cwd: root, windowsHide: true });
+
+  assert.equal((await lstat(alias)).isSymbolicLink(), false);
+  assert.equal(await readFile(path.join(root, 'node_modules/sharp/index.js'), 'utf8'), 'source sharp');
+  assert.equal(await readFile(path.join(alias, 'index.js'), 'utf8'), 'source sharp');
+  await writeFile(path.join(root, 'node_modules/sharp/index.js'), 'changed source sharp');
+  assert.equal(await readFile(path.join(alias, 'index.js'), 'utf8'), 'source sharp');
+  assert.equal(await readFile(path.join(standalone, 'package.json'), 'utf8'),
+    await readFile(path.join(root, 'package.json'), 'utf8'));
+  const worker = new Worker(workerFile);
+  await new Promise<void>((resolve, reject) => {
+    worker.once('message', message => {
+      if (message === 'standalone ready') resolve();
+      else reject(new Error(`Unexpected worker response: ${message}`));
+    });
+    worker.once('error', reject);
+    worker.once('exit', code => reject(new Error(`Worker exited before replying: ${code}`)));
+  });
 });
