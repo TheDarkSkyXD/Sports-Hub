@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
+import { stageNativeArtifact } from './native-artifact-fixture.ts';
 
 const require = createRequire(import.meta.url);
 const { sourceIdentity } = require('../desktop/source-identity.cjs');
@@ -11,6 +12,7 @@ const { buildDirectory, completeArtifact, reusableArtifact } = require('../deskt
 
 async function fixture(t: import('node:test').TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'sunday-compiled-artifact-'));
+  stageNativeArtifact(root);
   t.after(() => rm(root, { recursive: true, force: true }));
   return root;
 }

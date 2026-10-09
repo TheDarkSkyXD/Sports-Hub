@@ -2,11 +2,13 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prepareDevelopmentElectron } from './electron-runtime.mjs';
+import { ensureCollectorAddon } from './build-rust-collector.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const main = path.join(root, 'desktop', 'main.cjs');
 
 try {
+  await ensureCollectorAddon(root);
   const executablePath = await prepareDevelopmentElectron();
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;

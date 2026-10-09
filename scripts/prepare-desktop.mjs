@@ -1,18 +1,32 @@
-import { cp, mkdir, readdir, readFile, realpath, stat, unlink } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { activeCollectorAddon } from './build-rust-collector.mjs';
 
 const distDir = process.argv[2] ?? '.next';
 if (distDir !== '.next' && !/^\.desktop-runtime\/local-builds\/[a-f0-9-]+$/.test(distDir))
   throw new Error('Invalid desktop build directory');
 const standalone = path.resolve(distDir, 'standalone');
-if (distDir !== '.next' && await realpath(path.join(standalone, 'node_modules')) === await realpath('node_modules'))
+if (await realpath(path.join(standalone, 'node_modules')).catch(() => null) === await realpath('node_modules'))
   throw new Error('This checkout links node_modules outside the standalone build. Install dependencies inside the checkout before building the local desktop server.');
 const server = path.join(standalone, 'server.js');
 const staticFiles = path.resolve(distDir, 'static');
 
 await stat(server);
+const addon = await activeCollectorAddon(path.resolve('.'));
+const collectorDirectory = path.join(standalone, 'native', 'collector');
+await mkdir(collectorDirectory, { recursive: true });
+await cp(addon.binary, path.join(collectorDirectory, addon.filename));
+await cp(addon.manifestFile, path.join(collectorDirectory, 'active.json'));
+await cp(addon.registry, path.join(collectorDirectory, 'source-registry.json'));
+await cp(path.resolve('native/collector/bridge.cjs'), path.join(collectorDirectory, 'bridge.cjs'));
+const oldBootstrap = `process.env.SUNDAY_ROOM_COLLECTOR_DIR ||= require('node:path').join(__dirname, 'native', 'collector');\n`;
+const bootstrap = `import { dirname as collectorDirname, join as collectorJoin } from 'node:path';\nimport { fileURLToPath as collectorFileURLToPath } from 'node:url';\nprocess.env.SUNDAY_ROOM_COLLECTOR_DIR ||= collectorJoin(collectorDirname(collectorFileURLToPath(import.meta.url)), 'native', 'collector');\n`;
+const originalServer = await readFile(server, 'utf8');
+const serverBody = originalServer.startsWith(oldBootstrap) ? originalServer.slice(oldBootstrap.length) : originalServer;
+if (!serverBody.startsWith(bootstrap)) await writeFile(server, bootstrap + serverBody);
 if (distDir !== '.next') {
-  await cp(server, path.join(standalone, 'server.cjs'));
+  await writeFile(path.join(standalone, 'server.cjs'),
+    `process.env.SUNDAY_ROOM_COLLECTOR_DIR ||= require('node:path').join(__dirname, 'native', 'collector');\nvoid import('./server.js');\n`);
   await cp(path.resolve('package.json'), path.join(standalone, 'package.json'));
 }
 await stat(staticFiles);
@@ -95,8 +109,9 @@ await stat(path.join(standalone, 'lib/football/runtime/schedule-client.ts'));
 await stat(path.join(standalone, 'lib/football/runtime/schedule-queue.ts'));
 await stat(path.join(standalone, 'lib/football/runtime/composition.ts'));
 await stat(path.join(standalone, 'lib/football/source-registry.json'));
-for (const name of ['streamed', 'sportsfeed24', 'crichd', 'sportsbite', 'player-id'])
-  await stat(path.join(standalone, `lib/football/adapters/${name}.ts`));
+await stat(path.join(standalone, 'native/collector/bridge.cjs'));
+await stat(path.join(standalone, 'native/collector/active.json'));
+await stat(path.join(standalone, 'native/collector', addon.filename));
 for (const name of ['catalog-stream', 'catalog-stream-policy'])
   await stat(path.join(standalone, `lib/playback/providers/${name}.ts`));
 await stat(path.join(standalone, 'lib/playback/probe.ts'));

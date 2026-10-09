@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SOURCES, SourceFetchError, compatiblePlayers, enrichObservation, parseKickoff, parseListings, readHtml } from '../lib/football/adapters/sources.ts';
+import { SOURCES, SourceFetchError, compatiblePlayers, createFixtureCollector, enrichObservation, parseKickoff, parseListings } from '../lib/football/adapters/sources.ts';
 import { PartialListingReadError } from '../lib/football/domain/ports.ts';
 import { SCHEDULES, readSchedule, readSeasonMembership } from '../lib/football/adapters/schedule.ts';
 import { matchObservation, mergeSchedulePartitions } from '../lib/football/domain/matching.ts';
@@ -14,6 +14,11 @@ const game = (id: string, home: Game['home'], away: Game['away'], league: Game['
   ({id,league,name:`${away.name} at ${home.name}`,date:'2026-09-26T16:00:00Z',home,away,status:'pre',lifecycle:'scheduled',detail:'Scheduled',redzone:false});
 const observation = (teams: [string,string], kickoff: number | null = now): Observation =>
   ({id:'source:event',sourceId:'source',url:'https://isportsurge.ws/watch/cfb/a-b/1',title:teams.join(' vs '),teams,league:'ncaaf',rawTime:'2026-09-26T16:00:00Z',kickoff,observedAt:now,parserVersion:1});
+const sportsurgeCategories=[
+  'https://isportsurge.ws/nfl/livestreams3','https://isportsurge.ws/cfb/livestreams2',
+  'https://isportsurge.ws/nba/livestreams3','https://isportsurge.ws/nhl/livestreams3',
+  'https://isportsurge.ws/mlb/livestreams2',
+];
 
 test('source times require explicit timezone evidence and handle DST and epochs', () => {
   assert.equal(parseKickoff('2026-09-26T16:00:00Z'),now);
@@ -27,12 +32,10 @@ test('source times require explicit timezone evidence and handle DST and epochs'
 });
 
 test('source HTTP backoff honors Retry-After without exposing the URL',async () => {
-  const original = globalThis.fetch;
-  globalThis.fetch = async () => new Response(null,{status:429,headers:{'Retry-After':'5'}});
-  try {
-    await assert.rejects(readHtml(SOURCES[1].url,new AbortController().signal),error =>
-      error instanceof SourceFetchError && error.message === 'http-429' && error.retryAfterMs === 5000);
-  } finally { globalThis.fetch = original; }
+  const collector=createFixtureCollector();
+  collector.enqueueFixture({url:SOURCES[1].url,status:429,headers:{'retry-after':'5'}});
+  await assert.rejects(collector.readHtml(SOURCES[1].url,new AbortController().signal),error =>
+    error instanceof SourceFetchError && error.message === 'http-429' && error.retryAfterMs === 5000);
 });
 
 test('CrackStreams separates the matchup from its published ET time', () => {
@@ -173,17 +176,16 @@ test('PPV retains all exact routes while rejecting wrong-game records', () => {
 });
 
 test('catalog detail collection selects the exact PPV parent and preserves API game dates', async () => {
-  const original = globalThis.fetch;
+  const collector=createFixtureCollector();
   const parent = {id:29554,name:'Notre Dame at North Carolina',tag:'College Football',uri_name:'cfb/2026-10-03/nd-unc',starts_at:now/1000};
   const observed = {...observation(['Notre Dame','North Carolina']),sourceId:'ppv',url:`https://ppv.st/live/${parent.uri_name}`};
-  const requests:string[] = [];
-  globalThis.fetch = async input => {requests.push(String(input)); return Response.json({success:true,
-    streams:[{category:'American Football',streams:[parent,{...parent,id:2,uri_name:'cfb/2026-10-03/other-game'}]}]});};
-  try {
-    assert.deepEqual(JSON.parse(await readHtml(observed.url,new AbortController().signal)),parent);
-    assert.deepEqual(requests,['https://api.ppv.st/api/streams']);
-    await assert.rejects(readHtml('https://ppv.st/live/cfb/2026-10-03/missing',new AbortController().signal),/parser-changed/);
-  } finally {globalThis.fetch = original;}
+  const catalog=JSON.stringify({success:true,
+    streams:[{category:'American Football',streams:[parent,{...parent,id:2,uri_name:'cfb/2026-10-03/other-game'}]}]});
+  collector.enqueueFixture({url:'https://api.ppv.st/api/streams',body:catalog});
+  collector.enqueueFixture({url:'https://api.ppv.st/api/streams',body:catalog});
+  assert.deepEqual(JSON.parse(await collector.readHtml(observed.url,new AbortController().signal)),parent);
+  assert.deepEqual(collector.fixtureRequests().map(request=>request.url),['https://api.ppv.st/api/streams']);
+  await assert.rejects(collector.readHtml('https://ppv.st/live/cfb/2026-10-03/missing',new AbortController().signal),/parser-changed/);
   for (const sourceId of ['ppv','tvapp']) {
     const catalogObservation = {...observed,sourceId};
     assert.deepEqual(enrichObservation(catalogObservation,'<time datetime="2026-10-04T16:00:00Z"></time>'),catalogObservation);
@@ -336,61 +338,84 @@ test('game and session states reject contradictory final and grace fields', () =
 });
 
 test('Sportsurge collection includes matchups from both category pages under one source', async () => {
-  const original = globalThis.fetch;
-  globalThis.fetch = async input => {
-    const url=String(input);
+  const collector=createFixtureCollector();
+  for(const url of sportsurgeCategories){
+    if(!url.includes('/nfl/')&&!url.includes('/cfb/')){
+      collector.enqueueFixture({url,body:'<html><body></body></html>'});
+      continue;
+    }
     const league=url.includes('/cfb/')?'cfb':'nfl';
     const teams=league==='cfb'?['Indiana Hoosiers','Purdue Boilermakers']:['Kansas City Chiefs','Buffalo Bills'];
-    return new Response(`<html><body><a href="/watch/${league}/a-b/${league==='cfb'?'2':'1'}" datetime="2026-09-26T16:00:00Z">`+
+    collector.enqueueFixture({url,body:`<html><body><a href="/watch/${league}/a-b/${league==='cfb'?'2':'1'}" datetime="2026-09-26T16:00:00Z">`+
       `<span class="team-name-event-row"><img alt="${teams[0]}"></span>`+
-      `<span class="team-name-event-row"><img alt="${teams[1]}"></span></a></body></html>`);
-  };
-  try {
-    const html = await readHtml(SOURCES[0].url,new AbortController().signal);
-    assert.deepEqual(parseListings(SOURCES[0],html,now).observations.map(row=>[row.league,row.teams]),[
-      ['nfl',['Kansas City Chiefs','Buffalo Bills']],['ncaaf',['Indiana Hoosiers','Purdue Boilermakers']]]);
-  } finally { globalThis.fetch = original; }
+      `<span class="team-name-event-row"><img alt="${teams[1]}"></span></a></body></html>`});
+  }
+  const html = await collector.readHtml(SOURCES[0].url,new AbortController().signal);
+  assert.deepEqual(collector.parseListings(SOURCES[0],html,now).observations.map(row=>[row.league,row.teams]),[
+    ['nfl',['Kansas City Chiefs','Buffalo Bills']],['ncaaf',['Indiana Hoosiers','Purdue Boilermakers']]]);
+});
+
+test('native source backoff ignores an empty Retry-After and caps a future HTTP date',async()=>{
+  const collector=createFixtureCollector();
+  collector.enqueueFixture({url:SOURCES[1].url,status:429,headers:{'retry-after':''}});
+  await assert.rejects(collector.readHtml(SOURCES[1].url,new AbortController().signal),error=>
+    error instanceof SourceFetchError&&error.message==='http-429'&&error.retryAfterMs===undefined);
+  collector.enqueueFixture({url:SOURCES[1].url,status:429,
+    headers:{'retry-after':new Date(Date.now()+3*86400000).toUTCString()}});
+  await assert.rejects(collector.readHtml(SOURCES[1].url,new AbortController().signal),error=>
+    error instanceof SourceFetchError&&error.message==='http-429'&&error.retryAfterMs===86_400_000);
+});
+
+test('SportsFeed24 all-failed catalog keeps the first category error and no synthesized retry',async()=>{
+  const collector=createFixtureCollector();
+  const source=SOURCES.find(item=>item.id==='sportsfeed24');
+  assert.ok(source);
+  for(const [index,name] of ['', 'NFL','NBA','NHL','MLB','F1','motogp'].entries())collector.enqueueFixture({
+    url:'https://bestfreestreaming.app/api/xhr',method:'POST',
+    requestBody:name?JSON.stringify({categoryName:name}):'{}',status:index===1?429:503,
+    ...(index===1?{headers:{'retry-after':'9'}}:{}),
+  });
+  await assert.rejects(collector.readHtml(source.url,new AbortController().signal),error=>
+    error instanceof SourceFetchError&&error.message==='http-503'&&error.retryAfterMs===undefined);
+  assert.equal(collector.fixtureRequests().length,7);
 });
 
 test('Sportsurge partial category failure carries healthy listings and retry delay',async()=>{
-  const original=globalThis.fetch;
-  globalThis.fetch=async input=>String(input).includes('/nfl/')?
-    new Response(null,{status:429,headers:{'Retry-After':'9'}}):
-    new Response('<html><body><a href="/watch/cfb/indiana-purdue/2" datetime="2026-09-26T16:00:00Z">Indiana Hoosiers vs Purdue Boilermakers</a></body></html>');
-  try {
-    await assert.rejects(readHtml(SOURCES[0].url,new AbortController().signal),error=>{
-      assert.ok(error instanceof PartialListingReadError);
-      assert.equal(error.message,'http-429');
-      assert.equal(error.retryAfterMs,9000);
-      assert.deepEqual(parseListings(SOURCES[0],error.html,now).observations.map(row=>row.league),['ncaaf']);
-      return true;
-    });
-  } finally {globalThis.fetch=original;}
+  const collector=createFixtureCollector();
+  for(const url of sportsurgeCategories){
+    if(url.includes('/nfl/'))collector.enqueueFixture({url,status:429,headers:{'retry-after':'9'}});
+    else collector.enqueueFixture({url,body:url.includes('/cfb/')?
+      '<html><body><a href="/watch/cfb/indiana-purdue/2" datetime="2026-09-26T16:00:00Z">Indiana Hoosiers vs Purdue Boilermakers</a></body></html>':'<html><body></body></html>'});
+  }
+  await assert.rejects(collector.readHtml(SOURCES[0].url,new AbortController().signal),error=>{
+    assert.ok(error instanceof PartialListingReadError);
+    assert.equal(error.message,'http-429');
+    assert.equal(error.retryAfterMs,9000);
+    assert.deepEqual(collector.parseListings(SOURCES[0],error.html,now).observations.map(row=>row.league),['ncaaf']);
+    return true;
+  });
 });
 
 test('Sportsurge reports a rate limit and the longest retry delay when both categories fail',async()=>{
-  const original=globalThis.fetch;
-  globalThis.fetch=async input=>new Response(null,{status:String(input).includes('/nfl/')?429:503,
-    headers:{'Retry-After':String(input).includes('/nfl/')?'9':'20'}});
-  try {
-    await assert.rejects(readHtml(SOURCES[0].url,new AbortController().signal),error=>
-      error instanceof SourceFetchError&&error.message==='http-429'&&error.retryAfterMs===20_000);
-  } finally {globalThis.fetch=original;}
+  const collector=createFixtureCollector();
+  for(const url of sportsurgeCategories)collector.enqueueFixture({url,status:url.includes('/nfl/')?429:503,
+    headers:{'retry-after':url.includes('/nfl/')?'9':'20'}});
+  await assert.rejects(collector.readHtml(SOURCES[0].url,new AbortController().signal),error=>
+    error instanceof SourceFetchError&&error.message==='http-429'&&error.retryAfterMs===20_000);
 });
 
 test('Sportsurge discards partial results when its parent request is canceled',async()=>{
-  const original=globalThis.fetch;
+  const collector=createFixtureCollector();
   const controller=new AbortController();
-  globalThis.fetch=async input=>{
-    if(String(input).includes('/nfl/')){
-      controller.abort(new DOMException('Canceled','AbortError'));
-      throw controller.signal.reason;
-    }
-    return new Response('<html><body><a href="/watch/cfb/indiana-purdue/2">Indiana vs Purdue</a></body></html>');
-  };
-  try {
-    await assert.rejects(readHtml(SOURCES[0].url,controller.signal),error=>error instanceof DOMException&&error.name==='AbortError');
-  } finally {globalThis.fetch=original;}
+  for(const url of sportsurgeCategories)collector.enqueueFixture({url,...(url.includes('/nfl/')?{pending:true}:
+    {body:'<html><body><a href="/watch/cfb/indiana-purdue/2">Indiana vs Purdue</a></body></html>'})});
+  const read=collector.readHtml(SOURCES[0].url,controller.signal);
+  for(let attempt=0;attempt<100 && collector.fixtureRequests().length<5;attempt++)
+    await new Promise(resolve=>setTimeout(resolve,1));
+  assert.equal(collector.fixtureRequests().length,5);
+  controller.abort(new DOMException('Canceled','AbortError'));
+  await assert.rejects(read,error=>error instanceof DOMException&&error.name==='AbortError');
+  assert.ok(collector.fixtureCancels().includes('https://isportsurge.ws/nfl/livestreams3'));
 });
 
 test('schedule requests both college groups and rejects partial event parsing', async () => {

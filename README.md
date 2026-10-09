@@ -49,6 +49,7 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 ### Requirements
 
 - **Node.js 24.6 or newer**, with npm. The pipeline uses Node's SQLite, TypeScript runtime support, and system certificate trust.
+- **Rust 1.93.1 or newer** with Cargo to build the source collector. Windows source builds also need the Visual Studio C++ build tools. Installed releases bundle the addon and need no Rust installation.
 - **Git** to clone the repository.
 - An internet connection for game data, provider pages, and video.
 - **Windows** for the included double-click launcher. The desktop workflow has been verified on Windows; other operating systems have not been validated.
@@ -67,6 +68,8 @@ After installing dependencies, Windows users can double-click **[Start Sunday Ro
 The launcher starts Electron and its own local Next.js server on `127.0.0.1`. It uses port `51931` when available and selects another local port when that port is occupied or reserved. Keep the project folder and dependencies in place; this is a source-based launcher, not a packaged installer.
 
 The first launch compiles the local server. Later launches reuse the compiled output while the source, assets, dependencies, and build settings are unchanged. Relaunch after a source edit to compile it. Use `npm run desktop:dev` when you want live updates while editing.
+
+Development, build, and test commands prepare the Rust collector automatically. Unchanged launches reuse the native artifact without invoking Cargo or rustc. Run `node scripts/build-rust-collector.mjs --force` after upgrading the Rust compiler. The collector runs in process and adds no background executable.
 
 On Windows, desktop launches and Electron tests prepare a branded runtime in `.desktop-runtime/electron`. The taskbar and Task Manager use the Sunday Room logo. Preparation refreshes the runtime when Electron or `public/favicon.svg` changes and preserves the original Electron installation. Close development windows before a runtime refresh.
 
@@ -141,7 +144,7 @@ flowchart TD
     UI["Sunday Room · React interface"] --> Games["GET /api/games"]
     Games --> Pipeline["App-owned football worker and SQLite"]
     Pipeline --> Scores["ESPN NFL, FBS, and FCS schedules"]
-    Pipeline --> Directory["17 registered discovery sources"]
+    Pipeline --> Directory["Rust collection for 47 registered discovery sources"]
     UI --> Resolve["GET /api/playback?game=ID"]
     Resolve --> Session["Independent playback session"]
     Session --> Pipeline

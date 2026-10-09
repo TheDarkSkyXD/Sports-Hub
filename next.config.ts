@@ -15,13 +15,17 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   output: "standalone",
   outputFileTracingIncludes: {
-    '/*': ['./lib/football/**/*.ts', './lib/football/source-registry.json', './lib/playback/**/*.ts', './lib/sunday.ts', './lib/game-timing.ts'],
+    '/*': ['./lib/football/**/*.ts', './lib/football/source-registry.json', './lib/playback/**/*.ts', './lib/sunday.ts', './lib/game-timing.ts', './native/collector/bridge.cjs'],
   },
   // Keep local build and verification scratch out of standalone output. Copying
   // prior packaged apps into the next build nests each install until paths
   // exceed MAX_PATH.
   outputFileTracingExcludes: {
-    '/*': ['./dist-electron/**/*', './work/**/*', ...(localBuildId ? [
+    '/*': ['./dist-electron/**/*', './work/**/*',
+      './native/collector/src/**/*', './native/collector/target/**/*',
+      './native/collector/Cargo.toml', './native/collector/Cargo.lock',
+      './native/collector/build.rs', './native/collector/bridge.d.cts',
+      ...(localBuildId ? [
       './.desktop-runtime/!(local-builds)/**/*',
       `./.desktop-runtime/local-builds/!(${localBuildId})/**/*`,
       './.desktop-runtime/local-builds/*.json',

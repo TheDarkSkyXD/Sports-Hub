@@ -1,10 +1,13 @@
 const { createHash } = require('node:crypto');
 const { createReadStream } = require('node:fs');
-const { readdir, lstat, realpath } = require('node:fs/promises');
+const { readdir, lstat, realpath, readFile } = require('node:fs/promises');
 const path = require('node:path');
 
-const sourceDirectories = ['app', 'components', 'desktop', 'hooks', 'lib', 'public', 'styles', 'vendor'];
-const sourceFiles = ['next.config.ts', 'postcss.config.mjs', 'tsconfig.json', 'package.json', 'package-lock.json', 'scripts/prepare-desktop.mjs', 'node_modules/.package-lock.json'];
+const sourceDirectories = ['app', 'components', 'desktop', 'hooks', 'lib', 'native/collector/src', 'public', 'styles', 'vendor'];
+const sourceFiles = ['next.config.ts', 'postcss.config.mjs', 'tsconfig.json', 'package.json', 'package-lock.json',
+  'scripts/prepare-desktop.mjs', 'scripts/build-rust-collector.mjs', 'native/collector/Cargo.toml',
+  'native/collector/Cargo.lock', 'native/collector/build.rs', 'native/collector/bridge.cjs',
+  'native/collector/bridge.d.cts', 'node_modules/.package-lock.json'];
 
 function publicEnvironment() {
   return JSON.stringify(Object.entries(process.env).filter(([name]) => name.startsWith('NEXT_PUBLIC_'))
@@ -40,6 +43,14 @@ async function sourceIdentity(root, inheritedPublicEnvironment = publicEnvironme
   }
   const rootEntries = await readdir(root);
   names.push(...rootEntries.filter(name => /^\.env(?:\..+)?$/.test(name)));
+  const active = path.join(root, '.desktop-runtime', 'rust-collector-addon', 'active.json');
+  const manifest = JSON.parse(await readFile(active, 'utf8'));
+  if (manifest.version !== 1 || !/^[a-f0-9]{64}$/.test(manifest.binarySha256) ||
+      manifest.filename !== `collector-${manifest.binarySha256}.node`)
+    throw new Error('Invalid Rust collector manifest for source identity');
+  names.push('.desktop-runtime/rust-collector-addon/active.json',
+    `.desktop-runtime/rust-collector-addon/${manifest.filename}`,
+    '.desktop-runtime/rust-collector-addon/source-registry.json');
   names.sort();
   const digest = createHash('sha256');
   digest.update(`node:${process.versions.node}\0`);

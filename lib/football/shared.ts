@@ -123,10 +123,24 @@ export const CandidateSummarySchema = z.object({
   id: z.string(), gameId: z.string(), label: z.string(), sourceIds: z.array(z.string()), observedAt: z.number(),availability:CandidateAvailabilitySchema,
 });
 export type CandidateSummary = z.infer<typeof CandidateSummarySchema>;
+export const SwacLocatorSchema = z.object({provider:z.literal('swac'),eventId:z.string().regex(/^[a-f0-9]{32}$/)});
+export const GoozLocatorSchema = z.object({provider:z.literal('gooz'),playerId:z.string().regex(/^\d{1,20}$/)});
+export const StreamcenterLocatorSchema = z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid(),league:z.enum(['ncaaf','nba','wnba','nhl','mlb']).optional()});
+export const EventPageLocatorSchema = z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-)?\d{1,20}$/),
+  eventUrl:z.string().url().max(2000),serverUrl:z.string().url().max(2000)}).strict();
+export const CatalogStreamLocatorSchema = z.object({provider:z.literal('catalog-stream'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-)?\d{1,20}$/),
+  source:z.enum(['streamed','livesportpro']),eventUrl:z.string().url().max(400),eventId:z.string().min(1).max(160),
+  sourceName:z.string().min(1).max(40),sourceId:z.string().min(1).max(160),
+  streamNo:z.number().int().min(1).max(100),kickoff:z.number().int(),
+  title:z.string().min(1).max(300),teams:z.tuple([z.string(),z.string()]).nullable()}).strict();
+export const TvappLocatorSchema = z.object({provider:z.literal('tvapp'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb)-)?\d{1,20}$/),
+  eventUrl:z.string().url().max(2000),source:z.string().regex(/^[a-z0-9-]{1,32}$/),
+  sourceId:z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/),streamNo:z.number().int().min(1).max(100),
+  kickoff:z.number().int(),title:z.string().min(1).max(200),teams:z.tuple([z.string().min(1),z.string().min(1)])}).strict();
 export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
-  z.object({provider:z.literal('swac'),eventId:z.string().regex(/^[a-f0-9]{32}$/)}),
-  z.object({provider:z.literal('gooz'),playerId:z.string().regex(/^\d{1,20}$/)}),
-  z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid(),league:z.enum(['ncaaf','nba','wnba','nhl','mlb']).optional()}),
+  SwacLocatorSchema,
+  GoozLocatorSchema,
+  StreamcenterLocatorSchema,
   z.object({provider:z.literal('streameast'),channelId:z.string().regex(/^\d{1,4}$/)}),
   z.object({provider:z.literal('streameast-server'),gameId:BrowserGameIdSchema,
     sourceEventId:BrowserEventIdSchema,eventUrl:z.string().url().max(400),
@@ -134,17 +148,9 @@ export const CandidateLocatorSchema = z.discriminatedUnion('provider',[
   z.object({provider:z.literal('sportsurge-v2'),eventId:BrowserEventIdSchema,providerId:z.string().min(1).max(100),url:z.string().url().max(2000),
     expectedMatchup:z.object({league:LeagueSchema,teams:z.tuple([z.string().min(1).max(120),z.string().min(1).max(120)])}).strict().optional()}),
   z.object({provider:z.literal('wikisport'),section:z.enum(['0nhl','strm']),playerId:z.string().regex(/^\d{1,4}$/)}),
-  z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-)?\d{1,20}$/),
-    eventUrl:z.string().url().max(2000),serverUrl:z.string().url().max(2000)}).strict(),
-  z.object({provider:z.literal('catalog-stream'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-)?\d{1,20}$/),
-    source:z.enum(['streamed','livesportpro']),eventUrl:z.string().url().max(400),eventId:z.string().min(1).max(160),
-    sourceName:z.string().min(1).max(40),sourceId:z.string().min(1).max(160),
-    streamNo:z.number().int().min(1).max(100),kickoff:z.number().int(),
-    title:z.string().min(1).max(300),teams:z.tuple([z.string(),z.string()]).nullable()}).strict(),
-  z.object({provider:z.literal('tvapp'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb)-)?\d{1,20}$/),
-    eventUrl:z.string().url().max(2000),source:z.string().regex(/^[a-z0-9-]{1,32}$/),
-    sourceId:z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/),streamNo:z.number().int().min(1).max(100),
-    kickoff:z.number().int(),title:z.string().min(1).max(200),teams:z.tuple([z.string().min(1),z.string().min(1)])}).strict(),
+  EventPageLocatorSchema,
+  CatalogStreamLocatorSchema,
+  TvappLocatorSchema,
 ]);
 export type CandidateLocator = z.infer<typeof CandidateLocatorSchema>;
 export const CandidateSchema = CandidateSummarySchema.omit({availability:true}).extend({locator:CandidateLocatorSchema});

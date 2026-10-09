@@ -12,6 +12,7 @@ directories:
 files:
   - package.json
   - desktop/**
+  - native/collector/bridge.cjs
   - lib/football/source-registry.json
   # `!node_modules/**` keeps the dev tree out, which a blanket `node_modules/**` does not:
   # that ships all 29,000 dev packages. These are electron-updater's transitive graph,
@@ -37,6 +38,12 @@ files:
   - node_modules/ms/**
   - node_modules/sax/**
 extraResources:
+  - from: .desktop-runtime/rust-collector-addon/package
+    to: native/collector
+    filter:
+      - active.json
+      - source-registry.json
+      - collector-*.node
   - from: .next/standalone
     to: server
     filter:

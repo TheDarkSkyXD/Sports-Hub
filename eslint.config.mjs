@@ -21,7 +21,7 @@ const eslintConfig = defineConfig([
     "storybook-static/**",
   ]),
   {
-    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", ".storybook/**/*.{ts,tsx}", "hooks/**/*.{ts,tsx}", "lib/**/*.ts", "desktop/**/*.cjs", "scripts/**/*.{ts,mjs,cjs}", "tests/**/*.{ts,mjs,cjs}"],
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", ".storybook/**/*.{ts,tsx}", "hooks/**/*.{ts,tsx}", "lib/**/*.ts", "desktop/**/*.cjs", "native/collector/bridge.cjs", "scripts/**/*.{ts,mjs,cjs}", "tests/**/*.{ts,mjs,cjs}"],
     plugins: { boundaries },
     settings: {
       "boundaries/files": [
@@ -35,7 +35,8 @@ const eslintConfig = defineConfig([
         { pattern: "lib/football/source-registry.{ts,json}", category: "source-config" },
         { pattern: "lib/football/domain/college-teams.generated.ts", category: "team-catalog" },
         { pattern: "lib/football/domain/*.ts", category: "domain" },
-        { pattern: "lib/football/adapters/{schedule,sources,nflstreams,buffstream,streamed,sportsfeed24,crichd,sportsbite,player-id}.ts", category: "adapter" },
+        { pattern: "lib/football/adapters/{schedule,sources}.ts", category: "adapter" },
+        { pattern: "native/collector/bridge.cjs", category: "collector-bridge" },
         { pattern: "lib/football/adapters/store.ts", category: "store" },
         { pattern: "lib/football/runtime/*.ts", category: "runtime" },
         { pattern: "lib/football/runtime/schedule-client.ts", category: "schedule-client" },
@@ -65,6 +66,7 @@ const eslintConfig = defineConfig([
         { pattern: "desktop/**/*.cjs", category: "desktop" },
         { pattern: "scripts/verify-sportsurge-catalog.cjs", category: "desktop-verifier" },
         { pattern: "scripts/electron-runtime.mjs", category: "desktop-runtime" },
+        { pattern: "scripts/build-rust-collector.mjs", category: "collector-build" },
         { pattern: "scripts/**/*.{ts,mjs,cjs}", category: "script" },
         { pattern: "tests/**/*.{ts,mjs,cjs}", category: "test" },
       ],
@@ -95,7 +97,7 @@ const eslintConfig = defineConfig([
             from: { file: { categories: "domain" } },
             allow: { to: { file: { categories: { anyOf: ["domain", "shared", "team-catalog"] } } } },
           },
-          { from: { file: { categories: "adapter" } }, allow: { to: { file: { categories: { anyOf: ["adapter", "domain", "shared", "pure-lib", "provider-parser"] } } } } },
+          { from: { file: { categories: "adapter" } }, allow: { to: { file: { categories: { anyOf: ["adapter", "domain", "shared", "pure-lib", "provider-parser", "collector-bridge"] } } } } },
           { from: { file: { categories: "store" } }, allow: { to: { file: { categories: { anyOf: ["domain", "shared"] } } } } },
           { from: { file: { categories: "client" } }, allow: { to: { file: { categories: "shared" } } } },
           { from: { file: { categories: "worker" } }, allow: { to: { file: { categories: { anyOf: ["composition", "shared"] } } } } },
@@ -113,17 +115,28 @@ const eslintConfig = defineConfig([
           { from: { file: { categories: "server-facade" } }, allow: { to: { file: { categories: { anyOf: ["client", "shared", "pure-lib", "relay", "provider-contract"] } } } } },
           { from: { file: { categories: "relay" } }, allow: { to: { file: { categories: { anyOf: ["domain", "shared", "provider-contract", "provider-composition"] } } } } },
           { from: { file: { categories: "pure-lib" } }, allow: { to: { file: { categories: { anyOf: ["pure-lib", "shared"] } } } } },
-          { from: { file: { categories: "desktop" } }, allow: { to: { file: { categories: "desktop" } } } },
+          { from: { file: { categories: "desktop" } }, allow: { to: { file: { categories: { anyOf: ["desktop", "collector-bridge", "collector-build"] } } } } },
           { from: { file: { categories: "desktop-verifier" } }, allow: { to: { file: { categories: "desktop" } } } },
-          { from: { file: { categories: "script" } }, allow: { to: { file: { categories: { anyOf: ["adapter", "domain", "shared", "pure-lib", "desktop-runtime"] } } } } },
-          { from: { file: { categories: "test" } }, allow: { to: { file: { categories: { anyOf: ["ui", "route", "shared", "domain", "team-catalog", "adapter", "store", "runtime", "composition", "schedule-client", "schedule-queue", "schedule-worker", "server-facade", "relay", "provider-contract", "provider-parser", "provider-resource", "provider-adapter", "provider-composition", "provider-probe", "pure-lib", "desktop", "desktop-runtime", "script", "test"] } } } } },
+          { from: { file: { categories: "script" } }, allow: { to: { file: { categories: { anyOf: ["adapter", "domain", "shared", "pure-lib", "desktop-runtime", "collector-build"] } } } } },
+          { from: { file: { categories: "test" } }, allow: { to: { file: { categories: { anyOf: ["ui", "route", "shared", "domain", "team-catalog", "adapter", "store", "runtime", "composition", "schedule-client", "schedule-queue", "schedule-worker", "server-facade", "relay", "provider-contract", "provider-parser", "provider-resource", "provider-adapter", "provider-composition", "provider-probe", "pure-lib", "desktop", "desktop-runtime", "collector-bridge", "script", "test"] } } } } },
         ],
       }],
     },
   },
   {
-    files: ["desktop/**/*.cjs", "scripts/verify-sportsurge-catalog.cjs"],
+    files: ["desktop/**/*.cjs", "native/collector/bridge.cjs", "tests/native-collector.electron.cjs", "scripts/verify-sportsurge-catalog.cjs"],
     rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
+  {
+    files: ["lib/football/adapters/sources.ts", "desktop/{sportsurge,streameast}-catalog.cjs", "desktop/{sportsurge,streameast}-sweep.cjs", "desktop/native-sweep.cjs"],
+    rules: {
+      "no-restricted-globals": ["error", { name: "fetch", message: "Collection HTTP belongs to the native collector." }],
+      "no-restricted-imports": ["error", { paths: [{ name: "cheerio", message: "Catalog parsing belongs to the native collector." }] }],
+      "no-restricted-syntax": ["error", {
+        selector: "CallExpression[callee.name='require'][arguments.0.value='cheerio']",
+        message: "Catalog parsing belongs to the native collector.",
+      }],
+    },
   },
   {
     files: ["tests/**/*.mjs", "scripts/**/*.mjs"],

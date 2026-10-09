@@ -4,7 +4,7 @@ import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {mock,test} from 'node:test';
-import {parseListings,readHtml,resolvePlayers,missingPlayerReason,SOURCES,allowedDiscoveryUrl} from '../lib/football/adapters/sources.ts';
+import {parseListings,resolvePlayers,missingPlayerReason,SOURCES,allowedDiscoveryUrl,createFixtureCollector} from '../lib/football/adapters/sources.ts';
 import {PartialListingReadError} from '../lib/football/domain/ports.ts';
 import {matchObservation} from '../lib/football/domain/matching.ts';
 import {validEventPagePair} from '../lib/playback/providers/event-page-policy.ts';
@@ -328,35 +328,30 @@ test('source-specific URL pairs reject encoded and unrelated targets',()=>{
 });
 
 test('selected catalog details use the validated snapshot and honor cancellation',async()=>{
-  const calls:string[]=[];
-  const fetchMock=mock.method(globalThis,'fetch',async(input:RequestInfo|URL)=>{
-    calls.push(String(input));
-    throw new Error('Unexpected full catalog fetch');
-  });
-  try{
-    for(const [id,name] of [['streamed','streamed.json'],['livesportpro','livesportpro.json'],
-      ['sportsbite','sportsbite.json']] as const){
-      const body=fixture(name);
-      const listing=parseListings(source(id),body,at);
-      const observation=listing.observations[0];
-      const detail=await readHtml(observation.url,new AbortController().signal);
-      assert.ok(detail.includes(observation.title));
-    }
-    assert.deepEqual(calls,[]);
-    const aborted=new AbortController();
-    aborted.abort();
-    await assert.rejects(readHtml('https://streamed.st/api/matches/all',aborted.signal));
-    assert.deepEqual(calls,[]);
-  }finally{fetchMock.mock.restore();}
+  const collector=createFixtureCollector();
+  for(const [id,name] of [['streamed','streamed.json'],['livesportpro','livesportpro.json'],
+    ['sportsbite','sportsbite.json']] as const){
+    const body=fixture(name);
+    const listing=collector.parseListings(source(id),body,at);
+    const observation=listing.observations[0];
+    const detail=await collector.readHtml(observation.url,new AbortController().signal);
+    assert.equal(JSON.parse(detail).title,observation.title);
+  }
+  assert.deepEqual(collector.fixtureRequests(),[]);
+  const aborted=new AbortController();
+  aborted.abort();
+  await assert.rejects(collector.readHtml('https://streamed.st/api/matches/all',aborted.signal));
+  assert.deepEqual(collector.fixtureRequests(),[]);
 });
 
 test('a failed stream reference aborts and settles its siblings before returning',async()=>{
+  const collector=createFixtureCollector();
   const body=fixture('streamed.json');
-  const observation=parseListings(source('streamed'),body,at).observations.find(row=>row.title==='Buffalo Sabres vs Dallas Stars')!;
+  const observation=collector.parseListings(source('streamed'),body,at).observations.find(row=>row.title==='Buffalo Sabres vs Dallas Stars')!;
   const event=JSON.parse(body).find((row:{id:string})=>observation.url.endsWith(row.id));
   event.sources=[1,2,3,4].map(id=>({source:'golf',id:String(id)}));
   let calls=0,settled=0,aborted=0;
-  await assert.rejects(resolvePlayers('401892458',observation,JSON.stringify(event),new AbortController().signal,
+  await assert.rejects(collector.resolvePlayers('401892458',observation,JSON.stringify(event),new AbortController().signal,
     async(_url,signal)=>{
       calls++;
       if(calls===1){settled++;throw new Error('stream read failed');}
@@ -370,9 +365,10 @@ test('a failed stream reference aborts and settles its siblings before returning
 });
 
 test('SportsFeed24 partial category failure retains complete event routing',async()=>{
+  const collector=createFixtureCollector();
   const today=JSON.parse(fixture('sportsfeed24-today.json'));
   const full=JSON.stringify({categories:[today],complete:true});
-  const listing=parseListings(source('sportsfeed24'),full,at);
+  const listing=collector.parseListings(source('sportsfeed24'),full,at);
   const golf=listing.observations.find(row=>row.title==='Baycurrent Classic vs Golf')!;
   assert.ok(golf);
   const added=structuredClone(today.subCategories[0].games[0]);
@@ -380,65 +376,53 @@ test('SportsFeed24 partial category failure retains complete event routing',asyn
   added.teamA='New York Jets';
   added.teamB='Miami Dolphins';
   today.subCategories[0].games.push(added);
-  const calls:string[]=[];
-  const fetchMock=mock.method(globalThis,'fetch',async(input:RequestInfo|URL,init?:RequestInit)=>{
-    const url=String(input);
-    calls.push(url);
-    if(url.endsWith('/api/xrhs'))return new Response(fixture('sportsfeed24-golf-detail.json'),
-      {headers:{'content-type':'application/json'}});
-    const body=JSON.parse(String(init?.body));
-    if(body.categoryName==='F1')return new Response('Unavailable',{status:503});
-    return new Response(JSON.stringify(body.categoryName?{categoryName:body.categoryName,subCategories:[]}:today),
-      {headers:{'content-type':'application/json'}});
+  const catalogUrl='https://bestfreestreaming.app/api/xhr';
+  for(const name of ['', 'NFL','NBA','NHL','MLB','F1','motogp'])collector.enqueueFixture({url:catalogUrl,method:'POST',
+    requestBody:name?JSON.stringify({categoryName:name}):'{}',status:name==='F1'?503:200,
+    body:JSON.stringify(name?{categoryName:name,subCategories:[]}:today)});
+  const detailUrl='https://bestfreestreaming.app/api/xrhs';
+  collector.enqueueFixture({url:detailUrl,method:'POST',requestBody:JSON.stringify({teamA:'Baycurrent Classic',teamB:'Golf'}),
+    body:fixture('sportsfeed24-golf-detail.json')});
+  collector.enqueueFixture({url:detailUrl,method:'POST',requestBody:JSON.stringify({teamA:'New York Jets',teamB:'Miami Dolphins'}),
+    body:fixture('sportsfeed24-golf-detail.json')});
+  await assert.rejects(collector.readHtml(source('sportsfeed24').url,new AbortController().signal),(error:unknown)=>{
+    assert.ok(error instanceof PartialListingReadError);
+    const partial=collector.parseListings(source('sportsfeed24'),error.html,at);
+    assert.equal(partial.outcome,'parsed');
+    const newlyListed=partial.observations.find(row=>row.id==='sportsfeed24:99991');
+    assert.ok(newlyListed);
+    return true;
   });
-  try{
-    await assert.rejects(readHtml(source('sportsfeed24').url,new AbortController().signal),(error:unknown)=>{
-      assert.ok(error instanceof PartialListingReadError);
-      const partial=parseListings(source('sportsfeed24'),error.html,at);
-      assert.equal(partial.outcome,'parsed');
-      const newlyListed=partial.observations.find(row=>row.id==='sportsfeed24:99991');
-      assert.ok(newlyListed);
-      return true;
-    });
-    const detail=await readHtml(golf.url,new AbortController().signal);
-    const newlyListedUrl='https://sportsfeed24.st/fixture/New%20York%20Jets-vs-Miami%20Dolphins';
-    await readHtml(newlyListedUrl,new AbortController().signal);
-    assert.ok(detail.includes('Baycurrent Classic'));
-    assert.equal(calls.filter(url=>url.endsWith('/api/xhr')).length,7);
-    assert.equal(calls.filter(url=>url.endsWith('/api/xrhs')).length,2);
-  }finally{fetchMock.mock.restore();}
+  const detail=await collector.readHtml(golf.url,new AbortController().signal);
+  const newlyListedUrl='https://sportsfeed24.st/fixture/New%20York%20Jets-vs-Miami%20Dolphins';
+  await collector.readHtml(newlyListedUrl,new AbortController().signal);
+  assert.ok(detail.includes('Baycurrent Classic'));
+  assert.equal(collector.fixtureRequests().filter(request=>request.url===catalogUrl).length,7);
+  assert.equal(collector.fixtureRequests().filter(request=>request.url===detailUrl).length,2);
 });
 
 test('SportsFeed24 malformed categories retain other complete categories',async()=>{
   const today=JSON.parse(fixture('sportsfeed24-today.json'));
   for(const invalid of ['invalid-json','{}']){
-    const fetchMock=mock.method(globalThis,'fetch',async(_input:RequestInfo|URL,init?:RequestInit)=>{
-      const category=JSON.parse(String(init?.body)).categoryName;
-      return new Response(category==='F1'?invalid:JSON.stringify(category?{categoryName:category,subCategories:[]}:today),
-        {headers:{'content-type':'application/json'}});
+    const collector=createFixtureCollector();
+    for(const name of ['', 'NFL','NBA','NHL','MLB','F1','motogp'])collector.enqueueFixture({
+      url:'https://bestfreestreaming.app/api/xhr',method:'POST',requestBody:name?JSON.stringify({categoryName:name}):'{}',
+      body:name==='F1'?invalid:JSON.stringify(name?{categoryName:name,subCategories:[]}:today)});
+    await assert.rejects(collector.readHtml(source('sportsfeed24').url,new AbortController().signal),(error:unknown)=>{
+      assert.ok(error instanceof PartialListingReadError);
+      assert.equal(JSON.parse(error.html).complete,false);
+      assert.equal(JSON.parse(error.html).categories.length,6);
+      const result=collector.parseListings(source('sportsfeed24'),error.html,at);
+      assert.equal(result.outcome,'parsed');
+      assert.equal(result.observations.some(row=>row.title==='Baycurrent Classic vs Golf'),true);
+      return true;
     });
-    try{
-      await assert.rejects(readHtml(source('sportsfeed24').url,new AbortController().signal),(error:unknown)=>{
-        assert.ok(error instanceof PartialListingReadError);
-        assert.equal(JSON.parse(error.html).complete,false);
-        assert.equal(JSON.parse(error.html).categories.length,6);
-        const result=parseListings(source('sportsfeed24'),error.html,at);
-        assert.equal(result.outcome,'parsed');
-        assert.equal(result.observations.some(row=>row.title==='Baycurrent Classic vs Golf'),true);
-        return true;
-      });
-    }finally{fetchMock.mock.restore();}
   }
 });
 
 test('a CricHD redirect cannot cross into another allowed source host',async()=>{
-  const calls:string[]=[];
-  const fetchMock=mock.method(globalThis,'fetch',async(input:RequestInfo|URL)=>{
-    calls.push(String(input));
-    return new Response(null,{status:301,headers:{location:'https://streamed.st/api/matches/all'}});
-  });
-  try{
-    await assert.rejects(readHtml('https://crichd.pk/',new AbortController().signal),/unsupported-discovery-address/);
-    assert.deepEqual(calls,['https://crichd.pk/']);
-  }finally{fetchMock.mock.restore();}
+  const collector=createFixtureCollector();
+  collector.enqueueFixture({url:'https://crichd.pk/',status:301,headers:{location:'https://streamed.st/api/matches/all'}});
+  await assert.rejects(collector.readHtml('https://crichd.pk/',new AbortController().signal),/unsupported-discovery-address/);
+  assert.deepEqual(collector.fixtureRequests().map(request=>request.url),['https://crichd.pk/']);
 });

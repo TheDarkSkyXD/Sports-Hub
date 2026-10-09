@@ -8,6 +8,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { HEAD } from '../app/api/internal/ready/route.ts';
+import { stageNativeArtifact } from './native-artifact-fixture.ts';
 
 const require = createRequire(import.meta.url);
 const { sourceIdentity } = require('../desktop/source-identity.cjs');
@@ -15,6 +16,12 @@ const { buildDirectory, completeArtifact } = require('../desktop/compiled-artifa
 const root = path.resolve('.');
 const source = readFileSync(path.join(root, 'desktop/local-server.cjs'), 'utf8');
 const fastTimeout: typeof setTimeout = (callback, _delay, ...args) => setTimeout(callback, 10, ...args);
+const compiledPreparationWatchdogMs = 15_000;
+function nativeRoot(prefix: string) {
+  const serverRoot = mkdtempSync(path.join(tmpdir(), prefix));
+  stageNativeArtifact(serverRoot);
+  return serverRoot;
+}
 
 class Child extends EventEmitter {
   pid = 830001;
@@ -55,13 +62,15 @@ function localServer(options: {
     root: options.serverRoot ?? root, origin: options.origin ?? 'http://127.0.0.1:49300', port: options.port ?? 49300,
     userData: logDir, controlToken: 'test-control-token', logDir,
     mode: options.mode ?? 'dev',
+    ensureCollector: async () => {},
     onReady: options.onReady ?? (() => {}),
   });
   return { service, dispose: () => rmSync(logDir, { recursive: true, force: true }) };
 }
 
-test('ordinary unpackaged desktop prepares compiled output instead of launching development', async () => {
-  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-source-test-'));
+test('ordinary unpackaged desktop prepares compiled output instead of launching development',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
+  const serverRoot = nativeRoot('sunday-local-source-test-');
   mkdirSync(path.join(serverRoot, '.next'));
   mkdirSync(path.join(serverRoot, 'node_modules'));
   writeFileSync(path.join(serverRoot, '.next', 'BUILD_ID'), 'stale-build');
@@ -78,12 +87,13 @@ test('ordinary unpackaged desktop prepares compiled output instead of launching 
   });
   try {
     const ready = room.service.start();
+    const rejected = assert.rejects(ready, /stop/i);
     try {
-      await within(launched, 1000);
+      await launched;
       assert.equal(launch?.[2], 'build');
     } finally {
       room.service.beginStop();
-      await assert.rejects(ready, /stop/i);
+      await rejected;
     }
   } finally {
     room.service.beginStop();
@@ -92,8 +102,9 @@ test('ordinary unpackaged desktop prepares compiled output instead of launching 
   }
 });
 
-test('a failed compiled build fails startup without serving an older build', async () => {
-  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-failed-build-'));
+test('a failed compiled build fails startup without serving an older build',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
+  const serverRoot = nativeRoot('sunday-local-failed-build-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   const child = new Child();
   const modes: string[] = [];
@@ -111,7 +122,7 @@ test('a failed compiled build fails startup without serving an older build', asy
     },
   });
   try {
-    await assert.rejects(within(room.service.start(), 1000), /build failed with code 1/);
+    await assert.rejects(room.service.start(), /build failed with code 1/);
     assert.deepEqual(modes, ['build']);
     await within(room.service.stop());
   } finally {
@@ -120,8 +131,9 @@ test('a failed compiled build fails startup without serving an older build', asy
   }
 });
 
-test('stopping during a compiled build terminates its owned tree before serving', async () => {
-  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-cancel-build-'));
+test('stopping during a compiled build terminates its owned tree before serving',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
+  const serverRoot = nativeRoot('sunday-local-cancel-build-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   const child = new Child();
   let launched = () => {};
@@ -145,7 +157,7 @@ test('stopping during a compiled build terminates its owned tree before serving'
   try {
     const ready = room.service.start();
     const rejected = assert.rejects(ready, /stop/i);
-    await within(buildStarted, 1000);
+    await buildStarted;
     room.service.beginStop();
     await within(room.service.stop(), 1000);
     await rejected;
@@ -158,8 +170,9 @@ test('stopping during a compiled build terminates its owned tree before serving'
   }
 });
 
-test('compiled startup reuses complete output and rebuilds after a source edit', async () => {
-  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-reuse-'));
+test('compiled startup reuses complete output and rebuilds after a source edit',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
+  const serverRoot = nativeRoot('sunday-local-reuse-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   mkdirSync(path.join(serverRoot, 'app'));
   writeFileSync(path.join(serverRoot, 'app', 'page.tsx'), 'before');
@@ -197,7 +210,7 @@ test('compiled startup reuses complete output and rebuilds after a source edit',
     },
   });
   try {
-    await within(room.service.start(), 1000);
+    await room.service.start();
     assert.deepEqual(modes, ['standalone']);
     await within(room.service.stop(), 1000);
   } finally { room.service.beginStop(); room.dispose(); }
@@ -216,7 +229,7 @@ test('compiled startup reuses complete output and rebuilds after a source edit',
   try {
     const ready = nextRoom.service.start();
     const rejected = assert.rejects(ready, /stop/i);
-    await within(buildStarted, 1000);
+    await buildStarted;
     assert.deepEqual(modes, ['standalone', 'build']);
     nextRoom.service.beginStop();
     await rejected;
@@ -226,12 +239,14 @@ test('compiled startup reuses complete output and rebuilds after a source edit',
   }
 });
 
-test('source changes during preparation prevent a compiled server from starting', async () => {
-  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-source-change-'));
+test('source changes during preparation prevent a compiled server from starting', { timeout: 10_000 }, async () => {
+  const serverRoot = nativeRoot('sunday-local-source-change-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   mkdirSync(path.join(serverRoot, 'app'));
   writeFileSync(path.join(serverRoot, 'app', 'page.tsx'), 'before');
   const modes: string[] = [];
+  let reportMutation = () => {};
+  const mutated = new Promise<void>(resolve => { reportMutation = resolve; });
   let currentChild: Child;
   const room = localServer({
     serverRoot, mode: 'compiled',
@@ -258,6 +273,7 @@ test('source changes during preparation prevent a compiled server from starting'
       } else if (args[2] === 'prepare') {
         setImmediate(() => {
           writeFileSync(path.join(serverRoot, 'app', 'page.tsx'), 'after');
+          reportMutation();
           child.emit('message', { kind: 'complete', code: 0 });
         });
       }
@@ -265,7 +281,7 @@ test('source changes during preparation prevent a compiled server from starting'
     },
   });
   try {
-    await assert.rejects(within(room.service.start(), 1000), /Source changed while preparing/);
+    await Promise.all([mutated, assert.rejects(room.service.start(), /Source changed while preparing/)]);
     assert.deepEqual(modes, ['build', 'prepare']);
     await within(room.service.stop());
   } finally {

@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseScoreboard, parsePlayers, scoreboardFeedData, scoreboardWeek, validFeedUrl, priority } from '../lib/sunday.ts';
+import { parseScoreboard, scoreboardFeedData, scoreboardWeek, validFeedUrl, priority } from '../lib/sunday.ts';
+import { compatiblePlayers } from '../lib/football/adapters/sources.ts';
+import type { Observation } from '../lib/football/shared.ts';
 import type { Game } from '../lib/sunday.ts';
 
 const team = (name:string) => ({name,short:name,abbreviation:name.slice(0,3),color:'112233',score:'0'});
@@ -58,9 +60,12 @@ test('scheduled detail leaves kickoff time to the local timing display',() => {
 });
 
 test('player extraction accepts only the known embed host and deduplicates backup IDs',() => {
+  const observation: Observation = {id:'gooz-test',sourceId:'sportsurge',url:'https://isportsurge.ws/watch/nfl/away-home/100',
+    title:'Away vs Home',league:'nfl',teams:['Away','Home'],kickoff:null,rawTime:'',observedAt:0,parserVersion:1};
   const html = '<iframe src="https://gooz.aapmains.net/new-stream-embed/123"></iframe><button onclick="changeStream(456)"></button><button onclick="changeStream(123)"></button>';
-  assert.deepEqual(parsePlayers(html).map(player => player.id),['123','456']);
-  assert.deepEqual(parsePlayers(html.replace('gooz.aapmains.net','attacker.test')),[]);
+  assert.deepEqual(compatiblePlayers('100',observation,html).map(player => [player.id,player.label]),
+    [['gooz-123','Primary'],['gooz-456','Backup 1']]);
+  assert.deepEqual(compatiblePlayers('100',observation,html.replace('gooz.aapmains.net','attacker.test')),[]);
 });
 
 test('manual feed accepts HTTPS and loopback video addresses only',() => {

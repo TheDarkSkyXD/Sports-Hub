@@ -8,7 +8,12 @@ const { buildDirectory, reusableArtifact, completeArtifact } = require('./compil
 const retryDelays = [1000, 2000, 5000, 10000, 30000];
 const healthIntervalMs = 5000;
 
-function createLocalServer({ root, origin, port, userData, controlToken, observerOrigin, mode = 'compiled', logDir = path.join(root, '.desktop-runtime'), onReady, onHealthy }) {
+async function prepareCollector(root) {
+  const { ensureCollectorAddon } = await import('../scripts/build-rust-collector.mjs');
+  await ensureCollectorAddon(root);
+}
+
+function createLocalServer({ root, origin, port, userData, controlToken, observerOrigin, mode = 'compiled', logDir = path.join(root, '.desktop-runtime'), onReady, onHealthy, ensureCollector = prepareCollector }) {
   fs.mkdirSync(logDir, { recursive: true });
   const logPath = path.join(logDir, 'server.log');
   let owned;
@@ -268,6 +273,7 @@ function createLocalServer({ root, origin, port, userData, controlToken, observe
   }
 
   async function resolveServerTarget() {
+    await ensureCollector(root);
     const inheritedPublicEnvironment = publicEnvironment();
     const sourceId = await sourceIdentity(root, inheritedPublicEnvironment);
     if (stopping) throw new Error('Local server preparation was cancelled');

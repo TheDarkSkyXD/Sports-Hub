@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { Worker } from 'node:worker_threads';
 
+const standalone=resolve(process.env.SUNDAY_ROOM_STANDALONE_ROOT ?? '.next/standalone');
+for(const name of ['target','src','Cargo.toml','Cargo.lock'])
+  assert.equal(existsSync(join(standalone,'native/collector',name)),false,`Rust build input leaked into standalone output: ${name}`);
 const directory=mkdtempSync(join(tmpdir(),'sunday-standalone-feed-'));
-const worker=new Worker(resolve(process.env.SUNDAY_ROOM_STANDALONE_ROOT ?? '.next/standalone','lib/football/runtime/worker.ts'),{
+const worker=new Worker(join(standalone,'lib/football/runtime/worker.ts'),{
   workerData:{dataDir:directory,browserCollectorsAvailable:false},execArgv:['--experimental-strip-types'],
 });
 let timer;
