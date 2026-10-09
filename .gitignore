@@ -54,3 +54,6 @@ next-env.d.ts
 /event-inspection.html
 *.tsbuildinfo
 /.desktop-runtime/
+
+/native/collector/target/
+/native/collector/artifacts/

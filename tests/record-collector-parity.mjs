@@ -183,22 +183,35 @@ async function capture(data) {
   },send:async value=>{eastPartialCheckpoints.push(checkpoint(value));},signal:new AbortController().signal,now:()=>at,runId});
   results.sweeps['streameast-partial'] = stable({final:eastPartial,checkpoints:eastPartialCheckpoints});
   const originalFetch = globalThis.fetch;
+  const collector = recording ? null : sources.createFixtureCollector();
+  const readHtml = collector ? collector.readHtml.bind(collector) : sources.readHtml;
+  const responses = (fetch, fixtures) => {
+    if (recording) globalThis.fetch = fetch;
+    else for (const fixture of fixtures) collector.enqueueFixture(fixture);
+  };
   try {
-    globalThis.fetch = async () => new Response('parity-body',{status:200});
-    results.http.body = await sources.readHtml(byId('nflstreams').url,new AbortController().signal);
-    globalThis.fetch = async () => new Response(null,{status:429,headers:{'Retry-After':'5'}});
-    try {await sources.readHtml(byId('nflstreams').url,new AbortController().signal);}
+    responses(async () => new Response('parity-body',{status:200}),
+      [{url:byId('nflstreams').url,body:'parity-body'}]);
+    results.http.body = await readHtml(byId('nflstreams').url,new AbortController().signal);
+    responses(async () => new Response(null,{status:429,headers:{'Retry-After':'5'}}),
+      [{url:byId('nflstreams').url,status:429,headers:{'retry-after':'5'}}]);
+    try {await readHtml(byId('nflstreams').url,new AbortController().signal);}
     catch (error) {results.http.backoff = {name:error.constructor.name,message:error.message,retryAfterMs:error.retryAfterMs};}
-    globalThis.fetch = async () => new Response(null,{status:301,headers:{location:'https://streamed.st/api/matches/all'}});
-    try {await sources.readHtml('https://crichd.pk/',new AbortController().signal);}
+    responses(async () => new Response(null,{status:301,headers:{location:'https://streamed.st/api/matches/all'}}),
+      [{url:'https://crichd.pk/',status:301,headers:{location:'https://streamed.st/api/matches/all'}}]);
+    try {await readHtml('https://crichd.pk/',new AbortController().signal);}
     catch (error) {results.http.crossHostRedirect = error.message;}
     const today = JSON.parse(data.cases.find(item=>item.id==='sportsfeed24').body)[0];
-    globalThis.fetch = async (_url,init) => {
+    const categories = ['', 'NFL', 'NBA', 'NHL', 'MLB', 'F1', 'motogp'];
+    responses(async (_url,init) => {
       const category = JSON.parse(init.body).categoryName;
       if (category === 'F1') return new Response('Unavailable',{status:503});
       return new Response(JSON.stringify(category ? {categoryName:category,subCategories:[]} : today),{headers:{'content-type':'application/json'}});
-    };
-    try {await sources.readHtml(byId('sportsfeed24').url,new AbortController().signal);}
+    }, categories.map(category => ({url:byId('sportsfeed24').url,method:'POST',
+      requestBody:JSON.stringify(category ? {categoryName:category} : {}),
+      status:category === 'F1' ? 503 : 200,
+      body:category === 'F1' ? 'Unavailable' : JSON.stringify(category ? {categoryName:category,subCategories:[]} : today)})));
+    try {await readHtml(byId('sportsfeed24').url,new AbortController().signal);}
     catch (error) {results.http.partial = {name:error.constructor.name,message:error.message,retryAfterMs:error.retryAfterMs || null,
       listing:sources.parseListings(byId('sportsfeed24'),error.html,at)};}
   } finally {globalThis.fetch = originalFetch;}
