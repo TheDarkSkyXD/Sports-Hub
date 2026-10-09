@@ -35,6 +35,7 @@ const directListingReads=new WeakMap<AbortSignal,{at:number;promise:Promise<Obse
 
 export type SchedulePriority='current'|'history'|'retry'|'future';
 export type SchedulePermit=<T>(url:string,priority:SchedulePriority,signal:AbortSignal,task:()=>Promise<T>)=>Promise<T>;
+export type ScheduleListingReader=(url:string,signal:AbortSignal)=>Promise<string>;
 const directPermit:SchedulePermit=(_url,_priority,_signal,task)=>task();
 
 function validKickoff(date: string | undefined): boolean {
@@ -82,8 +83,9 @@ export async function readSeasonMembership(season: number, signal: AbortSignal):
 }
 
 export async function readSchedule(partition: ScheduleSource, now: number, signal: AbortSignal, onCurrent?: (result: ScheduleResult) => void,
-  permit:SchedulePermit=directPermit,sharedCache?:ScheduleDayCache,listingCache?:ScheduleListingCache): Promise<ScheduleResult> {
-  if(partition.league==='motogp'||partition.league==='motorsport')return readListingSchedule(partition,now,signal,onCurrent,permit,listingCache);
+  permit:SchedulePermit=directPermit,sharedCache?:ScheduleDayCache,listingCache?:ScheduleListingCache,
+  listingReader:ScheduleListingReader=readHtml): Promise<ScheduleResult> {
+  if(partition.league==='motogp'||partition.league==='motorsport')return readListingSchedule(partition,now,signal,onCurrent,permit,listingCache,listingReader);
   const date = (time: number) => new Date(time).toISOString().slice(0,10).replaceAll('-','');
   const today = date(now);
   const lastFutureDate = date(now + 7*24*3600000);
@@ -222,11 +224,12 @@ function numericIdentity(value:string):string {
   return String(parseInt(digest(value).slice(0,12),16));
 }
 async function readListingSchedule(partition:ScheduleSource,now:number,signal:AbortSignal,
-  onCurrent?: (result:ScheduleResult)=>void,permit:SchedulePermit=directPermit,cache?:ScheduleListingCache):Promise<ScheduleResult> {
+  onCurrent?: (result:ScheduleResult)=>void,permit:SchedulePermit=directPermit,cache?:ScheduleListingCache,
+  listingReader:ScheduleListingReader=readHtml):Promise<ScheduleResult> {
   if(signal.aborted)throw signal.reason;
   if(!cache) {
     let direct=directListingReads.get(signal);
-    if(!direct||direct.at!==now){direct={at:now,promise:readMotorsportsListings(now,signal,permit)};directListingReads.set(signal,direct);}
+    if(!direct||direct.at!==now){direct={at:now,promise:readMotorsportsListings(now,signal,permit,listingReader)};directListingReads.set(signal,direct);}
     return listingScheduleFromObservations(partition,now,await direct.promise,onCurrent);
   }
   let observations=cache.snapshot&&now-cache.snapshot.at<LISTING_TTL_MS?cache.snapshot.observations:undefined;
@@ -234,7 +237,7 @@ async function readListingSchedule(partition:ScheduleSource,now:number,signal:Ab
     if(!cache.read||cache.read.at!==now) {
       const controller=new AbortController();
       const consumers=new Set<AbortSignal>();
-      const promise=readMotorsportsListings(now,controller.signal,permit).then(value=>{
+      const promise=readMotorsportsListings(now,controller.signal,permit,listingReader).then(value=>{
         cache.snapshot={at:Date.now(),observations:value};
         return value;
       }).finally(()=>{if(cache.read?.promise===promise)cache.read=undefined;});
@@ -278,14 +281,15 @@ function listingScheduleFromObservations(partition:ScheduleSource,now:number,obs
   onCurrent?.(result);
   return result;
 }
-async function readMotorsportsListings(now:number,signal:AbortSignal,permit:SchedulePermit):Promise<Observation[]> {
+async function readMotorsportsListings(now:number,signal:AbortSignal,permit:SchedulePermit,
+  listingReader:ScheduleListingReader):Promise<Observation[]> {
   const sources=SOURCES.filter(source=>source.family==='motorsports');
   const results=await Promise.allSettled(sources.map(async source=>{
     let html:string;
-    try{html=await permit(source.url,'current',signal,()=>readHtml(source.url,signal));}
+    try{html=await permit(source.url,'current',signal,()=>listingReader(source.url,signal));}
     catch(error){
       if(signal.aborted||!(error instanceof DOMException&&error.name==='TimeoutError'))throw error;
-      html=await permit(source.url,'retry',signal,()=>readHtml(source.url,signal));
+      html=await permit(source.url,'retry',signal,()=>listingReader(source.url,signal));
     }
     return parseListings(source,html,now);
   }));

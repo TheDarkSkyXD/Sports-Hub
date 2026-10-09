@@ -49,7 +49,7 @@ test('native fixture reader preserves a timed-out read without poisoning later r
   const collector=createFixtureCollector();
   collector.enqueueFixture({url:sourceUrl,failure:{message:'timed out'}});
   await assert.rejects(collector.readHtml(sourceUrl,new AbortController().signal),error=>
-    error instanceof SourceFetchError&&error.message==='timed out');
+    error instanceof DOMException&&error.name==='TimeoutError');
   collector.enqueueFixture({url:sourceUrl,body:'recovered'});
   assert.equal(await collector.readHtml(sourceUrl,new AbortController().signal),'recovered');
 });

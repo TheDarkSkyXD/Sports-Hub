@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ScheduleQueue } from '../lib/football/runtime/schedule-queue.ts';
 import { readSchedule, SCHEDULES, type SchedulePermit } from '../lib/football/adapters/schedule.ts';
+import { createFixtureCollector } from '../lib/football/adapters/sources.ts';
 
 function deferred() {
   let resolve!:()=>void;
@@ -98,23 +99,22 @@ test('aborting queued schedule work rejects it without consuming a permit',async
 });
 
 test('motorsport HTML timeout begins after its schedule permit',async()=>{
-  const original=globalThis.fetch;
+  const collector=createFixtureCollector();
   const at=Date.parse('2026-10-08T23:00:00Z');
   const gate=deferred();
-  let fetches=0;
   const permit:SchedulePermit=async(_url,_priority,_signal,task)=>{await gate.promise;return task();};
-  globalThis.fetch=async input=>{
-    fetches++;
-    const host=new URL(String(input)).hostname;
-    return new Response(`<section class="lg" id="g-cat-motogp-20261009"><a class="ev" data-start="2026-10-09T07:00:00Z" href="https://${host}/event/indonesian-grand-prix" title="Indonesian Grand Prix MotoGP - Practice"></a></section>`);
-  };
-  const pending=readSchedule(SCHEDULES.find(source=>source.id==='motogp')!,at,new AbortController().signal,undefined,permit);
+  for(const url of ['https://crackstreams.st/F1','https://methstreams.st/F1']){
+    const host=new URL(url).hostname;
+    collector.enqueueFixture({url,body:`<section class="lg" id="g-cat-motogp-20261009"><a class="ev" data-start="2026-10-09T07:00:00Z" href="https://${host}/event/indonesian-grand-prix" title="Indonesian Grand Prix MotoGP - Practice"></a></section>`});
+  }
+  const pending=readSchedule(SCHEDULES.find(source=>source.id==='motogp')!,at,new AbortController().signal,
+    undefined,permit,undefined,undefined,collector.readHtml);
   try {
     await new Promise<void>(resolve=>setTimeout(resolve,10_100));
-    assert.equal(fetches,0);
+    assert.deepEqual(collector.fixtureRequests(),[]);
     gate.resolve();
     const result=await pending;
-    assert.equal(fetches,2);
+    assert.equal(collector.fixtureRequests().length,2);
     assert.equal(result.games.length,1);
-  } finally {gate.resolve();globalThis.fetch=original;}
+  } finally {gate.resolve();}
 });

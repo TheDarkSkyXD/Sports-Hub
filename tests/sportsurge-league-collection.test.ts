@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { SOURCES } from '../lib/football/adapters/sources.ts';
+import { createFixtureCollector, SOURCES } from '../lib/football/adapters/sources.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 import type { Game, SourcesSnapshot } from '../lib/football/shared.ts';
 
@@ -40,9 +40,25 @@ const feeds = (snapshot: SourcesSnapshot) => snapshot.games.flatMap(row => row.c
 
 async function runCollection(failed: 'nfl' | 'ncaaf' | 'index' | null) {
   const directory = mkdtempSync(join(tmpdir(),'sportsurge-leagues-'));
-  const originalFetch = globalThis.fetch;
+  const collector=createFixtureCollector();
   let failedCategory=failed;
   let clock=at;
+  const queueCollection=()=>{
+    for(const [url,league] of [
+      ['https://isportsurge.ws/nfl/livestreams3','nfl'],
+      ['https://isportsurge.ws/cfb/livestreams2','ncaaf'],
+      ['https://isportsurge.ws/nba/livestreams3',null],
+      ['https://isportsurge.ws/nhl/livestreams3',null],
+      ['https://isportsurge.ws/mlb/livestreams2',null],
+    ] as const)collector.enqueueFixture({url,...(league===failedCategory?{failure:{message:`${league} timeout`}}:
+      {body:league?category(league):'<html><body>No games</body></html>'})});
+    for(const [index,url] of urls.entries()){
+      if(games[index].league===failedCategory)continue;
+      collector.enqueueFixture({url,body:`<html><body><h1>${games[index].name}</h1><time>2026-10-0${index===3?'8':'7'} 19:30ET</time>`+
+        `<iframe src="https://gooz.aapmains.net/new-stream-embed/${57001+index}"></iframe></body></html>`});
+    }
+  };
+  queueCollection();
   const coordinator = createFootballCoordinator(join(directory,'state.sqlite'),{
     sources:[source],schedules:[
       {id:'nfl',league:'nfl',path:'nfl',group:null},
@@ -52,26 +68,10 @@ async function runCollection(failed: 'nfl' | 'ncaaf' | 'index' | null) {
     readSchedule:async partition => ({games:games.filter(row=>row.partitions?.includes(partition.id)),at,league:partition.league}),
     readSeasonMembership:async()=>{throw new Error('unexpected membership fetch');},
     probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),now:()=>clock,
+    readHtml:collector.readHtml,parseListings:collector.parseListings,enrichObservation:collector.enrichObservation,
+    compatiblePlayers:collector.compatiblePlayers,resolvePlayers:collector.resolvePlayers,
+    missingPlayerReason:collector.missingPlayerReason,tvappPlayers:collector.tvappPlayers,
   });
-  globalThis.fetch = async input => {
-    const url = String(input);
-    if (url===source.url) {
-      if(failedCategory==='index')throw new DOMException('index timeout','TimeoutError');
-      return new Response('<html><body>Sportsurge</body></html>');
-    }
-    if(url==='https://isportsurge.ws/nfl/livestreams3') {
-      if(failedCategory==='nfl')throw new DOMException('NFL timeout','TimeoutError');
-      return new Response(category('nfl'));
-    }
-    if(url==='https://isportsurge.ws/cfb/livestreams2') {
-      if(failedCategory==='ncaaf')throw new DOMException('CFB timeout','TimeoutError');
-      return new Response(category('ncaaf'));
-    }
-    const index=urls.indexOf(url);
-    if(index<0)throw new Error(`Unexpected HTTP request ${url}`);
-    return new Response(`<html><body><h1>${games[index].name}</h1><time>2026-10-0${index===3?'8':'7'} 19:30ET</time>`+
-      `<iframe src="https://gooz.aapmains.net/new-stream-embed/${57001+index}"></iframe></body></html>`);
-  };
   const snapshot = async (): Promise<SourcesSnapshot> => {
     const reply=await coordinator.command({kind:'sources'});
     assert.equal(reply.kind,'sources');
@@ -88,12 +88,11 @@ async function runCollection(failed: 'nfl' | 'ncaaf' | 'index' | null) {
     return current;
   };
   const close = async () => {
-    globalThis.fetch=originalFetch;
     await coordinator.stop();
     rmSync(directory,{recursive:true,force:true});
   };
-  return {coordinator,snapshot,settled,close,
-    failNext:(category:'nfl'|'ncaaf')=>{failedCategory=category;clock+=5*60_000;},get clock(){return clock;}};
+  return {coordinator,snapshot,settled,close,collector,
+    failNext:(category:'nfl'|'ncaaf')=>{failedCategory=category;clock+=5*60_000;queueCollection();},get clock(){return clock;}};
 }
 
 test('an NFL category timeout still publishes two NCAA game feeds and reports a partial attempt',async()=>{
@@ -119,13 +118,14 @@ test('a CFB category timeout still publishes both NFL game feeds',async()=>{
   } finally {await run.close();}
 });
 
-test('an unavailable index page does not prevent four healthy category game feeds',async()=>{
+test('category collection does not depend on a legacy index fetch',async()=>{
   const run=await runCollection('index');
   try {
     await run.coordinator.refresh(true);
     const snapshot=await run.settled(4);
     assert.deepEqual(feeds(snapshot),[['1001','gooz-57001'],['1002','gooz-57002'],
       ['ncaaf-2001','gooz-57003'],['ncaaf-2002','gooz-57004']]);
+    assert.equal(run.collector.fixtureRequests().some(request=>request.url===source.url),false);
   } finally {await run.close();}
 });
 
