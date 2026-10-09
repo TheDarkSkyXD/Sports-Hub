@@ -18,7 +18,7 @@ napi = { version = "=3.14.2", features = ["napi9", "serde-json"] }
 napi-derive = "3"
 parking_lot = "0.12"
 regex = "1"
-reqwest = { version = "0.12", default-features = false, features = ["native-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "stream", "gzip", "brotli", "deflate"] }
 scraper = "0.24"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -29,3 +29,7 @@ url = "2"
 
 [build-dependencies]
 napi-build = "2.6"
+
+[dev-dependencies]
+brotli = "9"
+flate2 = "1"

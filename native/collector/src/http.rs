@@ -968,6 +968,99 @@ impl PageReader for HttpBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    fn gzip(body: &[u8]) -> Vec<u8> {
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(body).unwrap();
+        encoder.finish().unwrap()
+    }
+
+    fn deflate(body: &[u8]) -> Vec<u8> {
+        let mut encoder =
+            flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(body).unwrap();
+        encoder.finish().unwrap()
+    }
+
+    fn brotli(body: &[u8]) -> Vec<u8> {
+        let mut compressed = Vec::new();
+        {
+            let mut encoder = brotli::CompressorWriter::new(&mut compressed, 4096, 4, 22);
+            encoder.write_all(body).unwrap();
+        }
+        compressed
+    }
+
+    fn encoded_page(
+        coding: &'static str,
+        payload: Vec<u8>,
+    ) -> (String, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            let mut block = [0_u8; 1024];
+            while !request.ends_with(b"\r\n\r\n") {
+                let length = socket.read(&mut block).unwrap();
+                if length == 0 {
+                    break;
+                }
+                request.extend_from_slice(&block[..length]);
+            }
+            let header = format!(
+                "HTTP/1.1 200 OK\r\nContent-Encoding: {coding}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                payload.len()
+            );
+            socket.write_all(header.as_bytes()).unwrap();
+            let _ = socket.write_all(&payload);
+            String::from_utf8(request).unwrap()
+        });
+        (format!("http://{address}/fixture"), server)
+    }
+
+    #[tokio::test]
+    async fn native_transport_decodes_compressed_body_before_enforcing_page_cap() {
+        let reader = ReqwestTransport::new().unwrap();
+        let small = b"collector decoded page";
+        for (coding, compressed) in [
+            ("gzip", gzip(small)),
+            ("br", brotli(small)),
+            ("deflate", deflate(small)),
+        ] {
+            let (url, server) = encoded_page(coding, compressed);
+            let page = reader
+                .request(&url, None, "text/html", &CancellationToken::new())
+                .await
+                .unwrap();
+            assert_eq!(page.body.as_deref(), Some(&small[..]), "{coding}");
+            let request = server.join().unwrap().to_ascii_lowercase();
+            assert!(request.contains("accept-encoding:"));
+            for supported in ["gzip", "br", "deflate"] {
+                assert!(
+                    request.contains(supported),
+                    "missing {supported} in {request}"
+                );
+            }
+        }
+
+        let expanded = vec![b'x'; 2 * 1024 * 1024 + 1];
+        let (url, server) = encoded_page("gzip", gzip(&expanded));
+        let failure = match reader
+            .request(&url, None, "text/html", &CancellationToken::new())
+            .await
+        {
+            Err(failure) => failure,
+            Ok(_) => panic!("decoded oversized response was accepted"),
+        };
+        server.join().unwrap();
+        assert_eq!(failure.message, "response-too-large");
+    }
 
     #[test]
     fn discovery_policy_keeps_source_specific_paths() {
