@@ -23,6 +23,8 @@ pub struct ReadRequest {
 pub struct ResolveFailure {
     pub name: String,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_error_id: Option<u32>,
 }
 
 impl ResolveFailure {
@@ -30,6 +32,7 @@ impl ResolveFailure {
         Self {
             name: "Error".into(),
             message: "parser-changed".into(),
+            read_error_id: None,
         }
     }
 }
@@ -215,6 +218,21 @@ impl Resolver {
                 }
             }
         }
+    }
+
+    pub fn requires_streamed_validation(&self, request_index: usize) -> Result<bool, String> {
+        let (count, streamed) = match &self.stage {
+            Stage::TvappCatalog => (1, false),
+            Stage::TvappStreams { refs } => (refs.len(), false),
+            Stage::Streamed { refs, offset, .. } => {
+                (refs.len().saturating_sub(*offset).min(4), true)
+            }
+            Stage::Done => return Err("collector resolver has no pending reads".into()),
+        };
+        if request_index >= count {
+            return Err("collector resolver request index is out of range".into());
+        }
+        Ok(streamed)
     }
 
     pub fn advance(&mut self, responses: Vec<Result<String, ResolveFailure>>) -> ResolveAction {
@@ -447,6 +465,15 @@ impl Resolver {
             }))
         }
     }
+}
+
+pub fn valid_streamed_response(body: &str) -> bool {
+    serde_json::from_str::<Vec<CatalogStream>>(body)
+        .ok()
+        .is_some_and(|rows| {
+            rows.iter()
+                .all(|row| row.stream_no > 0 && url::Url::parse(&row.embed_url).is_ok())
+        })
 }
 
 #[derive(Deserialize)]
@@ -753,18 +780,40 @@ mod tests {
         };
         assert_eq!(requests.len(), 4);
         assert!(abort_siblings_on_failure);
+        assert_eq!(resolver.requires_streamed_validation(0), Ok(true));
+        assert_eq!(resolver.requires_streamed_validation(3), Ok(true));
+        assert!(resolver.requires_streamed_validation(4).is_err());
+        assert!(valid_streamed_response("[]"));
+        assert!(valid_streamed_response(
+            r#"[{"id":"different","source":"other","streamNo":1,"embedUrl":"https://embed.st/embed/other/different/1"}]"#
+        ));
+        for malformed in [
+            "not json",
+            r#"{"id":"one"}"#,
+            r#"[{"id":"one","streamNo":0,"embedUrl":"https://embed.st/embed/admin/one/1"}]"#,
+            r#"[{"id":"one","streamNo":1,"embedUrl":"not-a-url"}]"#,
+        ] {
+            assert!(!valid_streamed_response(malformed), "{malformed}");
+        }
         let error = ResolveFailure {
             name: "AbortError".into(),
             message: "cancelled".into(),
+            read_error_id: Some(37),
         };
+        let action = resolver.advance(vec![
+            Ok("[]".into()),
+            Err(error.clone()),
+            Err(ResolveFailure {
+                name: "TimeoutError".into(),
+                message: "timed out".into(),
+                read_error_id: Some(38),
+            }),
+            Err(error.clone()),
+        ]);
+        assert_eq!(action, ResolveAction::Failed { error });
         assert_eq!(
-            resolver.advance(vec![
-                Ok("[]".into()),
-                Err(error.clone()),
-                Err(error.clone()),
-                Err(error.clone())
-            ]),
-            ResolveAction::Failed { error }
+            serde_json::to_value(action).unwrap()["error"]["readErrorId"],
+            37
         );
     }
 
@@ -789,6 +838,7 @@ mod tests {
             input["detail"].as_str().unwrap(),
         );
         assert!(matches!(first, ResolveAction::ReadBatch { .. }));
+        assert_eq!(resolver.requires_streamed_validation(0), Ok(false));
         let mut event: serde_json::Value = serde_json::from_str(
             input["reads"]["https://api-backups.handleapi.win/matches/sport/american-football"]
                 .as_str()

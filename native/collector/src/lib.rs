@@ -465,6 +465,26 @@ impl Collector {
     }
 
     #[napi]
+    pub fn validate_resolve_response(
+        &self,
+        id: u32,
+        request_index: u32,
+        body: String,
+    ) -> napi::Result<bool> {
+        let streamed = {
+            let state = self.state.lock();
+            let resolver = state
+                .resolvers
+                .get(&id)
+                .ok_or_else(|| napi::Error::from_reason("unknown collector resolver"))?;
+            resolver
+                .requires_streamed_validation(request_index as usize)
+                .map_err(napi::Error::from_reason)?
+        };
+        Ok(!streamed || resolver::valid_streamed_response(&body))
+    }
+
+    #[napi]
     pub fn advance_resolve(&self, id: u32, responses_json: String) -> napi::Result<String> {
         let replies: Vec<ResolverReadResult> = parse_json(&responses_json)?;
         let replies = replies
