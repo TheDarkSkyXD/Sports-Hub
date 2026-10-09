@@ -1,4 +1,5 @@
 pub mod error;
+pub mod event_policy;
 pub mod html;
 pub mod registry;
 pub mod time;
