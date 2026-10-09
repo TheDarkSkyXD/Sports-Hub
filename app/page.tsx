@@ -100,6 +100,7 @@ export default function Home() {
     if(!controller.signal.aborted)setSources(snapshot);
     if(Date.now()-startupAt<90_000||snapshot.games.some(row=>
       selectedRef.current.includes(row.gameId)&&
+      !(row.feeds.kind==='incomplete'&&row.feeds.reason==='schedule')&&
       !row.candidates.some(candidate=>candidate.availability.kind==='playable')&&
       (row.candidates.some(candidate=>candidate.availability.kind==='unknown'||
         candidate.availability.kind==='checking'&&candidate.availability.progress.kind!=='deferred')||
