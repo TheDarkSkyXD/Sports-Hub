@@ -79,7 +79,7 @@ test('a due playable recheck gets the next game slot ahead of unknown siblings',
       if(locator.provider!=='gooz')throw new Error('Unexpected provider');
       calls.push(locator.playerId);
       if(locator.playerId==='2')await sibling;
-      return locator.playerId==='2'?{kind:'unavailable',reason:'invalid-media'}:{kind:'playable',proof:'media'};
+      return locator.playerId==='2'?{kind:'unavailable',reason:'invalid-media'}:{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try{
@@ -128,7 +128,7 @@ for(const demanded of [false,true])test(`a due recheck passes ${demanded?'live f
         if(locator.provider!=='gooz')throw new Error('Unexpected provider');
         calls.push(locator.playerId);
         if(locator.playerId!=='1000')await new Promise<void>(resolve=>pending.push({id:locator.playerId,signal:active,release:resolve}));
-        return {kind:'playable',proof:'media'};
+        return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
       }finally{release();}
     }),
   });
@@ -181,7 +181,7 @@ test('a background waiter advances through sustained newly due rechecks',async()
     probeCandidate:(locator,signal,onProgress)=>{
       assert.equal(locator.provider,'gooz');
       if(locator.provider!=='gooz')throw new Error('Unexpected provider');
-      if(now===at)return Promise.resolve({kind:'playable' as const,proof:'media' as const});
+      if(now===at)return Promise.resolve({kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const});
       if(locator.playerId===background){
         backgroundAttempts++;
         signal.addEventListener('abort',()=>backgroundAborts++,{once:true});
@@ -192,7 +192,7 @@ test('a background waiter advances through sustained newly due rechecks',async()
           calls.push(locator.playerId);
           if(locator.playerId!==background)
             await new Promise<void>(resolve=>held.push({id:locator.playerId,release:resolve,signal:active}));
-          return {kind:'playable' as const,proof:'media' as const};
+          return {kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const};
         }finally{release();}
       });
     },

@@ -29,7 +29,7 @@ test('a failed live listing is checked again after the selected minute without m
       title:game.name,league:'nfl',teams:[game.away.name,game.home.name],kickoff:at,rawTime:'',observedAt:clock,parserVersion:2} satisfies Observation]}),
     enrichObservation:observation=>observation,
     compatiblePlayers:()=>[{id:'server',label:'Server',locator:{provider:'gooz',playerId:'1'}}],
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   try {
     await coordinator.refresh();
@@ -67,7 +67,7 @@ for(const result of ['playable','unavailable'] as const)test(`${result} media re
       title:game.name,league:'nfl',teams:[game.away.name,game.home.name],kickoff:at,rawTime:'',observedAt:clock,parserVersion:2}]}),
     enrichObservation:observation=>observation,
     compatiblePlayers:()=>[{id:'server',label:'Server',locator:{provider:'gooz',playerId:'1'}}],
-    probeCandidate:async()=>{probes++;return result==='playable'?{kind:'playable',proof:'media'}:{kind:'unavailable',reason:'no-feed'};},
+    probeCandidate:async()=>{probes++;return result==='playable'?{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}:{kind:'unavailable',reason:'no-feed'};},
   });
   const settle=async()=>{for(let index=0;index<30;index++)await new Promise<void>(resolve=>setImmediate(resolve));};
   try{

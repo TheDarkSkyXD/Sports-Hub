@@ -48,7 +48,7 @@ for(const allPlayable of [false,true])test(`LiveTV restores two published feeds 
       const channel=new URL(locator.serverUrl).searchParams.get('c');
       assert.ok(channel);
       probes.push(channel);
-      return allPlayable||channel==='3081333'?{kind:'playable',proof:'media'}:
+      return allPlayable||channel==='3081333'?{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}:
         {kind:'unavailable',reason:'invalid-media'};
     },
   });

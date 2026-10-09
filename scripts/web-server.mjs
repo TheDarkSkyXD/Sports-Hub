@@ -136,6 +136,7 @@ if (!stopping) {
   next = spawn(process.execPath, [join(root, 'node_modules', 'next', 'dist', 'bin', 'next'), mode,
     '--hostname', '127.0.0.1', '--port', port, ...nextArgs], {
     cwd: root, env: { ...env, ...(collector ? { SUNDAY_ROOM_BROWSER_COLLECTORS: '1' } : {}),
+      SUNDAY_ROOM_APP_ORIGIN: origin,
       ...(observerOrigin ? { SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN: observerOrigin } : {}) },
     stdio: 'inherit', windowsHide: true,
   });

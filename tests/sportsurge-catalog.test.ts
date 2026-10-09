@@ -183,7 +183,7 @@ test('every safe provider row becomes a stable custom-player candidate through p
   assert.deepEqual(sportsurgeCandidates({...input,current:{catalog:staleDetail,receivedAt:at+30_000},lastComplete:stored})
     .map(candidate=>candidate.id),candidates.map(candidate=>candidate.id));
   const inventoryInput={at:at+60_000,revision:1,lastDiscoveryAt:null,browserCollectorsAvailable:false,
-    availability:()=>({kind:'playable' as const,proof:'media' as const,checkedAt:at}),
+    availability:()=>({kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const,checkedAt:at}),
     sources:[{id:'sportsurge-v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'browser-catalog' as const}],
     observations:[],games:[live],candidates:new Map([[live.id,candidates]]),attempts:{},
     sportsurgeCatalog:{current:{catalog:partial,receivedAt:at+30_000},previous:null,lastComplete:stored},
@@ -213,7 +213,7 @@ test('an undated source event matches a unique scheduled game throughout the fee
   const candidates=sportsurgeCandidates({current:stored,previous:null,lastComplete:null,games:[game],now:at+6*60_000});
   assert.equal(candidates.length,17);
   const inventory=sourceInventory({at:at+6*60_000,revision:1,lastDiscoveryAt:null,browserCollectorsAvailable:true,
-    availability:()=>({kind:'playable',proof:'media',checkedAt:at}),
+    availability:()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at}),
     sources:[{id:'sportsurge-v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'browser-catalog'}],
     observations:[],games:[game],candidates:new Map([[game.id,candidates]]),attempts:{},
     sportsurgeCatalog:{current:stored,previous:null,lastComplete:null},
@@ -257,7 +257,7 @@ test('an accepted v2 checkpoint opens and authorizes a custom-player session',as
     readHtml:async()=>{throw new Error('unused');},
     parseListings:()=>({observations:[],outcome:'empty'}),
     enrichObservation:observation=>observation,compatiblePlayers:()=>[],retryAfterMs:()=>0,
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
     now:()=>clock,id:()=>runId});
   try {
     const catalog:SportsurgeCatalog={runId,sequence:0,startedAt:at,state:{kind:'complete',at},
@@ -358,7 +358,7 @@ function probeFixture(probeCandidate:FootballDependencies['probeCandidate']) {
 
 test('an obsolete saved game does not block checks for a listed game',async()=>{
   let probes=0;
-  const {dir,coordinator,game,catalog}=probeFixture(async()=>{probes++;return {kind:'playable',proof:'media'};});
+  const {dir,coordinator,game,catalog}=probeFixture(async()=>{probes++;return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};});
   try {
     assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:['obsolete-game',game.id],retry:false}),{kind:'ok'});
@@ -401,7 +401,7 @@ test('availability gates open and switch while unchanged proof survives its old 
     const rejected=rows.find(row=>row.availability.kind==='unavailable');
     assert.equal(rejected?.availability.kind,'unavailable');
     assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false})).kind,'error');
-    resolveFirst({kind:'playable',proof:'media'});
+    resolveFirst({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await new Promise<void>(resolve=>setImmediate(resolve));
     const verified=await coordinator.command({kind:'sources'});
     assert.equal(verified.kind,'sources');
@@ -450,7 +450,7 @@ test('a replaced catalog cancels its probe and ignores a late playable result',a
       sequence:0,state:{kind:'complete',at:at+60_000},
       categories:{ncaaf:{kind:'collected',at:at+60_000},nfl:{kind:'collected',at:at+60_000}},events:[]};
     assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:empty}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
-    resolveProbe({kind:'playable',proof:'media'});
+    resolveProbe({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await new Promise<void>(resolve=>setImmediate(resolve));
     const sources=await coordinator.command({kind:'sources'});
     assert.equal(sources.kind,'sources');
@@ -485,7 +485,7 @@ test('a duplicate Sportsurge ID skips only the out-of-window detail URL',async()
     readSchedule:async()=>({games,at:clock,league:'ncaaf'}),readSeasonMembership:async()=>{throw new Error('unused');},
     readHtml:async()=>{throw new Error('unused');},parseListings:()=>({observations:[],outcome:'empty'}),
     enrichObservation:observation=>observation,compatiblePlayers:()=>[],retryAfterMs:()=>0,
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),now:()=>clock,id:()=>runId});
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),now:()=>clock,id:()=>runId});
   const reads:string[]=[];
   const acknowledgedUrls:string[]=[];
   try {

@@ -13,17 +13,17 @@ import { catalogDecision, sameSportsurgeEvent, sanitizeSportsurgeCatalog, sports
 import { sameStreameastEvent, sanitizeStreameastCatalog, streameastDecision, streameastObservation, streameastCandidates, streameastCatalogView, streameastEvidence } from '../domain/streameast-catalog.ts';
 import type { Recovery } from '../domain/lifecycle.ts';
 import { PartialListingReadError, type CandidateProbeResult, type FootballDependencies, type FootballRepository } from '../domain/ports.ts';
-import { candidateSummary, isRaceGame, type Board, type Candidate, type CandidateAvailability, type Command, type DetailEvidence, type Game, type MatchupGame, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourceEventBinding, type SourcesSnapshot, type StreameastCatalog, type SportsurgeCatalog } from '../shared.ts';
+import { candidateSummary, isRaceGame, type Board, type Candidate, type CandidateAvailability, type Command, type DetailEvidence, type Game, type MatchupGame, type LeagueFeedStatus, type Observation, type Reply, type Session, type SourceEventBinding, type SourcesSnapshot, type StreameastCatalog, type SportsurgeCatalog, type VerificationTarget } from '../shared.ts';
 
 type RecoveryPhase = {kind:'cycling'} | {kind:'exhausted';until:number;knownIds:string[]};
 type FeedOwner = WorkingFeed['owner'];
 type SelectionOwner = {key:string;owner:FeedOwner};
-type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;phase:RecoveryPhase;requestId?:string;decodedGeneration?:number;selection?:SelectionOwner};
+type OwnedSession = {value:Session;lastSeen:number;recovery:Recovery;refreshes:number;drainRefreshes:number;phase:RecoveryPhase;requestId?:string;lastEvidence?:{generation:number;at:number};selection?:SelectionOwner};
 type ProbePhase = {kind:'queued';since:number}|{kind:'active';since:number};
 type ProbeWork = {priority:'forced'|'unknown'|'retry'}|{priority:'recheck';expectedCheckedAt:number};
 type ProbeJob = ProbeWork & {key:string;candidate:Candidate;owner:FeedOwner;controller:AbortController;revision:number;phase:ProbePhase;admittedDemand:boolean;admittedNear:boolean;promise?:Promise<void>};
 type TerminalHealth = (Extract<CandidateAvailability,{kind:'playable'}> & {owner:FeedOwner}) | Extract<CandidateAvailability,{kind:'unavailable'}>;
-const PROBE_LIMIT=256;
+const PROBE_LIMIT=2;
 const PROBE_QUEUE_LIMIT=256;
 const MEDIA_RECHECK_MS=5*60_000;
 const PROBE_PRIORITY={forced:0,recheck:1,unknown:2,retry:3};
@@ -80,6 +80,7 @@ export class FootballCoordinator {
   private candidates = new Map<string,Candidate[]>();
   private retainedStreameastPublication = new Map<string,{id:string;observedAt:number;categoryAt:number}>();
   private sessions = new Map<string,OwnedSession>();
+  private verificationSessions=new Map<string,{target:VerificationTarget;job:ProbeJob;deadline:number}>();
   private errors = new Map<string,string>();
   private revision = 0;
   private refreshing: Promise<void> | undefined;
@@ -106,7 +107,7 @@ export class FootballCoordinator {
   private detailPublication:ReturnType<typeof setImmediate>|undefined;
   private resolutionPending=false;
   private detailCandidateIds=new Set<string>();
-  private inventoryCache: {at:number;day:number|null;revision:number;gameIds:Set<string>;freshGameIds:Set<string>;snapshot:SourcesSnapshot} | undefined;
+  private inventoryCache: {at:number;day:number|null;revision:number;gameIds:Set<string>;freshGameIds:Set<string>;proofExpiresAt:number;snapshot:SourcesSnapshot} | undefined;
   private terminalByGame = new Map<string,Map<string,TerminalHealth>>();
   private workingFeeds=new Map<string,WorkingFeed>();
   private refreshedSchedules=new Set<string>();
@@ -419,7 +420,7 @@ export class FootballCoordinator {
         if(!sourceIds.length||!this.persistableLocator(row.locator)||
           (row.locator.provider==='event-page'||row.locator.provider==='tvapp'||row.locator.provider==='catalog-stream'||
             row.locator.provider==='streameast-server')&&row.locator.gameId!==game.id)return [];
-        const feed:WorkingFeed={version:1,identityHash,candidate:{...row,sourceIds},owner,checkedAt:health.checkedAt,proof:health.proof};
+        const feed:WorkingFeed={version:2,identityHash,candidate:{...row,sourceIds},owner,checkedAt:health.checkedAt,proof:health.proof};
         return workingFeedMatches(feed,game)?[feed]:[];
       });
       if(feeds.length||saved.length)this.replaceWorkingIdentity(game.id,identityHash,feeds);
@@ -484,7 +485,7 @@ export class FootballCoordinator {
         const terminal=this.terminal(feed.candidate);
         if(terminal?.kind==='unavailable')continue;
         const health=this.terminalByGame.get(game.id)||new Map<string,TerminalHealth>();
-        if(!terminal||terminal.checkedAt<feed.checkedAt)
+        if(feed.version===2&&this.now()-feed.checkedAt<MEDIA_RECHECK_MS&&(!terminal||terminal.checkedAt<feed.checkedAt))
           health.set(this.probeKey(feed.candidate),{kind:'playable',checkedAt:feed.checkedAt,proof:feed.proof,owner:feed.owner});
         this.terminalByGame.set(game.id,health);
         const candidates=this.candidates.get(game.id)||[];
@@ -506,6 +507,18 @@ export class FootballCoordinator {
     return health?.kind==='playable'&&!!game&&this.ownedCandidate(candidate,health.owner)&&
       (this.feedGame(game)||cachedFeedEligible({candidate,owner:health.owner},game,this.now()))&&
       candidate.observedAt<=this.now()+60_000&&health.checkedAt<=this.now()+60_000;
+  }
+  private freshPlayable(candidate:Candidate):boolean {
+    const health=this.terminal(candidate);
+    return this.retainedPlayable(candidate)&&health?.kind==='playable'&&
+      this.now()-health.checkedAt<MEDIA_RECHECK_MS;
+  }
+  private retainedWorkingCandidate(candidate:Candidate):boolean {
+    const feed=this.workingFeeds.get(this.workingKey(candidate));
+    const game=this.games.find(game=>game.id===candidate.gameId);
+    return !!feed&&!!game&&this.identityHash(candidate)===feed.identityHash&&
+      this.ownedCandidate(candidate,feed.owner)&&workingFeedMatches(feed,game)&&
+      (this.feedGame(game)||cachedFeedEligible(feed,game,this.now()));
   }
   private recordTerminal(candidate:Candidate,value:TerminalHealth):void {
     const rows=this.terminalByGame.get(candidate.gameId)||new Map<string,TerminalHealth>();
@@ -552,7 +565,8 @@ export class FootballCoordinator {
   }
   private currentCandidate(candidate:Candidate):boolean {
     return candidate.observedAt<=this.now()+60_000&&
-      (this.now()-candidate.observedAt<30*60_000||this.retainedPlayable(candidate)||this.currentStreameastPublication(candidate));
+      (this.now()-candidate.observedAt<30*60_000||this.retainedPlayable(candidate)||
+        this.retainedWorkingCandidate(candidate)||this.currentStreameastPublication(candidate));
   }
   private currentStreameastPublication(candidate:Candidate):boolean {
     const publication=this.retainedStreameastPublication.get(this.probeKey(candidate));
@@ -587,7 +601,8 @@ export class FootballCoordinator {
   private currentProbeCandidate(job:Pick<ProbeJob,'key'|'candidate'>):boolean {
     const game=this.games.find(game=>game.id===job.candidate.gameId);
     return this.feedGame(game) &&
-      (this.candidates.get(game.id)||[]).some(candidate=>this.probeKey(candidate)===job.key &&
+      (this.candidates.get(game.id)||[]).some(candidate=>candidate.id===job.candidate.id&&
+        this.probeKey(candidate)===job.key &&
         this.currentCandidate(candidate));
   }
   private workingRecheckDue(candidate:Candidate,checkedAt:number,now:number):boolean {
@@ -610,8 +625,8 @@ export class FootballCoordinator {
   private availability(candidate:Candidate):CandidateAvailability {
     const key=this.probeKey(candidate);
     const health=this.terminal(candidate);
-    if(health?.kind==='playable')return this.retainedPlayable(candidate)?
-      {kind:'playable',proof:health.proof,checkedAt:health.checkedAt}:{kind:'unknown'};
+    if(health?.kind==='playable'&&this.freshPlayable(candidate))
+      return {kind:'playable',proof:health.proof,checkedAt:health.checkedAt};
     const active=this.activeProbes.get(key);
     if(active)return {kind:'checking',progress:{kind:active.phase.kind,since:active.phase.since}};
     const queued=this.probeQueue.find(job=>job.key===key);
@@ -622,17 +637,18 @@ export class FootballCoordinator {
     return {kind:'unknown'};
   }
   private selectable(candidate:Candidate):boolean {
-    return this.currentCandidate(candidate)&&this.retainedPlayable(candidate);
+    return this.currentCandidate(candidate)&&this.freshPlayable(candidate);
   }
   private visibleListedCandidate(candidate:Candidate):boolean {
-    return this.feedGame(this.games.find(game=>game.id===candidate.gameId))||this.retainedPlayable(candidate);
+    return this.feedGame(this.games.find(game=>game.id===candidate.gameId))||
+      this.retainedPlayable(candidate)||this.retainedWorkingCandidate(candidate);
   }
   private candidateSummary(candidate:Candidate) {return candidateSummary(candidate,this.availability(candidate));}
   private rankCandidates(left:Candidate,right:Candidate):number {
     const leftKey=this.probeKey(left),rightKey=this.probeKey(right),now=this.now();
     const proof=(candidate:Candidate):number=>{
       const health=this.terminal(candidate);
-      return health?.kind==='playable'?(health.proof==='decoded'?2:1):0;
+      return health?.kind==='playable'&&this.freshPlayable(candidate)?2:0;
     };
     const leftProof=proof(left),rightProof=proof(right);
     if(leftProof!==rightProof)return rightProof-leftProof;
@@ -875,7 +891,10 @@ export class FootballCoordinator {
   private runProbe(job:ProbeJob):Promise<CandidateProbeResult> {
     const canceled:CandidateProbeResult={kind:'deferred',retryAfterMs:2000};
     if(job.controller.signal.aborted)return Promise.resolve(canceled);
-    return new Promise(resolve=>{
+    const target:VerificationTarget={sessionId:this.id(),gameId:job.candidate.gameId,
+      candidateId:job.candidate.id,generation:0};
+    this.verificationSessions.set(target.sessionId,{target,job,deadline:this.now()+65_000});
+    return new Promise<CandidateProbeResult>(resolve=>{
       let settled=false;
       const finish=(result:CandidateProbeResult)=>{
         if(settled)return;
@@ -895,9 +914,9 @@ export class FootballCoordinator {
             job.phase={kind,since:this.now()};
             this.revision++;
           }
-        }))
+        },target))
         .then(finish,()=>finish({kind:'deferred',retryAfterMs:MEDIA_RECHECK_MS}));
-    });
+    }).finally(()=>{this.verificationSessions.delete(target.sessionId);});
   }
   private pumpProbes():void {
     while(!this.stopped&&this.activeProbes.size<PROBE_LIMIT&&this.probeQueue.length) {
@@ -1114,7 +1133,8 @@ export class FootballCoordinator {
     for(const [gameId,rows] of this.candidates)
       this.candidates.set(gameId,rows.filter(candidate=>!priorDetailIds.has(candidate.id)||
         selectedActive.has(`${gameId}:${candidate.id}`)||selectedDuringGrace.has(`${gameId}:${candidate.id}`)||
-        !changedIdentityIds.has(candidate.id)&&this.retainedPlayable(candidate)));
+        !changedIdentityIds.has(candidate.id)&&
+          (this.retainedPlayable(candidate)||this.retainedWorkingCandidate(candidate))));
     this.detailCandidateIds.clear();
     for(const rows of this.candidates.values())
       for(const candidate of rows)if(priorDetailIds.has(candidate.id))this.detailCandidateIds.add(candidate.id);
@@ -1140,7 +1160,8 @@ export class FootballCoordinator {
         let previous=byId.get(player.id);
         if(previous&&JSON.stringify(previous.locator)!==JSON.stringify(player.locator)) {
           if(detail.at<=previous.observedAt)continue;
-          if(byId.has(versionId)||this.retainedPlayable(previous)||selectedActive.has(`${game.id}:${previous.id}`))
+          if(byId.has(versionId)||this.retainedPlayable(previous)||this.retainedWorkingCandidate(previous)||
+            selectedActive.has(`${game.id}:${previous.id}`))
             player={...player,id:versionId};
           previous=byId.get(player.id);
           if(previous&&JSON.stringify(previous.locator)!==JSON.stringify(player.locator))previous=undefined;
@@ -1378,7 +1399,8 @@ export class FootballCoordinator {
     const game=this.games.find(game=>game.id===session.gameId);
     return {kind:'session',session,candidates:(this.candidates.get(session.gameId) || [])
       .filter(candidate => candidate.id===session.candidateId ||
-        (this.currentCandidate(candidate)&&(this.feedGame(game)||this.retainedPlayable(candidate))))
+        (this.currentCandidate(candidate)&&(this.feedGame(game)||this.retainedPlayable(candidate)||
+          this.retainedWorkingCandidate(candidate))))
       .sort((a,b)=>this.rankCandidates(a,b)).map(candidate=>this.candidateSummary(candidate))};
   }
   private reconcileStreameastCandidates(): void {
@@ -1416,13 +1438,15 @@ export class FootballCoordinator {
       if(!freshlyCollected&&!candidates.length)continue;
       const previous=this.candidates.get(game.id)||[];
       const selected=this.pinnedCandidateIds(game.id,now);
-      const retained=previous.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id)||this.retainedPlayable(candidate));
+      const retained=previous.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id)||
+        this.retainedPlayable(candidate)||this.retainedWorkingCandidate(candidate));
       this.candidates.set(game.id,[...new Map([...retained,...candidates]
         .map(candidate=>[candidate.id,candidate] as const)).values()]);
     }
     if(current?.state.kind==='complete')for(const [gameId,prior] of this.candidates)if(!currentListed.has(gameId)) {
       const selected=this.pinnedCandidateIds(gameId,now);
-      this.candidates.set(gameId,prior.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id)||this.retainedPlayable(candidate)));
+      this.candidates.set(gameId,prior.filter(candidate=>!candidate.sourceIds.includes('streameast')||selected.has(candidate.id)||
+        this.retainedPlayable(candidate)||this.retainedWorkingCandidate(candidate)));
     }
   }
   private pinnedCandidateIds(gameId:string,now=this.now()):Set<string> {
@@ -1470,7 +1494,8 @@ export class FootballCoordinator {
     this.retireReassignedCandidates(superseded);
     for(const [gameId,prior] of this.candidates) {
       const retained=prior.filter(candidate=>!candidate.sourceIds.includes('sportsurge-v2') ||
-        this.pinnedCandidateIds(gameId).has(candidate.id)||this.retainedPlayable(candidate));
+        this.pinnedCandidateIds(gameId).has(candidate.id)||this.retainedPlayable(candidate)||
+        this.retainedWorkingCandidate(candidate));
       const replacement=byGame.get(gameId)||[];
       this.candidates.set(gameId,[...new Map([...retained,...replacement].map(candidate=>[candidate.id,candidate])).values()]);
       byGame.delete(gameId);
@@ -1485,10 +1510,10 @@ export class FootballCoordinator {
     const eligibleGameIds=new Set(this.games.filter(game=>{
       const candidates=this.candidates.get(game.id)||[];
       return feedInventoryEligible(game,at)||
-        candidates.some(candidate=>this.retainedPlayable(candidate));
+        candidates.some(candidate=>this.retainedPlayable(candidate)||this.retainedWorkingCandidate(candidate));
     }).map(game=>game.id));
     const cache=this.inventoryCache;
-    if (cache?.revision===this.revision && at-cache.at<15_000 && day===cache.day&&
+    if (cache?.revision===this.revision && at-cache.at<15_000 && at<cache.proofExpiresAt&&day===cache.day&&
       eligibleGameIds.size===cache.gameIds.size&&
       [...eligibleGameIds].every(id=>cache.gameIds.has(id))&&
       freshGameIds.size===cache.freshGameIds.size&&
@@ -1511,7 +1536,13 @@ export class FootballCoordinator {
     const lastDiscoveryAt=Object.values(attempts).length ? Math.max(...Object.values(attempts).map(item=>item.at)) : null;
     const availableCandidates=new Map([...this.candidates].filter(([gameId])=>eligibleGameIds.has(gameId))
       .map(([gameId,rows])=>[gameId,rows.filter(candidate=>
-        freshGameIds.has(gameId)||this.retainedPlayable(candidate))]));
+        freshGameIds.has(gameId)||this.retainedPlayable(candidate)||this.retainedWorkingCandidate(candidate))]));
+    let proofExpiresAt=Infinity;
+    for(const candidates of availableCandidates.values())for(const candidate of candidates){
+      const health=this.terminal(candidate);
+      if(health?.kind==='playable'&&this.freshPlayable(candidate))
+        proofExpiresAt=Math.min(proofExpiresAt,health.checkedAt+MEDIA_RECHECK_MS);
+    }
     const snapshot=sourceInventory({at,revision:this.revision,lastDiscoveryAt,sources:this.sources,scheduleScopes,browserCollectorsAvailable:this.browserCollectorsAvailable,
       observations:this.store.observations(),games:this.games,visibleGameIds:eligibleGameIds,freshGameIds,candidates:availableCandidates,attempts,
       sourceEventBindings:this.store.sourceEventBindings(),
@@ -1520,7 +1551,7 @@ export class FootballCoordinator {
       candidateEligible:candidate=>this.currentCandidate(candidate),
       compareCandidates:(left,right)=>this.rankCandidates(left,right),
       sportsurgeCatalog:this.store.sportsurgeCatalog(),streameastCatalog:this.store.streameastCatalog()});
-    this.inventoryCache={at,day,revision:this.revision,gameIds:eligibleGameIds,freshGameIds,snapshot};
+    this.inventoryCache={at,day,revision:this.revision,gameIds:eligibleGameIds,freshGameIds,proofExpiresAt,snapshot};
     return snapshot;
   }
   private sportsurgeReuse(catalog:SportsurgeCatalog):Extract<Reply,{kind:'catalog-ack'}>['reuseDetails'] {
@@ -1749,6 +1780,19 @@ export class FootballCoordinator {
       if(game.lifecycle!=='final')this.checkSources([gameId],false);
       return {kind:'playback',playback:{session,candidates:candidates.map(candidate=>this.candidateSummary(candidate))}};
     }
+    if(command.kind==='authorize'){
+      const trial=this.verificationSessions.get(command.sessionId);
+      if(trial){
+        const {job,target}=trial;
+        const candidate=(this.candidates.get(target.gameId)||[]).find(row=>row.id===target.candidateId);
+        if(command.candidateId!==target.candidateId||command.generation!==target.generation||
+          this.now()>=trial.deadline||job.controller.signal.aborted||this.activeProbes.get(job.key)!==job||
+          job.revision!==(this.healthRevision.get(job.key)||0)||!this.currentProbeJob(job,false)||
+          !candidate||this.probeKey(candidate)!==job.key||!this.ownedCandidate(candidate,job.owner))
+          return {kind:'error',status:410,message:'Verification grant expired.'};
+        return {kind:'verification-authorized',candidate,target,deadline:trial.deadline};
+      }
+    }
     const owned = this.sessions.get(command.sessionId);
     if (!owned) return {kind:'error',status:410,message:'Playback session ended.'};
     const session = owned.value;
@@ -1767,11 +1811,12 @@ export class FootballCoordinator {
       if(!candidate)return {kind:'error',status:410,message:'Stream generation expired.'};
       const selection=owned.selection;
       if(!selection||!this.currentSelection(candidate,selection))return {kind:'error',status:410,message:'Stream generation expired.'};
-      if(owned.decodedGeneration===command.generation)return {kind:'ok'};
-      owned.decodedGeneration=command.generation;
-      const key=this.probeKey(candidate),at=this.now();
+      const at=this.now();
+      if(owned.lastEvidence?.generation===command.generation&&at-owned.lastEvidence.at<60_000)return {kind:'ok'};
+      owned.lastEvidence={generation:command.generation,at};
+      const key=this.probeKey(candidate);
       this.healthRevision.set(key,(this.healthRevision.get(key)||0)+1);
-      this.recordTerminal(candidate,{kind:'playable',proof:'decoded',checkedAt:at,owner:selection.owner});
+      this.recordTerminal(candidate,{kind:'playable',proof:command.evidence,checkedAt:at,owner:selection.owner});
       this.probeQueue=this.probeQueue.filter(job=>job.key!==key);
       const deferred=this.deferredProbes.get(key);
       if(deferred){clearTimeout(deferred.timer);this.deferredProbes.delete(key);}

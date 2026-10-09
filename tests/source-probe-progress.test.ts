@@ -58,7 +58,7 @@ for (const late of [false, true]) test(late
           if (!late) resolve();
         }, { once: true });
       });
-      return { kind: 'playable', proof: 'media' };
+      return { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
     },
   });
   try {
@@ -133,7 +133,7 @@ test('a requested game admits two servers while a background game holds its firs
         pending.push({ id, resolve });
         signal.addEventListener('abort', resolve, { once: true });
       });
-      return { kind: 'playable', proof: 'media' };
+      return { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
     },
   });
   try {

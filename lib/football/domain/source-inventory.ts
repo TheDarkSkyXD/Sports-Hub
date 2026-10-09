@@ -35,7 +35,7 @@ function feedCounts(rows:readonly Candidate[],availability:(candidate:Candidate)
   const states=rows.map(availability);
   return {kind:'feeds',discovered:rows.length,
     mediaVerified:states.filter(state=>state.kind==='playable').length,
-    decoded:states.filter(state=>state.kind==='playable'&&state.proof==='decoded').length,
+    decoded:states.filter(state=>state.kind==='playable').length,
     checking:states.filter(state=>state.kind==='unknown'||state.kind==='checking').length};
 }
 

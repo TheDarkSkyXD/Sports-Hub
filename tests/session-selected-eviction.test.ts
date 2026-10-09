@@ -45,7 +45,7 @@ test('working live choices survive session closure without redundant detail refr
       [{ id: 'a-primary', label: 'Primary', locator: { provider: 'gooz', playerId: '1' } }] :
       Array.from({ length: 13 }, (_, index) => ({ id: `b-${index + 1}`, label: `Backup ${index + 1}`,
         locator: { provider: 'gooz' as const, playerId: String(index + 2) } })),
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   try {
     await coordinator.refresh(true);

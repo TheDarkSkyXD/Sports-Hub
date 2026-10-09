@@ -58,7 +58,7 @@ test('a late generic player survives a live listing that loses its kickoff',asyn
       rawTime:undated?'':observation.rawTime,observedAt:now}]}),
     enrichObservation,
     compatiblePlayers,
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   const detailAt=()=>{
     const db=new DatabaseSync(path);
@@ -101,7 +101,7 @@ test('lost-time lineage rejects stale listings, changed identity, and a conflict
         url:scenario==='changed-url'?'https://vipbox.fm/cfb/other':observation.url}:{...observation,observedAt:now}]}),
       enrichObservation,
       compatiblePlayers,
-      probeCandidate:async()=>({kind:'playable',proof:'media'}),
+      probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
     });
     try{
       await coordinator.refresh(true);
@@ -222,7 +222,7 @@ test('a held detail response cannot recreate a feed after the matched game becom
     parseListings:()=>({outcome:'parsed',observations:[{...observation,observedAt:now}]}),
     enrichObservation,
     compatiblePlayers,
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   try{
     await coordinator.command({kind:'set-retention',minutes:5});
@@ -271,7 +271,7 @@ test('a final current result owns a detail that completes before optional histor
       return '<main>fixture</main>';},
     parseListings:()=>({outcome:'parsed',observations:[{...observation,observedAt:now}]}),
     enrichObservation,compatiblePlayers,
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   try {
     await coordinator.refresh(true);
@@ -323,7 +323,7 @@ test('a playable probe completing after a final current result cannot persist it
     await until(()=>probeStarted,'the live candidate should begin its media check');
     now+=60_000;
     const refreshing=coordinator.refresh(true);
-    releaseProbe({kind:'playable',proof:'media'});
+    releaseProbe({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await new Promise<void>(resolve=>setImmediate(resolve));
     const sources=await coordinator.command({kind:'sources'});
     assert.equal(sources.kind,'sources');
@@ -370,7 +370,7 @@ test('a late probe cannot store proof while a date-only schedule move excludes i
     await coordinator.refresh(true);
     await until(()=>probeCalls===1,'the scheduled candidate should begin its first media check');
     const moving=coordinator.refresh(true);
-    releaseFirstProbe({kind:'playable',proof:'media'});
+    releaseFirstProbe({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await new Promise<void>(resolve=>setImmediate(resolve));
     await coordinator.command({kind:'sources'});
     const db=new DatabaseSync(path);

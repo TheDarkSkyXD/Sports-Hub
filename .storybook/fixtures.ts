@@ -3,14 +3,15 @@ import { defaultUpdateFeedUrl, UpdateFeedUrlSchema, type UpdateStatus } from '..
 import type { Feed } from '../lib/sunday';
 
 const now = Date.now();
+const advancingProof={kind:'advancing-video',version:1,startupMs:3100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const;
 
 export const demoFeed: Feed = { url: '/sample.webm', label: 'Storybook sample feed' };
 
 export const candidates: CandidateSummary[] = [
   { id: 'sample-primary', gameId: '401', label: 'Primary', sourceIds: ['sportsurge'], observedAt: now,
-    availability: { kind: 'playable', checkedAt: now, proof: 'media' } },
+    availability: { kind: 'playable', checkedAt: now, proof: advancingProof } },
   { id: 'sample-backup', gameId: '401', label: 'Backup 1', sourceIds: ['streameast'], observedAt: now,
-    availability: { kind: 'playable', checkedAt: now, proof: 'decoded' } },
+    availability: { kind: 'playable', checkedAt: now, proof: advancingProof } },
   { id: 'sample-pending', gameId: '401', label: 'Unverified', sourceIds: ['sportsurge-v2'], observedAt: now,
     availability: { kind: 'checking', progress: { kind: 'queued', since: now - 12_000 } } },
 ];

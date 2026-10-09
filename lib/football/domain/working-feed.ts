@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import { CandidateSchema, LeagueSchema, isRaceGame, type Game, type MatchupGame } from '../shared.ts';
+import { AdvancingVideoSchema, CandidateSchema, LeagueSchema, isRaceGame, type Game, type MatchupGame } from '../shared.ts';
 import { normalizedName } from './matching.ts';
 import { feedDateEligible } from './feed-eligibility.ts';
 
 const TeamIdentitySchema = z.object({ id: z.string().optional(), name: z.string().min(1) }).strict();
-export const WorkingFeedSchema = z.object({
-  version: z.literal(1), identityHash: z.string().regex(/^[a-f0-9]{64}$/), candidate: CandidateSchema.strict(),
+const WorkingFeedBase = z.object({
+  identityHash: z.string().regex(/^[a-f0-9]{64}$/), candidate: CandidateSchema.strict(),
   owner: z.union([
     z.object({ league: LeagueSchema.exclude(['f1','nascar-cup','nascar-truck','motogp','motorsport']), home: TeamIdentitySchema, away: TeamIdentitySchema,
       partitionIds: z.array(z.string().min(1)).min(1).max(32) }).strict(),
@@ -13,8 +13,12 @@ export const WorkingFeedSchema = z.object({
       eventId:z.string(),sessionId:z.string(),session:z.string(),round:z.string(),
       partitionIds:z.array(z.string().min(1)).min(1).max(32)}).strict(),
   ]),
-  checkedAt: z.number().int().nonnegative(), proof: z.enum(['media', 'decoded']),
-}).strict();
+  checkedAt: z.number().int().nonnegative(),
+});
+export const WorkingFeedSchema=z.union([
+  WorkingFeedBase.extend({version:z.literal(1),proof:z.enum(['media','decoded'])}).strict(),
+  WorkingFeedBase.extend({version:z.literal(2),proof:AdvancingVideoSchema}).strict(),
+]);
 export type WorkingFeed = z.infer<typeof WorkingFeedSchema>;
 
 export function workingFeedOwner(game: Game, partitionIds: readonly string[]): WorkingFeed['owner'] {

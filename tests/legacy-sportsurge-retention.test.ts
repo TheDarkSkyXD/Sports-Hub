@@ -42,7 +42,7 @@ function fixture(allPlayable:boolean) {
     probeCandidate:async locator=>{
       assert.equal(locator.provider,'gooz');
       probes.push(locator.playerId);
-      return allPlayable||locator.playerId==='57561'?{kind:'playable' as const,proof:'media' as const}:
+      return allPlayable||locator.playerId==='57561'?{kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const}:
         {kind:'unavailable' as const,reason:'invalid-media' as const};
     },
   });

@@ -46,7 +46,7 @@ function fixture(games:Game[],sources:ListingSource[],overrides:Partial<Omit<Foo
     parseListings:listing=>({outcome:'parsed',observations:games.map(match=>observation(match,listing))}),
     enrichObservation:value=>value,
     compatiblePlayers:gameId=>[{id:`gooz-${gameId}`,label:'Free',locator:{provider:'gooz',playerId:gameId}}],
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
     ...overrides,
   });
   return {coordinator,path:join(dir,'state.sqlite'),close:async()=>{await coordinator.stop();rmSync(dir,{recursive:true,force:true});}};
@@ -81,7 +81,7 @@ test('a distant direct probe cannot repeatedly abort nearer browser probes',asyn
       starts++;
       if(locator.provider==='gooz')direct++;
       await new Promise<void>(resolve=>signal.addEventListener('abort',()=>{aborts++;resolve();},{once:true}));
-      return {kind:'playable',proof:'media'};
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try {
@@ -106,9 +106,9 @@ test('a busy browser observer defers the browser queue while direct checks still
       Array.from({length:300},(_,index)=>({id:`browser-${index}`,label:'Free',locator:{provider:'event-page',
         gameId,eventUrl:listing.url,serverUrl:`https://fixture.example/server/${index}`}})),
     probeCandidate:async locator=>{
-      if(locator.provider==='gooz'){direct++;return {kind:'playable',proof:'media'};}
+      if(locator.provider==='gooz'){direct++;return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};}
       browsers++;
-      if(!busy){recovered++;return {kind:'playable',proof:'media'};}
+      if(!busy){recovered++;return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};}
       return {kind:'deferred',retryAfterMs:2000};
     },
   });
@@ -154,7 +154,7 @@ test('a game-bound StreamEast server choice cannot be attached to another game',
     compatiblePlayers:(_gameId,listing)=>[{id:'other-game-server',label:'Server 2',
       locator:{provider:'streameast-server',gameId:'99999',sourceEventId:'nfl:46236',
         eventUrl:listing.url,serverId:'2'}}],
-    probeCandidate:async()=>{probes++;return {kind:'playable',proof:'media'};},
+    probeCandidate:async()=>{probes++;return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};},
   });
   try {
     await coordinator.refresh(true);
@@ -173,7 +173,7 @@ test('a scheduled StreamEast server choice cannot be attached to another game',a
     compatiblePlayers:(_gameId,listing)=>{reads++;return [{id:'other-game-server',label:'Server 2',
       locator:{provider:'streameast-server',gameId:'99999',sourceEventId:'nfl:46236',
         eventUrl:listing.url,serverId:'2'}}];},
-    probeCandidate:async()=>{probes++;return {kind:'playable',proof:'media'};},
+    probeCandidate:async()=>{probes++;return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};},
   });
   try {
     await coordinator.refresh(true);
@@ -196,7 +196,7 @@ test('six minutes of fresh scores retain working choices and saved proof survive
       if(scheduleFails)throw new Error('fixture schedule network failure');
       return {games:[live],league:'nfl',at:clock};
     },
-    probeCandidate:async()=>{probes++;return {kind:'playable',proof:'media'};},
+    probeCandidate:async()=>{probes++;return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};},
   });
   const working=async()=>{
     const reply=await coordinator.command({kind:'sources'});
@@ -511,7 +511,7 @@ test('a late near-kickoff choice enters the frontier before distant siblings',as
       if(locator.provider!=='gooz')throw new Error('unexpected provider');
       calls.push(locator.playerId);
       await new Promise<void>(resolve=>{pending.push(resolve);signal.addEventListener('abort',()=>resolve(),{once:true});});
-      return {kind:'playable',proof:'media'};
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try {

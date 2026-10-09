@@ -54,7 +54,7 @@ try {
     const candidates = session.candidateId === 'manual' ? [] : [{
       id: `fixture-${session.gameId}`, gameId: session.gameId, playerId: '57000',
       url: 'https://gooz.aapmains.net/new-stream-embed/57000', label: 'Primary', sourceIds: ['fixture'], observedAt: Date.now(),
-      availability: { kind: 'playable', proof: 'media', checkedAt: Date.now() },
+      availability: { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: Date.now() },
     }];
     return route.fulfill({ json: { session, candidates } });
   });

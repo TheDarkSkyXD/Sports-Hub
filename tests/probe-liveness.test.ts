@@ -80,7 +80,7 @@ for(const reactsToAbort of [false,true])test(reactsToAbort ?
     assert.equal(locator.provider,'gooz');
     if(locator.provider!=='gooz')throw new Error('Expected gooz');
     started.push(locator.playerId);
-    if(started.length===5)return {kind:'playable',proof:'media'};
+    if(started.length===5)return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     const gate=hold();held.push(gate);
     if(reactsToAbort)signal.addEventListener('abort',()=>gate.release({kind:'deferred',retryAfterMs:30_000}),{once:true});
     return gate.promise;
@@ -106,7 +106,7 @@ for(const reactsToAbort of [false,true])test(reactsToAbort ?
       }
     });
   } finally {
-    for(const gate of held)gate.release({kind:'playable',proof:'media'});
+    for(const gate of held)gate.release({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await run.coordinator.stop();run.cleanup();
   }
 });
@@ -123,14 +123,14 @@ test('stop settles after abort even when a provider never answers',async()=>{
     void stopping.then(()=>{settled=true;});
     await until(()=>settled,'stop should settle without the provider answering');
   } finally {
-    gate.release({kind:'playable',proof:'media'});
+    gate.release({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await (stopping??run.coordinator.stop());run.cleanup();
   }
 });
 
 test('a late playable result cannot replace a newer check result',async()=>{
   const first=hold();let calls=0;
-  const run=fixture(1,observed(async()=>{calls++;return calls===1?first.promise:{kind:'playable',proof:'decoded'};}));
+  const run=fixture(1,observed(async()=>{calls++;return calls===1?first.promise:{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};}));
   try {
     await withFakeDeadline(async advance=>{
       await run.coordinator.refresh(true);
@@ -147,14 +147,14 @@ test('a late playable result cannot replace a newer check result',async()=>{
         const availability=(await sources(run.coordinator)).games[0]?.candidates[0]?.availability;
         return availability?.kind==='playable'&&availability.proof==='decoded';
       },'the replacement should record decoded proof');
-      first.release({kind:'playable',proof:'media'});
+      first.release({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
       for(let index=0;index<20;index++)await new Promise<void>(resolve=>setImmediate(resolve));
       const availability=(await sources(run.coordinator)).games[0]?.candidates[0]?.availability;
       assert.equal(availability?.kind,'playable');
       if(availability?.kind==='playable')assert.equal(availability.proof,'decoded');
     });
   } finally {
-    first.release({kind:'playable',proof:'media'});
+    first.release({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await run.coordinator.stop();run.cleanup();
   }
 });

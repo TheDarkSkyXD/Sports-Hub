@@ -49,7 +49,7 @@ test('all fresh games and alternatives warm without check-sources, even beyond q
       probed.push(locator.playerId);
       await new Promise<void>(resolve=>setImmediate(resolve));
       active--;
-      return {kind:'playable',proof:'media'};
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try {
@@ -100,7 +100,7 @@ test('explicit retry reaches an unavailable server after admitted siblings relea
         pending.push({resolve:settle});
         signal.addEventListener('abort',settle,{once:true});
       });
-      return {kind:'playable',proof:'media'};
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try {

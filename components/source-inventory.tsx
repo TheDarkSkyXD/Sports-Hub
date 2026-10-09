@@ -124,7 +124,7 @@ function sourceScopeMessage(source:Source,league:InventoryLeague):string {
   }[scope.read.reason];
   if(scope.eventCount===0)return 'No events from this source today or tomorrow.';
   if(scope.feeds.kind==='no-feeds')return 'No feeds available for the listed events today or tomorrow.';
-  if(scope.feeds.kind==='feeds')return `${scope.feeds.discovered} feeds found · ${scope.feeds.mediaVerified} media verified · ${scope.feeds.decoded} working · ${scope.feeds.checking} pending checks`;
+  if(scope.feeds.kind==='feeds')return `${scope.feeds.discovered} feeds found · ${scope.feeds.decoded} working · ${scope.feeds.checking} pending checks`;
   return 'Feed collection is incomplete. No empty result has been confirmed.';
 }
 function gameFeedMessage(game:SourcesSnapshot['games'][number]):string {
@@ -133,7 +133,7 @@ function gameFeedMessage(game:SourcesSnapshot['games'][number]):string {
     'The schedule is stale. Feed collection will resume when it refreshes.':
     game.feeds.reason==='unsupported'?'Published feeds use an unsupported player.':
     'Feed collection is incomplete. No feeds have been confirmed yet.';
-  return `${game.feeds.discovered} feeds found · ${game.feeds.mediaVerified} media verified · ${game.feeds.decoded} working`;
+  return `${game.feeds.discovered} feeds found · ${game.feeds.decoded} working`;
 }
 const sourceIcons:Record<string,string>={
   sportsurge:'/source-icons/sportsurge.png',
@@ -467,10 +467,10 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
       <div className="source-inventory-overview" aria-label={`${leagueName[league]} inventory totals`}>
         <div><strong>{sources.length}</strong><span>Sources</span></div>
         <div><strong>{countLabel(scoped?.games.length??0,!!scoped?.unclassifiedGames.length)}</strong><span>Scheduled and live events</span></div>
-        <div><strong>{countLabel(scoped?.workingChoices??0,!!scoped?.unclassifiedGames.length)}</strong><span>Media verified feeds</span></div>
+        <div><strong>{countLabel(scoped?.workingChoices??0,!!scoped?.unclassifiedGames.length)}</strong><span>Playback confirmed feeds</span></div>
       </div>
       {(scoped?.unclassifiedGames.length??0)>0&&<p className="source-inventory-scope-note" role="note">{scoped?.unclassifiedGames.length} {scoped?.unclassifiedGames.length===1?'game could':'games could'} not be assigned to a league from the current board. Counts may be incomplete; open Games for unclassified details.</p>}
-      <details className="source-inventory-explainer"><summary>How these counts work</summary><p>Media verified feeds passed playlist and video segment checks. Working feeds have decoded video during app playback. Each game shows pending and failed checks. An incomplete or failed collection does not mean there are no events or feeds. Multiple feed entries can reach the same server.</p></details>
+      <details className="source-inventory-explainer"><summary>How these counts work</summary><p>Working feeds played advancing video through the app within the last five minutes. Each game shows pending and failed checks. An incomplete or failed collection does not mean there are no events or feeds. Multiple feed entries can reach the same server.</p></details>
       <div className="source-inventory-views" role="group" aria-label="Inventory view">
         <button type="button" aria-pressed={view==='sources'} onClick={()=>setView('sources')}>Sources</button>
         <button type="button" aria-pressed={view==='games'} onClick={()=>setView('games')}>Games</button>

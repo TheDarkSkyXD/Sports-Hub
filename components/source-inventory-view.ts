@@ -7,17 +7,17 @@ const duration=(milliseconds:number)=>{
 
 export function candidateEvidence(candidate:CandidateSummary,now:number):string {
   switch(candidate.availability.kind) {
-    case 'unknown':return 'Media not checked yet';
+    case 'unknown':return 'Playback not checked yet';
     case 'checking':{
       const progress=candidate.availability.progress;
       switch(progress.kind) {
-        case 'queued':return 'Media check scheduled';
-        case 'active':return `Checking media · ${duration(now-progress.since)} elapsed`;
+        case 'queued':return 'Playback check scheduled';
+        case 'active':return `Checking playback · ${duration(now-progress.since)} elapsed`;
         case 'deferred':return `Check incomplete${progress.phase?` during ${progress.phase}`:''} · Retrying in ${duration(progress.retryAt-now)}`;
         default:{const exhaustive:never=progress;return exhaustive;}
       }
     }
-    case 'playable':return candidate.availability.proof==='decoded'?'Working · Playback decoded':'Media verified · Playback not yet confirmed';
+    case 'playable':return 'Working · Video playback confirmed';
     case 'unavailable':{
       const label={
         upstream:'Source media unavailable',unsupported:'Player unsupported',

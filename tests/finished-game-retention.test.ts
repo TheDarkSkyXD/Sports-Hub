@@ -34,7 +34,7 @@ function fixture() {
     enrichObservation: value => value,
     compatiblePlayers: () => [1, 2].map(index => ({ id: `server-${index}`, label: `Server ${index}`,
       locator: { provider: 'gooz' as const, playerId: String(index) } })),
-    probeCandidate: async () => { probes++; return { kind: 'playable', proof: 'media' }; },
+    probeCandidate: async () => { probes++; return { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }; },
   });
   return { path, start, counts: () => ({ listingReads, detailReads, probes }), clock: (value: number) => { now = value; },
     finish: () => { published = false; games = [recordFinal({ ...live, lifecycle: 'final', status: 'post' }, now)]; },

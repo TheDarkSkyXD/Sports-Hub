@@ -57,11 +57,11 @@ function fixture(options: { emptyPlayers?: boolean; holdDetail?: string; holdPro
       assert.equal(locator.provider, 'gooz');
       probes.push(locator.playerId);
       if (locator.playerId === options.holdProbe) return new Promise<CandidateProbeResult>(resolve => {
-        const release = () => resolve({ kind: 'playable', proof: 'media' });
+        const release = () => resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
         heldProbes.push({ signal, release });
         signal.addEventListener('abort', release, { once: true });
       });
-      return { kind: 'playable', proof: 'media' };
+      return { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
     },
   });
   return { coordinator, current, detailReads, probes, heldDetails, heldProbes,

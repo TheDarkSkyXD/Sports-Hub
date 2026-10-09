@@ -71,7 +71,7 @@ test('live NCAA and NFL games retain and check every safe Sportsurge route acros
     probeCandidate: async locator => {
       if (locator.provider !== 'sportsurge-v2') throw new Error('Unexpected provider');
       probed.add(locator.url);
-      return { kind: 'playable', proof: 'media' };
+      return { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
     },
   });
 
@@ -140,7 +140,7 @@ test('Sportsurge rechecks working and failed feeds every five minutes for a sche
       const count = (calls.get(locator.providerId) || 0) + 1;
       calls.set(locator.providerId, count);
       return locator.providerId === 'nfl-row-1' || count >= (locator.providerId === 'nfl-row-2' ? 2 : 3)
-        ? { kind: 'playable', proof: 'media' }
+        ? { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }
         : { kind: 'unavailable', reason: 'upstream' };
     },
   });
@@ -185,7 +185,7 @@ test('Sportsurge rechecks working and failed feeds every five minutes for a sche
     assert.equal(recovered.workingChoiceCount, 2, 'working feeds must recover after the failed check cooldown');
     assert.deepEqual(callCounts(), [2, 2, 2]);
     assert.deepEqual(recovered.candidates.find(candidate => candidate.id === working.id)?.availability,
-      { kind: 'playable', proof: 'media', checkedAt: at + 6 * 60_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 6 * 60_000 });
 
     advance(7 * 60_000);
     const beforeCooldown = checkpoint(1, clock);
@@ -201,7 +201,7 @@ test('Sportsurge rechecks working and failed feeds every five minutes for a sche
     assert.equal(complete.workingChoiceCount, 3);
     assert.deepEqual(callCounts(), [3, 3, 3]);
     assert.deepEqual(complete.candidates.find(candidate => candidate.id === working.id)?.availability,
-      { kind: 'playable', proof: 'media', checkedAt: at + 11 * 60_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 11 * 60_000 });
     await publish(latest);
     assert.equal((await row()).workingChoiceCount, 3);
     assert.deepEqual(callCounts(), [3, 3, 3], 'replays and inventory reads must preserve completed checks');

@@ -46,7 +46,7 @@ function fixture(family='fixture'){
     probeCandidate:async locator=>{
       assert.equal(locator.provider,'gooz');
       probes.push(locator.playerId);
-      return {kind:'playable' as const,proof:'media' as const};
+      return {kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const};
     },
   });
   const snapshot=async()=>{

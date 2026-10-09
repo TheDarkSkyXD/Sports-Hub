@@ -32,7 +32,7 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
   let queueRechecks = false;
   let releaseObserver = () => {};
   const resources = createProbeResources({ httpLimit: 8, observerLimit: 1, activeBudgetMs: 65_000 });
-  const nextResult: CandidateProbeResult = { kind: 'playable', proof: 'media' };
+  const nextResult: CandidateProbeResult = { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
   const calls: string[] = [];
   const pending = new Map<string, (result: CandidateProbeResult) => void>();
   const start = () => createFootballCoordinator(path, {
@@ -135,19 +135,19 @@ test('a due working feed is rechecked at five minutes while playback stays on it
     const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false });
     assert.ok(opened.kind === 'playback');
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     await run.refresh(coordinator, 300_000);
     assert.deepEqual(run.calls, ['100', '100']);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     const continuing = await coordinator.command({ kind: 'session', sessionId: opened.playback.session.id, generation: 0,
       failure: false, retry: false });
     assert.ok(continuing.kind === 'session');
     assert.equal(continuing.session.candidateId, opened.playback.session.candidateId);
-    run.release('100', { kind: 'playable', proof: 'media' });
+    run.release('100', { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     await drain();
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at + 300_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 300_000 });
     assert.equal(run.rows().length, 1);
   } finally { await run.stop(coordinator); }
 });
@@ -159,13 +159,13 @@ test('a playable route without durable proof is still rechecked at the saved int
     await run.refresh(coordinator, 0);
     assert.equal(run.rows().length, 0);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     await run.refresh(coordinator, 299_999);
     assert.deepEqual(run.calls, ['100']);
     await run.refresh(coordinator, 300_000);
     assert.deepEqual(run.calls, ['100', '100']);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at + 300_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 300_000 });
     assert.equal(run.rows().length, 0);
   } finally { await run.stop(coordinator); }
 });
@@ -202,7 +202,7 @@ for (const daysUntilKickoff of [0, 1]) for (const phase of ['queued', 'active', 
       run.hidePublication();
       await run.refresh(coordinator, 31 * 60_000);
       const candidate = (await run.snapshot(coordinator)).games[0]?.candidates.find(row => row.id === targetRoute);
-      assert.deepEqual(candidate?.availability, { kind: 'playable', proof: 'media', checkedAt: at });
+      assert.deepEqual(candidate?.availability, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
       const continuing = await coordinator.command({ kind: 'session', sessionId: viewer.playback.session.id,
         generation: 0, failure: false, retry: false });
       assert.ok(continuing.kind === 'session');
@@ -232,7 +232,7 @@ for (const daysUntilKickoff of [0, 1]) test(`an idle unpersisted working route s
     run.hidePublication();
     await run.refresh(coordinator, 31 * 60_000);
     assert.deepEqual((await run.snapshot(coordinator)).games[0]?.candidates.find(row => row.id === 'route-0')?.availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false,
       initialCandidateId: 'route-0' });
     assert.equal(opened.kind, 'playback');
@@ -291,7 +291,7 @@ test('a cache write failure does not remove an unselected playable route after a
   } finally { await run.stop(coordinator); }
 });
 
-for (const result of [{kind:'playable',proof:'media'},{kind:'unavailable',reason:'invalid-media'}] as const)
+for (const result of [{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}},{kind:'unavailable',reason:'invalid-media'}] as const)
   test(`an old matchup ${result.kind} result cannot change proof after its game ID is reused`, async () => {
     const run=fixture({persistable:false});
     const coordinator=run.start();
@@ -316,9 +316,9 @@ for (const result of [{kind:'playable',proof:'media'},{kind:'unavailable',reason
       await drain();
       assert.equal((await run.snapshot(coordinator)).games.find(game=>game.gameId===live.id)?.workingChoiceCount??0,0);
       assert.equal((await coordinator.command({kind:'playback-evidence',sessionId:viewer.playback.session.id,
-        candidateId:'route-0',generation:0,evidence:{kind:'decoded',startupMs:100}})).kind,'error');
+        candidateId:'route-0',generation:0,evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}})).kind,'error');
       assert.ok(run.calls.filter(id=>id==='100').length>=3);
-      run.release('100',{kind:'playable',proof:'media'});
+      run.release('100',{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
       await drain();
       assert.equal((await run.snapshot(coordinator)).games[0].candidates.find(candidate=>candidate.id==='route-0')?.availability.kind,'playable');
       await coordinator.command({kind:'session',sessionId:viewer.playback.session.id,generation:0,failure:true,retry:false});
@@ -335,7 +335,7 @@ test('a failed recheck removes durable proof and the route recovers on its next 
     run.hold();
     await run.refresh(coordinator, 300_000);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     run.release('100', { kind: 'unavailable', reason: 'invalid-media' });
     await drain();
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
@@ -345,10 +345,10 @@ test('a failed recheck removes durable proof and the route recovers on its next 
     assert.deepEqual(run.calls, ['100', '100']);
     await run.refresh(coordinator, 600_000);
     assert.deepEqual(run.calls, ['100', '100', '100']);
-    run.release('100', { kind: 'playable', proof: 'media' });
+    run.release('100', { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     await drain();
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at + 600_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 600_000 });
     assert.equal(run.rows().length, 1);
   } finally { await run.stop(coordinator); }
 });
@@ -364,7 +364,7 @@ test('a deferred recheck retains playable proof and does not immediately retry',
     await drain();
     await run.refresh(coordinator, 300_001);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     assert.equal(run.rows().length, 1);
     assert.deepEqual(run.calls, ['100', '100']);
   } finally { await run.stop(coordinator); }
@@ -383,12 +383,12 @@ test('decoded playback wins over an active working-feed recheck', async () => {
     assert.deepEqual(run.calls, ['100', '100']);
     const session = opened.playback.session;
     const reply = await coordinator.command({ kind: 'playback-evidence', sessionId: session.id,
-      candidateId: session.candidateId, generation: 0, evidence: { kind: 'decoded', startupMs: 100 } });
+      candidateId: session.candidateId, generation: 0, evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     assert.equal(reply.kind, 'ok');
     run.release('100', { kind: 'unavailable', reason: 'invalid-media' });
     await drain();
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'decoded', checkedAt: at + 300_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 300_000 });
     assert.equal(run.rows().length, 1);
   } finally { await run.stop(coordinator); }
 });
@@ -406,11 +406,11 @@ test('decoded playback removes its queued recheck while other due routes proceed
     assert.ok(opened.kind === 'playback');
     const session = opened.playback.session;
     const reply = await coordinator.command({ kind: 'playback-evidence', sessionId: session.id,
-      candidateId: session.candidateId, generation: 0, evidence: { kind: 'decoded', startupMs: 100 } });
+      candidateId: session.candidateId, generation: 0, evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     assert.equal(reply.kind, 'ok');
     run.releaseQueued();
     for (let round = 0; round < 10 && run.calls.filter(id => id === '105').length < 2; round++) {
-      for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof: 'media' });
+      for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
       await drain();
     }
     await drain();
@@ -418,7 +418,7 @@ test('decoded playback removes its queued recheck while other due routes proceed
     assert.equal(run.calls.filter(id => id === '104').length, 2);
     assert.equal(run.calls.filter(id => id === '105').length, 2);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates.find(row => row.id === 'route-0')?.availability,
-      { kind: 'playable', proof: 'decoded', checkedAt: at + 300_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 300_000 });
   } finally { await run.stop(coordinator); }
 });
 
@@ -465,7 +465,7 @@ test('a full maintenance queue eventually checks both working and failed routes'
     assert.equal(queued.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'queued').length, 0);
     assert.equal(queued.filter(row => row.availability.kind === 'unavailable').length, 135);
     for (let round = 0; round < 280 && (run.calls.length < 540 || run.pending.size > 0); round++) {
-      for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof: 'media' });
+      for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
       await drain();
     }
     assert.equal(run.calls.length, 540);

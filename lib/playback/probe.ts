@@ -1,6 +1,6 @@
 import { createDecipheriv } from 'node:crypto';
 import type { CandidateProbeResult,ProbeProgress } from '../football/domain/ports.ts';
-import type { CandidateLocator } from '../football/shared.ts';
+import { AdvancingVideoSchema, type CandidateLocator, type VerificationTarget } from '../football/shared.ts';
 import { openProvider } from './provider-registry.ts';
 export { providerProbeIdentity as probeIdentity } from './provider-registry.ts';
 import { ProviderDeferredError, ProviderNoFeedError, type ProviderPlayback, type ProviderResource } from './provider.ts';
@@ -11,6 +11,9 @@ type Encryption = { uri: string; iv?: string };
 type Media = { uri: string; range?: Range; encryption?: Encryption; sequence: bigint };
 type Segment = Media & { map?: Media };
 type Budget = { bytes: number; playlists: number };
+type MediaProbeResult =
+  | {kind:'playable';proof:'media'}
+  | Exclude<CandidateProbeResult,{kind:'playable'}>;
 class ProbeFailure extends Error {
   readonly reason: 'unsupported' | 'invalid-media';
   constructor(reason: 'unsupported' | 'invalid-media') { super(reason); this.reason=reason; }
@@ -189,7 +192,7 @@ async function checkPlaylist(resource: ProviderResource, signal: AbortSignal, bu
 }
 
 export async function probeCandidate(locator: CandidateLocator, signal: AbortSignal,
-  opener: typeof openProvider = openProvider): Promise<CandidateProbeResult> {
+  opener: typeof openProvider = openProvider): Promise<MediaProbeResult> {
   if (signal.aborted) return {kind:'deferred',retryAfterMs:2000};
   let playback: ProviderPlayback | undefined;
   const closePlayback = () => {
@@ -198,12 +201,12 @@ export async function probeCandidate(locator: CandidateLocator, signal: AbortSig
     opened?.close();
   };
   let onAbort = () => {};
-  const canceled = new Promise<CandidateProbeResult>(resolve => {
+  const canceled = new Promise<MediaProbeResult>(resolve => {
     onAbort = () => resolve({kind:'deferred',retryAfterMs:2000});
   });
   signal.addEventListener('abort',onAbort,{once:true});
   try {
-    const work = async (): Promise<CandidateProbeResult> => {
+    const work = async (): Promise<MediaProbeResult> => {
       playback = await opener(locator,signal,'probe');
       if (signal.aborted) { closePlayback(); signal.throwIfAborted(); }
       await checkPlaylist(playback.root,signal,{bytes:0,playlists:0},new Set());
@@ -228,8 +231,35 @@ export async function probeCandidate(locator: CandidateLocator, signal: AbortSig
 export function createProbeCandidate(options={httpLimit:8,observerLimit:4,activeBudgetMs:65_000},
   opener:typeof openProvider=openProvider) {
   const resources=createProbeResources(options);
-  return (locator:CandidateLocator,signal:AbortSignal,onProgress:(progress:ProbeProgress)=>void):Promise<CandidateProbeResult>=>
+  return (locator:CandidateLocator,signal:AbortSignal,onProgress:(progress:ProbeProgress)=>void):Promise<MediaProbeResult>=>
     resources.run(signal,onProgress,active=>probeCandidate(locator,active,opener));
 }
 
-export const configuredProbeCandidate=createProbeCandidate();
+export async function configuredProbeCandidate(_locator:CandidateLocator,signal:AbortSignal,
+  onProgress:(progress:ProbeProgress)=>void,target:VerificationTarget):Promise<CandidateProbeResult> {
+  const origin=process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN;
+  const appOrigin=process.env.SUNDAY_ROOM_APP_ORIGIN;
+  const token=process.env.SUNDAY_ROOM_CONTROL_TOKEN;
+  if(!origin||!appOrigin||!token)return {kind:'deferred',retryAfterMs:30000};
+  onProgress({kind:'active',since:Date.now()});
+  try {
+    const response=await fetch(`${origin}/verify`,{method:'POST',cache:'no-store',redirect:'manual',
+      signal:AbortSignal.any([signal,AbortSignal.timeout(65_000)]),
+      headers:{'Content-Type':'application/json','x-sunday-control-token':token},body:JSON.stringify(target)});
+    if(response.status===429||response.status===503)return {kind:'deferred',retryAfterMs:2000};
+    if(!response.ok)return {kind:'unavailable',reason:'playback',phase:'replay'};
+    const value:unknown=await response.json();
+    if(!value||typeof value!=='object'||!('kind' in value))return {kind:'deferred',retryAfterMs:30000};
+    if(value.kind==='playable'&&'proof' in value){
+      const proof=AdvancingVideoSchema.safeParse(value.proof);
+      return proof.success?{kind:'playable',proof:proof.data}:{kind:'unavailable',reason:'playback',phase:'replay'};
+    }
+    if(value.kind==='unavailable')return {kind:'unavailable',reason:'playback',phase:'replay'};
+    return {kind:'deferred',retryAfterMs:30000};
+  }catch{return {kind:'deferred',retryAfterMs:30000};}
+  finally {
+    void fetch(`${appOrigin}/api/internal/revoke-verification`,{method:'POST',
+      headers:{'Content-Type':'application/json','x-sunday-control-token':token},
+      body:JSON.stringify(target),signal:AbortSignal.timeout(5000)}).catch(()=>{});
+  }
+}

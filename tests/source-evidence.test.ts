@@ -34,7 +34,7 @@ const inventory=(options:{at?:number;observations?:Observation[];details?:Detail
   observations:options.observations??[observation],games:[game],
   candidates:new Map([[game.id,options.candidates??[candidate]]]),details:options.details,
   collectionHistory:options.history,attempts:{fixture:{at,outcome:'parsed',count:1}},
-  availability:()=>options.availability==='playable'?{kind:'playable',proof:'media',checkedAt:at}:
+  availability:()=>options.availability==='playable'?{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at}:
     options.availability==='unavailable'?{kind:'unavailable',reason:'upstream',checkedAt:at,retryAt:at+120_000}:
       {kind:'unknown'},...emptyCatalogs,
 });
@@ -181,7 +181,7 @@ test('a fresh checked browser player counts as working when its dated live listi
   const snapshot=sourceInventory({at,revision:1,lastDiscoveryAt:at,browserCollectorsAvailable:true,
     sources:[{id:'sportsurge-v2',url:eventUrl,family:'sportsurge',kind:'browser-catalog'}],
     observations:[],games:[game],candidates:new Map([[game.id,admitted]]),attempts:{},
-    availability:()=>({kind:'playable',proof:'media',checkedAt:at}),
+    availability:()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at}),
     sportsurgeCatalog:{current:stored,lastComplete:null,previous:null},
     streameastCatalog:{current:null,lastComplete:null,previous:null}});
   assert.equal(snapshot.sources[0].workingChoiceCount,1);
@@ -213,7 +213,7 @@ test('shared route requires the exact current published free server URL and reta
     sources:[{id:'streameast',url:eventUrl,family:'streameast',kind:'browser-catalog'},
       {id:'sportsurge-v2',url:sportsurgeUrl,family:'sportsurge',kind:'browser-catalog'}],
     observations:[],games:[game],candidates:new Map([[game.id,[direct,{...routed,
-      locator:{...routed.locator,url}}]]]),attempts:{},availability:()=>({kind:'playable',proof:'media',
+      locator:{...routed.locator,url}}]]]),attempts:{},availability:()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},
       checkedAt:at}),sportsurgeCatalog:{current:{catalog:surgeCatalog,receivedAt:at},
       lastComplete:null,previous:null},streameastCatalog:{current:{catalog:directCatalog,receivedAt:at},
       lastComplete:null,previous:null}});

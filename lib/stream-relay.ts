@@ -4,10 +4,10 @@ import type { CandidateLocator } from './football/shared.ts';
 import { openProvider } from './playback/provider-registry.ts';
 import type { ProviderPlayback, ProviderResource, ResourceKind } from './playback/provider.ts';
 
-export type StreamGrant = {sessionId:string; candidateId:string; generation:number; gameId:string};
+export type StreamGrant = {sessionId:string; candidateId:string; generation:number; gameId:string; purpose?:'verification'};
 type Resource = StreamGrant & {kind:ResourceKind; identity:string; resource:ProviderResource; usedAt:number};
 type PlaybackState = {locator:CandidateLocator; opening?:Promise<ProviderPlayback>; openingController?:AbortController;
-  waiters:number; playback?:ProviderPlayback};
+  waiters:number; playback?:ProviderPlayback; deadlineTimer?:ReturnType<typeof setTimeout>};
 type Registry = {
   byToken:Map<string,Resource>; byResource:Map<string,string>;
   controllers:Map<string,AbortController>; controllerUsedAt:Map<string,number>;
@@ -39,6 +39,7 @@ function remove(token:string,resource:Resource):void {
 function closePlayback(id:string):void {
   const state=registry.playbacks.get(id);
   registry.playbacks.delete(id);
+  if(state?.deadlineTimer)clearTimeout(state.deadlineTimer);
   state?.openingController?.abort();
   state?.playback?.close();
 }
@@ -55,25 +56,29 @@ export function streamSignal(grant:StreamGrant):AbortSignal {
 }
 
 export async function openGeneration(grant:StreamGrant,locator:CandidateLocator,requestSignal:AbortSignal,
-  opener:typeof openProvider=openProvider):Promise<ProviderPlayback> {
+  opener:typeof openProvider=openProvider,purpose:'playback'|'probe'='playback',deadline?:number):Promise<ProviderPlayback> {
   const id=grantKey(grant);
   const generationSignal=streamSignal(grant);
   if (generationSignal.aborted || requestSignal.aborted) throw new Error('Stream generation ended');
   let state=registry.playbacks.get(id);
   if (state && JSON.stringify(state.locator)!==JSON.stringify(locator)) throw new Error('Stream candidate changed');
   if (state?.playback) return state.playback;
-  if (!state) {state={locator,waiters:0};registry.playbacks.set(id,state);}
+  if (!state) {
+    state={locator,waiters:0};registry.playbacks.set(id,state);
+    if(purpose==='probe'&&deadline!==undefined)
+      state.deadlineTimer=setTimeout(()=>revokeStreamGeneration(grant.sessionId,grant.generation),Math.max(0,deadline-Date.now()));
+  }
   if (!state.opening) {
     const owned=state;
     owned.openingController=new AbortController();
     const signal=AbortSignal.any([generationSignal,owned.openingController.signal]);
-    owned.opening=Promise.resolve().then(()=>opener(locator,signal)).then(playback=>{
+    owned.opening=Promise.resolve().then(()=>opener(locator,signal,purpose)).then(playback=>{
       if (signal.aborted || registry.playbacks.get(id)!==owned) {playback.close();throw new Error('Stream generation ended');}
       owned.playback=playback;
       owned.opening=undefined;
       return playback;
     }).catch(error=>{
-      if (registry.playbacks.get(id)===owned) registry.playbacks.delete(id);
+      if (registry.playbacks.get(id)===owned)closePlayback(id);
       owned.opening=undefined;
       throw error;
     });

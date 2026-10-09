@@ -60,7 +60,7 @@ test('live first feeds take priority over future selected alternatives while fut
       })),
     ],
     probeCandidate: async (locator, signal, onProgress) => {
-      if (locator.provider === 'gooz') return { kind: 'playable' as const, proof: 'media' as const };
+      if (locator.provider === 'gooz') return { kind: 'playable' as const, proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const };
       assert.equal(locator.provider, 'event-page');
       if (!hold) {
         admissions.push({ gameId: locator.gameId, phase: 'seed' });
@@ -75,7 +75,7 @@ test('live first feeds take priority over future selected alternatives while fut
             active.addEventListener('abort',resolve,{once:true});
           });
           return locator.gameId.startsWith('ncaaf')
-            ? {kind:'playable' as const,proof:'media' as const}
+            ? {kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const}
             : {kind:'unavailable' as const,reason:'upstream' as const};
         }finally{release();}
       });

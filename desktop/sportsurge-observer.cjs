@@ -4,6 +4,7 @@ const { lookup } = require('node:dns/promises');
 const http = require('node:http');
 const net = require('node:net');
 const { createObservedMedia } = require('./observed-media.cjs');
+const { createPlaybackVerifier } = require('./playback-verifier.cjs');
 const { handleCertificateIssuerRequest } = require('./certificate-issuer-proxy.cjs');
 const { eventUrl:streameastEventUrl,serverUrl:streameastServerUrl,publishedFreePlayer,CATEGORIES:STREAMEAST_CATEGORIES } = require('./streameast-catalog.cjs');
 
@@ -782,9 +783,10 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
 function createSportsurgeObserver({ controlToken, port = 0, resolveAddress = pinnedAddress }) {
   const slots = Array.from({ length: OBSERVER_SLOTS },(_,index) => createObserverSlot(index,resolveAddress));
   const media = createObservedMedia({ pinAddress:resolveAddress,validateUrl:publicUrl });
+  const verifier=createPlaybackVerifier();
   const service = http.createServer(async (request,response) => {
     const release = request.method === 'DELETE' && /^\/media\/([a-f0-9-]{36})$/.exec(request.url || '');
-    if (!release && (request.method !== 'POST' || !['/observe','/media'].includes(request.url))) { response.writeHead(404); response.end(); return; }
+    if (!release && (request.method !== 'POST' || !['/observe','/media','/verify'].includes(request.url))) { response.writeHead(404); response.end(); return; }
     if (!authorized(request.headers['x-sunday-control-token'],controlToken)) { response.writeHead(401); response.end(); return; }
     if (release) { media.close(release[1]); response.writeHead(204); response.end(); return; }
     let operation;
@@ -798,6 +800,20 @@ function createSportsurgeObserver({ controlToken, port = 0, resolveAddress = pin
         if (Buffer.byteLength(body) > 4096) { response.writeHead(413); response.end(); return; }
       }
       const input = JSON.parse(body);
+      if(request.url==='/verify'){
+        if(!input||typeof input.sessionId!=='string'||!/^[a-f0-9-]{36}$/i.test(input.sessionId)||
+          typeof input.gameId!=='string'||input.gameId.length<1||input.gameId.length>100||
+          typeof input.candidateId!=='string'||input.candidateId.length<1||input.candidateId.length>100||
+          input.generation!==0){response.writeHead(400);response.end();return;}
+        operation=verifier.verify(input,AbortSignal.timeout(65_000));
+        if(!operation){response.writeHead(429);response.end();return;}
+        const result=await operation.result;
+        response.off('close',onClose);
+        if(closed)return;
+        response.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+        response.end(JSON.stringify(result));
+        return;
+      }
       if (request.url === '/media') {
         media.read(input?.capability,input?.url,input?.range,response);
         return;
@@ -876,11 +892,12 @@ function createSportsurgeObserver({ controlToken, port = 0, resolveAddress = pin
     } catch (error) { stop(); throw error; }
   }
   function stop() {
+    verifier.stop();
     media.stop();
     if (service.listening) service.close();
     for (const slot of slots) slot.stop();
   }
-  return { start, stop };
+  return { start, stop, configureVerifier:verifier.configure };
 }
 
 module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedJwVideo, aianimalvibesPlayer, belongsToSelectedStreameastPlayer, selectedWikisportJwFrame, allowsSelectedStreameastNavigation, recognizedDlivePixelTransport };

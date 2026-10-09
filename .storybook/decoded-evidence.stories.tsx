@@ -8,8 +8,8 @@ function PlaybackProof(props: ComponentProps<typeof GamePlayer>) {
   const [evidence, setEvidence] = useState<{ count: number; url: string; startupMs: number } | null>(null);
   return <div>
     <div style={{ position: 'relative', width: 'min(720px, 90vw)', height: 405 }}>
-      <GamePlayer {...props} onDecoded={(url, startupMs) => setEvidence(previous => ({
-        count: (previous?.count || 0) + 1, url, startupMs,
+      <GamePlayer {...props} onDecoded={(url, proof) => setEvidence(previous => ({
+        count: (previous?.count || 0) + 1, url, startupMs:proof.startupMs,
       }))}/>
     </div>
     <output data-testid="decoded-proof" data-count={evidence?.count || 0}>

@@ -51,7 +51,7 @@ async function runCollection(failed: 'nfl' | 'ncaaf' | 'index' | null) {
     ],
     readSchedule:async partition => ({games:games.filter(row=>row.partitions?.includes(partition.id)),at,league:partition.league}),
     readSeasonMembership:async()=>{throw new Error('unexpected membership fetch');},
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),now:()=>clock,
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),now:()=>clock,
   });
   globalThis.fetch = async input => {
     const url = String(input);

@@ -58,7 +58,7 @@ test('a large restored inventory keeps public commands and timers responsive whi
           try{await held;return new Response('ok');}finally{active--;}
         });
         await response.text();
-        return {kind:'playable',proof:'media'};
+        return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
       }),
     });
     const [board,sources,elapsed]=await Promise.all([

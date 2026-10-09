@@ -92,13 +92,14 @@ test('duplicate provider event identities prevent a complete empty scope',()=>{
   assert.deepEqual(snapshot.games[0].feeds,{kind:'incomplete',reason:'listings'});
 });
 
-test('feed counts separate discovery, verified media, decoded working playback and pending checks',()=>{
-  const choices:Candidate[]=['media','decoded','queued'].map((id,index)=>({id,gameId:'100',label:id,sourceIds:['fixture'],
+test('feed counts separate discovered, advancing, and pending choices',()=>{
+  const choices:Candidate[]=['advance-one','advance-two','queued'].map((id,index)=>({id,gameId:'100',label:id,sourceIds:['fixture'],
     observedAt:at,locator:{provider:'gooz',playerId:String(index+1)}}));
   const snapshot=sourceInventory({...base,candidates:new Map([['100',choices]]),availability:candidate=>
     candidate.id==='queued'?{kind:'checking',progress:{kind:'queued',since:at}}:
-      {kind:'playable',proof:candidate.id==='decoded'?'decoded':'media',checkedAt:at}});
-  assert.deepEqual(snapshot.games[0].feeds,{kind:'feeds',discovered:3,mediaVerified:2,decoded:1,checking:1});
+      {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,
+        observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at}});
+  assert.deepEqual(snapshot.games[0].feeds,{kind:'feeds',discovered:3,mediaVerified:2,decoded:2,checking:1});
   assert.deepEqual(snapshot.sources[0].scopes[0].feeds,snapshot.games[0].feeds);
 });
 
@@ -117,7 +118,7 @@ test('a known event with unknown status remains visible without authorizing its 
   let probes=0;
   const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{now:()=>at,sources:[],
     schedules:[{id:'motogp',league:'motogp',path:'source-motogp',group:null}],
-    readSchedule:async()=>({league:'motogp',games:[event],at}),probeCandidate:async()=>{probes++;return {kind:'playable',proof:'media'};}});
+    readSchedule:async()=>({league:'motogp',games:[event],at}),probeCandidate:async()=>{probes++;return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};}});
   try {
     await coordinator.refresh();
     const reply=await coordinator.command({kind:'sources'});
@@ -264,7 +265,7 @@ test('all choices across game frontiers are checked with eight physical HTTP ope
       });
       await response.text();
       completed.push(locator.playerId);
-      return {kind:'playable',proof:'media'};
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     })});
   try {
     await coordinator.refresh();
@@ -304,7 +305,7 @@ test('the common pipeline collects today and tomorrow across every supported lea
     readSchedule:async partition=>({league:partition.league,games:games.filter(game=>game.league===partition.league),at}),
     readHtml:async()=>'<main>fixture</main>',parseListings:()=>({outcome:'parsed',observations:listings}),
     compatiblePlayers:gameId=>[{id:`choice-${gameId}`,label:'Published feed',locator:{provider:'gooz',playerId:'1'}}],
-    probeCandidate:async()=>({kind:'playable',proof:'media'})});
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}})});
   let last='';
   try {
     await coordinator.refresh();

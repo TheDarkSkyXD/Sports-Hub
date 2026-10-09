@@ -57,7 +57,7 @@ function fixture(upcoming = false, catalog = false) {
         pending.push({ id, resolve });
         signal.addEventListener('abort', () => resolve({ kind: 'deferred', retryAfterMs: 1000 }), { once: true });
       });
-      return { kind: 'playable', proof: 'media' };
+      return { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
     },
   });
   const snapshot = async () => {
@@ -149,7 +149,7 @@ test('working upcoming choices survive expired listings while the game remains e
     const snapshot = await run.snapshot();
     assert.deepEqual(snapshot.games.map(row => row.workingChoiceCount), [2, 2]);
     assert.deepEqual(snapshot.games.flatMap(row => row.candidates.map(candidate => candidate.availability)),
-      Array.from({ length: 4 }, () => ({ kind: 'playable', checkedAt: at + 31 * 60000, proof: 'media' })));
+      Array.from({ length: 4 }, () => ({ kind: 'playable', checkedAt: at + 31 * 60000, proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} })));
     assert.equal(run.checks(), 8);
   } finally { await run.stop(); }
 });

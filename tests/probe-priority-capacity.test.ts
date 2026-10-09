@@ -45,7 +45,7 @@ for(const priority of ['requested','near','live'] as const)test(`a late ${priori
         calls.push(locator.playerId);
         if(locator.playerId!==target.id)
           await new Promise<void>(resolve=>held.push({id:locator.playerId,signal:active,release:resolve}));
-        return {kind:'playable',proof:'media'};
+        return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
       }finally{release();}
     }),
   });
@@ -103,7 +103,7 @@ test('a requested game admits its second sibling after its first entered the obs
         calls.push(locator.playerId);
         if(!locator.playerId.startsWith(target.id))
           await new Promise<void>(resolve=>held.push({id:locator.playerId,release:resolve,signal:active}));
-        return {kind:'playable',proof:'media'};
+        return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
       }finally{release();}
     }),
   });
@@ -160,7 +160,7 @@ test('manual retry promotes an automatic retry already waiting for an observer',
           calls.push(locator.playerId);
           if(locator.playerId!==target.id)
             await new Promise<void>(resolve=>held.push({id:locator.playerId,release:resolve,signal:active}));
-          return {kind:'playable' as const,proof:'media' as const};
+          return {kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const};
         }finally{release();}
       });
     },

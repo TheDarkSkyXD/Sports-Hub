@@ -20,7 +20,7 @@ async function drain() { for (let index = 0; index < 60; index++) await new Prom
 function fixture() {
   const directory = mkdtempSync(join(tmpdir(), 'working-feed-cache-')), path = join(directory, 'state.sqlite');
   let clock = at, current: Game[] = [game], visible = true, failSchedule = false, listingVersion = 1;
-  let probe: (locator: CandidateLocator) => Promise<CandidateProbeResult> = async () => ({ kind: 'playable', proof: 'media' });
+  let probe: (locator: CandidateLocator) => Promise<CandidateProbeResult> = async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
   let sourceIds = ['fixture'], locators: CandidateLocator[] = [{ provider: 'gooz', playerId: '100' }], partitionIds = ['nfl'];
   const partitionResults = new Map<string, Game[] | Promise<Game[]>>();
   const probes: CandidateLocator[] = [];
@@ -98,8 +98,8 @@ test('public Sportsurge query pages retain media proof across coordinator restar
     const before = (await snapshot(coordinator)).games[0].candidates;
     assert.equal(before.length, 2);
     assert.deepEqual(before.map(row => row.availability), [
-      { kind: 'playable', proof: 'media', checkedAt: at },
-      { kind: 'playable', proof: 'media', checkedAt: at },
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at },
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at },
     ]);
     assert.equal(run.probes.length, 2);
     await coordinator.stop(); run.hide(); run.setClock(at + 60_000);
@@ -109,6 +109,31 @@ test('public Sportsurge query pages retain media proof across coordinator restar
     assert.deepEqual((await snapshot(coordinator)).games[0].candidates, before);
     assert.equal(run.probes.length, 2);
   } finally { await coordinator.stop(); run.cleanup(); }
+});
+
+test('legacy media and decoded cache rows remain recheck hints, never Available proof',async()=>{
+  for(const legacyProof of ['media','decoded'] as const){
+    const run=fixture();
+    run.setSources(['sportsurge-v2']);
+    run.setLocators([{provider:'sportsurge-v2',eventId:'nfl:10001',providerId:'sportsupa',
+      url:'https://sportsupa.st/event/?id=san-francisco-49ers-vs-denver-broncos-2475434&src=best&sno=1'}]);
+    let coordinator=run.start();
+    try{
+      await coordinator.refresh(true);await drain();
+      const rows=run.readRows();
+      assert.equal(rows.length,1);
+      await coordinator.stop();
+      run.writeRows(rows.map(row=>({...row,version:1 as const,proof:legacyProof})));
+      run.hide();run.setClock(at+31*60_000);
+      run.setProbe(async()=>({kind:'deferred',retryAfterMs:30_000}));
+      coordinator=run.start();
+      await coordinator.refresh(true);await drain();
+      const candidates=(await snapshot(coordinator)).games[0].candidates;
+      assert.equal(candidates.length,1);
+      assert.notEqual(candidates[0].availability.kind,'playable');
+      assert.equal(run.probes.length,2);
+    }finally{await coordinator.stop();run.cleanup();}
+  }
 });
 
 test('old live and scheduled working choices are visible before schedule refresh', async () => {
@@ -125,7 +150,7 @@ test('old live and scheduled working choices are visible before schedule refresh
       assert.equal(run.probes.length, 1);
       await coordinator.refresh(true); await drain();
       assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0],
-        { ...before, availability: { kind: 'playable', proof: 'media', checkedAt: at + 31 * 60_000 } });
+        { ...before, availability: { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 31 * 60_000 } });
       assert.equal(run.probes.length, 2);
     } finally { await coordinator.stop(); run.cleanup(); }
   }
@@ -171,7 +196,7 @@ test('a held schedule refresh collects listings while saved working feeds open w
 test('stale saved proof excludes unverified sibling routes and yesterday live games', async () => {
   const run = fixture(); run.setLocators([{ provider: 'gooz', playerId: '100' }, { provider: 'gooz', playerId: '200' }]);
   run.setProbe(async locator => locator.provider === 'gooz' && locator.playerId === '100' ?
-    { kind: 'playable', proof: 'media' } : { kind: 'unavailable', reason: 'timeout' });
+    { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} } : { kind: 'unavailable', reason: 'timeout' });
   let coordinator = run.start();
   try {
     await coordinator.refresh(true); await drain();
@@ -353,7 +378,7 @@ test('an unchanged fresh schedule restores saved feeds when Chicago midnight ope
     await coordinator.refresh(true);await drain();
     const candidates=(await snapshot(coordinator)).games.find(row=>row.gameId===game.id)?.candidates;
     assert.equal(candidates?.length,1);
-    assert.deepEqual(candidates[0].availability,{kind:'playable',proof:'media',checkedAt:at});
+    assert.deepEqual(candidates[0].availability,{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at});
   }finally{await coordinator.stop();run.cleanup();}
 });
 
@@ -396,7 +421,7 @@ test('an aged scheduled working route and its changed-locator alias both survive
     const after = (await snapshot(coordinator)).games[0].candidates;
     assert.deepEqual(after.map(row => row.id), before.map(row => row.id));
     assert.deepEqual(after.map(row => row.availability),
-      Array.from({ length: 2 }, () => ({ kind: 'playable', proof: 'media', checkedAt: at + 40 * 60_000 })));
+      Array.from({ length: 2 }, () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 40 * 60_000 })));
     assert.equal(run.probes.length, 5);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
@@ -437,13 +462,15 @@ test('decoded playback persists and a late canceled probe cannot overwrite it ac
     await coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: true }); await drain();
     assert.equal(run.probes.length, 2);
     const decoded = await coordinator.command({ kind: 'playback-evidence', sessionId: session.id, candidateId: session.candidateId,
-      generation: 1, evidence: { kind: 'decoded', startupMs: 100 } });
+      generation: 1, evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     assert.equal(decoded.kind, 'ok');
     release({ kind: 'unavailable', reason: 'timeout' }); await drain();
-    assert.equal(run.readRows()[0].proof, 'decoded');
+    assert.deepEqual(run.readRows()[0].proof,{kind:'advancing-video',version:1,startupMs:100,
+      observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4});
     await coordinator.stop(); coordinator = run.start(); await coordinator.refresh(true); await drain();
     assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
-    assert.equal(run.readRows()[0].proof, 'decoded');
+    assert.deepEqual(run.readRows()[0].proof,{kind:'advancing-video',version:1,startupMs:100,
+      observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4});
     assert.equal(run.probes.length, 2);
   } finally { release({ kind: 'unavailable', reason: 'timeout' }); await coordinator.stop(); run.cleanup(); }
 });

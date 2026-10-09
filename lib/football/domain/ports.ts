@@ -1,9 +1,9 @@
-import type { CandidateLocator, CollectionAttempt, DetailEvidence, Game, League, Match, MediaPhase, MissingPlayerReason, Observation, ResolvedPlayer, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
+import type { AdvancingVideo, CandidateLocator, CollectionAttempt, DetailEvidence, Game, League, Match, MediaPhase, MissingPlayerReason, Observation, ResolvedPlayer, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog, VerificationTarget } from '../shared.ts';
 import type { WorkingFeed } from './working-feed.ts';
 
 export type CandidateProbeResult =
-  | {kind:'playable';proof:'media'|'decoded'}
-  | {kind:'unavailable';reason:'upstream'|'unsupported'|'invalid-media'|'timeout'|'no-feed';phase?:MediaPhase}
+  | {kind:'playable';proof:AdvancingVideo}
+  | {kind:'unavailable';reason:'upstream'|'unsupported'|'invalid-media'|'timeout'|'no-feed'|'playback';phase?:MediaPhase}
   | {kind:'deferred';retryAfterMs:number;phase?:MediaPhase};
 
 export type ProbeProgress={kind:'waiting'|'active';since:number};
@@ -73,7 +73,7 @@ export type FootballDependencies = {
   tvappPlayers?: (gameId:string,observation:Observation,html:string,signal:AbortSignal)=>Promise<ResolvedPlayer[]>;
   resolvePlayers?: (gameId:string,observation:Observation,html:string,signal:AbortSignal)=>Promise<ResolvedPlayer[]>;
   missingPlayerReason: (observation: Observation, html: string) => MissingPlayerReason;
-  probeCandidate: (locator: CandidateLocator, signal: AbortSignal, onProgress:(progress:ProbeProgress)=>void) => Promise<CandidateProbeResult>;
+  probeCandidate: (locator: CandidateLocator, signal: AbortSignal, onProgress:(progress:ProbeProgress)=>void,target:VerificationTarget) => Promise<CandidateProbeResult>;
   probeIdentity?: (locator: CandidateLocator) => string;
   persistableLocator?: (locator: CandidateLocator) => boolean;
   retryAfterMs: (error: unknown) => number;
