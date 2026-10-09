@@ -11,7 +11,10 @@ const server = path.join(standalone, 'server.js');
 const staticFiles = path.resolve(distDir, 'static');
 
 await stat(server);
-if (distDir !== '.next') await cp(server, path.join(standalone, 'server.cjs'));
+if (distDir !== '.next') {
+  await cp(server, path.join(standalone, 'server.cjs'));
+  await cp(path.resolve('package.json'), path.join(standalone, 'package.json'));
+}
 await stat(staticFiles);
 await mkdir(path.join(standalone, distDir), { recursive: true });
 await cp(staticFiles, path.join(standalone, distDir, 'static'), { recursive: true, force: true });

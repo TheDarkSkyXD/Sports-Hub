@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import type { TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { Worker } from 'node:worker_threads';
 
 const prepare = fileURLToPath(new URL('../scripts/prepare-desktop.mjs', import.meta.url));
 const run = promisify(execFile);
@@ -90,14 +91,18 @@ test('desktop preparation rejects a standalone worker without its source registr
   await assert.rejects(run(process.execPath,[prepare],{cwd:root,windowsHide:true}),/ENOENT.*source-registry\.json/s);
 });
 
-test('desktop preparation materializes a traced package alias inside a custom standalone build', async t => {
+test('custom standalone materializes traced aliases and runs ESM workers', async t => {
   const root = await fixture(t);
   const distDir = '.desktop-runtime/local-builds/1234abcd';
   const source = path.join(root, '.next');
   const output = path.join(root, distDir);
   await mkdir(path.dirname(output), { recursive: true });
   await cp(source, output, { recursive: true });
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }));
+  await writeFile(path.join(output, 'package.json'), JSON.stringify({ type: 'commonjs' }));
   const standalone = path.join(output, 'standalone');
+  const workerFile = path.join(standalone, 'lib/football/runtime/worker.ts');
+  await writeFile(workerFile, 'import { parentPort } from "node:worker_threads"; parentPort?.postMessage("standalone ready");');
   await mkdir(path.join(standalone, 'node_modules/sharp'), { recursive: true });
   await writeFile(path.join(standalone, 'node_modules/sharp/index.js'), 'traced sharp');
   await writeFile(path.join(root, 'node_modules/sharp/index.js'), 'source sharp');
@@ -112,4 +117,15 @@ test('desktop preparation materializes a traced package alias inside a custom st
   assert.equal(await readFile(path.join(alias, 'index.js'), 'utf8'), 'source sharp');
   await writeFile(path.join(root, 'node_modules/sharp/index.js'), 'changed source sharp');
   assert.equal(await readFile(path.join(alias, 'index.js'), 'utf8'), 'source sharp');
+  assert.equal(await readFile(path.join(standalone, 'package.json'), 'utf8'),
+    await readFile(path.join(root, 'package.json'), 'utf8'));
+  const worker = new Worker(workerFile);
+  await new Promise<void>((resolve, reject) => {
+    worker.once('message', message => {
+      if (message === 'standalone ready') resolve();
+      else reject(new Error(`Unexpected worker response: ${message}`));
+    });
+    worker.once('error', reject);
+    worker.once('exit', code => reject(new Error(`Worker exited before replying: ${code}`)));
+  });
 });
