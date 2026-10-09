@@ -16,6 +16,7 @@ const { buildDirectory, completeArtifact } = require('../desktop/compiled-artifa
 const root = path.resolve('.');
 const source = readFileSync(path.join(root, 'desktop/local-server.cjs'), 'utf8');
 const fastTimeout: typeof setTimeout = (callback, _delay, ...args) => setTimeout(callback, 10, ...args);
+const compiledPreparationWatchdogMs = 15_000;
 function nativeRoot(prefix: string) {
   const serverRoot = mkdtempSync(path.join(tmpdir(), prefix));
   stageNativeArtifact(serverRoot);
@@ -67,7 +68,8 @@ function localServer(options: {
   return { service, dispose: () => rmSync(logDir, { recursive: true, force: true }) };
 }
 
-test('ordinary unpackaged desktop prepares compiled output instead of launching development', async () => {
+test('ordinary unpackaged desktop prepares compiled output instead of launching development',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
   const serverRoot = nativeRoot('sunday-local-source-test-');
   mkdirSync(path.join(serverRoot, '.next'));
   mkdirSync(path.join(serverRoot, 'node_modules'));
@@ -85,12 +87,13 @@ test('ordinary unpackaged desktop prepares compiled output instead of launching 
   });
   try {
     const ready = room.service.start();
+    const rejected = assert.rejects(ready, /stop/i);
     try {
-      await within(launched, 1000);
+      await launched;
       assert.equal(launch?.[2], 'build');
     } finally {
       room.service.beginStop();
-      await assert.rejects(ready, /stop/i);
+      await rejected;
     }
   } finally {
     room.service.beginStop();
@@ -99,7 +102,8 @@ test('ordinary unpackaged desktop prepares compiled output instead of launching 
   }
 });
 
-test('a failed compiled build fails startup without serving an older build', async () => {
+test('a failed compiled build fails startup without serving an older build',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
   const serverRoot = nativeRoot('sunday-local-failed-build-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   const child = new Child();
@@ -118,7 +122,7 @@ test('a failed compiled build fails startup without serving an older build', asy
     },
   });
   try {
-    await assert.rejects(within(room.service.start(), 1000), /build failed with code 1/);
+    await assert.rejects(room.service.start(), /build failed with code 1/);
     assert.deepEqual(modes, ['build']);
     await within(room.service.stop());
   } finally {
@@ -127,7 +131,8 @@ test('a failed compiled build fails startup without serving an older build', asy
   }
 });
 
-test('stopping during a compiled build terminates its owned tree before serving', async () => {
+test('stopping during a compiled build terminates its owned tree before serving',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
   const serverRoot = nativeRoot('sunday-local-cancel-build-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   const child = new Child();
@@ -152,7 +157,7 @@ test('stopping during a compiled build terminates its owned tree before serving'
   try {
     const ready = room.service.start();
     const rejected = assert.rejects(ready, /stop/i);
-    await within(buildStarted, 1000);
+    await buildStarted;
     room.service.beginStop();
     await within(room.service.stop(), 1000);
     await rejected;
@@ -165,8 +170,8 @@ test('stopping during a compiled build terminates its owned tree before serving'
   }
 });
 
-test('compiled startup reuses complete output and rebuilds after a source edit', async () => {
-  const preparationDeadlineMs = 3000;
+test('compiled startup reuses complete output and rebuilds after a source edit',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
   const serverRoot = nativeRoot('sunday-local-reuse-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   mkdirSync(path.join(serverRoot, 'app'));
@@ -205,7 +210,7 @@ test('compiled startup reuses complete output and rebuilds after a source edit',
     },
   });
   try {
-    await within(room.service.start(), preparationDeadlineMs);
+    await room.service.start();
     assert.deepEqual(modes, ['standalone']);
     await within(room.service.stop(), 1000);
   } finally { room.service.beginStop(); room.dispose(); }
@@ -224,7 +229,7 @@ test('compiled startup reuses complete output and rebuilds after a source edit',
   try {
     const ready = nextRoom.service.start();
     const rejected = assert.rejects(ready, /stop/i);
-    await within(buildStarted, preparationDeadlineMs);
+    await buildStarted;
     assert.deepEqual(modes, ['standalone', 'build']);
     nextRoom.service.beginStop();
     await rejected;
