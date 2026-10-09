@@ -29,4 +29,4 @@ A six-minute native run recorded 36 successful board and source snapshots, no sc
 
 The test suite passed 777 tests with one existing skip. Type checking and lint passed. Twenty-four independent focused checks covered lifecycle, artifact validation, output tracing, and preparation. A real Windows failed-build fixture confirmed that shutdown killed the owned compiler child.
 
-Raw process and frame traces remain under the ignored `.desktop-runtime` directory. They include private source request context and are not published. The advertising-document follow-up must prove both lower native memory and preserved playback before it can close the remaining cold-start finding.
+Raw process and frame traces remain under the ignored `.desktop-runtime` directory. They include private source request context and are not published. The [advertising-document follow-up](source-advertising-memory.md) records the remaining frame root cause, preserved playback, and a cached-restart peak of 1,789.98 MiB.
