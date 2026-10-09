@@ -51,6 +51,7 @@
 .source-inventory-list{min-width:0;border:1px solid #353a44;border-radius:6px}
 .source-inventory-game-list{max-height:min(420px,50dvh);overflow-y:scroll;scrollbar-gutter:stable}
 .source-inventory-game-pagination{border-top:1px solid #353a44;padding:10px 12px;text-align:center;color:#a2aab8;font-size:12px}
+.game-list-more{display:block;margin:12px auto 0}.center-games>.game-list-more{width:100%;grid-column:1/-1}
 .source-inventory-game-search{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;font-size:12px;color:#a2aab8}
 .source-inventory-game-search>div{display:flex;gap:8px;min-width:0;flex:1 1 180px}
 .source-inventory-game-search input{min-width:0;flex:1;background:#111319;border:1px solid #3b404b;border-radius:6px;padding:7px 9px;color:#eef0f5}
