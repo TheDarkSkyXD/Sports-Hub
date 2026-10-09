@@ -2,12 +2,13 @@ use crate::{
     error::CollectorError,
     types::{League, ListingSource},
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
 pub struct SourceRegistry {
     sources: Vec<ListingSource>,
     by_id: HashMap<String, usize>,
+    hosts: HashSet<String>,
 }
 
 impl SourceRegistry {
@@ -15,17 +16,20 @@ impl SourceRegistry {
         let sources: Vec<ListingSource> = serde_json::from_str(json)
             .map_err(|error| CollectorError::InvalidRegistry(error.to_string()))?;
         let mut by_id = HashMap::with_capacity(sources.len());
+        let mut hosts = HashSet::with_capacity(sources.len());
         for (index, source) in sources.iter().enumerate() {
             if source.id.is_empty() || source.family.is_empty() || source.leagues.is_empty() {
                 return Err(CollectorError::InvalidRegistry(format!(
                     "incomplete source at index {index}"
                 )));
             }
-            if url::Url::parse(&source.url).is_err() {
-                return Err(CollectorError::InvalidRegistry(format!(
-                    "invalid source URL at index {index}"
-                )));
-            }
+            let host = url::Url::parse(&source.url)
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_string))
+                .ok_or_else(|| {
+                    CollectorError::InvalidRegistry(format!("invalid source URL at index {index}"))
+                })?;
+            hosts.insert(host);
             if by_id.insert(source.id.clone(), index).is_some() {
                 return Err(CollectorError::InvalidRegistry(format!(
                     "duplicate source ID: {}",
@@ -33,7 +37,11 @@ impl SourceRegistry {
                 )));
             }
         }
-        Ok(Self { sources, by_id })
+        Ok(Self {
+            sources,
+            by_id,
+            hosts,
+        })
     }
 
     pub fn get(&self, id: &str) -> Option<&ListingSource> {
@@ -42,6 +50,10 @@ impl SourceRegistry {
 
     pub fn sources(&self) -> &[ListingSource] {
         &self.sources
+    }
+
+    pub fn contains_host(&self, host: &str) -> bool {
+        self.hosts.contains(host)
     }
 
     pub fn browser_category(
