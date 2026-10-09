@@ -4,7 +4,7 @@ import {createCipheriv} from 'node:crypto';
 import {createServer} from 'node:http';
 import {gzipSync} from 'node:zlib';
 import {probeCandidate} from '../lib/playback/probe.ts';
-import {ProviderDeferredError, sanitizedRead, type ProviderResource, type ResourceKind} from '../lib/playback/provider.ts';
+import {ProviderDeferredError, ProviderNoFeedError, sanitizedRead, type ProviderResource, type ResourceKind} from '../lib/playback/provider.ts';
 
 const locator = {provider:'gooz' as const,playerId:'123'};
 const transportStream = Buffer.alloc(188*4);
@@ -158,12 +158,26 @@ test('probe rejects cycles and unsupported encryption',async()=>{
 
 test('observer saturation and cancellation defer a probe without condemning the source',async()=>{
   assert.deepEqual(await probeCandidate(locator,signal(),async()=>{throw new ProviderDeferredError(2000);}),{kind:'deferred',retryAfterMs:2000});
+  assert.deepEqual(await probeCandidate(locator,signal(),async()=>{throw new ProviderDeferredError(30000,'capture');}),
+    {kind:'deferred',retryAfterMs:30000,phase:'capture'});
+  assert.deepEqual(await probeCandidate(locator,signal(),async()=>{throw new ProviderNoFeedError('activation');}),
+    {kind:'unavailable',reason:'no-feed',phase:'activation'});
   const controller=new AbortController();controller.abort();
   const run=fixture({'index.m3u8':playlist()});
   let opens=0;
   assert.deepEqual(await probeCandidate(locator,controller.signal,async()=>{opens++;return run.open();}),{kind:'deferred',retryAfterMs:2000});
   assert.equal(opens,0);
   assert.equal(run.closed(),0);
+});
+
+test('a failed media read retains its replay phase',async()=>{
+  const run=fixture({'index.m3u8':playlist()});
+  const opened=await run.open();
+  const result=await probeCandidate(locator,signal(),async()=>({
+    ...opened,root:{...opened.root,read:async()=>{throw new Error('media replay failed');}},
+  }));
+  assert.deepEqual(result,{kind:'unavailable',reason:'upstream',phase:'replay'});
+  assert.equal(run.closed(),1);
 });
 
 async function settlesSoon<T>(work:Promise<T>):Promise<T|'pending'> {

@@ -1,6 +1,7 @@
 import { isRaceGame, isMotorsportsLeague, type Game, type Match, type MatchupGame, type Observation, type RaceGame, type SourceEventBinding } from '../shared.ts';
 import { COLLEGE_TEAM_CATALOG } from './college-teams.generated.ts';
 import { feedEligible } from './feed-eligibility.ts';
+import { sourceCoverage } from '../source-registry.ts';
 
 export function normalizedName(value: string): string {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\band\b/g, '&').replace(/[^a-z0-9]/g, '');
@@ -57,10 +58,6 @@ export function createObservationMatcher(games: readonly Game[], mode: 'current'
     if (!first || !second || first===second) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
     const strict=prepared.filter(({game,home,away})=>{
       if (observation.league && game.league!==observation.league) return false;
-      if (observation.sourceId==='tvapp-nba' && game.league!=='nba' && game.league!=='wnba' && game.league!=='ncaab') return false;
-      if (observation.sourceId==='tvapp-nhl' && game.league!=='nhl' && game.league!=='ncaah' && game.league!=='ncaawh') return false;
-      if (observation.sourceId==='tvapp-mlb' && game.league!=='mlb') return false;
-      if (observation.sourceId==='tvapp' && game.league!=='nfl' && game.league!=='ncaaf') return false;
       return home.has(first) && away.has(second) || home.has(second) && away.has(first);
     });
     const anchored=(anchorName:string,otherName:string,anchorId:string,otherId:string):boolean=>{
@@ -71,7 +68,7 @@ export function createObservationMatcher(games: readonly Game[], mode: 'current'
         !!activeAnchor&&activeAnchor.size===1&&activeAnchor.has(anchorId)&&
         !!activeOther&&activeOther.has(otherId)&&[...activeOther].every(owner=>otherOwners.has(owner));
     };
-    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='ncaab'||observation.league==='nhl'||observation.league==='ncaah'||observation.league==='ncaawh'||observation.league==='mlb'||observation.sourceId==='tvapp-nba'||observation.sourceId==='tvapp-nhl'||observation.sourceId==='tvapp-mlb'?[]:prepared.filter(({game})=>{
+    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='ncaab'||observation.league==='nhl'||observation.league==='ncaah'||observation.league==='ncaawh'||observation.league==='mlb'?[]:prepared.filter(({game})=>{
       if(game.league!=='ncaaf'||!collegeAliases.has(game.home.id||'')||!collegeAliases.has(game.away.id||''))return false;
       const home=identity(game,game.home),away=identity(game,game.away);
       return anchored(first,second,home,away)||anchored(second,first,away,home)||
@@ -134,19 +131,52 @@ export function detailCandidateGameIds(result:Match):readonly string[] {
     ?result.possibleGameIds:[];
 }
 
-export function matchUndatedSportsurge(observation:Observation,result:Match,games:readonly Game[],now:number):Match {
-  if((observation.sourceId!=='sportsurge'&&observation.sourceId!=='sportsurge-v2')||
-    observation.kickoff!==null||now-observation.observedAt>=30*60_000||observation.observedAt>now+60_000||
-    result.kind!=='unmatched'||result.reason!=='unverified-kickoff'||result.possibleGameIds.length!==1)return result;
-  const game=games.find(game=>game.id===result.possibleGameIds[0]);
-  return game&&observation.league===game.league&&feedEligible(game,now)?{kind:'matched',gameId:game.id}:result;
-}
+export type SourceEventEvidence = {
+  undated: 'none' | 'published-listing' | 'live-claim' | 'retained-live-detail';
+  externalGameId: string | null;
+};
 
-export function matchSourceLiveGame(result:Match,games:readonly Game[],now:number):Match {
-  if(result.kind!=='unmatched'||result.reason!=='unverified-kickoff'||result.possibleGameIds.length!==1)return result;
-  const game=games.find(game=>game.id===result.possibleGameIds[0]);
-  return game&&(game.lifecycle==='live'||game.lifecycle==='scheduled'&&game.date!==undefined&&Math.abs(Date.parse(game.date)-now)<=30*60_000)
-    ?{kind:'matched',gameId:game.id}:result;
+export type SourceEventDecision =
+  | {kind:'matched';gameId:string;match:Extract<Match,{kind:'matched'}>}
+  | {kind:'possible';gameIds:string[];reason:string;match:Extract<Match,{kind:'unmatched'}>}
+  | {kind:'rejected';reason:string;match:Extract<Match,{kind:'unmatched'}>};
+
+export function createSourceEventMatcher(games:readonly Game[],mode:'current'|'inventory-live'='current') {
+  const prepared=new Map<string,ReturnType<typeof createObservationMatcher>>();
+  const byId=new Map(games.map(game=>[game.id,game]));
+  return (observation:Observation,evidence:SourceEventEvidence,now:number):SourceEventDecision=>{
+    const declared=sourceCoverage(observation.sourceId);
+    const leagues=declared.length?declared:observation.league?[observation.league]:
+      [...new Set(games.map(game=>game.league))];
+    const key=[...leagues].sort().join(',');
+    let match=prepared.get(key);
+    if(!match){
+      match=createObservationMatcher(games.filter(game=>leagues.includes(game.league)),mode);
+      prepared.set(key,match);
+    }
+    let result=match(observation,now);
+    const fresh=now-observation.observedAt<30*60_000&&observation.observedAt<=now+60_000;
+    if(result.kind==='unmatched'&&observation.kickoff===null&&
+      result.reason==='unverified-kickoff'&&result.possibleGameIds.length===1&&
+      (evidence.undated==='retained-live-detail'||fresh)){
+      const game=byId.get(result.possibleGameIds[0]);
+      if(game&&game.lifecycle!=='final'&&observation.league===game.league&&
+        (evidence.undated==='published-listing'&&feedEligible(game,now)||
+          evidence.undated==='retained-live-detail'&&(game.lifecycle==='live'||fresh)&&feedEligible(game,now)||
+          evidence.undated==='live-claim'&&feedEligible(game,now)&&game.date!==undefined&&
+            Math.abs(Date.parse(game.date)-now)<=30*60_000))
+        result={kind:'matched',gameId:game.id};
+    }
+    if(evidence.externalGameId!==null&&
+      (result.kind==='matched'&&result.gameId!==evidence.externalGameId||
+        result.kind==='unmatched'&&result.possibleGameIds.length>0&&
+          !result.possibleGameIds.includes(evidence.externalGameId)))
+      result={kind:'unmatched',reason:'conflicting-game-id',possibleGameIds:result.kind==='matched'?[result.gameId]:result.possibleGameIds};
+    if(result.kind==='matched')return {kind:'matched',gameId:result.gameId,match:result};
+    if(result.possibleGameIds.length&&result.reason!=='finished-game'&&result.reason!=='conflicting-game-id')
+      return {kind:'possible',gameIds:result.possibleGameIds,reason:result.reason,match:result};
+    return {kind:'rejected',reason:result.reason,match:result};
+  };
 }
 
 export function createFinishedGameMatcher(games:readonly Game[]) {

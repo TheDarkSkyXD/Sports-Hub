@@ -35,7 +35,7 @@ function catalog(sequence: number, eventGame: Game | undefined, eventUrl = 'http
   };
 }
 
-function streameastCatalog(sequence: number, eventGame: Game | undefined): StreameastCatalog {
+function streameastCatalog(sequence: number, eventGame: Game | undefined, externalGameId: string | null = null): StreameastCatalog {
   const observedAt = at + sequence * 1000;
   return {
     runId: '11111111-1111-4111-8111-111111111111', sequence, startedAt: at,
@@ -43,7 +43,7 @@ function streameastCatalog(sequence: number, eventGame: Game | undefined): Strea
     categories: { nfl: { kind: 'collected', at: observedAt }, ncaaf: { kind: 'collected', at: observedAt } },
     events: eventGame ? [{ id: 'nfl:22222', url: 'https://v2.streameast.ga/nfl/football/',
       league: 'nfl', title: eventGame.name, teams: [eventGame.away.name, eventGame.home.name], kickoff,
-      espnEventId: null, detail: { kind: 'collected', at: observedAt, servers: [{
+      espnEventId: externalGameId, detail: { kind: 'collected', at: observedAt, servers: [{
         id: '1', label: 'Free 1', url: 'https://v2.streameast.ga/nfl/football/1',
         availability: { kind: 'free-channel', channelId: '33' },
       }] } }] : [], rejectedGames: [],
@@ -82,11 +82,11 @@ function fixture(source: 'sportsurge-v2' | 'streameast' = 'sportsurge-v2', persi
     assert.ok(reply.kind === 'sources');
     return reply.snapshot;
   };
-  const publish = async (sequence: number, eventGame: Game | undefined, eventUrl?: string) => {
+  const publish = async (sequence: number, eventGame: Game | undefined, eventUrl?: string, externalGameId: string | null = null) => {
     clock = Math.max(clock, at + sequence * 1000);
     const reply = source === 'sportsurge-v2' ?
       await coordinator.command({ kind: 'sportsurge-catalog', catalog: catalog(sequence, eventGame, eventUrl) }) :
-      await coordinator.command({ kind: 'streameast-catalog', catalog: streameastCatalog(sequence, eventGame) });
+      await coordinator.command({ kind: 'streameast-catalog', catalog: streameastCatalog(sequence, eventGame, externalGameId) });
     assert.equal(reply.kind, 'catalog-ack');
     for (let turn = 0; turn < 50; turn++) await new Promise<void>(resolve => setImmediate(resolve));
   };
@@ -125,6 +125,21 @@ test('a fresh Sportsurge reassignment withdraws proof from the old game', async 
     await run.advance(2000);
     assert.equal((await run.snapshot()).games.find(game => game.gameId === games[0].id)?.workingChoiceCount ?? 0, 0);
     assert.equal((await run.coordinator.command({ kind: 'open', gameId: games[0].id, manual: false })).kind, 'error');
+  } finally { await run.stop(); }
+});
+
+test('a StreamEast external game ID conflict vetoes a matching date and teams', async () => {
+  const run = fixture('streameast');
+  try {
+    await run.publish(0, games[0], undefined, '401234567');
+    const snapshot = await run.snapshot();
+    assert.equal(snapshot.sources.find(source => source.id === 'streameast')?.matchedGameCount, 0);
+    assert.equal(snapshot.games.find(game => game.gameId === games[0].id)?.candidates.length ?? 0, 0);
+    assert.equal(snapshot.streameast.current?.games[0]?.gameId, null);
+    await run.advance(1000);
+    const rebuilt = await run.snapshot();
+    assert.equal(rebuilt.sources.find(source => source.id === 'streameast')?.matchedGameCount, 0);
+    assert.equal(rebuilt.games.find(game => game.gameId === games[0].id)?.candidates.length ?? 0, 0);
   } finally { await run.stop(); }
 });
 

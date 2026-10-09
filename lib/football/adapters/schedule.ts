@@ -235,7 +235,15 @@ async function readListingSchedule(partition:ScheduleSource,now:number,signal:Ab
 }
 async function readMotorsportsListings(now:number,signal:AbortSignal):Promise<Observation[]> {
   const sources=SOURCES.filter(source=>source.family==='motorsports');
-  const results=await Promise.allSettled(sources.map(async source=>parseListings(source,await readHtml(source.url,signal),now)));
+  const results=await Promise.allSettled(sources.map(async source=>{
+    let html:string;
+    try{html=await readHtml(source.url,signal);}
+    catch(error){
+      if(signal.aborted||!(error instanceof DOMException&&error.name==='TimeoutError'))throw error;
+      html=await readHtml(source.url,signal);
+    }
+    return parseListings(source,html,now);
+  }));
   if(signal.aborted)throw signal.reason??new DOMException('Aborted','AbortError');
   const collected=results.flatMap(result=>result.status==='fulfilled'&&result.value.outcome!=='parser-changed'?[result.value]:[]);
   if(!collected.length)throw new Error('source-schedule-unavailable');

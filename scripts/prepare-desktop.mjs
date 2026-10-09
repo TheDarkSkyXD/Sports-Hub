@@ -50,6 +50,8 @@ while (pending.length) {
 }
 await stat(path.join(standalone, 'lib/football/runtime/worker.ts'));
 await stat(path.join(standalone, 'lib/football/runtime/composition.ts'));
+await stat(path.join(standalone, 'lib/football/source-registry.json'));
 await stat(path.join(standalone, 'lib/playback/probe.ts'));
 await stat(path.join(standalone, 'lib/sunday.ts'));
+await stat(path.join(standalone, 'lib/game-timing.ts'));
 console.log(`Prepared standalone worker and ${copied.size} runtime package trees.`);

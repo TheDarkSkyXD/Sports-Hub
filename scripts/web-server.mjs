@@ -36,7 +36,7 @@ try {
 const origin = `http://127.0.0.1:${port}`;
 const controlToken = randomUUID();
 const env = { ...process.env, NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA ?? '1', SUNDAY_ROOM_DESKTOP: '0', SUNDAY_ROOM_BROWSER_COLLECTORS: '0',
-  SUNDAY_ROOM_CONTROL_TOKEN: controlToken };
+  SUNDAY_ROOM_CONTROL_TOKEN: controlToken, SUNDAY_ROOM_DATA_DIR: process.env.SUNDAY_ROOM_DATA_DIR ?? join(root, '.desktop-runtime') };
 let next;
 let collector;
 let stopping = false;

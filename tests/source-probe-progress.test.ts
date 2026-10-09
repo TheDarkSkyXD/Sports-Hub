@@ -143,7 +143,7 @@ test('a requested game admits all unknown servers past a full background probe q
     const full = await coordinator.command({ kind: 'sources' });
     assert.equal(full.kind, 'sources');
     if (full.kind === 'sources') assert.equal(full.snapshot.games.find(game => game.gameId === scheduled[0].id)?.candidates.filter(candidate =>
-      candidate.availability.kind === 'checking').length, 256);
+      candidate.availability.kind === 'checking').length, 300);
     includeTarget = true;
     now += 300_001;
     await coordinator.refresh(true);
@@ -156,16 +156,16 @@ test('a requested game admits all unknown servers past a full background probe q
     assert.equal(populated.kind, 'sources');
     if (populated.kind === 'sources') {
       assert.equal(populated.snapshot.games.find(game => game.gameId === scheduled[0].id)?.candidates.filter(candidate =>
-        candidate.availability.kind === 'checking').length, 260);
+        candidate.availability.kind === 'checking').length, 300);
       assert.deepEqual(populated.snapshot.games.find(game => game.gameId === target.id)?.candidates.map(candidate =>
-        candidate.availability.kind), Array(5).fill('unknown'));
+        candidate.availability.kind), Array(5).fill('checking'));
     }
     assert.deepEqual(await coordinator.command({ kind: 'check-sources', gameIds: [target.id], retry: false }), { kind: 'ok' });
     const requested = await coordinator.command({ kind: 'sources' });
     assert.equal(requested.kind, 'sources');
     if (requested.kind === 'sources') {
       assert.equal(requested.snapshot.games.find(game => game.gameId === scheduled[0].id)?.candidates.filter(candidate =>
-        candidate.availability.kind === 'checking').length, 255);
+        candidate.availability.kind === 'checking').length, 300);
       assert.deepEqual(requested.snapshot.games.find(game => game.gameId === target.id)?.candidates.map(candidate =>
         candidate.availability.kind), Array(5).fill('checking'));
     }

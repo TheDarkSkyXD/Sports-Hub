@@ -4,11 +4,9 @@ const { isIP } = require('node:net');
 const { load } = require('./cheerio.cjs');
 
 const ORIGIN = 'https://v2.sportsurge.net';
-const CATEGORY_URLS = {
-  ncaaf: `${ORIGIN}/watch-cfb-streams/`,
-  nfl: `${ORIGIN}/watch-nfl-streams/`,
-};
-const DETAIL_PATH = /^\/watch-(\d{1,12})-(cfb|nfl)-[a-z0-9]+(?:-[a-z0-9]+)*\/$/;
+const CATEGORIES = require('./source-registry.cjs').browserCategories('sportsurge-v2');
+const CATEGORY_URLS = Object.fromEntries(Object.entries(CATEGORIES).map(([league,category])=>[league,category.url]));
+const DETAIL_PATH = /^\/watch-(\d{1,12})-([a-z0-9]+)-[a-z0-9]+(?:-[a-z0-9]+)*\/$/;
 const CREDENTIAL_KEY = /^(?:token|access_token|auth|authorization|key|signature|sig|st|e|x-amz-.+)$/i;
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 const MAX_CHECKPOINT_BYTES = 8 * 1024 * 1024;
@@ -21,7 +19,7 @@ function detailUrl(value, league) {
   try {
     const url = new URL(value, `${ORIGIN}/`);
     const match = DETAIL_PATH.exec(url.pathname);
-    if (url.href.length > 400 || url.origin !== ORIGIN || url.username || url.password || url.search || url.hash || !match || match[2] !== (league === 'ncaaf' ? 'cfb' : 'nfl')) return null;
+    if (url.href.length > 400 || url.origin !== ORIGIN || url.username || url.password || url.search || url.hash || !match || match[2] !== CATEGORIES[league]?.pathCode) return null;
     return { id: `${league}:${match[1]}`, url: url.href };
   } catch { return null; }
 }
@@ -40,6 +38,7 @@ function destination(value) {
   return { kind: 'link', url: url.href };
 }
 function parseCategory(html, league) {
+  if (!CATEGORIES[league]) return {kind:'failed',reason:'parser-changed',events:[],rejectedGames:[],catalogIssues:[]};
   const $ = load(html);
   const container = $('#match-list-container');
   if (!container.length) return { kind: 'failed', reason: reasonForPage(html), events: [], rejectedGames: [], catalogIssues: [] };
@@ -78,7 +77,8 @@ function parseCategory(html, league) {
     const rawCount = /\b(\d{1,5})\s+Streams?\b/i.exec(element.text());
     events.push({
       id: path.id, url: path.url, league,
-      title: teams ? `${teams[0]} vs ${teams[1]}`.slice(0,240) : `Sportsurge ${league.toUpperCase()} ${path.id.split(':')[1]}`,
+      title: teams ? `${teams[0]} vs ${teams[1]}`.slice(0,240) :
+        (element.attr('title') || names.join(' ') || `Sportsurge ${league.toUpperCase()} ${path.id.split(':')[1]}`).trim().slice(0,240),
       teams, sourceStatus: element.find('.live-badge').length ? 'live' : kickoff !== null ? 'upcoming' : 'unknown',
       kickoff, advertisedLinkCount: rawCount ? Number(rawCount[1]) : null,
       detail: { kind: 'pending' },

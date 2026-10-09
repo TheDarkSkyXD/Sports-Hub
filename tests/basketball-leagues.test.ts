@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SCHEDULES, readSchedule } from '../lib/football/adapters/schedule.ts';
 import { SOURCES, allowedDiscoveryUrl, compatiblePlayers, parseListings } from '../lib/football/adapters/sources.ts';
-import { matchObservation } from '../lib/football/domain/matching.ts';
+import { createSourceEventMatcher, matchObservation } from '../lib/football/domain/matching.ts';
 import { isBasketballLeague, parseScoreboard, validGameId } from '../lib/sunday.ts';
 import { validEventPagePair } from '../lib/playback/providers/event-page-policy.ts';
 
@@ -99,7 +99,7 @@ test('WNBA PPV and Streamcenter listings bind only to the WNBA schedule game',()
   assert.equal(compatiblePlayers(wnba.id,streamResult.observations[0],'<html></html>').length,0);
 });
 
-test('TVApp football rows cannot attach to basketball games with the same teams and tipoff',()=>{
+test('TVApp football scope rejects basketball while an unknown source keeps both sports ambiguous',()=>{
   const source=SOURCES.find(item=>item.id==='tvapp');
   assert.ok(source);
   const basketball=parseScoreboard(scoreboard('401999900','Duke Blue Devils','North Carolina Tar Heels'),'ncaab')[0];
@@ -113,10 +113,13 @@ test('TVApp football rows cannot attach to basketball games with the same teams 
   assert.equal(result.observations.length,1);
   const observation=result.observations[0];
   assert.equal(observation.league,null);
-  assert.deepEqual(matchObservation(observation,[basketball],tipoff),
+  const evidence={undated:'none' as const,externalGameId:null};
+  assert.deepEqual(createSourceEventMatcher([basketball])(observation,evidence,tipoff).match,
     {kind:'unmatched',reason:'unknown-teams',possibleGameIds:[]});
-  assert.deepEqual(matchObservation(observation,[basketball,football],tipoff),
+  assert.deepEqual(createSourceEventMatcher([basketball,football])(observation,evidence,tipoff).match,
     {kind:'matched',gameId:football.id});
+  assert.deepEqual(createSourceEventMatcher([basketball,football])({...observation,sourceId:'fixture'},evidence,tipoff).match,
+    {kind:'unmatched',reason:'ambiguous-matchup',possibleGameIds:[basketball.id,football.id]});
 });
 
 test('TVApp basketball rows cannot attach to college football games with the same team names',()=>{
@@ -129,5 +132,6 @@ test('TVApp basketball rows cannot attach to college football games with the sam
   }]),Date.parse('2026-11-01T14:30:00Z'));
   assert.equal(result.outcome,'parsed');
   assert.equal(result.observations[0].league,null);
-  assert.deepEqual(matchObservation(result.observations[0],[collegeFootball,ncaab],Date.parse('2026-11-01T14:30:00Z')),{kind:'matched',gameId:ncaab.id});
+  assert.deepEqual(createSourceEventMatcher([collegeFootball,ncaab])(result.observations[0],
+    {undated:'none',externalGameId:null},Date.parse('2026-11-01T14:30:00Z')).match,{kind:'matched',gameId:ncaab.id});
 });

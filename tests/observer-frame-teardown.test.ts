@@ -129,7 +129,7 @@ test('a removed sibling does not break selected StreamEast player uniqueness', a
   assert.ok(another);
   harness.window().webContents.emit('did-frame-navigate', {}, playerUrl, 200, '', false, 1, 2);
   assert.equal(secondSelection.playerFrame, undefined);
-  assert.equal(await another.promise, null);
+  assert.deepEqual(await another.promise, {kind:'incomplete',phase:'ownership',reason:'ambiguous-player',retryAfterMs:30000});
 });
 
 test('a media probe finds the valid player next to a removed iframe', async () => {
@@ -145,7 +145,7 @@ test('a media probe finds the valid player next to a removed iframe', async () =
   operation.start();
   harness.request({ id: 1, url: mediaUrl, resourceType: 'media' });
   harness.sendHeaders({ id: 1, url: mediaUrl, requestHeaders: {
-    referer: player.url, 'user-agent': 'Observer test',
+    referer: player.url, 'user-agent': 'Observer test', cookie: 'session=published-player',
   }, initiatorOrigin: 'https://player.example' });
   harness.receiveHeaders({ id: 1, url: mediaUrl, statusCode: 200, responseHeaders: {
     'content-type': ['application/vnd.apple.mpegurl'],
@@ -153,6 +153,7 @@ test('a media probe finds the valid player next to a removed iframe', async () =
   const result = await operation.promise;
   assert.equal(result?.url, mediaUrl);
   assert.equal(result?.referer, player.url);
+  assert.equal(result?.mediaCookie, 'session=published-player');
 });
 
 test('only exact fxtrend PPV servers can continue past 32 frames and capture published media',async()=>{
@@ -181,7 +182,7 @@ test('only exact fxtrend PPV servers can continue past 32 frames and capture pub
       const result=await Promise.race([operation.promise,
         new Promise(resolve=>setTimeout(()=>resolve('still observing'),50))]);
       operation.cancel();
-      assert.equal(result,null,page);
+      assert.deepEqual(result,{kind:'incomplete',phase:'capture',reason:'frame-budget',retryAfterMs:30000},page);
     }
   };
   for(const type of ['core/1','vector/1','vertex/1','hotel/2'])
@@ -211,7 +212,43 @@ test('a disposed native frame tree ends a media probe without an unhandled rejec
   harness.receiveHeaders({ id: 1, url: mediaUrl, statusCode: 200, responseHeaders: {
     'content-type': ['application/vnd.apple.mpegurl'],
   } });
-  assert.equal(await operation.promise, null);
+  assert.deepEqual(await operation.promise, {kind:'incomplete',phase:'ownership',reason:'frame-detached',retryAfterMs:30000});
+});
+
+test('a verified offline selected player is a completed no-feed observation', async () => {
+  const player = {
+    url: 'https://posamari.me/sd0embed/NFL',
+    isDestroyed: () => false,
+    executeJavaScript: (code: string) => Promise.resolve(code.includes('readyState:document.readyState') ? {
+      readyState: 'complete', hasVideo: false, title: 'Stream is Offline', status: 'Offline',
+      description: 'The stream is currently offline. Please try again later.',
+    } : false),
+  };
+  const harness = createObserverHarness({framesInSubtree:[player]});
+  const operation = harness.observer.observe('https://vipbox.fm/live/nfl/test-game-1','probe');
+  assert.ok(operation);
+  operation.start();
+  harness.tick();
+  assert.deepEqual(await operation.promise,{kind:'no-feed',phase:'activation',reason:'offline'});
+});
+
+test('a selected player network error keeps the observation incomplete', async () => {
+  const player = {
+    url: 'https://posamari.me/sd0embed/NFL',
+    isDestroyed: () => false,
+    executeJavaScript: (code: string) => Promise.resolve(code.includes('readyState:document.readyState') ? {
+      readyState: 'complete', hasVideo: false, title: 'Technical Issue',
+      errorVisible: true, errorHeading: 'Network Error',
+      errorDescription: 'We are having trouble connecting to the server. Please reload the page.',
+    } : false),
+  };
+  const harness = createObserverHarness({framesInSubtree:[player]});
+  const operation = harness.observer.observe('https://vipbox.fm/live/nfl/test-game-1','probe');
+  assert.ok(operation);
+  operation.start();
+  harness.tick();
+  assert.deepEqual(await operation.promise,
+    {kind:'incomplete',phase:'activation',reason:'player-network-error',retryAfterMs:30000});
 });
 
 test('a frame disposed after script execution ends its observation and leaves the slot reusable', async () => {
@@ -244,7 +281,7 @@ test('a frame disposed after script execution ends its observation and leaves th
       first.promise,
       new Promise(resolve => setTimeout(() => resolve('stalled'), 100)),
     ]);
-    assert.equal(result, null);
+    assert.deepEqual(result,{kind:'incomplete',phase:'ownership',reason:'script-failed',retryAfterMs:30000});
     mainFrame.framesInSubtree = [{
       url: 'https://player.example/watch', isDestroyed: () => false,
       executeJavaScript: async () => true,

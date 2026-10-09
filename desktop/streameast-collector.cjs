@@ -1,5 +1,5 @@
 const { BrowserWindow,session } = require('electron');
-const { ORIGIN,CATEGORY_URLS,MAX_PAGE_BYTES,MAX_CHECKPOINT_BYTES,eventUrl } = require('./streameast-catalog.cjs');
+const { ORIGIN,CATEGORIES,CATEGORY_URLS,MAX_PAGE_BYTES,MAX_CHECKPOINT_BYTES,eventUrl } = require('./streameast-catalog.cjs');
 const { runStreameastSweep } = require('./streameast-sweep.cjs');
 
 const READY_TIMEOUT_MS=30000;
@@ -98,7 +98,7 @@ function createStreameastCollector({origin,controlToken}) {
         if(!documentReady || pageStatus<200 || pageStatus>=300) {await pause(400,signal);continue;}
         try {
           const state=await beforeDeadline(current.webContents.mainFrame.executeJavaScript(`({url:location.href,title:document.title,cards:document.querySelectorAll('.m-card').length,
-          empty:!!document.querySelector('#m-schedule-empty.m-empty .m-empty__title') && /no (?:college football|cfb|nfl) games available/i.test(document.querySelector('#m-schedule-empty.m-empty .m-empty__title').textContent||''),
+          empty:!!document.querySelector('#m-schedule-empty.m-empty .m-empty__title') && ${JSON.stringify(CATEGORIES[league]?.emptyTitles || [])}.some(title=>title.toLowerCase()===(document.querySelector('#m-schedule-empty.m-empty .m-empty__title').textContent||'').trim().toLowerCase()),
           detail:(()=>{if(document.querySelector('.stream-alt-list a.stream-alt-item'))return true;
             const list=document.querySelector('#se-streams-list.se-streams__list');
             const rows=[...(list?.querySelectorAll('.se-stream:not(.se-stream--share)')||[])];

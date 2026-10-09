@@ -215,3 +215,78 @@ test('failed or cancelled shared catalog reads allow the next refresh to recover
     assert.equal(recovered.games.length,1);
   }finally{fetchMock.mock.restore();}
 });
+
+test('paired transient motorsports timeouts recover both shared schedules',async()=>{
+  const calls=new Map<string,number>();
+  const fetchMock=mock.method(globalThis,'fetch',async(url:RequestInfo|URL)=>{
+    const key=String(url),attempt=(calls.get(key)||0)+1;
+    calls.set(key,attempt);
+    if(attempt===1)throw new DOMException('Timed out','TimeoutError');
+    return new Response(listing(),{status:200});
+  });
+  try{
+    const motogp=SCHEDULES.find(source=>source.id==='motogp');
+    const motorsport=SCHEDULES.find(source=>source.id==='motorsport');
+    assert.ok(motogp&&motorsport);
+    const signal=new AbortController().signal;
+    const [moto,other]=await Promise.all([readSchedule(motogp,now+4000,signal),readSchedule(motorsport,now+4000,signal)]);
+    assert.deepEqual([moto.games.map(game=>game.league),other.games.map(game=>game.league)],[['motogp'],['motorsport']]);
+    assert.deepEqual([...calls.entries()].sort(),[
+      ['https://crackstreams.st/F1',2],['https://methstreams.st/F1',2],
+    ]);
+  }finally{fetchMock.mock.restore();}
+});
+
+test('one timed-out provider retries without fetching a healthy provider again',async()=>{
+  const calls=new Map<string,number>();
+  const fetchMock=mock.method(globalThis,'fetch',async(url:RequestInfo|URL)=>{
+    const key=String(url),attempt=(calls.get(key)||0)+1;
+    calls.set(key,attempt);
+    if(key==='https://methstreams.st/F1'&&attempt===1)throw new DOMException('Timed out','TimeoutError');
+    return new Response(listing(),{status:200});
+  });
+  try{
+    const motogp=SCHEDULES.find(source=>source.id==='motogp');
+    assert.ok(motogp);
+    const result=await readSchedule(motogp,now+5000,new AbortController().signal);
+    assert.deepEqual(result.games.map(game=>game.league),['motogp']);
+    assert.deepEqual([...calls.entries()].sort(),[
+      ['https://crackstreams.st/F1',1],['https://methstreams.st/F1',2],
+    ]);
+  }finally{fetchMock.mock.restore();}
+});
+
+test('repeated motorsports timeouts keep the schedule unavailable',async()=>{
+  const calls=new Map<string,number>();
+  const fetchMock=mock.method(globalThis,'fetch',async(url:RequestInfo|URL)=>{
+    const key=String(url);
+    calls.set(key,(calls.get(key)||0)+1);
+    throw new DOMException('Timed out','TimeoutError');
+  });
+  try{
+    const motorsport=SCHEDULES.find(source=>source.id==='motorsport');
+    assert.ok(motorsport);
+    await assert.rejects(readSchedule(motorsport,now+6000,new AbortController().signal),/source-schedule-unavailable/);
+    assert.deepEqual([...calls.entries()].sort(),[
+      ['https://crackstreams.st/F1',2],['https://methstreams.st/F1',2],
+    ]);
+  }finally{fetchMock.mock.restore();}
+});
+
+test('parent cancellation does not retry motorsports timeouts',async()=>{
+  const controller=new AbortController(),calls=new Map<string,number>();
+  const fetchMock=mock.method(globalThis,'fetch',async(url:RequestInfo|URL)=>{
+    const key=String(url);
+    calls.set(key,(calls.get(key)||0)+1);
+    controller.abort();
+    throw new DOMException('Timed out','TimeoutError');
+  });
+  try{
+    const motogp=SCHEDULES.find(source=>source.id==='motogp');
+    assert.ok(motogp);
+    await assert.rejects(readSchedule(motogp,now+7000,controller.signal),error=>error instanceof Error&&error.name==='AbortError');
+    assert.deepEqual([...calls.entries()].sort(),[
+      ['https://crackstreams.st/F1',1],['https://methstreams.st/F1',1],
+    ]);
+  }finally{fetchMock.mock.restore();}
+});

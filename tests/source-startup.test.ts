@@ -1,3 +1,4 @@
+import { browserCategory, sourceCoverage } from '../lib/football/source-registry.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -502,7 +503,7 @@ test('a late near-kickoff choice enters a full distant probe queue and receives 
     const full=await coordinator.command({kind:'sources'});
     assert.equal(full.kind,'sources');
     if(full.kind==='sources')assert.equal(full.snapshot.games.flatMap(row=>row.candidates)
-      .filter(candidate=>candidate.availability.kind==='checking').length,260);
+      .filter(candidate=>candidate.availability.kind==='checking').length,282);
     listing.release();
     await until(async()=>{
       const reply=await coordinator.command({kind:'sources'});
@@ -518,6 +519,8 @@ test('a late near-kickoff choice enters a full distant probe queue and receives 
 
 const require=createRequire(import.meta.url);
 const {runSportsurgeSweep}=require('../desktop/sportsurge-sweep.cjs');
+const surgeCategoryCount=sourceCoverage('sportsurge-v2').length;
+const eastCategoryCount=sourceCoverage('streameast').length;
 const {runStreameastSweep}=require('../desktop/streameast-sweep.cjs');
 
 test('Sportsurge browser sweep checks urgent games first and preserves serial checkpoints and background progress',async()=>{
@@ -543,7 +546,7 @@ test('Sportsurge browser sweep checks urgent games first and preserves serial ch
   });
   assert.equal(result.state.kind,'complete');
   assert.deepEqual(completed,['ncaaf:102','ncaaf:103','ncaaf:104','ncaaf:100','ncaaf:101','ncaaf:105']);
-  assert.deepEqual(sequences,Array.from({length:16},(_,index)=>index));
+  assert.deepEqual(sequences,Array.from({length:14+surgeCategoryCount},(_,index)=>index));
   assert.equal(peak,1);
 });
 
@@ -554,11 +557,11 @@ test('StreamEast browser sweep prioritizes current and near games with serial fr
   const completed:string[]=[],sequences:number[]=[];
   let active=0,peak=0;
   const result:StreameastCatalog=await runStreameastSweep({
-    read:async(url:string,page:string)=>{
+    read:async(url:string,page:string,league:string)=>{
       active++;peak=Math.max(peak,active);
       try {
         await new Promise<void>(resolve=>setImmediate(resolve));
-        if(page==='category')return url.includes('/cfb-streams/')?category:empty;
+        if(page==='category')return url.includes('/cfb-streams/')?category:empty.replace('No NFL games available',browserCategory('streameast',league)?.emptyTitles?.[0]||'');
         if(page==='server')return '<iframe src="https://streame.center/stream-east/ch33.php"></iframe>';
         return `<div class="stream-alt-list"><a class="stream-alt-item" href="${url}1"><span class="stream-alt-name">Free</span><span class="stream-alt-free-badge">Free</span></a></div>`;
       } finally {active--;}
@@ -570,7 +573,7 @@ test('StreamEast browser sweep prioritizes current and near games with serial fr
   });
   assert.equal(result.state.kind,'complete');
   assert.deepEqual(completed,['ncaaf:102','ncaaf:103','ncaaf:104','ncaaf:100','ncaaf:101','ncaaf:105']);
-  assert.deepEqual(sequences,Array.from({length:22},(_,index)=>index));
+  assert.deepEqual(sequences,Array.from({length:20+eastCategoryCount},(_,index)=>index));
   assert.equal(result.events.every(event=>event.detail.kind==='collected'&&event.detail.servers[0]?.availability.kind==='free-channel'),true);
   assert.equal(peak,1);
 });
@@ -579,18 +582,18 @@ test('StreamEast stops on a free-server rate limit without replacing prior compl
   const category=[100,101,102].map(id=>`<article class="m-card" data-match-id="${id}" data-team-names="Away ${id}|Home ${id}" data-time="${at/1000}"><a class="m-card__link" href="https://v2.streameast.ga/cfb/away-${id}-vs-home-${id}-${at/1000}/"></a></article>`).join('');
   const calls:string[]=[],sequences:number[]=[];
   const result:StreameastCatalog=await runStreameastSweep({
-    read:async(url:string,page:string)=>{
+    read:async(url:string,page:string,league:string)=>{
       calls.push(page);
       if(page==='category')return url.includes('/cfb-streams/')?category:
-        '<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">No NFL games available</h2></div>';
+        `<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">${browserCategory('streameast',league)?.emptyTitles?.[0]}</h2></div>`;
       if(page==='server')throw new Error('rate-limited');
       return `<div class="stream-alt-list">${[1,2].map(id=>`<a class="stream-alt-item ${id===1?'active':''}" href="${url}${id}"><span class="stream-alt-name">Free ${id}</span><span class="stream-alt-free-badge">Free</span></a>`).join('')}</div><iframe src="https://streame.center/stream-east/ch33.php"></iframe>`;
     },send:async(catalog:StreameastCatalog)=>{sequences.push(catalog.sequence);},
     signal:new AbortController().signal,now:()=>at,
   });
   assert.deepEqual(result.state,{kind:'partial',at,reason:'rate-limited'});
-  assert.deepEqual(calls,['category','category','detail','server']);
-  assert.deepEqual(sequences,Array.from({length:6},(_,index)=>index));
+  assert.deepEqual(calls,[...Array.from({length:eastCategoryCount},()=> 'category'),'detail','server']);
+  assert.deepEqual(sequences,Array.from({length:4+eastCategoryCount},(_,index)=>index));
   assert.deepEqual(result.events[0].detail,{kind:'failed',at,reason:'rate-limited'});
   assert.deepEqual(result.events.slice(1).map(event=>event.detail.kind),['pending','pending']);
 });

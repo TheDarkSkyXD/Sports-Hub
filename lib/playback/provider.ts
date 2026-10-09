@@ -1,4 +1,4 @@
-import type { CandidateLocator } from '../football/shared.ts';
+import type { CandidateLocator, MediaPhase } from '../football/shared.ts';
 
 export type ResourceKind = 'playlist' | 'media';
 export type ProviderReadResult = {
@@ -26,7 +26,22 @@ export interface PlaybackProvider<L extends CandidateLocator> {
 
 export class ProviderDeferredError extends Error {
   readonly retryAfterMs: number;
-  constructor(retryAfterMs: number) { super('Provider lookup is temporarily deferred'); this.retryAfterMs=retryAfterMs; }
+  readonly phase?: MediaPhase;
+  constructor(retryAfterMs: number, phase?: MediaPhase) {
+    super('Provider lookup is temporarily deferred');
+    this.name='ProviderDeferredError';
+    this.retryAfterMs=retryAfterMs;
+    this.phase=phase;
+  }
+}
+
+export class ProviderNoFeedError extends Error {
+  readonly phase: MediaPhase;
+  constructor(phase: MediaPhase) {
+    super('Selected player is explicitly offline');
+    this.name='ProviderNoFeedError';
+    this.phase=phase;
+  }
 }
 
 export function sanitizedRead(response: Response): ProviderReadResult {
@@ -44,8 +59,10 @@ export function sanitizedRead(response: Response): ProviderReadResult {
   };
 }
 
-export async function boundedText(response: Response, limit = 1024*1024): Promise<string> {
-  if (!response.ok || !response.body) { await response.body?.cancel(); throw new Error(`Provider page returned ${response.status}`); }
+export async function boundedText(response: Response, limit = 1024*1024, allowErrorStatus=false): Promise<string> {
+  if ((!response.ok && !allowErrorStatus) || !response.body) {
+    await response.body?.cancel(); throw new Error(`Provider page returned ${response.status}`);
+  }
   const length = Number(response.headers.get('content-length'));
   if (length > limit) { await response.body.cancel(); throw new Error('Provider page is too large'); }
   const reader = response.body.getReader();

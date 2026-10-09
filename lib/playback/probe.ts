@@ -3,7 +3,7 @@ import type { CandidateProbeResult } from '../football/domain/ports.ts';
 import type { CandidateLocator } from '../football/shared.ts';
 import { openProvider } from './provider-registry.ts';
 export { providerProbeIdentity as probeIdentity } from './provider-registry.ts';
-import { ProviderDeferredError, type ProviderPlayback, type ProviderResource } from './provider.ts';
+import { ProviderDeferredError, ProviderNoFeedError, type ProviderPlayback, type ProviderResource } from './provider.ts';
 
 type Range = { start: number; length: number };
 type Encryption = { uri: string; iv?: string };
@@ -210,9 +210,13 @@ export async function probeCandidate(locator: CandidateLocator, signal: AbortSig
     return await Promise.race([work(),canceled]);
   } catch (error) {
     if (signal.aborted) return {kind:'deferred',retryAfterMs:2000};
-    if (error instanceof ProviderDeferredError) return {kind:'deferred',retryAfterMs:error.retryAfterMs};
+    if (error instanceof ProviderDeferredError) return {kind:'deferred',retryAfterMs:error.retryAfterMs,
+      ...(error.phase ? {phase:error.phase} : {})};
+    if (error instanceof ProviderNoFeedError) return {kind:'unavailable',reason:'no-feed',phase:error.phase};
     if (error instanceof Error && error.name==='TimeoutError') return {kind:'unavailable',reason:'timeout'};
-    return {kind:'unavailable',reason:error instanceof ProbeFailure ? error.reason : 'upstream'};
+    if (error instanceof ProbeFailure) return {kind:'unavailable',reason:error.reason};
+    return playback ? {kind:'unavailable',reason:'upstream',phase:'replay'} :
+      {kind:'unavailable',reason:'upstream'};
   } finally {
     signal.removeEventListener('abort',onAbort);
     closePlayback();

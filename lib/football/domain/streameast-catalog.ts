@@ -1,10 +1,15 @@
-import { createFinishedGameMatcher, createObservationMatcher } from './matching.ts';
-import type { Candidate,CandidateLocator,Game,Match,Observation,SourceMatchReason,StreameastCatalog,StreameastCatalogView,StoredStreameastCatalog } from '../shared.ts';
+import { browserCategory } from '../source-registry.ts';
+import { createFinishedGameMatcher, createSourceEventMatcher, type SourceEventEvidence } from './matching.ts';
+import type { Candidate,CandidateLocator,Game,Observation,SourceMatchReason,StreameastCatalog,StreameastCatalogView,StoredStreameastCatalog } from '../shared.ts';
 
-const EVENT_PATH=/^\/(cfb|nfl)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/;
+const EVENT_PATH=/^\/([a-z0-9-]+)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/;
 
 function freeDetail(detail:StreameastCatalog['events'][number]['detail']):StreameastCatalog['events'][number]['detail'] {
-  return detail.kind==='collected' ? {...detail,servers:detail.servers.filter(server=>server.availability.kind.startsWith('free-'))} : detail;
+  if(detail.kind!=='collected')return detail;
+  const premium=detail.servers.filter(server=>server.availability.kind==='premium').length;
+  const unknown=detail.servers.filter(server=>server.availability.kind==='unknown').length;
+  return {...detail,servers:detail.servers.filter(server=>server.availability.kind.startsWith('free-')),
+    ...(detail.publication?{publication:detail.publication}:premium||unknown?{publication:{premium,unknown}}:{})};
 }
 
 function freeCatalog(catalog:StreameastCatalog):StreameastCatalog {
@@ -24,6 +29,7 @@ export function sanitizeStreameastCatalog(input:StreameastCatalog,now=Date.now()
   if(Object.values(catalog.categories).some(category=>category.kind!=='pending'&&!current(category.at)))return null;
   let latest=catalog.startedAt;
   for(const category of Object.values(catalog.categories))if(category.kind!=='pending')latest=Math.max(latest,category.at);
+  if(Object.keys(catalog.categories).some(league=>!browserCategory('streameast',league)))return null;
   const urls=new Set<string>();
   const ids=new Set<string>();
   for(const event of catalog.events) {
@@ -31,7 +37,7 @@ export function sanitizeStreameastCatalog(input:StreameastCatalog,now=Date.now()
     try {url=new URL(event.url);} catch{return null;}
     const match=EVENT_PATH.exec(url.pathname);
     if(url.origin!=='https://v2.streameast.ga'||url.username||url.password||url.search||url.hash||!match||
-      match[1] !== (event.league==='ncaaf'?'cfb':'nfl')||urls.has(url.href)||ids.has(event.id))return null;
+      match[1] !== browserCategory('streameast',event.league)?.pathCode || !catalog.categories[event.league] || !event.id.startsWith(`${event.league}:`)||urls.has(url.href)||ids.has(event.id))return null;
     urls.add(url.href);ids.add(event.id);
     const detail=event.detail;
     const retained=detail.kind==='collected'&&detail.retainedFromRunId!==undefined;
@@ -73,11 +79,9 @@ export function streameastObservation(event:StreameastCatalog['events'][number],
     teams:event.teams,kickoff:event.kickoff,rawTime:event.kickoff===null?'':new Date(event.kickoff).toISOString(),observedAt:at,parserVersion:1};
 }
 
-export function verifiedStreameastMatch(event:StreameastCatalog['events'][number],result:Match,game:Game|undefined):Match {
-  if(result.kind!=='matched'||!game)return result;
-  if(event.espnEventId!==null&&game.id!==(event.league==='ncaaf'?`ncaaf-${event.espnEventId}`:event.espnEventId))
-    return {kind:'unmatched',reason:'conflicting-date',possibleGameIds:[game.id]};
-  return result;
+export function streameastEvidence(event:StreameastCatalog['events'][number]):SourceEventEvidence {
+  return {undated:'none',externalGameId:event.espnEventId===null?null:
+    event.league==='nfl'?event.espnEventId:`${event.league}-${event.espnEventId}`};
 }
 
 export function streameastCandidates(event:StreameastCatalog['events'][number],gameId:string):Candidate[] {
@@ -107,33 +111,34 @@ export function streameastCandidates(event:StreameastCatalog['events'][number],g
 function publicReason(value:string):SourceMatchReason {
   switch(value) {
     case 'not-a-matchup':case 'unknown-teams':case 'unverified-kickoff':case 'unverified-contextual-kickoff':case 'ambiguous-matchup':
-    case 'conflicting-date':case 'finished-game':return value;
+    case 'conflicting-date':case 'conflicting-game-id':case 'finished-game':return value;
     default:return 'other';
   }
 }
 
 export function streameastCatalogView(stored:StoredStreameastCatalog,games:Game[],now:number):StreameastCatalogView {
   const {catalog,receivedAt}=stored;
-  const match=createObservationMatcher(games);
+  const match=createSourceEventMatcher(games);
   const finished=createFinishedGameMatcher(games);
   const activeEvents=catalog.events.filter(event=>{
     const category=catalog.categories[event.league];
     const observedAt=category.kind==='pending'?catalog.startedAt:category.at;
-    const expectedId=event.espnEventId===null?undefined:event.league==='ncaaf'?`ncaaf-${event.espnEventId}`:event.espnEventId;
+    const expectedId=streameastEvidence(event).externalGameId??undefined;
     return !finished.finishedGameId(streameastObservation(event,observedAt),now,expectedId);
   });
   const views=activeEvents.map(event=>{
     const category=catalog.categories[event.league];
     const observedAt=category.kind==='pending'?catalog.startedAt:category.at;
     const observation=streameastObservation(event,observedAt);
-    const raw=match(observation,now);
-    const result=verifiedStreameastMatch(event,raw,games.find(game=>game.id===(raw.kind==='matched'?raw.gameId:'')));
+    const result=match(observation,streameastEvidence(event),now).match;
     return {id:event.id,title:event.title,url:event.url,league:event.league,
       gameId:result.kind==='matched'?result.gameId:null,
       matchReason:result.kind==='unmatched'?publicReason(result.reason):null,detail:freeDetail(event.detail)};
   });
   const details=views.map(view=>view.detail);
   const rows=details.flatMap(detail=>detail.kind==='collected'?detail.servers:[]);
+  const premium=details.reduce((count,detail)=>count+(detail.kind==='collected'?detail.publication?.premium||0:0),0);
+  const unknown=details.reduce((count,detail)=>count+(detail.kind==='collected'?detail.publication?.unknown||0:0),0);
   const compatible=new Set(views.flatMap((view,index)=>view.gameId&&activeEvents[index].detail.kind==='collected'?
     streameastCandidates(activeEvents[index],view.gameId).map(candidate=>`${view.gameId}:${candidate.id}`):[]));
   return {runId:catalog.runId,startedAt:catalog.startedAt,receivedAt,interrupted:catalog.state.kind==='collecting'&&now-receivedAt>180000,
@@ -141,9 +146,9 @@ export function streameastCatalogView(stored:StoredStreameastCatalog,games:Game[
     collectedDetails:details.filter(detail=>detail.kind==='collected').length,
     pendingDetails:details.filter(detail=>detail.kind==='pending').length,
     failedDetails:details.filter(detail=>detail.kind==='failed').length,
-    serverRows:rows.length,freeRows:rows.filter(row=>row.availability.kind.startsWith('free-')).length,
-    premiumRows:rows.filter(row=>row.availability.kind==='premium').length,
-    unknownRows:rows.filter(row=>row.availability.kind==='unknown'||row.availability.kind==='free-unresolved').length,
+    serverRows:rows.length+premium+unknown,freeRows:rows.length,
+    premiumRows:premium,
+    unknownRows:unknown+rows.filter(row=>row.availability.kind==='free-unresolved').length,
     unsupportedFreeRows:rows.filter(row=>row.availability.kind==='free-unsupported').length,
     matchedCompatibleChannels:compatible.size,rejectedGames:catalog.rejectedGames,games:views};
 }

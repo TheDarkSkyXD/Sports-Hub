@@ -2,7 +2,8 @@ import { lookup } from 'node:dns/promises';
 import { request } from 'node:https';
 import { isIP } from 'node:net';
 import { load } from 'cheerio';
-import { boundedText, ProviderDeferredError, sanitizedRead, type ProviderPlayback, type ProviderResource, type ResourceKind } from '../provider.ts';
+import { boundedText, ProviderDeferredError, ProviderNoFeedError, sanitizedRead, type ProviderPlayback, type ProviderResource, type ResourceKind } from '../provider.ts';
+import type { MediaPhase } from '../../football/shared.ts';
 import { wrapDlivePixelResource } from './streameast-pixel.ts';
 
 export type Requester = (url: URL, signal: AbortSignal, headers: Headers, timeoutMs?: number) => Promise<Response>;
@@ -169,6 +170,23 @@ export function resource(value: URL, referer: URL, kind: ResourceKind, requester
 type PublicObservation={kind:'page';destination:URL;embeddedEvent?:URL}|{kind:'streameast-server';
   serverUrl:URL;eventUrl:URL;sourceEventId:string;serverId:string};
 
+function observerPhase(value:unknown):MediaPhase|null {
+  return value==='activation'||value==='capture'||value==='ownership'||value==='replay' ? value : null;
+}
+
+function observerOutcome(value:unknown):{kind:'no-feed';phase:MediaPhase}|
+  {kind:'incomplete';phase:MediaPhase;retryAfterMs:number}|null {
+  if (!value || typeof value!=='object' || !('kind' in value) || !('phase' in value)) return null;
+  const phase=observerPhase(value.phase);
+  if (!phase) return null;
+  if (value.kind==='no-feed' && phase==='activation' && 'reason' in value && value.reason==='offline')
+    return {kind:'no-feed',phase};
+  if (value.kind==='incomplete' && 'retryAfterMs' in value &&
+    typeof value.retryAfterMs==='number' && Number.isInteger(value.retryAfterMs) &&
+    value.retryAfterMs>=30000 && value.retryAfterMs<=120000) return {kind:'incomplete',phase,retryAfterMs:value.retryAfterMs};
+  return null;
+}
+
 async function observedPublicRequest(request:PublicObservation, signal: AbortSignal,
   purpose: 'playback' | 'probe'): Promise<ProviderPlayback | null> {
   const destination=request.kind==='page'?request.destination:request.serverUrl;
@@ -187,10 +205,20 @@ async function observedPublicRequest(request:PublicObservation, signal: AbortSig
       {url:destination.href,purpose,selection:{kind:'streameast-server',eventUrl:request.eventUrl.href,
         sourceEventId:request.sourceEventId,serverId:request.serverId}}),
   });
-  if (response.status === 404) { await response.body?.cancel(); return null; }
+  if (response.status === 404 || response.status === 503) {
+    const body=await boundedText(response,1024,true).catch(()=>null);
+    let value:unknown=null;
+    if(body)try{value=JSON.parse(body);}catch{}
+    const outcome=observerOutcome(value);
+    if (response.status===404 && outcome?.kind==='no-feed') throw new ProviderNoFeedError(outcome.phase);
+    if (response.status===503 && outcome?.kind==='incomplete')
+      throw new ProviderDeferredError(outcome.retryAfterMs,outcome.phase);
+    if (response.status===404) return null;
+    throw new ProviderDeferredError(2000);
+  }
   if (!response.ok) {
     await response.body?.cancel();
-    if (response.status === 429 || response.status === 503) throw new ProviderDeferredError(2000);
+    if (response.status === 429) throw new ProviderDeferredError(2000);
     throw new Error('Browser observer failed');
   }
   const value: unknown = JSON.parse(await boundedText(response, 8192));

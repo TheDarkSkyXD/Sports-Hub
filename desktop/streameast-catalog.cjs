@@ -1,10 +1,11 @@
 const { load } = require('./cheerio.cjs');
 
 const ORIGIN = 'https://v2.streameast.ga';
-const CATEGORY_URLS = { ncaaf:`${ORIGIN}/cfb-streams/`, nfl:`${ORIGIN}/nfl-streams/` };
+const CATEGORIES = require('./source-registry.cjs').browserCategories('streameast');
+const CATEGORY_URLS = Object.fromEntries(Object.entries(CATEGORIES).map(([league,category])=>[league,category.url]));
 const MAX_PAGE_BYTES = 4_000_000;
 const MAX_CHECKPOINT_BYTES = 8_000_000;
-const EVENT_PATH = /^\/(cfb|nfl)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/;
+const EVENT_PATH = /^\/([a-z0-9-]+)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/;
 const CHANNEL_PATH = /^\/stream-east\/ch(\d{1,4})\.php$/;
 
 function eventUrl(value, league) {
@@ -12,7 +13,7 @@ function eventUrl(value, league) {
     const url=new URL(value,ORIGIN);
     const match=EVENT_PATH.exec(url.pathname);
     if (url.origin!==ORIGIN || url.username || url.password || url.search || url.hash || url.href.length>400 ||
-      !match || match[1] !== (league==='ncaaf'?'cfb':'nfl')) return null;
+      !match || match[1] !== CATEGORIES[league]?.pathCode) return null;
     return url.href;
   } catch { return null; }
 }
@@ -85,7 +86,7 @@ function parseCategory(html,league) {
   const $=load(html);
   const cards=$('.m-card');
   const empty=$('#m-schedule-empty.m-empty');
-  if (!cards.length && !(empty.length && /no (?:college football|cfb|nfl) games available/i.test(empty.find('.m-empty__title').text())))
+  if (!cards.length && !(empty.length && CATEGORIES[league]?.emptyTitles.some(title=>title.toLowerCase()===empty.find('.m-empty__title').text().trim().toLowerCase())))
     return {kind:'failed',reason:'parser-changed',events:[],rejectedGames:[]};
   const events=[];
   const rejectedGames=[];
@@ -108,7 +109,7 @@ function parseCategory(html,league) {
     const kickoff=/^\d{10}$/.test(time) ? Number(time)*1000 : null;
     const espnPath=node.attr('data-espn-path');
     const rawEspn=node.attr('data-espn-event-id') || '';
-    const espnEventId=espnPath===(league==='ncaaf'?'football/college-football':'football/nfl') && /^\d{5,12}$/.test(rawEspn) ? rawEspn : null;
+    const espnEventId=espnPath===CATEGORIES[league]?.espnPath && /^\d{5,12}$/.test(rawEspn) ? rawEspn : null;
     events.push({id:`${league}:${sourceId}`,url,league,title:title || names.join(' vs ').slice(0,240) || 'Unknown matchup',
       teams:names.length===2 && names.every(value=>value.length>0 && value.length<=120) ? names : null,
       kickoff,espnEventId,detail:{kind:'pending'}});
@@ -132,13 +133,13 @@ function parseDetail(html,event,at,freePages) {
     if ($('.streameast-video-page').length && $('.se-board[data-match-id]').first().attr('data-match-id')===sourceId &&
       $('.se-streams--share-only .se-streams__list').length && !$('.se-streams__list a.se-stream__link').length &&
       $('.se-countdown__title').first().text().trim()==='Stream starting soon')
-      return {kind:'collected',at,servers:[]};
+      return {kind:'collected',at,servers:[],publication:{premium:0,unknown:0}};
     const list=$('#se-streams-list.se-streams__list');
     const published=list.find('.se-stream:not(.se-stream--share)').toArray();
     const heading=$('.se-progate__match').first().text().replace(/\s+/g,' ').trim();
     if ($('.streameast-video-page').length && heading===event.title && published.length &&
       published.every(row=>$(row).hasClass('is-pro') && serverUrl($(row).find('a.se-stream__link').attr('href')||'',event)))
-      return {kind:'collected',at,servers:[]};
+      return {kind:'collected',at,servers:[],publication:{premium:published.length,unknown:0}};
     return {kind:'failed',at,reason:'parser-changed'};
   }
   const servers=[];
@@ -154,7 +155,8 @@ function parseDetail(html,event,at,freePages) {
       result?.kind==='unsupported' ? {kind:'free-unsupported'} : {kind:'free-unresolved'};
     servers.push({id:link.id,label,url:link.url,availability});
   }
-  return {kind:'collected',at,servers};
+  const premium=rows.toArray().filter(row=>$(row).hasClass('stream-alt-item-pro')||$(row).find('.stream-alt-pro-icon').length>0).length;
+  return {kind:'collected',at,servers,publication:{premium,unknown:rows.length-premium-servers.length}};
 }
 
 function freeServerUrls(html,event) {
@@ -173,4 +175,4 @@ function activeFreeServerUrl(html,event) {
   return link ? link.url : null;
 }
 
-module.exports={ORIGIN,CATEGORY_URLS,MAX_PAGE_BYTES,MAX_CHECKPOINT_BYTES,eventUrl,serverUrl,freePlayer,publishedFreePlayer,serverPlayer,parseCategory,parseDetail,freeServerUrls,activeFreeServerUrl};
+module.exports={ORIGIN,CATEGORIES,CATEGORY_URLS,MAX_PAGE_BYTES,MAX_CHECKPOINT_BYTES,eventUrl,serverUrl,freePlayer,publishedFreePlayer,serverPlayer,parseCategory,parseDetail,freeServerUrls,activeFreeServerUrl};

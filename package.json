@@ -19,6 +19,7 @@
     "lint": "eslint . --max-warnings=0",
     "pretest": "node -e \"require('electron')\"",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "verify:record": "node scripts/record-verification.mjs",
     "desktop": "node scripts/desktop.mjs",
     "desktop:icons": "node desktop/icons/generate.mjs",
     "desktop:icons:check": "node desktop/icons/generate.mjs --check",

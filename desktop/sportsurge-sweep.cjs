@@ -7,7 +7,7 @@ function failure(error) {
 
 async function runSportsurgeSweep({ read, send, signal, now = Date.now, runId = randomUUID() }) {
   const catalog = { runId, sequence: 0, startedAt: now(), state: { kind: 'collecting' },
-    categories: { ncaaf: { kind: 'pending' }, nfl: { kind: 'pending' } }, events: [], rejectedGames: [], catalogIssues: [] };
+    categories: Object.fromEntries(Object.keys(CATEGORY_URLS).map(league=>[league,{kind:'pending'}])), events: [], rejectedGames: [], catalogIssues: [] };
   let accepted = structuredClone(catalog);
   let pending = [];
   const publish = async () => {
@@ -46,10 +46,13 @@ async function runSportsurgeSweep({ read, send, signal, now = Date.now, runId = 
     return catalog;
   };
   await publish();
-  for (const league of ['ncaaf','nfl']) {
+  const categoryPages=new Map();
+  for (const league of Object.keys(CATEGORY_URLS)) {
     if (signal.aborted) throw new Error('unavailable');
     try {
-      const html = await read(CATEGORY_URLS[league], 'category', league, signal);
+      const url=CATEGORY_URLS[league];
+      if(!categoryPages.has(url))categoryPages.set(url,read(url,'category',league,signal));
+      const html = await categoryPages.get(url);
       const at = now();
       const result = parseCategory(html, league);
       catalog.categories[league] = result.kind === 'collected' ? { kind: 'collected', at } : { kind: 'failed', at, reason: result.reason };
