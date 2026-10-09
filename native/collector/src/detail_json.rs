@@ -233,13 +233,12 @@ fn sportsbite_players(
     let mut players = Vec::new();
     let mut seen = HashMap::new();
     static STREAM_ID: OnceLock<Regex> = OnceLock::new();
+    let stream_id = STREAM_ID.get_or_init(|| {
+        Regex::new(r"^fg-[a-z0-9-]+$").expect("fixed SportsBite stream expression")
+    });
     for stream in event.streams {
         if stream.format != "iframe"
-            || !STREAM_ID
-                .get_or_init(|| {
-                    Regex::new(r"^fg-[a-z0-9-]+$").expect("fixed SportsBite stream expression")
-                })
-                .is_match(&stream.id)
+            || !stream_id.is_match(&stream.id)
             || !valid_event_page_pair(&observation.url, &stream.manifest_url)
         {
             continue;

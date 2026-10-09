@@ -593,10 +593,10 @@ impl BrowserSweep {
 
     fn next_category(&mut self, registry: &SourceRegistry, index: usize, now: i64) -> SweepAction {
         if let Some((league, url)) = self.category_urls.get(index).cloned() {
-            if self.kind == BrowserKind::Sportsurge {
-                if let Some(read) = self.category_pages.get(&url).cloned() {
-                    return self.category_read(registry, index, read, now);
-                }
+            if self.kind == BrowserKind::Sportsurge
+                && let Some(read) = self.category_pages.get(&url).cloned()
+            {
+                return self.category_read(registry, index, read, now);
             }
             self.read(
                 url,
@@ -836,14 +836,13 @@ impl BrowserSweep {
         }
         let current = self.current_detail.take().unwrap();
         self.unresolved_read |= current.unresolved_read;
-        if let BrowserCatalog::Streameast(catalog) = &mut self.catalog {
-            if let Some(event) = catalog
+        if let BrowserCatalog::Streameast(catalog) = &mut self.catalog
+            && let Some(event) = catalog
                 .events
                 .iter_mut()
                 .find(|event| event.url == current.event_url)
-            {
-                event.detail = streameast_detail(&current.html, event, now, &current.free_pages);
-            }
+        {
+            event.detail = streameast_detail(&current.html, event, now, &current.free_pages);
         }
         self.publish(AfterPublish::DetailFinal)
     }
@@ -875,13 +874,12 @@ impl BrowserSweep {
                 self.next_server_or_finalize(now)
             }
             ReadResult::Ok(page) => {
-                if let BrowserCatalog::Streameast(catalog) = &self.catalog {
-                    if let Some(event) = catalog.events.iter().find(|event| event.url == event_url)
-                    {
-                        let player = streameast_server_player(&page, event, server_url);
-                        if let Some(current) = self.current_detail.as_mut() {
-                            current.free_pages.insert(server_url.to_owned(), player);
-                        }
+                if let BrowserCatalog::Streameast(catalog) = &self.catalog
+                    && let Some(event) = catalog.events.iter().find(|event| event.url == event_url)
+                {
+                    let player = streameast_server_player(&page, event, server_url);
+                    if let Some(current) = self.current_detail.as_mut() {
+                        current.free_pages.insert(server_url.to_owned(), player);
                     }
                 }
                 self.next_server_or_finalize(now)
@@ -934,16 +932,15 @@ impl BrowserSweep {
                             continue;
                         }
                         if let Some(row) = events.iter().find(|row| sportsurge_identity(event, row))
-                        {
-                            if matches!(
+                            && matches!(
                                 row.detail,
                                 SportsurgeDetail::Collected {
                                     retained_from_run_id: Some(_),
                                     ..
                                 }
-                            ) {
-                                event.detail = row.detail.clone();
-                            }
+                            )
+                        {
+                            event.detail = row.detail.clone();
                         }
                     }
                 }
@@ -968,16 +965,15 @@ impl BrowserSweep {
                             continue;
                         }
                         if let Some(row) = events.iter().find(|row| streameast_identity(event, row))
-                        {
-                            if matches!(
+                            && matches!(
                                 row.detail,
                                 StreameastDetail::Collected {
                                     retained_from_run_id: Some(_),
                                     ..
                                 }
-                            ) {
-                                event.detail = row.detail.clone();
-                            }
+                            )
+                        {
+                            event.detail = row.detail.clone();
                         }
                     }
                 }

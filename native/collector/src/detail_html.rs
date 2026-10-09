@@ -15,10 +15,12 @@ use std::{
 };
 use url::Url;
 
-fn pattern(expression: &str, value: &str) -> bool {
-    Regex::new(expression)
-        .expect("fixed detail expression")
-        .is_match(value)
+macro_rules! pattern {
+    ($expression:literal, $value:expr $(,)?) => {
+        cached_regex!($expression)
+            .expect("fixed detail expression")
+            .is_match($value)
+    };
 }
 
 fn first_attr(doc: &HtmlDoc, selector: &str, name: &str) -> Option<String> {
@@ -66,16 +68,16 @@ fn gooz_players(body: &str) -> Vec<ResolvedPlayer> {
     static SWITCH: OnceLock<Regex> = OnceLock::new();
     let visible = NON_CONTENT
         .get_or_init(|| {
-            Regex::new(r"(?is)<(?:script|style)\b[^>]*>.*?</(?:script|style)\s*>").unwrap()
+            cached_regex!(r"(?is)<(?:script|style)\b[^>]*>.*?</(?:script|style)\s*>").unwrap()
         })
         .replace_all(body, "");
     let mut ids = Vec::<String>::new();
     let mut seen = HashSet::new();
     for frame in FRAME
-        .get_or_init(|| Regex::new(r"(?is)<iframe\b[^>]*>").unwrap())
+        .get_or_init(|| cached_regex!(r"(?is)<iframe\b[^>]*>").unwrap())
         .find_iter(&visible)
     {
-        let Some(source) = SRC.get_or_init(|| Regex::new(r#"(?i)(?:^|\s)src\s*=\s*(['"])(https://gooz\.aapmains\.net/new-stream-embed/(\d+))(['"])"#).unwrap()).captures(frame.as_str()) else { continue; };
+        let Some(source) = SRC.get_or_init(|| cached_regex!(r#"(?i)(?:^|\s)src\s*=\s*(['"])(https://gooz\.aapmains\.net/new-stream-embed/(\d+))(['"])"#).unwrap()).captures(frame.as_str()) else { continue; };
         if source[1] != source[4] {
             continue;
         }
@@ -88,7 +90,7 @@ fn gooz_players(body: &str) -> Vec<ResolvedPlayer> {
         return vec![];
     }
     for switched in SWITCH
-        .get_or_init(|| Regex::new(r"changeStream\((\d+)\)").unwrap())
+        .get_or_init(|| cached_regex!(r"changeStream\((\d+)\)").unwrap())
         .captures_iter(&visible)
     {
         let id = switched[1].to_string();
@@ -122,12 +124,12 @@ fn vipbox_config(body: &str) -> String {
     doc.select("script")
         .into_iter()
         .map(inner_html)
-        .find(|script| pattern(r"\bconst\s+siteConfig\s*=\s*\{", script))
+        .find(|script| pattern!(r"\bconst\s+siteConfig\s*=\s*\{", script))
         .unwrap_or_default()
 }
 
 fn vipbox_kickoff(config: &str) -> Option<(String, i64)> {
-    let raw = Regex::new(r#""event_start_ts"\s*:\s*(\d{10}(?:\d{3})?)\b"#)
+    let raw = cached_regex!(r#""event_start_ts"\s*:\s*(\d{10}(?:\d{3})?)\b"#)
         .unwrap()
         .captures(config)?
         .get(1)?
@@ -142,13 +144,13 @@ fn generic_enrichment(row: &Observation, body: &str) -> Observation {
         && first_attr(&doc, "meta[property='og:url']", "content").as_deref() == Some(&row.url)
     {
         let config = vipbox_config(body);
-        if pattern(r#""loaded_page"\s*:\s*"stream""#, &config) {
-            if let Some((raw, kickoff)) = vipbox_kickoff(&config) {
-                let mut enriched = row.clone();
-                enriched.raw_time = raw;
-                enriched.kickoff = Some(kickoff);
-                return enriched;
-            }
+        if pattern!(r#""loaded_page"\s*:\s*"stream""#, &config)
+            && let Some((raw, kickoff)) = vipbox_kickoff(&config)
+        {
+            let mut enriched = row.clone();
+            enriched.raw_time = raw;
+            enriched.kickoff = Some(kickoff);
+            return enriched;
         }
     }
     let text = doc
@@ -159,7 +161,7 @@ fn generic_enrichment(row: &Observation, body: &str) -> Observation {
     let time = first_attr(&doc, "[datetime]", "datetime")
         .or_else(|| first_attr(&doc, "[data-utc]", "data-utc"))
         .or_else(|| {
-            Regex::new(r"(?i)\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}\s*(?:AM|PM)?\s*ET\b")
+            cached_regex!(r"(?i)\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}\s*(?:AM|PM)?\s*ET\b")
                 .unwrap()
                 .find(&normalized(&text))
                 .map(|value| value.as_str().to_string())
@@ -215,12 +217,11 @@ fn generic_missing(row: &Observation, body: &str) -> MissingPlayerReason {
             .unwrap_or_default(),
     );
     if source == "livetv" {
-        let has_player = doc
-            .select("a[href]")
-            .iter()
-            .any(|node| attr(*node, "href").is_some_and(|url| pattern(r"(?i)webplayer\.php", url)));
+        let has_player = doc.select("a[href]").iter().any(|node| {
+            attr(*node, "href").is_some_and(|url| pattern!(r"(?i)webplayer\.php", url))
+        });
         return if !has_player
-            && pattern(
+            && pattern!(
                 r"(?i)Live streams will be available approximately 30 minutes before the broadcast's start\.",
                 &text,
             ) {
@@ -229,13 +230,13 @@ fn generic_missing(row: &Observation, body: &str) -> MissingPlayerReason {
             MissingPlayerReason::NoCompatibleMedia
         };
     }
-    if pattern(
+    if pattern!(
         r"(?i)(?:this |the )?stream (?:will be|is going to be) available (?:shortly|soon)|stream (?:has not|hasn't) started yet",
         &text,
     ) {
         return MissingPlayerReason::NotYetPublished;
     }
-    if pattern(r"(?i)no channels? (?:is |are )?available", &text) {
+    if pattern!(r"(?i)no channels? (?:is |are )?available", &text) {
         return MissingPlayerReason::NoPublishedPlayer;
     }
     if source == "sportsurge"
@@ -243,7 +244,7 @@ fn generic_missing(row: &Observation, body: &str) -> MissingPlayerReason {
         && first_attr(&doc, "iframe", "src").as_deref()
             == Some("https://gooz.aapmains.net/new-stream-embed/")
         && doc.select("video[src],audio[src],source[src]").is_empty()
-        && !pattern(r#"\bchangeStream\s*\(\s*['"]?\d+"#, body)
+        && !pattern!(r#"\bchangeStream\s*\(\s*['"]?\d+"#, body)
     {
         return MissingPlayerReason::NoPublishedPlayer;
     }
@@ -322,7 +323,7 @@ fn crichd_event_url(value: &str) -> bool {
         && url.port().is_none()
         && url.query().is_none()
         && url.fragment().is_none()
-        && pattern(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", url.path())
+        && pattern!(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", url.path())
 }
 
 fn crichd_identity(row: &Observation, doc: &HtmlDoc) -> bool {
@@ -411,7 +412,7 @@ fn streamcenter_players(game_id: &str, row: &Observation, body: &str) -> Vec<Res
     let Ok(url) = Url::parse(&row.url) else {
         return vec![];
     };
-    let link = Regex::new(r"^/api/stream-link/iframe/event-espn-league-(football-college-football|basketball-(?:nba|wnba)|hockey-nhl|baseball-mlb)-(\d{5,12})/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$").unwrap();
+    let link = cached_regex!(r"^/api/stream-link/iframe/event-espn-league-(football-college-football|basketball-(?:nba|wnba)|hockey-nhl|baseball-mlb)-(\d{5,12})/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$").unwrap();
     let Some(link) = link.captures(url.path()) else {
         return vec![];
     };
@@ -427,7 +428,7 @@ fn streamcenter_players(game_id: &str, row: &Observation, body: &str) -> Vec<Res
         return vec![];
     }
     let doc = HtmlDoc::parse(body);
-    let player = Regex::new(
+    let player = cached_regex!(
         r"^(?:https:)?//streame\.center/embed/(?:hls|hls2)\.php\?stream=[A-Za-z0-9]{1,40}$",
     )
     .unwrap();
@@ -458,7 +459,9 @@ fn streamcenter_players(game_id: &str, row: &Observation, body: &str) -> Vec<Res
 
 fn slug(value: &str) -> String {
     let lower = value.to_lowercase();
-    let separated = Regex::new(r"[^a-z0-9]+").unwrap().replace_all(&lower, "-");
+    let separated = cached_regex!(r"[^a-z0-9]+")
+        .unwrap()
+        .replace_all(&lower, "-");
     separated.trim_matches('-').to_string()
 }
 
@@ -491,7 +494,7 @@ fn buffstream_players(game_id: &str, row: &Observation, body: &str) -> Vec<Resol
     let mut players = Vec::new();
     let mut keys = HashMap::new();
     let number =
-        Regex::new(r"/(?:american-football|basketball|ice-hockey|baseball)/(.+)-stream-([12])$")
+        cached_regex!(r"/(?:american-football|basketball|ice-hockey|baseball)/(.+)-stream-([12])$")
             .unwrap();
     for frame in doc.select("iframe[src]") {
         let server = attr(frame, "src").unwrap_or("");
@@ -539,12 +542,12 @@ fn livetv_event_id(value: &str) -> Option<String> {
     {
         return None;
     }
-    let path = Regex::new(r"^/enx/eventinfo/([1-9]\d{0,19})_[a-z0-9_]*/$").unwrap();
+    let path = cached_regex!(r"^/enx/eventinfo/([1-9]\d{0,19})_[a-z0-9_]*/$").unwrap();
     Some(path.captures(url.path())?.get(1)?.as_str().to_string())
 }
 
 fn title_teams(value: &str) -> Option<[String; 2]> {
-    let delimiter = Regex::new(r"\s*[-–—]\s*").unwrap();
+    let delimiter = cached_regex!(r"\s*[-–—]\s*").unwrap();
     let names = delimiter.split(value).map(normalized).collect::<Vec<_>>();
     (names.len() == 2 && names.iter().all(|name| !name.is_empty()))
         .then(|| [names[0].clone(), names[1].clone()])
@@ -602,7 +605,7 @@ fn livetv_detail(row: &Observation, body: &str) -> Option<(i64, String)> {
                 .competitor
                 .iter()
                 .any(|team| team.name.is_empty())
-            || !pattern(
+            || !pattern!(
                 r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$",
                 &event.start_date,
             )
@@ -704,20 +707,20 @@ fn nfl_team_url(value: &str, base: &str) -> Option<String> {
         && url.port().is_none()
         && url.query().is_none()
         && url.fragment().is_none()
-        && pattern(r"^/teams/[a-z0-9]+(?:-[a-z0-9]+)*-live/$", url.path()))
+        && pattern!(r"^/teams/[a-z0-9]+(?:-[a-z0-9]+)*-live/$", url.path()))
     .then(|| url.to_string())
 }
 
 fn nfl_published_time(raw: &str, dates: &[String]) -> Option<i64> {
-    if !pattern(r"^\d{13}$", raw) || dates.is_empty() {
+    if !pattern!(r"^\d{13}$", raw) || dates.is_empty() {
         return None;
     }
     let kickoff: i64 = raw.parse().ok()?;
-    if kickoff < 1_577_836_800_000 || kickoff > 4_102_444_800_000 {
+    if !(1_577_836_800_000..=4_102_444_800_000).contains(&kickoff) {
         return None;
     }
     if dates.iter().any(|date| {
-        !pattern(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", date)
+        !pattern!(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", date)
             || chrono::DateTime::parse_from_rfc3339(date)
                 .ok()
                 .map(|value| value.timestamp_millis())
@@ -752,7 +755,7 @@ fn nfl_active_detail(row: &Observation, body: &str) -> bool {
         != Some(&row.url)
         || attr(node, "data-away-slug") != Some(slug(&teams[0]).as_str())
         || attr(node, "data-home-slug") != Some(slug(&teams[1]).as_str())
-        || !attr(node, "data-espn-id").is_some_and(|id| pattern(r"^\d{5,12}$", id))
+        || !attr(node, "data-espn-id").is_some_and(|id| pattern!(r"^\d{5,12}$", id))
     {
         return false;
     }
@@ -773,7 +776,7 @@ fn nflstreams_players(game_id: &str, row: &Observation, body: &str) -> Vec<Resol
         return vec![];
     }
     let doc = HtmlDoc::parse(body);
-    let tab = Regex::new(r"^player([1-6])$").unwrap();
+    let tab = cached_regex!(r"^player([1-6])$").unwrap();
     let mut players: Vec<ResolvedPlayer> = Vec::new();
     let mut numbers: HashMap<u8, usize> = HashMap::new();
     for anchor in doc.select(".theatre1 a[data-tab]") {
@@ -929,7 +932,7 @@ fn channel_players(game_id: &str, row: &Observation, body: &str) -> Vec<Resolved
             }
             Some(teams) => {
                 let name = if row.league == Some(League::Mlb) {
-                    Regex::new(r"(?i)\s*\((?:ALDS|NLDS|ALCS|NLCS|World Series) Game \d+\)\s*$")
+                    cached_regex!(r"(?i)\s*\((?:ALDS|NLDS|ALCS|NLCS|World Series) Game \d+\)\s*$")
                         .unwrap()
                         .replace(&event.name, "")
                         .to_string()
@@ -995,20 +998,16 @@ fn vipbox_page_teams(row: &Observation, doc: &HtmlDoc) -> Option<[String; 2]> {
         .first()
         .map(|node| clean_text(*node))
         .unwrap_or_default();
-    let pattern = if row.source_id.starts_with("vipbox-") {
-        r"(?i)^(.*?) Streaming Online$"
+    let matcher = if row.source_id.starts_with("vipbox-") {
+        cached_regex!(r"(?i)^(.*?) Streaming Online$").unwrap()
     } else if row.source_id.starts_with("vipboxtv-") {
-        r"(?i)^Watch (.*?) Online$"
+        cached_regex!(r"(?i)^Watch (.*?) Online$").unwrap()
     } else if row.source_id.starts_with("strikeout-") {
-        r"(?i)^Live (.*?) Streams Online$"
+        cached_regex!(r"(?i)^Live (.*?) Streams Online$").unwrap()
     } else {
-        r"(?i)^MLB Live: (.*?) Online$"
+        cached_regex!(r"(?i)^MLB Live: (.*?) Online$").unwrap()
     };
-    let matched = Regex::new(pattern)
-        .unwrap()
-        .captures(&title)?
-        .get(1)?
-        .as_str();
+    let matched = matcher.captures(&title)?.get(1)?.as_str();
     let matchup = if matches!(row.source_id.as_str(), "vipbox-nfl" | "strikeout-nfl") {
         matched
             .strip_prefix("MNF with Peyton and Eli-")
@@ -1016,7 +1015,7 @@ fn vipbox_page_teams(row: &Observation, doc: &HtmlDoc) -> Option<[String; 2]> {
     } else {
         matched
     };
-    let divider = Regex::new(r"(?i)\s+vs\.?\s+").unwrap();
+    let divider = cached_regex!(r"(?i)\s+vs\.?\s+").unwrap();
     let names = divider.split(matchup).map(str::trim).collect::<Vec<_>>();
     (names.len() == 2 && names.iter().all(|name| !name.is_empty()))
         .then(|| [names[0].to_string(), names[1].to_string()])
@@ -1034,7 +1033,7 @@ fn vipbox_players(
     let kickoff = vipbox_kickoff(&config).map(|(_, at)| at);
     let teams = vipbox_page_teams(row, &doc);
     if first_attr(&doc, "meta[property='og:url']", "content").as_deref() != Some(row.url.as_str())
-        || !pattern(r#""loaded_page"\s*:\s*"stream""#, &config)
+        || !pattern!(r#""loaded_page"\s*:\s*"stream""#, &config)
         || kickoff != row.kickoff
         || teams
             .as_ref()
@@ -1050,7 +1049,10 @@ fn vipbox_players(
     let mut pages = Vec::new();
     let mut keys = HashMap::new();
     if row.source_id == "mlbbox-mlb" {
-        let embed = Regex::new(r#"(?i)<iframe\b[^>]*\bsrc=['"](https://embedsports\.me/baseball/[a-z0-9-]+)['"][^>]*>"#).unwrap();
+        let embed = cached_regex!(
+            r#"(?i)<iframe\b[^>]*\bsrc=['"](https://embedsports\.me/baseball/[a-z0-9-]+)['"][^>]*>"#
+        )
+        .unwrap();
         for textarea in doc.select("textarea") {
             let content = text(textarea);
             let Some(url) = embed.captures(&content).and_then(|match_| match_.get(1)) else {

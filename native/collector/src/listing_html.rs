@@ -5,15 +5,16 @@ use crate::{
     time::{digest, parse_kickoff},
     types::{League, ListingOutcome, ListingResult, ListingSource, Observation},
 };
-use regex::Regex;
 use scraper::ElementRef;
 use std::collections::HashSet;
 use url::Url;
 
-fn pattern(expression: &str, value: &str) -> bool {
-    Regex::new(expression)
-        .expect("fixed listing expression")
-        .is_match(value)
+macro_rules! pattern {
+    ($expression:literal, $value:expr $(,)?) => {
+        cached_regex!($expression)
+            .expect("fixed listing expression")
+            .is_match($value)
+    };
 }
 
 fn result(observations: Vec<Observation>, empty: bool) -> ListingResult {
@@ -62,7 +63,7 @@ fn nfl_identity(names: &[String; 2]) -> String {
 }
 
 fn live_tv_team_pair(value: &str) -> Option<[String; 2]> {
-    let split = Regex::new(r"\s*[-–—]\s*").unwrap();
+    let split = cached_regex!(r"\s*[-–—]\s*").unwrap();
     let teams: Vec<String> = split
         .split(value)
         .map(|part| part.split_whitespace().collect::<Vec<_>>().join(" "))
@@ -73,7 +74,7 @@ fn live_tv_team_pair(value: &str) -> Option<[String; 2]> {
 
 fn live_tv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
     let doc = HtmlDoc::parse(body);
-    let path = Regex::new(r"^/enx/eventinfo/([1-9][0-9]{0,19})_[a-z0-9_]*/$").unwrap();
+    let path = cached_regex!(r"^/enx/eventinfo/([1-9][0-9]{0,19})_[a-z0-9_]*/$").unwrap();
     let mut observations: Vec<Observation> = Vec::new();
     let mut conflicting = false;
     for anchor in doc.select("a[href]") {
@@ -132,7 +133,7 @@ fn live_tv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
         .unwrap_or_default();
     result(
         observations,
-        pattern(
+        pattern!(
             r"(?i)no (?:upcoming )?(?:matches|broadcasts|events)",
             &body_text,
         ),
@@ -148,13 +149,13 @@ fn team_url(value: &str, base: &str) -> Option<String> {
         && url.port().is_none()
         && url.query().is_none()
         && url.fragment().is_none()
-        && pattern(r"^/teams/[a-z0-9]+(?:-[a-z0-9]+)*-live/$", url.path()))
+        && pattern!(r"^/teams/[a-z0-9]+(?:-[a-z0-9]+)*-live/$", url.path()))
     .then(|| url.to_string())
 }
 
 fn slug(name: &str) -> String {
     let lower = name.to_lowercase();
-    Regex::new(r"[^a-z0-9]+")
+    cached_regex!(r"[^a-z0-9]+")
         .unwrap()
         .replace_all(&lower, "-")
         .trim_matches('-')
@@ -180,7 +181,7 @@ fn published_time(card: ElementRef<'_>) -> Option<(i64, String)> {
         .collect();
     if dates.is_empty()
         || dates.iter().any(|date| {
-            !pattern(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", date)
+            !pattern!(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", date)
                 || parse_kickoff(date) != Some(kickoff)
         })
     {
@@ -212,7 +213,7 @@ fn nflstreams(source: &ListingSource, body: &str, now: i64) -> ListingResult {
         if anchors.len() != 2
             || watches.len() != 1
             || time.is_none()
-            || !pattern(r"^\d{5,12}$", espn_id)
+            || !pattern!(r"^\d{5,12}$", espn_id)
         {
             conflicting = true;
             continue;
@@ -282,7 +283,7 @@ fn nflstreams(source: &ListingSource, body: &str, now: i64) -> ListingResult {
         .unwrap_or_default();
     result(
         observations,
-        pattern(
+        pattern!(
             r"(?i)no (?:live )?(?:games|matches) (?:available|scheduled)",
             &body_text,
         ),
@@ -291,7 +292,7 @@ fn nflstreams(source: &ListingSource, body: &str, now: i64) -> ListingResult {
 
 fn streamcenter(source: &ListingSource, body: &str, now: i64) -> ListingResult {
     let doc = HtmlDoc::parse(body);
-    let link = Regex::new(r"^/api/stream-link/iframe/event-espn-league-(football-college-football|basketball-(?:nba|wnba)|hockey-nhl|baseball-mlb)-(\d{5,12})/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$").unwrap();
+    let link = cached_regex!(r"^/api/stream-link/iframe/event-espn-league-(football-college-football|basketball-(?:nba|wnba)|hockey-nhl|baseball-mlb)-(\d{5,12})/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$").unwrap();
     let mut observations = Vec::new();
     let mut invalid = false;
     let cards = doc.select("article.game-card-row");
@@ -385,15 +386,15 @@ fn motorsports(source: &ListingSource, body: &str, now: i64) -> ListingResult {
         let section = closest(row, "section.lg")
             .and_then(|section| attr(section, "id"))
             .unwrap_or("");
-        let league = if pattern(r"^g-lg-f1-\d{8}$", section) {
+        let league = if pattern!(r"^g-lg-f1-\d{8}$", section) {
             Some(League::F1)
-        } else if pattern(r"^g-lg-nascar-truck-\d{8}$", section) {
+        } else if pattern!(r"^g-lg-nascar-truck-\d{8}$", section) {
             Some(League::NascarTruck)
-        } else if pattern(r"^g-lg-nascar-premier-\d{8}$", section) {
+        } else if pattern!(r"^g-lg-nascar-premier-\d{8}$", section) {
             Some(League::NascarCup)
-        } else if pattern(r"^g-cat-motogp-\d{8}$", section) {
+        } else if pattern!(r"^g-cat-motogp-\d{8}$", section) {
             Some(League::Motogp)
-        } else if pattern(r"^g-cat-motorsport-\d{8}$", section) {
+        } else if pattern!(r"^g-cat-motorsport-\d{8}$", section) {
             Some(League::Motorsport)
         } else {
             None
@@ -408,7 +409,7 @@ fn motorsports(source: &ListingSource, body: &str, now: i64) -> ListingResult {
             continue;
         };
         if url.host_str() != base.host_str()
-            || !pattern(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", url.path())
+            || !pattern!(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", url.path())
             || url.query().is_some()
             || url.fragment().is_some()
         {
@@ -448,17 +449,17 @@ fn first_attr(element: ElementRef<'_>, selector: &str, name: &str) -> Option<Str
 
 fn section_league(section: &str, hockey: bool, baseball: bool) -> Option<League> {
     if hockey {
-        if pattern(r"^g-lg-womens-college-hockey-\d{8}$", section) {
+        if pattern!(r"^g-lg-womens-college-hockey-\d{8}$", section) {
             Some(League::Ncaawh)
-        } else if pattern(r"^g-lg-mens-college-hockey-\d{8}$", section) {
+        } else if pattern!(r"^g-lg-mens-college-hockey-\d{8}$", section) {
             Some(League::Ncaah)
-        } else if pattern(r"^g-lg-nhl-\d{8}$", section) {
+        } else if pattern!(r"^g-lg-nhl-\d{8}$", section) {
             Some(League::Nhl)
         } else {
             None
         }
     } else if baseball {
-        pattern(r"^g-cat-mlb-\d{8}$", section).then_some(League::Mlb)
+        pattern!(r"^g-cat-mlb-\d{8}$", section).then_some(League::Mlb)
     } else {
         None
     }
@@ -474,7 +475,7 @@ fn path_allowed(source_id: &str, path: &str) -> bool {
         "vipbox-nhl" => !path.starts_with("/onair/nhl/"),
         "strikeout-nhl" => !path.starts_with("/nhl/"),
         "strikeout-mlb" => !path.starts_with("/mlb/"),
-        "mlbbox-mlb" => !pattern(r"^/mlb/[a-z0-9-]+-stream$", path),
+        "mlbbox-mlb" => !pattern!(r"^/mlb/[a-z0-9-]+-stream$", path),
         "methstreams-nhl" | "crackstreams-nhl" | "methstreams-mlb" | "crackstreams-mlb" => {
             !path.starts_with("/event/")
         }
@@ -482,8 +483,8 @@ fn path_allowed(source_id: &str, path: &str) -> bool {
     } {
         return false;
     }
-    !pattern(r"(?i)^/(?:nfl|cfb|nba|nhl|mlb)/livestreams\d*/?$", path)
-        && pattern(
+    !pattern!(r"(?i)^/(?:nfl|cfb|nba|nhl|mlb)/livestreams\d*/?$", path)
+        && pattern!(
             r"(?i)/(?:watch/(?:nfl|cfb|nba(?:-preseason)?|nhl|mlb-playoffs)/|onair/(?:nfl|ncaaf|nba|nhl)/|(?:nfl|cfb|nba|nhl|mlb|college-football)/.*(?:live|stream)|(?:nfl|cfb|nba|nhl|mlb)-streams/.+-live-stream|event/)",
             path,
         )
@@ -502,8 +503,8 @@ fn general(
     let mut observations: Vec<Observation> = Vec::new();
     let mut conflicting_teams = HashSet::new();
     let mut conflicting_times = HashSet::new();
-    let matchup_separator = Regex::new(r"(?i)\s+(?:vs\.?|versus|at|@)\s+").unwrap();
-    let time_expression = Regex::new(
+    let matchup_separator = cached_regex!(r"(?i)\s+(?:vs\.?|versus|at|@)\s+").unwrap();
+    let time_expression = cached_regex!(
         r"(?i)\d{4}-\d{2}-\d{2}(?:,\s*[a-z]+)?(?:\s*-\s*|[ T])\d{1,2}:\d{2}\s*(?:AM|PM)?\s*ET\b",
     )
     .unwrap();
@@ -520,7 +521,7 @@ fn general(
             && published.port().is_none()
             && published.query().is_none()
             && published.fragment().is_none()
-            && pattern(
+            && pattern!(
                 r"^/(?:nfl|cfb|nba|nhl|mlb)-streams/[a-z0-9-]+-live-stream$",
                 published.path(),
             )
@@ -555,21 +556,21 @@ fn general(
             .map(|found| found.as_str())
             .unwrap_or("");
         let cleaned = title.replacen(text_time, "", 1);
-        let cleaned = Regex::new(r"(?i)\d{1,2}:\d{2}\s*UTC.*$")
+        let cleaned = cached_regex!(r"(?i)\d{1,2}:\d{2}\s*UTC.*$")
             .unwrap()
             .replace(&cleaned, "");
-        let cleaned = Regex::new(r"(?i)(?:Live)?Watch\s*→?\s*$")
+        let cleaned = cached_regex!(r"(?i)(?:Live)?Watch\s*→?\s*$")
             .unwrap()
             .replace(&cleaned, "");
-        let cleaned = Regex::new(r"^\s*(?:\d{1,2}:\d{2}\s*)?")
+        let cleaned = cached_regex!(r"^\s*(?:\d{1,2}:\d{2}\s*)?")
             .unwrap()
             .replace(&cleaned, "");
-        let cleaned = Regex::new(r"(?i)\s*\bCH\s*\d+\s*$")
+        let cleaned = cached_regex!(r"(?i)\s*\bCH\s*\d+\s*$")
             .unwrap()
             .replace(&cleaned, "")
             .to_string();
         let matchup = if matches!(source.id.as_str(), "methstreams-mlb" | "crackstreams-mlb") {
-            Regex::new(r"(?i)\s*\((?:ALDS|NLDS|ALCS|NLCS|World Series) Game \d+\)\s*$")
+            cached_regex!(r"(?i)\s*\((?:ALDS|NLDS|ALCS|NLCS|World Series) Game \d+\)\s*$")
                 .unwrap()
                 .replace(&cleaned, "")
                 .to_string()
@@ -587,7 +588,7 @@ fn general(
         let pair: Vec<String> = matchup_separator
             .split(&matchup)
             .map(|part| {
-                Regex::new(r"^#?\d+\s+")
+                cached_regex!(r"^#?\d+\s+")
                     .unwrap()
                     .replace(part, "")
                     .trim()
@@ -605,8 +606,8 @@ fn general(
         let row_teams: Vec<String> = if source.family == "buffstream" {
             select(row, "a[href]").into_iter().filter_map(|item| {
                 let href = attr(item, "href")?;
-                if pattern(r"^https?://ms\.buffstream\.io/(?:nfl|cfb|nba|nhl|mlb)-streams/[a-z0-9-]+-live-stream$", href) {
-                    Some(Regex::new(r"(?i)\s+Live Stream\s*$").unwrap().replace(&content(item), "").trim().to_string())
+                if pattern!(r"^https?://ms\.buffstream\.io/(?:nfl|cfb|nba|nhl|mlb)-streams/[a-z0-9-]+-live-stream$", href) {
+                    Some(cached_regex!(r"(?i)\s+Live Stream\s*$").unwrap().replace(&content(item), "").trim().to_string())
                 } else {
                     None
                 }
@@ -664,25 +665,25 @@ fn general(
                         .into_iter()
                         .map(content)
                         .find(|value| {
-                            pattern(r"(?i)^(?:0?[1-9]|1[0-2]):[0-5]\d\s*(?:am|pm)\s*ET$", value)
+                            pattern!(r"(?i)^(?:0?[1-9]|1[0-2]):[0-5]\d\s*(?:am|pm)\s*ET$", value)
                         })
                         .unwrap_or_default();
                 }
                 String::new()
             });
         let path = published.path();
-        let inferred_league = if pattern(
+        let inferred_league = if pattern!(
             r"(?i)/(?:watch/cfb|cfb|ncaaf|college-football)(?:/|-)",
             path,
         ) {
             Some(League::Ncaaf)
-        } else if pattern(r"(?i)/(?:watch/nfl|nfl)(?:/|-)", path) {
+        } else if pattern!(r"(?i)/(?:watch/nfl|nfl)(?:/|-)", path) {
             Some(League::Nfl)
-        } else if pattern(r"(?i)/(?:watch/nba|nba)(?:/|-)", path) {
+        } else if pattern!(r"(?i)/(?:watch/nba|nba)(?:/|-)", path) {
             Some(League::Nba)
-        } else if pattern(r"(?i)/(?:watch/nhl|nhl)(?:/|-)", path) {
+        } else if pattern!(r"(?i)/(?:watch/nhl|nhl)(?:/|-)", path) {
             Some(League::Nhl)
-        } else if pattern(r"(?i)/(?:watch/mlb-playoffs|mlb)(?:/|-)", path) {
+        } else if pattern!(r"(?i)/(?:watch/mlb-playoffs|mlb)(?:/|-)", path) {
             Some(League::Mlb)
         } else {
             None
@@ -714,7 +715,7 @@ fn general(
             inferred_league
         };
         let id = format!("{}:{}", source.id, digest(&url));
-        let numeric = Regex::new(r"^/watch/(nfl|cfb|nba|nhl)/[^/]+/(\d+)$")
+        let numeric = cached_regex!(r"^/watch/(nfl|cfb|nba|nhl)/[^/]+/(\d+)$")
             .unwrap()
             .captures(path);
         let legacy_id = numeric.and_then(|parts| {
@@ -758,9 +759,9 @@ fn general(
             };
             previous.raw_time = if time_conflict {
                 format!("{} | {}", previous.raw_time, raw_time)
-            } else if previous.kickoff.is_none() && kickoff.is_some() {
-                raw_time.clone()
-            } else if previous.raw_time.is_empty() {
+            } else if (previous.kickoff.is_none() && kickoff.is_some())
+                || previous.raw_time.is_empty()
+            {
                 raw_time.clone()
             } else {
                 previous.raw_time.clone()
@@ -802,7 +803,7 @@ fn general(
         .copied()
         .map(clean_text)
         .unwrap_or_default();
-    let known_empty = pattern(
+    let known_empty = pattern!(
         r"(?i)no matches available right now|sorry, no games scheduled on this date|no (?:live )?(?:games|events) (?:available|scheduled|found)",
         &body_text,
     );
@@ -817,9 +818,9 @@ fn general(
             .first()
             .copied()
             .is_some_and(|heading| {
-                pattern(r"(?i)^No Match'?s Today for NCAAF$", &content(heading))
+                pattern!(r"(?i)^No Match'?s Today for NCAAF$", &content(heading))
             })
-            || pattern(
+            || pattern!(
                 r"(?i)Not able to find any match/event on NCAAF today\.",
                 &body_text,
             ));
@@ -847,20 +848,20 @@ fn crichd_event_url(value: &str) -> bool {
         && url.query().is_none()
         && url.fragment().is_none()
         && matches!(url.host_str(), Some("crichd.pk" | "m.crichd.pk"))
-        && pattern(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", url.path())
+        && pattern!(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", url.path())
 }
 
 fn crichd_title(value: &str) -> Option<(String, Option<[String; 2]>, Option<League>)> {
     let title = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    let separator = Regex::new(r"(?i)\s+(?:vs\.?|at)\s+").unwrap();
+    let separator = cached_regex!(r"(?i)\s+(?:vs\.?|at)\s+").unwrap();
     let parts: Vec<_> = separator.split(&title).collect();
     let teams = (parts.len() == 2 && parts.iter().all(|part| !part.is_empty()))
         .then(|| [parts[0].to_string(), parts[1].to_string()]);
-    let league = if pattern(r"(?i)^MotoGP\b", &title) {
+    let league = if pattern!(r"(?i)^MotoGP\b", &title) {
         Some(League::Motogp)
-    } else if pattern(r"(?i)^(?:Formula 1|F1)\b", &title) {
+    } else if pattern!(r"(?i)^(?:Formula 1|F1)\b", &title) {
         Some(League::F1)
-    } else if pattern(r"(?i)^NASCAR\b", &title) {
+    } else if pattern!(r"(?i)^NASCAR\b", &title) {
         Some(League::NascarCup)
     } else {
         None
@@ -886,7 +887,7 @@ fn crichd(body: &str, now: i64) -> ListingResult {
             .and_then(|item| attr(*item, "data-start"))
             .unwrap_or("");
         let kickoff = parse_kickoff(raw_time);
-        if !pattern(
+        if !pattern!(
             r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$",
             raw_time,
         ) || kickoff.is_none_or(|value| value < 946_684_800_000 || value > now + 7 * 86_400_000)
@@ -916,7 +917,7 @@ fn crichd(body: &str, now: i64) -> ListingResult {
         };
         let parsed = if names.len() == 2
             && names.iter().all(|name| !name.is_empty())
-            && !pattern(r"(?:Live|MotoGP|Formula 1|F1)$", &names[1])
+            && !pattern!(r"(?:Live|MotoGP|Formula 1|F1)$", &names[1])
         {
             Some((
                 title.clone(),

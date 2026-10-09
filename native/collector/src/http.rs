@@ -174,7 +174,6 @@ pub struct PageResponse {
     pub body: Option<Vec<u8>>,
 }
 
-#[allow(async_fn_in_trait)]
 pub(crate) trait PageReader: Send + Sync {
     async fn request(
         &self,
@@ -432,17 +431,17 @@ pub fn remember_listing(
             state.sportsfeed_events.clear();
         }
         for observation in &result.observations {
-            if let Some((team_a, team_b)) = observation.title.rsplit_once(" vs ") {
-                if !team_a.is_empty() {
-                    state.sportsfeed_events.insert(
-                        observation.url.clone(),
-                        SportsfeedEvent {
-                            team_a: team_a.to_string(),
-                            team_b: team_b.to_string(),
-                            at,
-                        },
-                    );
-                }
+            if let Some((team_a, team_b)) = observation.title.rsplit_once(" vs ")
+                && !team_a.is_empty()
+            {
+                state.sportsfeed_events.insert(
+                    observation.url.clone(),
+                    SportsfeedEvent {
+                        team_a: team_a.to_string(),
+                        team_b: team_b.to_string(),
+                        at,
+                    },
+                );
             }
         }
     }
@@ -787,9 +786,12 @@ enum FixtureReply {
     Script(FixtureScript),
 }
 
+type FixtureKey = (String, String, Option<String>);
+type FixtureResponses = HashMap<FixtureKey, VecDeque<FixtureReply>>;
+
 #[derive(Default)]
 pub struct FixtureTransport {
-    responses: Mutex<HashMap<(String, String, Option<String>), VecDeque<FixtureReply>>>,
+    responses: Mutex<FixtureResponses>,
     requests: Mutex<Vec<FixtureRequest>>,
     cancels: Mutex<Vec<String>>,
 }

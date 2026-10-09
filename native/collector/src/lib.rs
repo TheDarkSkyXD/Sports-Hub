@@ -1,3 +1,18 @@
+fn compile_fixed_pattern(expression: &str) -> regex::Regex {
+    regex::Regex::new(expression).expect("fixed collector expression")
+}
+
+macro_rules! cached_regex {
+    ($expression:literal $(,)?) => {{
+        static PATTERN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        Ok::<regex::Regex, regex::Error>(
+            PATTERN
+                .get_or_init(|| crate::compile_fixed_pattern($expression))
+                .clone(),
+        )
+    }};
+}
+
 pub mod browser;
 pub mod detail_html;
 pub mod detail_json;

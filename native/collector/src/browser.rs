@@ -3,7 +3,6 @@ use crate::{
     registry::SourceRegistry,
     types::{BrowserCategory, League},
 };
-use regex::Regex;
 use scraper::ElementRef;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -197,11 +196,11 @@ pub struct CategoryResult<Event> {
     pub catalog_issues: Vec<CatalogIssue>,
 }
 
-fn category<'a>(
-    registry: &'a SourceRegistry,
+fn category(
+    registry: &SourceRegistry,
     kind: BrowserKind,
     league: League,
-) -> Option<&'a BrowserCategory> {
+) -> Option<&BrowserCategory> {
     registry.browser_category(kind.source_id(), league)
 }
 
@@ -267,7 +266,7 @@ pub fn sportsurge_detail_url(
     if !clean_browser_url(&url, BrowserKind::Sportsurge) {
         return None;
     }
-    let path = Regex::new(r"^/watch-(\d{1,12})-([a-z0-9]+)-[a-z0-9]+(?:-[a-z0-9]+)*/$").unwrap();
+    let path = cached_regex!(r"^/watch-(\d{1,12})-([a-z0-9]+)-[a-z0-9]+(?:-[a-z0-9]+)*/$").unwrap();
     let groups = path.captures(url.path())?;
     if category(registry, BrowserKind::Sportsurge, league)?
         .path_code
@@ -317,7 +316,7 @@ pub fn sportsurge_destination(value: &str) -> SportsurgeDestination {
     {
         return rejected(DestinationRejection::PrivateHost);
     }
-    let credential = Regex::new(
+    let credential = cached_regex!(
         r"(?i)^(?:token|access_token|auth|authorization|key|signature|sig|st|e|x-amz-.+)$",
     )
     .unwrap();
@@ -378,7 +377,7 @@ pub fn sportsurge_category(
             .into_iter()
             .any(|node| {
                 !has_class(node, "match-filter-empty")
-                    && !Regex::new(r"(?i)display\s*:\s*none")
+                    && !cached_regex!(r"(?i)display\s*:\s*none")
                         .unwrap()
                         .is_match(attr(node, "style").unwrap_or_default())
                     && normalize(&text(node))
@@ -444,7 +443,7 @@ pub fn sportsurge_category(
             _ => None,
         };
         let kickoff = epoch.filter(|time| (946_684_800_000..4_102_444_800_000).contains(time));
-        let count = Regex::new(r"(?i)\b(\d{1,5})\s+Streams?\b")
+        let count = cached_regex!(r"(?i)\b(\d{1,5})\s+Streams?\b")
             .unwrap()
             .captures(&row_text)
             .and_then(|captures| captures.get(1)?.as_str().parse().ok());
@@ -534,7 +533,7 @@ pub fn sportsurge_detail(html: &str, event: &SportsurgeEvent, at: i64) -> Sports
             let vote = first(row, ".stream-vote[id]")
                 .and_then(|node| attr(node, "id"))
                 .unwrap_or_default();
-            let stream_id = Regex::new(r"^stream-\d{1,20}$").unwrap();
+            let stream_id = cached_regex!(r"^stream-\d{1,20}$").unwrap();
             let base = if stream_id.is_match(vote) {
                 vote.to_owned()
             } else {
@@ -654,7 +653,7 @@ pub fn streameast_event_url(
     if !clean_browser_url(&url, BrowserKind::Streameast) {
         return None;
     }
-    let pattern = Regex::new(r"^/([a-z0-9-]+)/([a-z0-9]+(?:-[a-z0-9]+)*)/$").unwrap();
+    let pattern = cached_regex!(r"^/([a-z0-9-]+)/([a-z0-9]+(?:-[a-z0-9]+)*)/$").unwrap();
     let groups = pattern.captures(url.path())?;
     if category(registry, BrowserKind::Streameast, league)?
         .path_code
@@ -866,7 +865,7 @@ pub fn streameast_free_player(html: &str) -> ServerPlayer {
             continue;
         }
         if url.origin().ascii_serialization() == "https://streame.center" {
-            let channel = Regex::new(r"^/stream-east/ch(\d{1,4})\.php$").unwrap();
+            let channel = cached_regex!(r"^/stream-east/ch(\d{1,4})\.php$").unwrap();
             if let Some(id) = channel.captures(url.path()).and_then(|group| group.get(1)) {
                 matches.push(ServerPlayer::Channel {
                     id: id.as_str().to_owned(),
@@ -874,7 +873,7 @@ pub fn streameast_free_player(html: &str) -> ServerPlayer {
                 });
             }
         } else if url.origin().ascii_serialization() == "https://wikisport.info" {
-            let wiki = Regex::new(r"^/(0nhl|strm)/(\d{1,4})\.php$").unwrap();
+            let wiki = cached_regex!(r"^/(0nhl|strm)/(\d{1,4})\.php$").unwrap();
             if let Some(groups) = wiki.captures(url.path()) {
                 matches.push(ServerPlayer::Wikisport {
                     section: groups[1].to_owned(),
@@ -939,7 +938,7 @@ pub fn streameast_published_free_player(
     let origin = url.origin().ascii_serialization();
     let path = url.path();
     if origin == "https://streame.center" {
-        let channel = Regex::new(r"^/stream-east/ch(\d{1,4})\.php$").unwrap();
+        let channel = cached_regex!(r"^/stream-east/ch(\d{1,4})\.php$").unwrap();
         if let Some(id) = channel.captures(path).and_then(|group| group.get(1)) {
             return ServerPlayer::Channel {
                 id: id.as_str().to_owned(),
@@ -948,7 +947,7 @@ pub fn streameast_published_free_player(
         }
     }
     if origin == "https://wikisport.info" {
-        let wiki = Regex::new(r"^/(0nhl|strm)/(\d{1,4})\.php$").unwrap();
+        let wiki = cached_regex!(r"^/(0nhl|strm)/(\d{1,4})\.php$").unwrap();
         if let Some(groups) = wiki.captures(path) {
             return ServerPlayer::Wikisport {
                 section: groups[1].to_owned(),
@@ -958,17 +957,19 @@ pub fn streameast_published_free_player(
         }
     }
     let supported = (origin == "https://wikisport.info"
-        && Regex::new(r"^/ch/[1-9]\d{0,3}\.php$")
+        && cached_regex!(r"^/ch/[1-9]\d{0,3}\.php$")
             .unwrap()
             .is_match(path))
         || (origin == "https://dlive.sx"
-            && Regex::new(r"^/stream/stream-\d{1,4}\.php$")
+            && cached_regex!(r"^/stream/stream-\d{1,4}\.php$")
                 .unwrap()
                 .is_match(path))
         || (origin == "https://flyembed.click"
-            && Regex::new(r"^/embed/\d{1,4}\.php$").unwrap().is_match(path))
+            && cached_regex!(r"^/embed/\d{1,4}\.php$")
+                .unwrap()
+                .is_match(path))
         || (origin == "https://fsportshdz.xyz"
-            && Regex::new(r"^/embed/[a-z0-9]+(?:-[a-z0-9]+)*-live-streams\.php$")
+            && cached_regex!(r"^/embed/[a-z0-9]+(?:-[a-z0-9]+)*-live-streams\.php$")
                 .unwrap()
                 .is_match(path));
     if supported {
