@@ -232,3 +232,86 @@ test('unchanged current scores do not rebuild projection for pending history cov
     rmSync(dir,{recursive:true,force:true});
   }
 });
+
+test('simultaneous schedule partitions publish together before refresh completes',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'football-board-publish-'));
+  const fbs={...college,season:undefined};
+  const fcs={...college,id:'ncaaf-201',season:undefined,partitions:['fcs']};
+  const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
+    now:()=>at,schedules,sources:[],
+    readSchedule:async source=>({games:source.id==='nfl'?[nfl]:source.id==='fbs'?[fbs]:[fcs],at,league:source.league}),
+  });
+  const measured=coordinator as unknown as {rebuild:()=>void};
+  const rebuild=measured.rebuild.bind(coordinator);
+  let rebuilds=0;
+  measured.rebuild=()=>{rebuilds++;rebuild();};
+  try {
+    await coordinator.refresh(true);
+    assert.equal(rebuilds,1);
+    const board=await coordinator.command({kind:'board'});
+    assert.equal(board.kind,'board');
+    if(board.kind==='board')assert.deepEqual(board.board.games.map(game=>game.id).sort(),['100','ncaaf-200','ncaaf-201']);
+  } finally {
+    await coordinator.stop();
+    rmSync(dir,{recursive:true,force:true});
+  }
+});
+
+test('a current result is visible to board and sources while its history read remains pending',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'football-board-current-'));
+  const history=deferred<void>();
+  const currentTime=at;
+  const scored={...nfl,home:{...nfl.home,score:'14'}};
+  const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
+    now:()=>currentTime,schedules:[schedules[0]],sources:[],
+    readSchedule:async (_source,_now,_signal,onCurrent)=>{
+      onCurrent?.({games:[scored],at:currentTime,league:'nfl',historyErrors:['20260925:pending']});
+      await history.promise;
+      return {games:[scored],at:currentTime,league:'nfl'};
+    },
+  });
+  try {
+    const refreshing=coordinator.refresh(true);
+    const board=await coordinator.command({kind:'board'});
+    assert.equal(board.kind,'board');
+    if(board.kind==='board')assert.equal(board.board.games[0]?.home.score,'14');
+    const sources=await coordinator.command({kind:'sources'});
+    assert.equal(sources.kind,'sources');
+    if(sources.kind==='sources')assert.equal(sources.snapshot.games[0]?.gameId,'100');
+    history.resolve();
+    await refreshing;
+  } finally {
+    history.resolve();
+    await coordinator.stop();
+    rmSync(dir,{recursive:true,force:true});
+  }
+});
+
+test('stop discards a queued schedule publication',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'football-board-stop-publication-'));
+  const history=deferred<void>();
+  const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
+    now:()=>at,schedules:[schedules[0]],sources:[],
+    readSchedule:async (_source,_now,_signal,onCurrent)=>{
+      onCurrent?.({games:[nfl],at,league:'nfl',historyErrors:['20260925:pending']});
+      await history.promise;
+      return {games:[nfl],at,league:'nfl'};
+    },
+  });
+  const measured=coordinator as unknown as {rebuild:()=>void};
+  const rebuild=measured.rebuild.bind(coordinator);
+  let rebuilds=0;
+  measured.rebuild=()=>{rebuilds++;rebuild();};
+  try {
+    const refreshing=coordinator.refresh(true);
+    const stopping=coordinator.stop();
+    history.resolve();
+    await Promise.all([refreshing,stopping]);
+    assert.equal(rebuilds,0);
+    assert.deepEqual(await coordinator.command({kind:'board'}),{kind:'error',status:503,message:'Pipeline is stopped.'});
+  } finally {
+    history.resolve();
+    await coordinator.stop();
+    rmSync(dir,{recursive:true,force:true});
+  }
+});

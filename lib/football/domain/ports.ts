@@ -38,6 +38,7 @@ export interface FootballRepository {
   finals(): Game[];
   observe(observation: Observation, result: Match): void;
   observations(): Observation[];
+  observation(id:string):Observation|null;
   sourceEventBindings():SourceEventBinding[];
   removeFinalEvidence(gameIds:readonly string[],now:number):void;
   sourceAttempts(): Record<string,SourceAttempt>;

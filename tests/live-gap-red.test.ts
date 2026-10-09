@@ -8,6 +8,7 @@ import { createFootballCoordinator } from '../lib/football/runtime/composition.t
 import { FootballStore } from '../lib/football/adapters/store.ts';
 import { compatiblePlayers, enrichObservation } from '../lib/football/adapters/sources.ts';
 import { matchObservation } from '../lib/football/domain/matching.ts';
+import type { CandidateProbeResult } from '../lib/football/domain/ports.ts';
 import type { Game, Observation } from '../lib/football/shared.ts';
 
 const kickoff = Date.parse('2026-10-03T20:00:00Z');
@@ -245,4 +246,142 @@ test('a held detail response cannot recreate a feed after the matched game becom
     }
     finally{after.close();}
   }finally{release();await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a final current result owns a detail that completes before optional history',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'live-gap-current-final-detail-'));
+  const path=join(dir,'state.sqlite');
+  let now=kickoff,reads=0,detailStarted=false;
+  let releaseDetail!:()=>void;
+  const detailHeld=new Promise<void>(resolve=>{releaseDetail=resolve;});
+  let releaseHistory!:()=>void;
+  const historyHeld=new Promise<void>(resolve=>{releaseHistory=resolve;});
+  const coordinator=createFootballCoordinator(path,{
+    now:()=>now,schedules:[{id:'fcs',league:'ncaaf',path:'fixture',group:'81'}],
+    sources:[{id:observation.sourceId,url:'https://vipbox.fm/ncaaf-schedule',family:'vipbox'}],
+    readSchedule:async (_source,_at,_signal,onCurrent)=>{
+      if(++reads===1)return {games:[live],league:'ncaaf' as const,at:now};
+      onCurrent?.({games:[final],league:'ncaaf',at:now,historyErrors:['20261002:pending']});
+      await historyHeld;
+      return {games:[final],league:'ncaaf' as const,at:now};
+    },
+    readSeasonMembership:async()=>({season:2026,at:now,teams:{}}),
+    readHtml:async url=>{if(url===observation.url){detailStarted=true;await detailHeld;
+      return '<iframe src="https://gooz.aapmains.net/new-stream-embed/123"></iframe>';}
+      return '<main>fixture</main>';},
+    parseListings:()=>({outcome:'parsed',observations:[{...observation,observedAt:now}]}),
+    enrichObservation,compatiblePlayers,
+    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+  });
+  try {
+    await coordinator.refresh(true);
+    await until(()=>detailStarted,'the live detail read should start');
+    now+=60_000;
+    const refreshing=coordinator.refresh(true);
+    releaseDetail();
+    await new Promise<void>(resolve=>setImmediate(resolve));
+    const sources=await coordinator.command({kind:'sources'});
+    assert.equal(sources.kind,'sources');
+    if(sources.kind==='sources')assert.equal(sources.snapshot.games.find(row=>row.gameId===live.id)?.candidates.length||0,0);
+    const db=new DatabaseSync(path);
+    try {
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM details WHERE observation_id=?').get(observation.id)?.n,0);
+      const row=db.prepare('SELECT result FROM observations WHERE id=?').get(observation.id);
+      assert.equal(typeof row?.result,'string');
+      assert.equal(JSON.parse(String(row?.result)).reason,'finished-game');
+    } finally {db.close();}
+    releaseHistory();
+    await refreshing;
+  } finally {releaseDetail();releaseHistory();await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a playable probe completing after a final current result cannot persist its old owner',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'live-gap-current-final-probe-'));
+  const path=join(dir,'state.sqlite');
+  let now=kickoff,reads=0,probeStarted=false;
+  let releaseProbe!:(result:CandidateProbeResult)=>void;
+  let releaseHistory!:()=>void;
+  const historyHeld=new Promise<void>(resolve=>{releaseHistory=resolve;});
+  const coordinator=createFootballCoordinator(path,{
+    now:()=>now,schedules:[{id:'fcs',league:'ncaaf',path:'fixture',group:'81'}],
+    sources:[{id:observation.sourceId,url:'https://vipbox.fm/ncaaf-schedule',family:'vipbox'}],
+    readSchedule:async (_source,_at,_signal,onCurrent)=>{
+      if(++reads===1)return {games:[live],league:'ncaaf' as const,at:now};
+      onCurrent?.({games:[final],league:'ncaaf',at:now,historyErrors:['20261002:pending']});
+      await historyHeld;
+      return {games:[final],league:'ncaaf' as const,at:now};
+    },
+    readSeasonMembership:async()=>({season:2026,at:now,teams:{}}),
+    readHtml:async url=>url===observation.url?
+      '<iframe src="https://gooz.aapmains.net/new-stream-embed/123"></iframe>':'<main>fixture</main>',
+    parseListings:()=>({outcome:'parsed',observations:[{...observation,observedAt:now}]}),
+    enrichObservation,compatiblePlayers,
+    probeCandidate:()=>new Promise<CandidateProbeResult>(resolve=>{probeStarted=true;releaseProbe=resolve;}),
+  });
+  try {
+    await coordinator.refresh(true);
+    await until(()=>probeStarted,'the live candidate should begin its media check');
+    now+=60_000;
+    const refreshing=coordinator.refresh(true);
+    releaseProbe({kind:'playable',proof:'media'});
+    await new Promise<void>(resolve=>setImmediate(resolve));
+    const sources=await coordinator.command({kind:'sources'});
+    assert.equal(sources.kind,'sources');
+    if(sources.kind==='sources')assert.equal(sources.snapshot.games.find(row=>row.gameId===live.id)?.workingChoiceCount||0,0);
+    const db=new DatabaseSync(path);
+    try {assert.equal(db.prepare('SELECT COUNT(*) AS n FROM working_feeds').get()?.n,0);}
+    finally {db.close();}
+    releaseHistory();
+    await refreshing;
+  } finally {releaseHistory();await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a late probe cannot store proof while a date-only schedule move excludes its game',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'live-gap-current-reschedule-probe-'));
+  const path=join(dir,'state.sqlite');
+  const scheduled:Game={...live,status:'pre',lifecycle:'scheduled',detail:'Scheduled'};
+  const outside:Game={...scheduled,date:new Date(kickoff+3*24*60*60_000).toISOString()};
+  let reads=0,probeCalls=0;
+  let releaseFirstProbe!:(result:CandidateProbeResult)=>void;
+  let releaseHistory!:()=>void;
+  const historyHeld=new Promise<void>(resolve=>{releaseHistory=resolve;});
+  const coordinator=createFootballCoordinator(path,{
+    now:()=>kickoff,schedules:[{id:'fcs',league:'ncaaf',path:'fixture',group:'81'}],
+    sources:[{id:observation.sourceId,url:'https://vipbox.fm/ncaaf-schedule',family:'vipbox'}],
+    readSchedule:async (_source,_at,_signal,onCurrent)=>{
+      if(++reads===1)return {games:[scheduled],league:'ncaaf' as const,at:kickoff};
+      if(reads===2){
+        onCurrent?.({games:[outside],league:'ncaaf',at:kickoff,historyErrors:['20261002:pending']});
+        await historyHeld;
+        return {games:[outside],league:'ncaaf' as const,at:kickoff};
+      }
+      return {games:[scheduled],league:'ncaaf' as const,at:kickoff};
+    },
+    readSeasonMembership:async()=>({season:2026,at:kickoff,teams:{}}),
+    readHtml:async url=>url===observation.url?
+      '<iframe src="https://gooz.aapmains.net/new-stream-embed/123"></iframe>':'<main>fixture</main>',
+    parseListings:()=>({outcome:'parsed',observations:[observation]}),
+    enrichObservation,compatiblePlayers,
+    probeCandidate:()=>{probeCalls++;return new Promise<CandidateProbeResult>(resolve=>{
+      if(probeCalls===1)releaseFirstProbe=resolve;
+    });},
+  });
+  try {
+    await coordinator.refresh(true);
+    await until(()=>probeCalls===1,'the scheduled candidate should begin its first media check');
+    const moving=coordinator.refresh(true);
+    releaseFirstProbe({kind:'playable',proof:'media'});
+    await new Promise<void>(resolve=>setImmediate(resolve));
+    await coordinator.command({kind:'sources'});
+    const db=new DatabaseSync(path);
+    try {assert.equal(db.prepare('SELECT COUNT(*) AS n FROM working_feeds').get()?.n,0);}
+    finally {db.close();}
+    releaseHistory();
+    await moving;
+    await coordinator.refresh(true);
+    const restored=await coordinator.command({kind:'sources'});
+    assert.equal(restored.kind,'sources');
+    if(restored.kind==='sources')assert.ok(restored.snapshot.games.flatMap(row=>row.candidates)
+      .every(candidate=>candidate.availability.kind!=='playable'));
+  } finally {releaseHistory();await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
 });

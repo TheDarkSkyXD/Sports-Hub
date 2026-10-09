@@ -46,8 +46,24 @@ export function createObservationMatcher(games: readonly Game[], mode: 'current'
     const catalog = game.league === 'ncaaf' ? collegeOwners.get(alias) : undefined;
     return (!live || live.size === 1 && live.has(owner)) && (!catalog || catalog.size === 1 && catalog.has(owner));
   }));
-  const prepared=matchups.map(game=>({game,home:names(game,game.home,0),away:names(game,game.away,1),
-    date:game.date ? Date.parse(game.date) : NaN}));
+  const prepared=matchups.map((game,index)=>({game,index,home:names(game,game.home,0),away:names(game,game.away,1),
+    homeId:identity(game,game.home),awayId:identity(game,game.away),date:game.date ? Date.parse(game.date) : NaN}));
+  const homeByAlias=new Map<string,typeof prepared>();
+  const awayByAlias=new Map<string,typeof prepared>();
+  const collegeByTeam=new Map<string,typeof prepared>();
+  const add=(index:Map<string,typeof prepared>,key:string,row:typeof prepared[number])=>{
+    const rows=index.get(key)||[];
+    rows.push(row);
+    index.set(key,rows);
+  };
+  for(const row of prepared) {
+    for(const alias of row.home)add(homeByAlias,alias,row);
+    for(const alias of row.away)add(awayByAlias,alias,row);
+    if(row.game.league==='ncaaf'&&collegeAliases.has(row.game.home.id||'')&&collegeAliases.has(row.game.away.id||'')) {
+      add(collegeByTeam,row.homeId,row);
+      if(row.awayId!==row.homeId)add(collegeByTeam,row.awayId,row);
+    }
+  }
   return (observation,now) => {
     if(observation.league&&isMotorsportsLeague(observation.league))return matchRaceObservation(observation,races,now,mode);
     if (!observation.teams) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
@@ -56,24 +72,24 @@ export function createObservationMatcher(games: readonly Game[], mode: 'current'
       return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[]};
     const [first,second]=observation.teams.map(normalizedName);
     if (!first || !second || first===second) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
-    const strict=prepared.filter(({game,home,away})=>{
-      if (observation.league && game.league!==observation.league) return false;
-      return home.has(first) && away.has(second) || home.has(second) && away.has(first);
-    });
-    const anchored=(anchorName:string,otherName:string,anchorId:string,otherId:string):boolean=>{
+    const strictRows=new Set<typeof prepared[number]>();
+    for(const row of homeByAlias.get(first)||[])if((!observation.league||row.game.league===observation.league)&&row.away.has(second))strictRows.add(row);
+    for(const row of awayByAlias.get(first)||[])if((!observation.league||row.game.league===observation.league)&&row.home.has(second))strictRows.add(row);
+    const strict=[...strictRows].sort((left,right)=>left.index-right.index);
+    const anchored=(anchorName:string,otherName:string):typeof prepared=>{
       const anchorOwners=collegeOwners.get(anchorName),otherOwners=collegeOwners.get(otherName);
       const activeAnchor=liveOwners.get(`ncaaf:${anchorName}`),activeOther=liveOwners.get(`ncaaf:${otherName}`);
-      return !!anchorOwners&&anchorOwners.size===1&&anchorOwners.has(anchorId)&&
-        !!otherOwners&&otherOwners.size>1&&otherOwners.has(otherId)&&
-        !!activeAnchor&&activeAnchor.size===1&&activeAnchor.has(anchorId)&&
-        !!activeOther&&activeOther.has(otherId)&&[...activeOther].every(owner=>otherOwners.has(owner));
+      if(!anchorOwners||anchorOwners.size!==1||!otherOwners||otherOwners.size<=1||
+        !activeAnchor||activeAnchor.size!==1||!activeOther||
+        [...activeOther].some(owner=>!otherOwners.has(owner)))return [];
+      const anchorId=anchorOwners.values().next().value;
+      if(!anchorId||!activeAnchor.has(anchorId))return [];
+      return (collegeByTeam.get(anchorId)||[]).filter(row=>
+        row.homeId===anchorId&&otherOwners.has(row.awayId)&&activeOther.has(row.awayId)||
+        row.awayId===anchorId&&otherOwners.has(row.homeId)&&activeOther.has(row.homeId));
     };
-    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='ncaab'||observation.league==='nhl'||observation.league==='ncaah'||observation.league==='ncaawh'||observation.league==='mlb'?[]:prepared.filter(({game})=>{
-      if(game.league!=='ncaaf'||!collegeAliases.has(game.home.id||'')||!collegeAliases.has(game.away.id||''))return false;
-      const home=identity(game,game.home),away=identity(game,game.away);
-      return anchored(first,second,home,away)||anchored(second,first,away,home)||
-        anchored(first,second,away,home)||anchored(second,first,home,away);
-    });
+    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='ncaab'||observation.league==='nhl'||observation.league==='ncaah'||observation.league==='ncaawh'||observation.league==='mlb'?[]:
+      [...new Set([...anchored(first,second),...anchored(second,first)])].sort((left,right)=>left.index-right.index);
     const possible=[...new Map([...strict,...contextual].map(row=>[row.game.id,row])).values()];
     const ids=[...new Set(possible.map(({game})=>game.id))];
     if (observation.kickoff===null) return {kind:'unmatched',reason:!ids.length?'unknown-teams':

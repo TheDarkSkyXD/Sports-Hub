@@ -175,6 +175,12 @@ export class FootballStore {
       return result.success ? [result.data] : [];
     });
   }
+  observation(id:string):Observation|null {
+    const row=this.db.prepare('SELECT payload FROM observations WHERE id=?').get(id);
+    if(typeof row?.payload!=='string')return null;
+    const result=ObservationSchema.safeParse(JSON.parse(row.payload));
+    return result.success?result.data:null;
+  }
   sourceAttempts(): Record<string,SourceAttempt> {
     const attempts=Object.fromEntries(this.db.prepare('SELECT id,payload FROM sources').all().flatMap<[string,SourceAttempt]>(row => {
       if (typeof row.id !== 'string' || typeof row.payload !== 'string') return [];

@@ -84,6 +84,10 @@ export class FootballCoordinator {
   private revision = 0;
   private refreshing: Promise<void> | undefined;
   private queuedRefresh: Promise<void> | undefined;
+  private schedulePublication: ReturnType<typeof setImmediate> | undefined;
+  private scheduleDiscoveryForce = false;
+  private schedulePublicationSources = new Set<string>();
+  private discoveryLaunch: ReturnType<typeof setImmediate> | undefined;
   private discovering: Promise<void> | undefined;
   private lastDiscovery = 0;
   private hostCooldowns = new Map<string,number>();
@@ -226,12 +230,49 @@ export class FootballCoordinator {
     this.checkSources([],false);
     this.revision++;
   }
+  private publishSchedule(sourceId: string, force: boolean): void {
+    this.schedulePublicationSources.add(sourceId);
+    this.scheduleDiscoveryForce ||= force;
+    this.schedulePublication ??= setImmediate(() => {
+      try { this.flushSchedulePublication(); }
+      catch { this.revision++; }
+    });
+  }
+  private flushSchedulePublication(): void {
+    if (!this.schedulePublication) return;
+    clearImmediate(this.schedulePublication);
+    this.schedulePublication=undefined;
+    const force=this.scheduleDiscoveryForce;
+    this.scheduleDiscoveryForce=false;
+    const sources=this.schedulePublicationSources;
+    this.schedulePublicationSources=new Set<string>();
+    if (this.stopped) return;
+    try {
+      this.rebuild();
+      this.requestDiscovery(this.now(),force);
+      this.requestResolution();
+    } catch(error) {
+      for(const sourceId of sources)this.errors.set(sourceId,errorCode(error));
+      throw error;
+    }
+  }
   private requestDiscovery(now: number, explicit=false): void {
+    clearImmediate(this.discoveryLaunch);
+    this.discoveryLaunch=undefined;
     if (this.stopped || this.discovering || !explicit&&now - this.lastDiscovery < 30_000) return;
     this.lastDiscovery = now;
     this.discovering = this.discover(explicit).catch(error => {
       if (!this.stopped) this.errors.set('discovery',errorCode(error));
     }).finally(() => { this.discovering=undefined; this.requestResolution(); });
+  }
+  private deferDiscovery(now: number, force: boolean): void {
+    if (this.discoveryLaunch) return;
+    this.discoveryLaunch=setImmediate(() => {
+      this.discoveryLaunch=setImmediate(() => {
+        this.discoveryLaunch=undefined;
+        this.requestDiscovery(now,force);
+      });
+    });
   }
   async refresh(force = false): Promise<void> {
     if (this.stopped) return;
@@ -243,7 +284,7 @@ export class FootballCoordinator {
     const now = this.now();
     if (!force && now - this.lastSchedule < 30000) return;
     this.lastSchedule = now;
-    this.requestDiscovery(now,force);
+    this.deferDiscovery(now,force);
     this.refreshing = (async () => {
       await Promise.all(this.schedules.map(async source => {
         try {
@@ -268,14 +309,18 @@ export class FootballCoordinator {
             if(result.games.length || previous?.games.length || this.workingFeeds.size) {
               if(!wasFresh || feedCalendarDay(previous.at)!==feedCalendarDay(acceptedAt) ||
                 !historyPending&&projectedCoverage!==this.refreshedSchedules.has(source.id) ||
-                !isDeepStrictEqual(previous.games,accepted?.games)) this.rebuild();
+                !isDeepStrictEqual(previous.games,accepted?.games)) this.publishSchedule(source.id,force);
               else {
-                this.reconcileProbeJobs();
-                this.checkSources([],false);
-                this.revision++;
+                if (!this.schedulePublication) {
+                  this.reconcileProbeJobs();
+                  this.checkSources([],false);
+                  this.revision++;
+                }
               }
-              this.requestDiscovery(now,force);
-              this.requestResolution();
+              if (!this.schedulePublication) {
+                this.requestDiscovery(now,force);
+                this.requestResolution();
+              }
             } else this.revision++;
             projectedCoverage = this.refreshedSchedules.has(source.id);
           };
@@ -289,6 +334,7 @@ export class FootballCoordinator {
         } catch(error) { if (!this.stopped) {this.refreshedSchedules.delete(source.id);this.errors.set(source.id,errorCode(error));} }
       }));
       if (this.stopped) return;
+      this.flushSchedulePublication();
       this.scheduleState='ready';
       const seasons = [...new Set(this.schedules.filter(source => source.league==='ncaaf').flatMap(source => this.store.partition(source.id)?.games.map(game => game.season).filter((year):year is number => year !== undefined) || []))];
       let membershipChanged=false;
@@ -886,6 +932,7 @@ export class FootballCoordinator {
       this.probeAdmissions++;
       if(demand.size&&!demand.has(job.candidate.gameId))this.backgroundCursor++;
       job.promise=this.runProbe(job).then(result=>{
+        this.flushSchedulePublication();
         if(this.stopped||job.controller.signal.aborted||this.activeProbes.get(job.key)!==job||!this.currentProbeJob(job,false)||
           job.revision!==(this.healthRevision.get(job.key)||0))return;
         const checkedAt=this.now();
@@ -904,6 +951,7 @@ export class FootballCoordinator {
         }
         this.revision++;
       }).catch(()=>{
+        this.flushSchedulePublication();
         if(this.stopped||job.controller.signal.aborted||this.activeProbes.get(job.key)!==job||!this.currentProbeJob(job,false)||
           job.revision!==(this.healthRevision.get(job.key)||0))return;
         const checkedAt=this.now();
@@ -971,6 +1019,7 @@ export class FootballCoordinator {
           partial=error;
           html=error.html;
         }
+        this.flushSchedulePublication();
         const at = this.now();
         const result = this.parseListings(source,html,at);
         if (this.stopped) return;
@@ -1127,6 +1176,12 @@ export class FootballCoordinator {
     const eventPageIds = new Set(this.sources.filter(source => source.family === 'vipbox').map(source => source.id));
     const publishedPlayerCatalogIds = new Set(this.sources.filter(source => source.family === 'ppv' && source.kind === 'catalog').map(source => source.id));
     const evidence=new Map(this.store.detailEvidence().map(row=>[row.observationId,row]));
+    let matchingGames=this.games;
+    let match=createSourceEventMatcher(matchingGames);
+    const currentMatch=()=>{
+      if(this.games!==matchingGames){matchingGames=this.games;match=createSourceEventMatcher(matchingGames);}
+      return match;
+    };
     const liveRolloverGame=(observation:Observation):Game|undefined=>{
       if(!eventPageIds.has(observation.sourceId)||this.now()-observation.observedAt<=30*60_000||observation.kickoff===null)return;
       const result=this.inventoryMatch(observation,listingEventEvidence(observation.sourceId),this.now()).match;
@@ -1139,7 +1194,7 @@ export class FootballCoordinator {
     const ranked=():Observation[]=>{
       const viewed=new Set([...this.sessions.values()].map(session=>session.value.gameId));
       for(const [gameId,requestedAt] of this.checkTargets)if(this.now()-requestedAt<=90_000)viewed.add(gameId);
-      const match=createSourceEventMatcher(this.games);
+      const match=currentMatch();
       return this.store.observations().flatMap(observation=>{
         if(visited.has(observation.id)||catalogIds.has(observation.sourceId)||!observation.teams&&observation.league!=='f1'&&observation.league!=='nascar-cup'&&observation.league!=='nascar-truck'&&observation.league!=='motogp'&&observation.league!=='motorsport'||
           this.hostRetryAt(observation.url)>this.now()||this.listingPending(observation.url))return [];
@@ -1168,6 +1223,7 @@ export class FootballCoordinator {
         const request=this.readHtml(original.url,signal);
         if(!request)return;
         const html = await request;
+        this.flushSchedulePublication();
         if (this.stopped||signal.aborted||!this.observationFeedEligible(original)) return;
         observation = this.enrichObservation(original,html);
         if(!this.observationFeedEligible(observation))return;
@@ -1180,16 +1236,19 @@ export class FootballCoordinator {
           (player.locator.provider==='event-page'||player.locator.provider==='tvapp'||player.locator.provider==='catalog-stream')&&
           player.locator.gameId===rolloverGame?.id&&player.locator.eventUrl===original.url);
         if(publishedEventPage)observation={...observation,observedAt:at};
-        const rawResult=createSourceEventMatcher(this.games)(observation,listingEventEvidence(observation.sourceId),at).match;
+        const rawResult=currentMatch()(observation,listingEventEvidence(observation.sourceId),at).match;
         const freshGames=this.games.filter(game=>this.feedGame(game));
         const game=rawResult.kind==='matched'?this.games.find(value=>value.id===rawResult.gameId):
           provisionalLiveChannel(observation,rawResult,freshGames,at)??undefined;
+        const resolutionGames=this.games;
         const players=(this.feedGame(game)?
           publishedEventPage?rolloverPlayers:await playersFor(game.id):[])
           .filter(player=>(player.locator.provider!=='event-page'&&player.locator.provider!=='tvapp'&&player.locator.provider!=='catalog-stream'&&
             player.locator.provider!=='streameast-server')||
             player.locator.gameId===game?.id&&player.locator.eventUrl===observation.url)
           .map(({id,label,locator})=>({id,label,locator}));
+        this.flushSchedulePublication();
+        if(this.games!==resolutionGames)return;
         if(this.stopped||signal.aborted||!this.observationFeedEligible(original))return;
         const identity=detailIdentity(observation);
         const priorSuccess=evidence.get(original.id)?.lastSuccess;
@@ -1201,7 +1260,7 @@ export class FootballCoordinator {
           {outcome:'unresolved',observationId:observation.id,generation:detailGeneration(observation),at,
             reason:rawResult.kind==='unmatched'&&rawResult.reason==='conflicting-date'?'conflicting-game':
               this.missingPlayerReason(observation,html),failures:0,nextEligibleAt:retryDeadline(at,0,this.sourceRefreshMs),lastSuccess};
-        const current=this.store.observations().find(row=>row.id===original.id);
+        const current=this.store.observation(original.id);
         if(!current||detailGeneration(current)!==detailGeneration(original)||
           this.finished.finishedGameId(original,at)||this.finished.finishedGameId(observation,at))return;
         const result=resolvedLiveChannelMatch(observation,rawResult,freshGames,detail,at);
@@ -1209,8 +1268,9 @@ export class FootballCoordinator {
         evidence.set(detail.observationId,detail);
         changed=true;
       } catch(error) {
+        this.flushSchedulePublication();
         if(this.stopped||signal.aborted||!this.observationFeedEligible(original))return;
-        const current=this.store.observations().find(row=>row.id===original.id);
+        const current=this.store.observation(original.id);
         if(!current||detailGeneration(current)!==detailGeneration(original)||this.finished.finishedGameId(original,this.now()))return;
         const prior=evidence.get(original.id);
         const failures=(prior&&prior.outcome!=='resolved'&&prior.generation===detailGeneration(original)?prior.failures:0)+1;
@@ -1521,6 +1581,7 @@ export class FootballCoordinator {
   }
   async command(command: Command): Promise<Reply> {
     if (this.stopped && command.kind!=='stop') return {kind:'error',status:503,message:'Pipeline is stopped.'};
+    if (command.kind!=='stop') this.flushSchedulePublication();
     this.sweep();
     if (command.kind==='stop') { await this.stop(); return {kind:'ok'}; }
     if (command.kind==='sportsurge-catalog') {
@@ -1632,7 +1693,7 @@ export class FootballCoordinator {
       this.sweep();
       return {kind:'board',board:this.board()};
     }
-    if (command.kind==='board') { void this.refresh(); return {kind:'board',board:this.board()}; }
+    if (command.kind==='board') { void this.refresh(); this.flushSchedulePublication(); return {kind:'board',board:this.board()}; }
     if (command.kind==='sources') return {kind:'sources',snapshot:this.sourcesSnapshot()};
     if (command.kind==='check-sources') {
       const listed=new Set(this.games.map(game=>game.id));
@@ -1842,6 +1903,11 @@ export class FootballCoordinator {
     clearImmediate(this.probePump);
     clearImmediate(this.probeReplan);
     clearImmediate(this.detailPublication);
+    clearImmediate(this.schedulePublication);
+    this.schedulePublication=undefined;
+    this.schedulePublicationSources.clear();
+    clearImmediate(this.discoveryLaunch);
+    this.discoveryLaunch=undefined;
     this.controller.abort();
     for(const job of this.activeProbes.values())job.controller.abort();
     this.probeQueue=[];
