@@ -6,8 +6,8 @@ import { LeagueSchema } from '../lib/football/shared.ts';
 
 test('the source registry preserves all configured sources and declares all supported leagues',()=>{
   assert.equal(SOURCES,SOURCE_REGISTRY);
-  assert.equal(SOURCES.length,42);
-  assert.equal(new Set(SOURCES.map(source=>source.id)).size,42);
+  assert.equal(SOURCES.length,47);
+  assert.equal(new Set(SOURCES.map(source=>source.id)).size,47);
   assert.deepEqual([...new Set(SOURCES.flatMap(source=>source.leagues))].sort(),[...LeagueSchema.options].sort());
   assert.deepEqual(sourceCoverage('tvapp-nhl'),['nhl','ncaah','ncaawh']);
   assert.deepEqual(sourceCoverage('methstreams-f1'),['f1','nascar-cup','nascar-truck','motogp','motorsport']);

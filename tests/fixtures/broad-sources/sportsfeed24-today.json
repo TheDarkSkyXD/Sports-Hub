@@ -1,0 +1,171 @@
+{
+  "categoryName": "Streams today",
+  "subCategories": [
+    {
+      "subCategoryName": "Main Events",
+      "subCategoryImage": "/assets/images/logos/main-events.webp",
+      "games": [
+        {
+          "sourceLink": "https://links.totalsportek1.is/dallas-cowboys-vs-tampa-bay-buccaneers/69318/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 23:18:18 GMT",
+          "matchTime": "16 hr and 15 min from now",
+          "teamA": "Dallas Cowboys",
+          "teamB": "Tampa Bay Buccaneers",
+          "teamAImage": "/assets/images/logos/dallas-cowboys.webp",
+          "teamBImage": "/assets/images/logos/tampa-bay-buccaneers.webp"
+        }
+      ]
+    },
+    {
+      "subCategoryName": "WNBA",
+      "subCategoryImage": "/assets/images/logos/wnba.webp",
+      "games": [
+        {
+          "sourceLink": "https://links.totalsportek1.is/atlanta-dream-vs-new-york-liberty/78609/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 07:03:18 GMT",
+          "matchTime": "07:03:18 AM UTC",
+          "teamA": "Atlanta Dream",
+          "teamB": "New York Liberty",
+          "teamAImage": "/assets/images/logos/defaultImage.webp",
+          "teamBImage": "/assets/images/logos/new-york-liberty.webp"
+        },
+        {
+          "sourceLink": "https://links.totalsportek1.is/golden-state-valkyries-vs-las-vegas-aces/78721/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 07:03:18 GMT",
+          "matchTime": "07:03:18 AM UTC",
+          "teamA": "Golden State Valkyries",
+          "teamB": "Las Vegas Aces",
+          "teamAImage": "/assets/images/logos/defaultImage.webp",
+          "teamBImage": "/assets/images/logos/las-vegas-aces.webp"
+        }
+      ]
+    },
+    {
+      "subCategoryName": "Golf",
+      "subCategoryImage": "/assets/images/logos/defaultImage.webp",
+      "games": [
+        {
+          "sourceLink": "https://links.totalsportek1.is/baycurrent-classic-vs-golf/67739/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 07:03:19 GMT",
+          "matchTime": "07:03:19 AM UTC",
+          "teamA": "Baycurrent Classic",
+          "teamB": "Golf",
+          "teamAImage": "/assets/images/logos/defaultImage.webp",
+          "teamBImage": "/assets/images/logos/defaultImage.webp"
+        }
+      ]
+    },
+    {
+      "subCategoryName": "nba",
+      "subCategoryImage": "/assets/images/logos/nba.webp",
+      "games": [
+        {
+          "sourceLink": "https://links.totalsportek1.is/cleveland-cavaliers-vs-boston-celtics/74678/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 23:03:19 GMT",
+          "matchTime": "16 hr and 0 min from now",
+          "teamA": "Cleveland Cavaliers",
+          "teamB": "Boston Celtics",
+          "teamAImage": "/assets/images/logos/cleveland-cavaliers.webp",
+          "teamBImage": "/assets/images/logos/boston-celtics.webp"
+        },
+        {
+          "sourceLink": "https://links.totalsportek1.is/san-antonio-spurs-vs-atlanta-hawks/74680/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 23:03:19 GMT",
+          "matchTime": "16 hr and 0 min from now",
+          "teamA": "San Antonio Spurs",
+          "teamB": "Atlanta Hawks",
+          "teamAImage": "/assets/images/logos/san-antonio-spurs.webp",
+          "teamBImage": "/assets/images/logos/atlanta-hawks.webp"
+        },
+        {
+          "sourceLink": "https://links.totalsportek1.is/brooklyn-nets-vs-philadelphia-76ers/74848/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 23:33:19 GMT",
+          "matchTime": "16 hr and 30 min from now",
+          "teamA": "Brooklyn Nets",
+          "teamB": "Philadelphia 76ers",
+          "teamAImage": "/assets/images/logos/brooklyn-nets.webp",
+          "teamBImage": "/assets/images/logos/philadelphia-76ers.webp"
+        }
+      ]
+    },
+    {
+      "subCategoryName": "mlb",
+      "subCategoryImage": "/assets/images/logos/mlb.webp",
+      "games": [
+        {
+          "sourceLink": "https://links.totalsportek1.is/atlanta-braves-vs-los-angeles-dodgers/78666/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 07:03:20 GMT",
+          "matchTime": "07:03:20 AM UTC",
+          "teamA": "Atlanta Braves",
+          "teamB": "Los Angeles Dodgers",
+          "teamAImage": "/assets/images/logos/atlanta-braves.webp",
+          "teamBImage": "/assets/images/logos/los-angeles-dodgers.webp"
+        },
+        {
+          "sourceLink": "https://links.totalsportek1.is/new-york-yankees-vs-tampa-bay-rays/78626/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 07:03:20 GMT",
+          "matchTime": "07:03:20 AM UTC",
+          "teamA": "New York Yankees",
+          "teamB": "Tampa Bay Rays",
+          "teamAImage": "/assets/images/logos/new-york-yankees.webp",
+          "teamBImage": "/assets/images/logos/defaultImage.webp"
+        },
+        {
+          "sourceLink": "https://links.totalsportek1.is/new-york-yankees-vs-tampa-bay-rays/78629/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 07:03:20 GMT",
+          "matchTime": "07:03:20 AM UTC",
+          "teamA": "New York Yankees",
+          "teamB": "Tampa Bay Rays",
+          "teamAImage": "/assets/images/logos/new-york-yankees.webp",
+          "teamBImage": "/assets/images/logos/defaultImage.webp"
+        }
+      ]
+    },
+    {
+      "subCategoryName": "nhl",
+      "subCategoryImage": "/assets/images/logos/nhl.webp",
+      "games": [
+        {
+          "sourceLink": "https://links.totalsportek1.is/jets-vs-avalanche/72898/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 07:03:21 GMT",
+          "matchTime": "07:03:21 AM UTC",
+          "teamA": "Jets",
+          "teamB": "Avalanche",
+          "teamAImage": "/assets/images/logos/defaultImage.webp",
+          "teamBImage": "/assets/images/logos/defaultImage.webp"
+        },
+        {
+          "sourceLink": "https://links.totalsportek1.is/capitals-vs-penguins/72899/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 07:03:21 GMT",
+          "matchTime": "07:03:21 AM UTC",
+          "teamA": "Capitals",
+          "teamB": "Penguins",
+          "teamAImage": "/assets/images/logos/defaultImage.webp",
+          "teamBImage": "/assets/images/logos/defaultImage.webp"
+        },
+        {
+          "sourceLink": "https://links.totalsportek1.is/ducks-vs-oilers/72900/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 07:03:21 GMT",
+          "matchTime": "07:03:21 AM UTC",
+          "teamA": "Ducks",
+          "teamB": "Oilers",
+          "teamAImage": "/assets/images/logos/defaultImage.webp",
+          "teamBImage": "/assets/images/logos/defaultImage.webp"
+        }
+      ]
+    }
+  ]
+}

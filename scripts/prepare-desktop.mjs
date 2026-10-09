@@ -51,6 +51,10 @@ while (pending.length) {
 await stat(path.join(standalone, 'lib/football/runtime/worker.ts'));
 await stat(path.join(standalone, 'lib/football/runtime/composition.ts'));
 await stat(path.join(standalone, 'lib/football/source-registry.json'));
+for (const name of ['streamed', 'sportsfeed24', 'crichd', 'sportsbite', 'player-id'])
+  await stat(path.join(standalone, `lib/football/adapters/${name}.ts`));
+for (const name of ['catalog-stream', 'catalog-stream-policy'])
+  await stat(path.join(standalone, `lib/playback/providers/${name}.ts`));
 await stat(path.join(standalone, 'lib/playback/probe.ts'));
 await stat(path.join(standalone, 'lib/sunday.ts'));
 await stat(path.join(standalone, 'lib/game-timing.ts'));

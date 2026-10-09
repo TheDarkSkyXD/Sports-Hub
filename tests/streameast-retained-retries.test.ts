@@ -252,14 +252,10 @@ test('a later run reusing older detail cannot outrank a newer collected-empty de
     const collecting = catalog(at + 6 * minute, { kind: 'pending' });
     const ack = await run.coordinator.command({ kind: 'streameast-catalog', catalog: collecting });
     assert.equal(ack.kind, 'catalog-ack');
-    assert.ok(ack.kind === 'catalog-ack' && ack.reuseDetails?.kind === 'streameast');
-    if (ack.reuseDetails?.kind !== 'streameast') throw new Error('expected collected detail reuse');
+    assert.equal(ack.reuseDetails, undefined);
     await run.publish({ ...collecting, sequence: 1, state: { kind: 'complete', at: at + 6 * minute },
-      events: ack.reuseDetails.events });
-    await run.advance(25);
-    await run.coordinator.command({ kind: 'set-feed-check-interval', minutes: 5 });
-    await drain();
-    assert.equal((await run.candidates()).filter(row => row.availability.kind === 'unavailable').length, 3);
+      events: [{ ...collecting.events[0], detail: { ...collected(at), retainedFromRunId: '11111111-1111-4111-8111-111111111111' } }] });
+    assert.equal((await run.candidates()).filter(row => row.availability.kind === 'playable').length, 0);
     await run.advance(31);
     await run.publish(catalog(at + 31 * minute, { kind: 'failed', at: at + 31 * minute, reason: 'rate-limited' }));
     assert.equal((await run.candidates()).length, 0);

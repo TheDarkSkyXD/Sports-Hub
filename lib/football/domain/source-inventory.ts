@@ -163,7 +163,8 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     if (stale && (!observation.teams || kickoff===null || !liveDates.some(game=>
       (!observation.league || game.league===observation.league) && Math.abs(game.date-kickoff)<=3*60*60_000))) return;
     const links=linksBySource.get(observation.sourceId) || new Map();
-    if (links.has(url)) return;
+    const linkKey=url;
+    if (links.has(linkKey)) return;
     const matchEvidence:SourceEventEvidence=event?streameastEvidence(event):sourceEvidence??
       listingEventEvidence(observation.sourceId);
     const decision=match(observation,matchEvidence,at);
@@ -178,7 +179,7 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       {...publishedEvidence,candidateIds:publishedEvidence.candidateIds.filter(id=>
         !!gameId&&(candidates.get(gameId)||[]).some(candidate=>candidate.id===id&&
           candidateEligible(candidate)))}:publishedEvidence;
-    links.set(url,{title:observation.title,url,gameId,league:gameId?gameById.get(gameId)?.league??observation.league:observation.league,
+    links.set(linkKey,{title:observation.title,url,gameId,league:gameId?gameById.get(gameId)?.league??observation.league:observation.league,
       observedAt:observation.observedAt,freshness,evidence});
     linksBySource.set(observation.sourceId,links);
     if (!gameId) {

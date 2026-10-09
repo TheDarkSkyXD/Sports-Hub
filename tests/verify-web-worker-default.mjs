@@ -58,10 +58,12 @@ try {
     if (!snapshot) await new Promise(done => setTimeout(done, 250));
   }
   assert.ok(snapshot, `Web source API did not start.\n${output}`);
-  assert.equal(snapshot.sources.length, 42);
+  assert.equal(snapshot.sources.length, 47);
+  for (const id of ['streamed','sportsfeed24','livesportpro','crichd','sportsbite'])
+    assert.ok(snapshot.sources.some(source=>source.id===id),`Missing ${id}`);
   assert.equal(snapshot.scheduleScopes.length, 14);
   assert.equal(existsSync(join(scratch, '.desktop-runtime', 'football.sqlite')), true);
-  console.log('Browser launcher used its isolated default database and returned 42 sources with 14 league scopes.');
+  console.log('Browser launcher used its isolated default database and returned 47 sources with 14 league scopes.');
 } finally {
   if (child?.pid && child.exitCode === null && child.signalCode === null) {
     if (process.platform === 'win32') {

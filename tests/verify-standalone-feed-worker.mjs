@@ -17,7 +17,9 @@ try {
       try {
         if(message.id===1){
           assert.equal(message.reply.kind,'sources');
-          assert.equal(message.reply.snapshot.sources.length,42);
+          assert.equal(message.reply.snapshot.sources.length,47);
+          for (const id of ['streamed','sportsfeed24','livesportpro','crichd','sportsbite'])
+            assert.ok(message.reply.snapshot.sources.some(source=>source.id===id),`Missing ${id}`);
           assert.equal(message.reply.snapshot.scheduleScopes.length,14);
           worker.postMessage({id:2,command:{kind:'stop'}});
         }
@@ -26,7 +28,7 @@ try {
     });
     worker.postMessage({id:1,command:{kind:'sources'}});
   });
-  console.log('Standalone feed worker loaded 42 sources and 14 league scopes, then stopped.');
+  console.log('Standalone feed worker loaded 47 sources and 14 league scopes, then stopped.');
 }finally{
   clearTimeout(timer);
   await worker.terminate();

@@ -19,7 +19,7 @@ async function fixture(t: TestContext): Promise<string> {
     assert.match(path.basename(root), /^sunday-room-prepare-/);
     await rm(root, { recursive: true, force: true });
   });
-  const files = {
+  const files: Record<string, string> = {
     '.next/standalone/server.js': '',
     '.next/static/app.js': 'static asset',
     '.next/standalone/lib/football/runtime/worker.ts': '',
@@ -38,6 +38,10 @@ async function fixture(t: TestContext): Promise<string> {
     [`${nativePackage}/lib/libvips-cpp-8.18.6.dll`]: 'vips C++ runtime',
     [`.next/standalone/${nativePackage}/lib/sharp.node`]: 'traced addon',
   };
+  for (const name of ['streamed', 'sportsfeed24', 'crichd', 'sportsbite', 'player-id'])
+    files[`.next/standalone/lib/football/adapters/${name}.ts`] = '';
+  for (const name of ['catalog-stream', 'catalog-stream-policy'])
+    files[`.next/standalone/lib/playback/providers/${name}.ts`] = '';
   for (const [relative, contents] of Object.entries(files)) {
     const target = path.join(root, relative);
     await mkdir(path.dirname(target), { recursive: true });

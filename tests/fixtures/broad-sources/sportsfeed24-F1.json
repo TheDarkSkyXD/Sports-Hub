@@ -1,0 +1,51 @@
+{
+  "categoryName": "F1",
+  "subCategories": [
+    {
+      "subCategoryName": "F1",
+      "subCategoryImage": "/assets/images/logos/f1.webp",
+      "games": [
+        {
+          "sourceLink": "https://totalsportek1.is/game/f1-singapore-grand-prix-vs-live/59083/",
+          "streamerLinks": [],
+          "matchDate": "Fri, 09 Oct 2026 08:30:00 GMT",
+          "matchTime": "09-10-2026 08:30 am UTC",
+          "teamA": "F1 Singapore Grand Prix",
+          "teamB": "Live",
+          "teamAImage": "/assets/images/logos/f1.webp",
+          "teamBImage": "/assets/images/logos/f1.webp"
+        },
+        {
+          "sourceLink": "https://totalsportek1.is/game/nascar-charlotte-motor-speedway-vs-live/59370/",
+          "streamerLinks": [],
+          "matchDate": "Sun, 11 Oct 2026 20:00:00 GMT",
+          "matchTime": "11-10-2026 08:00 pm UTC",
+          "teamA": "NASCAR Charlotte Motor Speedway",
+          "teamB": "Live",
+          "teamAImage": "/assets/images/logos/f1.webp",
+          "teamBImage": "/assets/images/logos/f1.webp"
+        },
+        {
+          "sourceLink": "https://totalsportek1.is/game/nascar-phoenix-raceway-vs-live/59371/",
+          "streamerLinks": [],
+          "matchDate": "Sun, 18 Oct 2026 20:00:00 GMT",
+          "matchTime": "18-10-2026 08:00 pm UTC",
+          "teamA": "NASCAR Phoenix Raceway",
+          "teamB": "Live",
+          "teamAImage": "/assets/images/logos/f1.webp",
+          "teamBImage": "/assets/images/logos/f1.webp"
+        },
+        {
+          "sourceLink": "https://totalsportek1.is/game/f1-united-states-grand-prix-vs-live/59084/",
+          "streamerLinks": [],
+          "matchDate": "Fri, 23 Oct 2026 17:30:00 GMT",
+          "matchTime": "23-10-2026 05:30 pm UTC",
+          "teamA": "F1 United States Grand Prix",
+          "teamB": "Live",
+          "teamAImage": "/assets/images/logos/f1.webp",
+          "teamBImage": "/assets/images/logos/f1.webp"
+        }
+      ]
+    }
+  ]
+}

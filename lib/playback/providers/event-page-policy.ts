@@ -9,6 +9,42 @@ function exactPage(value: string): URL | null {
 }
 
 export function validEventPagePair(eventUrl: string, serverUrl: string): boolean {
+  if(eventUrl.startsWith('https://streamed.st/watch/')||eventUrl.startsWith('https://api.kultsport.com/api/matches/all#')){
+    let event:URL,server:URL;
+    try{event=new URL(eventUrl);server=new URL(serverUrl);}catch{return false;}
+    const streamed=event.hostname==='streamed.st'&&event.hash===''&&
+      /^\/watch\/[a-zA-Z0-9][a-zA-Z0-9_-]{0,159}$/.test(event.pathname);
+    const live=event.hostname==='api.kultsport.com'&&event.pathname==='/api/matches/all'&&
+      /^#[a-zA-Z0-9][a-zA-Z0-9_-]{0,159}$/.test(event.hash);
+    return eventUrl===event.href&&serverUrl===server.href&&event.protocol==='https:'&&server.protocol==='https:'&&
+      !event.username&&!event.password&&!event.port&&!event.search&&
+      !server.username&&!server.password&&!server.port&&!server.search&&!server.hash&&
+      (streamed||live)&&
+      (server.hostname==='embed.st'&&/^\/embed\/[a-z][a-z0-9-]{0,39}\/[a-zA-Z0-9][a-zA-Z0-9_-]{0,159}\/[1-9]\d{0,2}$/.test(server.pathname)||
+        live&&server.hostname==='embedindia.st'&&/^\/embed\/(?:nfl|cfb|nba|wnba|nhl|mlb|f1)\/[a-zA-Z0-9/-]{1,150}$/.test(server.pathname));
+  }
+  if(eventUrl.startsWith('https://crichd.pk/event/')||eventUrl.startsWith('https://m.crichd.pk/event/')){
+    const event=exactPage(eventUrl),server=exactPage(serverUrl);
+    const slug=event&&/^\/event\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname)?.[1];
+    return !!event&&!!server&&!!slug&&['crichd.pk','m.crichd.pk'].includes(event.hostname)&&
+      server.hostname==='playerbee.top'&&
+      new RegExp(`^/charlie/${slug}/[1-9]\\d{0,9}$`).test(server.pathname);
+  }
+  if(eventUrl.startsWith('https://sportsbite.org/event/')){
+    const event=exactPage(eventUrl);
+    let server:URL;
+    try{server=new URL(serverUrl);}catch{return false;}
+    const eventSlug=event&&/^\/event\/fg-([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(event.pathname)?.[1];
+    const sides=eventSlug?.split('-vs-');
+    const serverSlug=/^\/(?:lol-embed|rs-embed)\/embed\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(server.pathname)?.[1];
+    const matchup=!!sides&&sides.length===2&&!!serverSlug&&[eventSlug,`${sides[1]}-vs-${sides[0]}`].some(pair=>
+      serverSlug===pair||server.pathname.startsWith('/rs-embed/')&&
+      new RegExp(`^(?:nfl|nba|nhl|mlb|cfb)-streams-[1-9]\\d{0,2}-${pair}-(?:nfl|nba|nhl[1-9]?|mlb|espn[1-9]?)-(?:admin|temp|tedesco)$`).test(serverSlug));
+    return !!event&&!!eventSlug&&!!serverSlug&&(!eventSlug.includes('-vs-')||matchup)&&
+      serverUrl===server.href&&server.protocol==='https:'&&server.hostname==='sportsbite.org'&&
+      !server.username&&!server.password&&!server.port&&!server.hash&&
+      /^\?v=high&emb=[1-9]\d{0,5}$/.test(server.search);
+  }
   if(eventUrl.startsWith('https://nflstreams.org/')||serverUrl.startsWith('https://piratecat.store/')){
     const event=exactPage(eventUrl);
     let server:URL;

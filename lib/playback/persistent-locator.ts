@@ -2,6 +2,7 @@ import type { CandidateLocator } from '../football/shared.ts';
 import { validEventPagePair } from './providers/event-page-policy.ts';
 import { sportsurgeUrl } from './providers/public-page.ts';
 import { streameastServerUrl } from './providers/streameast-server.ts';
+import { durableCatalogStream } from './providers/catalog-stream.ts';
 
 function durableSportsurgeQuery(url: URL): boolean {
   const params = url.searchParams;
@@ -15,6 +16,7 @@ function durableSportsurgeQuery(url: URL): boolean {
 }
 
 export function persistableLocator(locator: CandidateLocator): boolean {
+  if(locator.provider==='catalog-stream')return durableCatalogStream(locator);
   if (locator.provider === 'event-page') return validEventPagePair(locator.eventUrl, locator.serverUrl);
   if (locator.provider === 'streameast-server') return streameastServerUrl(locator)!==null;
   if (locator.provider === 'tvapp') {

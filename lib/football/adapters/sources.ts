@@ -12,6 +12,10 @@ import { TvappMatch, catalogTeams, preferredCatalogTeams, tvappIdentity, tvappSt
 import {enrichLiveTvObservation,liveTvPlayers,parseLiveTvListings} from './livetv.ts';
 import {nflstreamsPlayers,parseNflstreamsListings} from './nflstreams.ts';
 import {buffstreamPlayers} from './buffstream.ts';
+import {parseStreamedCatalog,selectStreamedEvent,streamedMissingReason,streamedPlayers} from './streamed.ts';
+import {parseSportsfeed24,parseSportsfeed24Category,sportsfeed24MissingReason,sportsfeed24Players} from './sportsfeed24.ts';
+import {parseCrichdListings,crichdMissingReason,crichdPlayers} from './crichd.ts';
+import {parseSportsbite,selectSportsbiteEvent,sportsbiteMissingReason,sportsbitePlayers} from './sportsbite.ts';
 
 const TVAPP_API = 'https://api-backups.handleapi.win/matches/sport/american-football';
 const TVAPP_BASKETBALL_API = 'https://api-backups.handleapi.win/matches/sport/basketball';
@@ -32,10 +36,38 @@ export class SourceFetchError extends Error {
 const hosts = new Set<string>(SOURCES.map(source => new URL(source.url).hostname));
 hosts.add('gooz.aapmains.net');
 hosts.add('streame.center');
+type Snapshot={body:string;at:number};
+const catalogs=new Map<string,Snapshot>();
+const sportsfeedEvents=new Map<string,{teamA:string;teamB:string;at:number}>();
+const sportsfeedCategories=['','NFL','NBA','NHL','MLB','F1','motogp'];
+function freshCatalog(sourceId:string):string {
+  const snapshot=catalogs.get(sourceId);
+  if(!snapshot||Date.now()-snapshot.at>30*60_000)throw new Error('catalog-expired');
+  return snapshot.body;
+}
+function completeSportsfeedCatalog(body:string):boolean {
+  const value:unknown=JSON.parse(body);
+  return typeof value==='object'&&value!==null&&'complete' in value&&value.complete===true;
+}
 export function allowedDiscoveryUrl(value: string): boolean {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:' || url.username || url.password || url.port) return false;
+    if(url.hostname==='streamed.st')return value==='https://streamed.st/api/matches/all'||
+      /^https:\/\/streamed\.st\/api\/stream\/[a-z][a-z0-9-]{0,39}\/[a-zA-Z0-9_-]{1,160}$/.test(value)||
+      /^https:\/\/streamed\.st\/watch\/[a-zA-Z0-9_-]{1,160}$/.test(value);
+    if(url.hostname==='api.kultsport.com')return value==='https://api.kultsport.com/api/matches/all'||
+      /^https:\/\/api\.kultsport\.com\/api\/matches\/all#[a-zA-Z0-9_-]{1,160}$/.test(value)||
+      !/%25/i.test(value)&&/^https:\/\/api\.kultsport\.com\/api\/stream\/[a-zA-Z0-9%:-]{1,80}\/[a-zA-Z0-9%_-]{1,160}$/.test(value);
+    if(url.hostname==='bestfreestreaming.app')return value==='https://bestfreestreaming.app/api/xhr'||value==='https://bestfreestreaming.app/api/xrhs';
+    if(url.hostname==='sportsfeed24.st')return /^https:\/\/sportsfeed24\.st\/fixture\/[A-Za-z0-9%._~-]+-vs-[A-Za-z0-9%._~-]+$/.test(value)&&
+      !/%(?!20)/i.test(value)&&value===url.href;
+    if(url.hostname==='totalsportek1.is'||url.hostname==='links.totalsportek1.is')return !url.search&&!url.hash&&
+      /^\/(?:game\/)?[a-z0-9]+(?:-[a-z0-9]+)*\/\d{1,10}\/$/.test(url.pathname)&&value===url.href;
+    if(url.hostname==='crichd.pk'||url.hostname==='m.crichd.pk')return !url.search&&!url.hash&&
+      (url.pathname==='/'||/^\/event\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(url.pathname))&&value===url.href;
+    if(url.hostname==='sportsbite.org')return value==='https://sportsbite.org/matches'||
+      /^https:\/\/sportsbite\.org\/event\/fg-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
     if(url.hostname==='ott.gideo.video')return value===SWAC_CATALOG_URL || /^[a-f0-9]{32}$/.test(url.searchParams.get('VideoID') || '') && value===swacApiUrl('getVideo',url.searchParams.get('VideoID') || '');
     if(url.hostname==='tv.swac.org')return swacProgramId(value)!==null;
     return hosts.has(url.hostname) || !url.search && !url.hash && (
@@ -46,6 +78,30 @@ export function allowedDiscoveryUrl(value: string): boolean {
 }
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex').slice(0,24);
 export async function readHtml(url: string, signal: AbortSignal): Promise<string> {
+  signal.throwIfAborted();
+  if(url==='https://bestfreestreaming.app/api/xhr'){
+    const results=await Promise.allSettled(sportsfeedCategories.map(async categoryName=>
+      parseSportsfeed24Category(await readPage(url,signal,'application/json',JSON.stringify(categoryName?{categoryName}:{})))));
+    signal.throwIfAborted();
+    const categories=results.flatMap(result=>result.status==='fulfilled'?[result.value]:[]);
+    const errors=results.flatMap(result=>result.status==='rejected'?[result.reason instanceof Error?result.reason:new Error('unavailable')]:[]);
+    const body=JSON.stringify({categories,complete:errors.length===0});
+    if(errors.length){
+      if(!categories.length)throw errors[0];
+      throw new PartialListingReadError(body,errors[0],Math.max(0,...errors.map(error=>error instanceof SourceFetchError?error.retryAfterMs||0:0)));
+    }
+    return body;
+  }
+  if(url==='https://streamed.st/api/matches/all'||url==='https://api.kultsport.com/api/matches/all'||url==='https://sportsbite.org/matches')
+    return readPage(url,signal,'application/json');
+  if(url.startsWith('https://streamed.st/watch/'))return selectStreamedEvent(freshCatalog('streamed'),'streamed',new URL(url).pathname.slice('/watch/'.length));
+  if(url.startsWith('https://api.kultsport.com/api/matches/all#'))return selectStreamedEvent(freshCatalog('livesportpro'),'livesportpro',new URL(url).hash.slice(1));
+  if(url.startsWith('https://sportsbite.org/event/'))return selectSportsbiteEvent(freshCatalog('sportsbite'),new URL(url).pathname.slice('/event/'.length));
+  if(url.startsWith('https://sportsfeed24.st/fixture/')&&allowedDiscoveryUrl(url)){
+    const event=sportsfeedEvents.get(url);
+    if(!event||Date.now()-event.at>30*60_000)throw new Error('catalog-expired');
+    return readPage('https://bestfreestreaming.app/api/xrhs',signal,'application/json',JSON.stringify({teamA:event.teamA,teamB:event.teamB}));
+  }
   const swacId=swacProgramId(url);
   if(swacId)return readPage(swacApiUrl('getVideo',swacId),signal,'application/json');
   if (allowedDiscoveryUrl(url) && new URL(url).hostname === 'ppv.st') {
@@ -81,15 +137,22 @@ export async function readHtml(url: string, signal: AbortSignal): Promise<string
   return readPage(url,signal,url === TVAPP_API || url === TVAPP_BASKETBALL_API || url === TVAPP_HOCKEY_API || url === TVAPP_BASEBALL_API || url === PPV_API || url === SWAC_CATALOG_URL ? 'application/json' : 'text/html');
 }
 
-async function readPage(url: string, signal: AbortSignal, accept = 'text/html'): Promise<string> {
+async function readPage(url: string, signal: AbortSignal, accept = 'text/html', body?:string): Promise<string> {
+  const originUrl=new URL(url);
   for (let redirects = 0; redirects <= 3; redirects++) {
     if (!allowedDiscoveryUrl(url)) throw new Error('unsupported-discovery-address');
-    const response = await fetch(url,{redirect:'manual',cache:'no-store',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:{'User-Agent':'SundayRoom/1.0',Accept:accept}});
+    const current=new URL(url);
+    if(current.hostname!==originUrl.hostname&&!(originUrl.hostname==='crichd.pk'&&current.hostname==='m.crichd.pk'))
+      throw new Error('unsupported-discovery-address');
+    const response = await fetch(url,{method:body===undefined?'GET':'POST',body,redirect:'manual',cache:'no-store',
+      signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:{'User-Agent':'SundayRoom/1.0',Accept:accept,
+        ...(body===undefined?{}:{'Content-Type':'application/json'})}});
     if (response.status >= 300 && response.status < 400) {
       await response.body?.cancel();
       const location = response.headers.get('location');
       if (!location) throw new Error('redirect-without-location');
       url = new URL(location,url).href;
+      if(body!==undefined&&url!==originUrl.href)throw new Error('unsupported-discovery-address');
       continue;
     }
     if (!response.ok) {
@@ -226,6 +289,24 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
 }
 
 export function parseListings(source: ListingSource, html: string, now: number): { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' } {
+  if(source.id==='streamed'||source.id==='livesportpro'||source.id==='sportsbite'||source.id==='sportsfeed24'){
+    const result=source.id==='streamed'?parseStreamedCatalog(source.id,html,now,'streamed'):
+      source.id==='livesportpro'?parseStreamedCatalog(source.id,html,now,'livesportpro'):
+      source.id==='sportsbite'?parseSportsbite(html,now):parseSportsfeed24(html,now);
+    if(result.outcome==='parsed'||result.outcome==='empty'){
+      if(source.id!=='sportsfeed24')catalogs.set(source.id,{body:html,at:Date.now()});
+      else {
+        if(completeSportsfeedCatalog(html))sportsfeedEvents.clear();
+        for(const observation of result.observations){
+          const divider=observation.title.lastIndexOf(' vs ');
+          if(divider<1)continue;
+          sportsfeedEvents.set(observation.url,{teamA:observation.title.slice(0,divider),teamB:observation.title.slice(divider+4),at:Date.now()});
+        }
+      }
+    }
+    return result;
+  }
+  if(source.id==='crichd')return parseCrichdListings(html,now);
   if (source.kind === 'catalog') return parseCatalog(source,html,now);
   if(source.family==='motorsports')return parseMotorsportsListings(source,html,now);
   if (source.family === 'livetv') return parseLiveTvListings(source,html,now);
@@ -446,6 +527,11 @@ const ChannelEvent = z.union([
 ]);
 
 export function missingPlayerReason(observation:Observation,html:string):MissingPlayerReason {
+  if(observation.sourceId==='sportsfeed24')return sportsfeed24MissingReason(observation,html);
+  if(observation.sourceId==='sportsbite')return sportsbiteMissingReason(observation,html);
+  if(observation.sourceId==='streamed'||observation.sourceId==='livesportpro')
+    return streamedMissingReason(observation,html,observation.sourceId);
+  if(observation.sourceId==='crichd')return crichdMissingReason(observation,html);
   if(!['tvapp','tvapp-nba','tvapp-nhl','tvapp-mlb','methstreams','methstreams-nba','methstreams-nhl','methstreams-mlb','crackstreams-st','crackstreams-nba','crackstreams-nhl','crackstreams-mlb','methstreams-f1','crackstreams-f1','sportsurge','livetv'].includes(observation.sourceId))return 'no-compatible-media';
   const $=load(html);
   $('script,style,noscript').remove();
@@ -619,4 +705,15 @@ export async function tvappPlayers(gameId:string,observation:Observation,html:st
         source:row.source,sourceId:row.id,streamNo:row.streamNo,
         kickoff,title:observation.title,teams}}];
   });
+}
+
+export async function resolvePlayers(gameId:string,observation:Observation,html:string,signal:AbortSignal,
+  read:(url:string,signal:AbortSignal)=>Promise<string>=readPage):Promise<ResolvedPlayer[]> {
+  if(observation.sourceId==='streamed'||observation.sourceId==='livesportpro')return streamedPlayers(gameId,observation,html,signal,
+    (url,nextSignal)=>read(url,nextSignal),'livesportpro'===observation.sourceId?'livesportpro':'streamed');
+  if(observation.sourceId==='sportsfeed24')return sportsfeed24Players(gameId,observation,html);
+  if(observation.sourceId==='sportsbite')return sportsbitePlayers(gameId,observation,html);
+  if(observation.sourceId==='crichd')return crichdPlayers(gameId,observation,html);
+  if(['tvapp','tvapp-nba','tvapp-nhl','tvapp-mlb'].includes(observation.sourceId))return tvappPlayers(gameId,observation,html,signal,read);
+  return compatiblePlayers(gameId,observation,html);
 }
