@@ -14,6 +14,7 @@ export interface NativeCollector {
   digest(value: string): string;
   parseKickoff(value: string): number | null;
   beginResolve(gameId: string, rowJson: string, body: string): string;
+  validateResolveResponse(id: number, requestIndex: number, body: string): boolean;
   advanceResolve(id: number, responsesJson: string): string;
   closeResolve(id: number): void;
   beginSweep(kind: string, runId: string, now: number): string;

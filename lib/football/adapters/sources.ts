@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { createNativeCollector, type NativeCollector } from '../../../native/collector/bridge.cjs';
-import { MissingPlayerReasonSchema, ObservationSchema, type MissingPlayerReason, type Observation, type ResolvedPlayer } from '../shared.ts';
+import { CatalogStreamLocatorSchema, EventPageLocatorSchema, GoozLocatorSchema, MissingPlayerReasonSchema,
+  ObservationSchema, ResolvedPlayerSchema, StreamcenterLocatorSchema, SwacLocatorSchema, TvappLocatorSchema,
+  type MissingPlayerReason, type Observation, type ResolvedPlayer } from '../shared.ts';
 import { PartialListingReadError, type ListingResult, type ListingSource } from '../domain/ports.ts';
 
 export { SOURCE_REGISTRY as SOURCES } from '../source-registry.ts';
@@ -14,13 +16,19 @@ const ReadOutcomeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('partial'), body: z.string(), failure: z.object({ message: z.string(), retryAfterMs: z.number().nullish() }) }),
   z.object({ kind: z.literal('failed'), failure: z.object({ message: z.string(), retryAfterMs: z.number().nullish() }) }),
 ]);
-const PlayerWireSchema = z.object({
-  id: z.string(), label: z.string(), locator: z.object({ provider: z.string() }).passthrough(),
-}).passthrough();
+const NativeLocatorSchema = z.discriminatedUnion('provider', [
+  SwacLocatorSchema,
+  GoozLocatorSchema,
+  StreamcenterLocatorSchema,
+  EventPageLocatorSchema.extend({ gameId: z.string() }),
+  CatalogStreamLocatorSchema.extend({ gameId: z.string() }),
+  TvappLocatorSchema.extend({ gameId: z.string() }),
+]);
+const NativePlayerSchema = ResolvedPlayerSchema.extend({ locator: NativeLocatorSchema });
 const ResolveActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('read-batch'), requests: z.array(z.object({ url: z.string() })), abortSiblingsOnFailure: z.boolean() }),
-  z.object({ type: z.literal('done'), players: z.array(PlayerWireSchema) }),
-  z.object({ type: z.literal('failed'), error: z.object({ name: z.string(), message: z.string() }) }),
+  z.object({ type: z.literal('done'), players: z.array(NativePlayerSchema) }),
+  z.object({ type: z.literal('failed'), error: z.object({ name: z.string(), message: z.string(), readErrorId: z.number().int().positive().optional() }) }),
 ]);
 
 export class SourceFetchError extends Error {
@@ -54,9 +62,11 @@ function decode<T>(value: string, schema: z.ZodType<T>): T {
   return schema.parse(JSON.parse(value));
 }
 function players(value: string): ResolvedPlayer[] {
-  // Rust owns the locator variants; this helper also accepts caller-supplied game IDs before domain validation.
-  return decode(value, z.array(PlayerWireSchema)) as ResolvedPlayer[];
+  return decode(value, z.array(NativePlayerSchema));
 }
+
+type ResolveReadResult = { kind: 'read-ok'; body: string } |
+  { kind: 'read-failed'; error: { name: string; message: string; readErrorId: number } };
 
 function collectorFacade(native: NativeCollector) {
   async function readHtml(url: string, signal: AbortSignal): Promise<string> {
@@ -98,28 +108,39 @@ function collectorFacade(native: NativeCollector) {
     const begin = z.object({ id: z.number().int(), action: ResolveActionSchema }).parse(
       JSON.parse(native.beginResolve(gameId, JSON.stringify(observation), html)));
     let action: z.infer<typeof ResolveActionSchema> = begin.action;
+    const readErrors = new Map<number, Error>();
+    let nextReadErrorId = 1;
     try {
       while (action.type === 'read-batch') {
         signal.throwIfAborted();
+        const batch = action;
         const group = new AbortController();
         const abort = () => group.abort(signal.reason);
         signal.addEventListener('abort', abort, { once: true });
         if (signal.aborted) abort();
-        let responses: ({ kind: 'read-ok'; body: string } | { kind: 'read-failed'; error: { name: string; message: string } })[];
+        let responses: ResolveReadResult[];
         try {
-          responses = await Promise.all(action.requests.map(async request => {
-            try { return { kind: 'read-ok' as const, body: await read(request.url, group.signal) }; }
+          responses = await Promise.all(batch.requests.map(async (request, index): Promise<ResolveReadResult> => {
+            try {
+              const body = await read(request.url, group.signal);
+              if (!native.validateResolveResponse(begin.id, index, body)) throw new Error('parser-changed');
+              return { kind: 'read-ok', body };
+            }
             catch (error) {
-              if (action.type === 'read-batch' && action.abortSiblingsOnFailure) group.abort(error);
+              if (batch.abortSiblingsOnFailure) group.abort(error);
               const failure = error instanceof Error ? error : new Error('unavailable');
-              return { kind: 'read-failed' as const, error: { name: failure.name, message: failure.message } };
+              const readErrorId = nextReadErrorId++;
+              readErrors.set(readErrorId, failure);
+              return { kind: 'read-failed', error: { name: failure.name, message: failure.message, readErrorId } };
             }
           }));
         } finally { signal.removeEventListener('abort', abort); }
         signal.throwIfAborted();
         action = decode(native.advanceResolve(begin.id, JSON.stringify(responses)), ResolveActionSchema);
       }
-      if (action.type === 'done') return action.players as ResolvedPlayer[];
+      if (action.type === 'done') return action.players;
+      const original = action.error.readErrorId === undefined ? undefined : readErrors.get(action.error.readErrorId);
+      if (original) throw original;
       const error = new Error(action.error.message);
       error.name = action.error.name;
       throw error;

@@ -3,7 +3,6 @@ import { gameTiming } from './game-timing.ts';
 import type { Team, League, Game, ScheduleGame } from './football/shared.ts';
 export type { Team, League, Game, LeagueFeedStatus, Board } from './football/shared.ts';
 export type Feed = { url: string; label: string };
-export type SourcePlayer = { id: string; label: string; url: string };
 export const LEAGUES = {
   nfl: { label: 'NFL' },
   ncaaf: { label: 'NCAA' },
@@ -22,15 +21,6 @@ export const LEAGUES = {
 } satisfies Record<League, { label: string }>;
 export function isBasketballLeague(league: League): boolean { return league === 'nba' || league === 'wnba' || league === 'ncaab'; }
 export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
-export function parsePlayers(html: string): SourcePlayer[] {
-  const embeds = [...html.matchAll(/<iframe\b[^>]*>/gi)].flatMap(([tag]) => {
-    const source = tag.match(/(?:^|\s)src\s*=\s*(['"])(https:\/\/gooz\.aapmains\.net\/new-stream-embed\/(\d+))\1/i);
-    return source ? [source[3]] : [];
-  });
-  if (!embeds.length) return [];
-  const ids = [...new Set([...embeds, ...[...html.matchAll(/changeStream\((\d+)\)/g)].map(m => m[1])])];
-  return ids.map((id, index) => ({ id, label: index ? `Backup ${index}` : 'Primary', url: `https://gooz.aapmains.net/new-stream-embed/${id}` }));
-}
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
