@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, rmdir, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, mkdtemp, readFile, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -88,4 +88,28 @@ test('desktop preparation rejects a standalone worker without its source registr
   const root=await fixture(t);
   await rm(path.join(root,'.next/standalone/lib/football/source-registry.json'));
   await assert.rejects(run(process.execPath,[prepare],{cwd:root,windowsHide:true}),/ENOENT.*source-registry\.json/s);
+});
+
+test('desktop preparation materializes a traced package alias inside a custom standalone build', async t => {
+  const root = await fixture(t);
+  const distDir = '.desktop-runtime/local-builds/1234abcd';
+  const source = path.join(root, '.next');
+  const output = path.join(root, distDir);
+  await mkdir(path.dirname(output), { recursive: true });
+  await cp(source, output, { recursive: true });
+  const standalone = path.join(output, 'standalone');
+  await mkdir(path.join(standalone, 'node_modules/sharp'), { recursive: true });
+  await writeFile(path.join(standalone, 'node_modules/sharp/index.js'), 'traced sharp');
+  await writeFile(path.join(root, 'node_modules/sharp/index.js'), 'source sharp');
+  const alias = path.join(standalone, distDir, 'node_modules/sharp-20c6a5da84e2135f');
+  await mkdir(path.dirname(alias), { recursive: true });
+  await symlink(path.join(root, 'node_modules/sharp'), alias, 'junction');
+
+  await run(process.execPath, [prepare, distDir], { cwd: root, windowsHide: true });
+
+  assert.equal((await lstat(alias)).isSymbolicLink(), false);
+  assert.equal(await readFile(path.join(root, 'node_modules/sharp/index.js'), 'utf8'), 'source sharp');
+  assert.equal(await readFile(path.join(alias, 'index.js'), 'utf8'), 'source sharp');
+  await writeFile(path.join(root, 'node_modules/sharp/index.js'), 'changed source sharp');
+  assert.equal(await readFile(path.join(alias, 'index.js'), 'utf8'), 'source sharp');
 });

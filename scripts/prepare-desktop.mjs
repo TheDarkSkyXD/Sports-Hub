@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, realpath, stat } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 
 const distDir = process.argv[2] ?? '.next';
@@ -53,6 +53,38 @@ while (pending.length) {
     }
     pending.push(dependency);
   }
+}
+if (distDir !== '.next') {
+  const aliases = path.join(standalone, distDir, 'node_modules');
+  const sourceModules = await realpath('node_modules');
+  const served = await realpath(standalone);
+  async function materialize(directory) {
+    const entries = await readdir(directory, { withFileTypes: true }).catch(error => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    });
+    for (const entry of entries) {
+      const alias = path.join(directory, entry.name);
+      if (entry.isDirectory() && entry.name.startsWith('@')) {
+        await materialize(alias);
+        continue;
+      }
+      if (!entry.isSymbolicLink()) continue;
+      const relative = path.relative(sourceModules, await realpath(alias));
+      const parts = relative.split(path.sep);
+      if (relative.startsWith('..') || path.isAbsolute(relative) ||
+          !(parts.length === 1 || (parts.length === 2 && parts[0].startsWith('@'))) ||
+          !copied.has(`node_modules/${parts.join('/')}`))
+        throw new Error(`Unowned standalone package alias: ${alias}`);
+      const owned = path.join(standalone, 'node_modules', ...parts);
+      const ownedRelative = path.relative(served, await realpath(owned));
+      if (ownedRelative.startsWith('..') || path.isAbsolute(ownedRelative) || !(await stat(owned)).isDirectory())
+        throw new Error(`Standalone package alias lacks an owned copy: ${alias}`);
+      await unlink(alias);
+      await cp(owned, alias, { recursive: true });
+    }
+  }
+  await materialize(aliases);
 }
 await stat(path.join(standalone, 'lib/football/runtime/worker.ts'));
 await stat(path.join(standalone, 'lib/football/runtime/schedule-worker.ts'));
