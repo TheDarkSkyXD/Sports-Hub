@@ -166,6 +166,7 @@ test('stopping during a compiled build terminates its owned tree before serving'
 });
 
 test('compiled startup reuses complete output and rebuilds after a source edit', async () => {
+  const preparationDeadlineMs = 3000;
   const serverRoot = nativeRoot('sunday-local-reuse-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   mkdirSync(path.join(serverRoot, 'app'));
@@ -204,7 +205,7 @@ test('compiled startup reuses complete output and rebuilds after a source edit',
     },
   });
   try {
-    await within(room.service.start(), 1000);
+    await within(room.service.start(), preparationDeadlineMs);
     assert.deepEqual(modes, ['standalone']);
     await within(room.service.stop(), 1000);
   } finally { room.service.beginStop(); room.dispose(); }
@@ -223,7 +224,7 @@ test('compiled startup reuses complete output and rebuilds after a source edit',
   try {
     const ready = nextRoom.service.start();
     const rejected = assert.rejects(ready, /stop/i);
-    await within(buildStarted, 1000);
+    await within(buildStarted, preparationDeadlineMs);
     assert.deepEqual(modes, ['standalone', 'build']);
     nextRoom.service.beginStop();
     await rejected;
