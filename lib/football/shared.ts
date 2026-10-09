@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const LeagueSchema = z.enum(['nfl', 'ncaaf', 'nba', 'wnba', 'ncaab', 'nhl', 'ncaah', 'ncaawh', 'mlb', 'f1', 'nascar-cup', 'nascar-truck', 'motogp', 'motorsport']);
+export const LeagueSchema = z.enum(['nfl', 'ncaaf', 'nba', 'wnba', 'nhl', 'mlb', 'f1', 'nascar-cup', 'nascar-truck', 'motogp', 'motorsport']);
 const MatchupLeagueSchema = LeagueSchema.exclude(['f1','nascar-cup','nascar-truck','motogp','motorsport']);
 const RaceLeagueSchema=LeagueSchema.extract(['f1','nascar-cup','nascar-truck','motogp','motorsport']);
 const BrowserCatalogLeagueSchema = LeagueSchema;
@@ -59,7 +59,7 @@ export const BoardSchema = z.object({
   scheduleState: z.enum(['loading','ready']),
   finishedGameRetentionMinutes: FinishedGameRetentionMinutesSchema.default(DEFAULT_FINISHED_GAME_RETENTION_MINUTES),
   feedCheckIntervalMinutes: FeedCheckIntervalMinutesSchema.default(DEFAULT_FEED_CHECK_INTERVAL_MINUTES),
-  leagues: z.object({ nfl: LeagueFeedSchema, ncaaf: LeagueFeedSchema, nba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), wnba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaab: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), nhl: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaah: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaawh: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), mlb: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), f1:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), 'nascar-cup':LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), 'nascar-truck':LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), motogp:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), motorsport:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}) }), aliases: z.record(z.string()),
+  leagues: z.object({ nfl: LeagueFeedSchema, ncaaf: LeagueFeedSchema, nba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), wnba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), nhl: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), mlb: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), f1:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), 'nascar-cup':LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), 'nascar-truck':LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), motogp:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), motorsport:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}) }), aliases: z.record(z.string()),
 });
 export type Team = z.infer<typeof TeamSchema>;
 export type Game = z.infer<typeof GameSchema>;
@@ -126,14 +126,14 @@ export type CandidateSummary = z.infer<typeof CandidateSummarySchema>;
 export const SwacLocatorSchema = z.object({provider:z.literal('swac'),eventId:z.string().regex(/^[a-f0-9]{32}$/)});
 export const GoozLocatorSchema = z.object({provider:z.literal('gooz'),playerId:z.string().regex(/^\d{1,20}$/)});
 export const StreamcenterLocatorSchema = z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid(),league:z.enum(['ncaaf','nba','wnba','nhl','mlb']).optional()});
-export const EventPageLocatorSchema = z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-)?\d{1,20}$/),
+export const EventPageLocatorSchema = z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:(?:ncaaf|nba|wnba|nhl|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-)?\d{1,20}$/),
   eventUrl:z.string().url().max(2000),serverUrl:z.string().url().max(2000)}).strict();
-export const CatalogStreamLocatorSchema = z.object({provider:z.literal('catalog-stream'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-)?\d{1,20}$/),
+export const CatalogStreamLocatorSchema = z.object({provider:z.literal('catalog-stream'),gameId:z.string().regex(/^(?:(?:ncaaf|nba|wnba|nhl|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-)?\d{1,20}$/),
   source:z.enum(['streamed','livesportpro']),eventUrl:z.string().url().max(400),eventId:z.string().min(1).max(160),
   sourceName:z.string().min(1).max(40),sourceId:z.string().min(1).max(160),
   streamNo:z.number().int().min(1).max(100),kickoff:z.number().int(),
   title:z.string().min(1).max(300),teams:z.tuple([z.string(),z.string()]).nullable()}).strict();
-export const TvappLocatorSchema = z.object({provider:z.literal('tvapp'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb)-)?\d{1,20}$/),
+export const TvappLocatorSchema = z.object({provider:z.literal('tvapp'),gameId:z.string().regex(/^(?:(?:ncaaf|nba|wnba|nhl|mlb)-)?\d{1,20}$/),
   eventUrl:z.string().url().max(2000),source:z.string().regex(/^[a-z0-9-]{1,32}$/),
   sourceId:z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/),streamNo:z.number().int().min(1).max(100),
   kickoff:z.number().int(),title:z.string().min(1).max(200),teams:z.tuple([z.string().min(1),z.string().min(1)])}).strict();

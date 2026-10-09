@@ -9,7 +9,7 @@ test('the source registry preserves all configured sources and declares all supp
   assert.equal(SOURCES.length,47);
   assert.equal(new Set(SOURCES.map(source=>source.id)).size,47);
   assert.deepEqual([...new Set(SOURCES.flatMap(source=>source.leagues))].sort(),[...LeagueSchema.options].sort());
-  assert.deepEqual(sourceCoverage('tvapp-nhl'),['nhl','ncaah','ncaawh']);
+  assert.deepEqual(sourceCoverage('tvapp-nhl'),['nhl']);
   assert.deepEqual(sourceCoverage('methstreams-f1'),['f1','nascar-cup','nascar-truck','motogp','motorsport']);
   assert.deepEqual(sourceCoverage('made-up-nfl'),[]);
   assert.deepEqual(sourceCoverage('vipbox-nba'),['nba']);
@@ -21,5 +21,5 @@ test('browser categories use observed provider URLs and preserve unknown detail 
   assert.equal(browserCategory('streameast','nba')?.url,'https://v2.streameast.ga/nba-streams/');
   assert.equal(browserCategory('streameast','nba')?.espnPath,'basketball/nba');
   assert.equal(browserCategory('streameast','f1')?.pathCode,null);
-  assert.equal(browserCategory('sportsurge-v2','ncaah'),undefined);
+  assert.equal(browserCategory('sportsurge-v2','unlisted'),undefined);
 });

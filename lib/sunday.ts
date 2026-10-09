@@ -8,10 +8,7 @@ export const LEAGUES = {
   ncaaf: { label: 'NCAA' },
   nba: { label: 'NBA' },
   wnba: { label: 'WNBA' },
-  ncaab: { label: 'NCAA BB' },
   nhl: { label: 'NHL' },
-  ncaah: { label: 'NCAA Hockey' },
-  ncaawh: { label: "NCAA Women's Hockey" },
   mlb: { label: 'MLB' },
   f1: { label: 'F1' },
   'nascar-cup':{label:'NASCAR Cup'},
@@ -19,8 +16,8 @@ export const LEAGUES = {
   motogp:{label:'MotoGP'},
   motorsport:{label:'Motorsport'},
 } satisfies Record<League, { label: string }>;
-export function isBasketballLeague(league: League): boolean { return league === 'nba' || league === 'wnba' || league === 'ncaab'; }
-export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
+export function isBasketballLeague(league: League): boolean { return league === 'nba' || league === 'wnba'; }
+export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|nba|wnba|nhl|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -68,7 +65,7 @@ export function parseScoreboard(data: unknown, league: League = 'nfl'): Schedule
     const situation = object(competition?.situation);
     const names = items(object(items(competition?.broadcasts)[0])?.names).filter((name): name is string => typeof name === 'string');
     const season = object(event?.season)?.year;
-    const noFootballSituation = league === 'nba' || league === 'wnba' || league === 'ncaab' || league === 'nhl' || league === 'ncaah' || league === 'ncaawh' || league === 'mlb';
+    const noFootballSituation = league === 'nba' || league === 'wnba' || league === 'nhl' || league === 'mlb';
     return [ScheduleGameSchema.parse({ id: league === 'nfl' ? id : `${league}-${id}`, league, lifecycle, season: typeof season === 'number' ? season : undefined, name: text(event?.name) || `${awayTeam.displayName} at ${homeTeam.displayName}`, date: text(event?.date), home: team(home, homeTeam), away: team(away, awayTeam), status: gameStatus, detail, redzone: !noFootballSituation && situation?.isRedZone === true && gameStatus === 'in', down: noFootballSituation ? undefined : text(situation?.downDistanceText), possession: noFootballSituation ? undefined : situation?.possession === home.id ? text(homeTeam.abbreviation) : situation?.possession === away.id ? text(awayTeam.abbreviation) : undefined, lastPlay: text(object(situation?.lastPlay)?.text), venue: text(object(competition?.venue)?.fullName), broadcast: names.length ? names.join(' / ') : undefined })];
   });
 }

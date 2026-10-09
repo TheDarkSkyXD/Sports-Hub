@@ -23,10 +23,10 @@ const oldBootstrap = `process.env.SUNDAY_ROOM_COLLECTOR_DIR ||= require('node:pa
 const bootstrap = `import { dirname as collectorDirname, join as collectorJoin } from 'node:path';\nimport { fileURLToPath as collectorFileURLToPath } from 'node:url';\nprocess.env.SUNDAY_ROOM_COLLECTOR_DIR ||= collectorJoin(collectorDirname(collectorFileURLToPath(import.meta.url)), 'native', 'collector');\n`;
 const originalServer = await readFile(server, 'utf8');
 const serverBody = originalServer.startsWith(oldBootstrap) ? originalServer.slice(oldBootstrap.length) : originalServer;
-if (!serverBody.startsWith(bootstrap)) await writeFile(server, bootstrap + serverBody);
-if (distDir !== '.next') {
-  await writeFile(path.join(standalone, 'server.cjs'),
-    `process.env.SUNDAY_ROOM_COLLECTOR_DIR ||= require('node:path').join(__dirname, 'native', 'collector');\nvoid import('./server.js');\n`);
+if (distDir === '.next') {
+  if (!serverBody.startsWith(bootstrap)) await writeFile(server, bootstrap + serverBody);
+} else {
+  await writeFile(path.join(standalone, 'server.cjs'), oldBootstrap + serverBody);
   await cp(path.resolve('package.json'), path.join(standalone, 'package.json'));
 }
 await stat(staticFiles);

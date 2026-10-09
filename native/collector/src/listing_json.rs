@@ -225,6 +225,11 @@ fn parse_tvapp(source: &ListingSource, body: &str, now: i64) -> ListingResult {
         if std::mem::discriminant(&event.category) != std::mem::discriminant(&category) {
             continue;
         }
+        if source.id == "tvapp-nhl"
+            && (event.id.starts_with("live_ncaa-women_") || event.id.starts_with("live_college_"))
+        {
+            continue;
+        }
         if !(FIRST_DATE..LAST_DATE).contains(&event.date) {
             return invalid();
         }
@@ -264,8 +269,6 @@ fn parse_tvapp(source: &ListingSource, body: &str, now: i64) -> ListingResult {
         }
         let league = match source.id.as_str() {
             "tvapp-mlb" => Some(League::Mlb),
-            "tvapp-nhl" if event.id.starts_with("live_ncaa-women_") => Some(League::Ncaawh),
-            "tvapp-nhl" if event.id.starts_with("live_college_") => Some(League::Ncaah),
             _ => None,
         };
         let Some(raw_time) = iso(event.date) else {

@@ -102,7 +102,6 @@
       "https://v2.streameast.ga/nhl-streams/",
       "https://v2.streameast.ga/mlb-streams/",
       "https://v2.streameast.ga/wnba-streams/",
-      "https://v2.streameast.ga/ncaab-streams/",
       "https://v2.streameast.ga/f1-streams/"
     ],
     "leagues": [
@@ -112,7 +111,6 @@
       "nhl",
       "mlb",
       "wnba",
-      "ncaab",
       "f1"
     ],
     "browserCategories": [
@@ -168,14 +166,6 @@
         "pathCode": null,
         "emptyTitles": [
           "No WNBA games available"
-        ]
-      },
-      {
-        "league": "ncaab",
-        "url": "https://v2.streameast.ga/ncaab-streams/",
-        "pathCode": null,
-        "emptyTitles": [
-          "No NCAAB games available"
         ]
       },
       {
@@ -243,8 +233,7 @@
     "publicUrls": [],
     "leagues": [
       "nba",
-      "wnba",
-      "ncaab"
+      "wnba"
     ]
   },
   {
@@ -256,9 +245,7 @@
     "parserVersion": 4,
     "publicUrls": [],
     "leagues": [
-      "nhl",
-      "ncaah",
-      "ncaawh"
+      "nhl"
     ]
   },
   {
@@ -382,7 +369,6 @@
       "https://v2.sportsurge.net/watch-baseball-streams/",
       "https://v2.sportsurge.net/watch-f1-streams/",
       "https://v2.sportsurge.net/watch-wnba-streams/",
-      "https://v2.sportsurge.net/watch-ncaab-streams/",
       "https://v2.sportsurge.net/watch-motogp-streams/",
       "https://v2.sportsurge.net/watch-nascar-streams/"
     ],
@@ -394,7 +380,6 @@
       "mlb",
       "f1",
       "wnba",
-      "ncaab",
       "motogp",
       "nascar-cup",
       "nascar-truck"
@@ -433,11 +418,6 @@
       {
         "league": "wnba",
         "url": "https://v2.sportsurge.net/watch-wnba-streams/",
-        "pathCode": null
-      },
-      {
-        "league": "ncaab",
-        "url": "https://v2.sportsurge.net/watch-ncaab-streams/",
         "pathCode": null
       },
       {
@@ -492,8 +472,7 @@
     "family": "event",
     "leagues": [
       "nba",
-      "wnba",
-      "ncaab"
+      "wnba"
     ]
   },
   {
@@ -502,8 +481,7 @@
     "family": "event",
     "leagues": [
       "nba",
-      "wnba",
-      "ncaab"
+      "wnba"
     ]
   },
   {
@@ -535,9 +513,7 @@
     "url": "https://methstreams.st/NHL",
     "family": "event",
     "leagues": [
-      "nhl",
-      "ncaah",
-      "ncaawh"
+      "nhl"
     ]
   },
   {
@@ -545,9 +521,7 @@
     "url": "https://crackstreams.st/NHL",
     "family": "event",
     "leagues": [
-      "nhl",
-      "ncaah",
-      "ncaawh"
+      "nhl"
     ]
   },
   {
@@ -606,7 +580,7 @@
     "family": "streamed",
     "kind": "catalog",
     "publicUrls": ["https://streamed.st/"],
-    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
   },
   {
     "id": "livesportpro",
@@ -615,7 +589,7 @@
     "family": "livesportpro",
     "kind": "catalog",
     "publicUrls": ["https://livesportpro.com/"],
-    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
   },
   {
     "id": "sportsfeed24",
@@ -624,7 +598,7 @@
     "family": "sportsfeed24",
     "kind": "catalog",
     "publicUrls": ["https://sportsfeed24.st/"],
-    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
   },
   {
     "id": "crichd",
@@ -632,7 +606,7 @@
     "url": "https://crichd.pk/",
     "family": "crichd",
     "publicUrls": ["https://m.crichd.pk/"],
-    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
   },
   {
     "id": "sportsbite",
@@ -641,6 +615,6 @@
     "family": "sportsbite",
     "kind": "catalog",
     "publicUrls": ["https://sportsbite.org/"],
-    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
   }
 ]

@@ -1466,22 +1466,22 @@ mod tests {
             now,
         )
         .unwrap();
-        assert_eq!(sweep.category_urls[9].1, sweep.category_urls[10].1);
+        assert_eq!(sweep.category_urls[8].1, sweep.category_urls[9].1);
         assert!(matches!(
             sweep.category_read(
                 &registry,
-                9,
+                8,
                 ReadResult::Failed(BrowserFailure::Timeout),
                 now
             ),
             SweepAction::Publish { .. }
         ));
         assert!(matches!(
-            sweep.next_category(&registry, 10, now),
+            sweep.next_category(&registry, 9, now),
             SweepAction::Publish { .. }
         ));
         assert!(matches!(
-            sweep.catalog.categories().0[10].1,
+            sweep.catalog.categories().0[9].1,
             CategoryState::Failed {
                 reason: BrowserFailure::Timeout,
                 ..
