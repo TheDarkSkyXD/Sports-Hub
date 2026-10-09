@@ -61,7 +61,7 @@ test('two dated live listings with compatible media retain both playable source 
       if (url === firstUrl || url === secondUrl) visitedDetails.add(url);
       return body;
     },
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   try {
     await coordinator.refresh(true);

@@ -95,6 +95,19 @@ export type SourceEventBinding=z.infer<typeof SourceEventBindingSchema>;
 export type Match = { kind: 'matched'; gameId: string } | { kind: 'unmatched'; reason: string; possibleGameIds: string[] };
 export const MediaPhaseSchema=z.enum(['activation','capture','ownership','replay']);
 export type MediaPhase=z.infer<typeof MediaPhaseSchema>;
+export const AdvancingVideoSchema=z.object({
+  kind:z.literal('advancing-video'),version:z.literal(1),
+  startupMs:z.number().int().nonnegative().max(300000),
+  observedMs:z.number().int().min(2000).max(300000),
+  mediaAdvanceMs:z.number().int().min(2000).max(300000),
+  presentedFrames:z.number().int().min(3).max(1_000_000),
+}).strict();
+export type AdvancingVideo=z.infer<typeof AdvancingVideoSchema>;
+export const VerificationTargetSchema=z.object({
+  sessionId:z.string().uuid(),gameId:z.string().min(1).max(100),
+  candidateId:z.string().min(1).max(100),generation:z.literal(0),
+}).strict();
+export type VerificationTarget=z.infer<typeof VerificationTargetSchema>;
 export const CandidateAvailabilitySchema = z.discriminatedUnion('kind',[
   z.object({kind:z.literal('unknown')}),
   z.object({kind:z.literal('checking'),progress:z.discriminatedUnion('kind',[
@@ -102,7 +115,7 @@ export const CandidateAvailabilitySchema = z.discriminatedUnion('kind',[
     z.object({kind:z.literal('active'),since:z.number()}),
     z.object({kind:z.literal('deferred'),since:z.number(),retryAt:z.number(),phase:MediaPhaseSchema.optional()}),
   ])}),
-  z.object({kind:z.literal('playable'),checkedAt:z.number(),proof:z.enum(['media','decoded'])}),
+  z.object({kind:z.literal('playable'),checkedAt:z.number(),proof:AdvancingVideoSchema}),
   z.object({kind:z.literal('unavailable'),checkedAt:z.number(),retryAt:z.number(),reason:z.enum(['upstream','unsupported','invalid-media','timeout','playback','no-feed']),phase:MediaPhaseSchema.optional()}),
 ]);
 export type CandidateAvailability = z.infer<typeof CandidateAvailabilitySchema>;
@@ -364,7 +377,7 @@ export const CommandSchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('session'),sessionId:z.string().uuid(),generation:z.number().int().nonnegative(),candidateId:z.string().max(100).optional(),failure:z.boolean().default(false),retry:z.boolean().default(false)}),
   z.object({kind:z.literal('close'),sessionId:z.string().uuid()}),
   z.object({kind:z.literal('authorize'),sessionId:z.string().uuid(),candidateId:z.string().min(1).max(100),generation:z.number().int().nonnegative()}),
-  z.object({kind:z.literal('playback-evidence'),sessionId:z.string().uuid(),candidateId:z.string().min(1).max(100),generation:z.number().int().nonnegative(),evidence:z.object({kind:z.literal('decoded'),startupMs:z.number().int().nonnegative().max(300000)})}),
+  z.object({kind:z.literal('playback-evidence'),sessionId:z.string().uuid(),candidateId:z.string().min(1).max(100),generation:z.number().int().nonnegative(),evidence:AdvancingVideoSchema}),
   z.object({kind:z.literal('refresh')}),
   z.object({kind:z.literal('sportsurge-catalog'),catalog:SportsurgeCatalogSchema}),
   z.object({kind:z.literal('streameast-catalog'),catalog:StreameastCatalogSchema}),
@@ -377,6 +390,7 @@ export const ReplySchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('playback'),playback:PlaybackSchema}),
   z.object({kind:z.literal('session'),session:SessionSchema,candidates:z.array(CandidateSummarySchema)}),
   z.object({kind:z.literal('authorized'),candidate:CandidateSchema,session:SessionSchema}),
+  z.object({kind:z.literal('verification-authorized'),candidate:CandidateSchema,target:VerificationTargetSchema,deadline:z.number().int().nonnegative()}),
   z.object({kind:z.literal('ok')}),
   z.object({kind:z.literal('catalog-ack'),skipDetailEventIds:z.array(z.string()),sourceRefreshMs:z.number().int().refine(milliseconds=>[60_000,300_000,600_000,900_000].includes(milliseconds)).optional(),skipDetailEventUrls:z.array(z.string().url()).optional(),reuseDetails:z.discriminatedUnion('kind',[
     z.object({kind:z.literal('sportsurge-v2'),events:z.array(SportsurgeEventSchema)}),

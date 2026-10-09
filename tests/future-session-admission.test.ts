@@ -60,7 +60,7 @@ test('live first feeds take priority over future selected alternatives while fut
       })),
     ],
     probeCandidate: async (locator, signal, onProgress) => {
-      if (locator.provider === 'gooz') return { kind: 'playable' as const, proof: 'media' as const };
+      if (locator.provider === 'gooz') return { kind: 'playable' as const, proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const };
       assert.equal(locator.provider, 'event-page');
       if (!hold) {
         admissions.push({ gameId: locator.gameId, phase: 'seed' });
@@ -75,7 +75,7 @@ test('live first feeds take priority over future selected alternatives while fut
             active.addEventListener('abort',resolve,{once:true});
           });
           return locator.gameId.startsWith('ncaaf')
-            ? {kind:'playable' as const,proof:'media' as const}
+            ? {kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const}
             : {kind:'unavailable' as const,reason:'upstream' as const};
         }finally{release();}
       });
@@ -106,8 +106,8 @@ test('live first feeds take priority over future selected alternatives while fut
     listLive = true;
     clock += 1;
     await coordinator.refresh(true);
-    await until(() => admissions.filter(row => row.phase === 'hold').length >= 4);
-    assert.equal(admissions.filter(row=>row.phase==='hold').slice(0,4).every(row=>future.some(game=>game.id===row.gameId)),true);
+    await until(() => admissions.filter(row => row.phase === 'hold').length >= 2);
+    assert.equal(admissions.filter(row=>row.phase==='hold').slice(0,2).every(row=>future.some(game=>game.id===row.gameId)),true);
     clock += 1;
     publishLive = true;
     await coordinator.refresh(true);
@@ -116,14 +116,14 @@ test('live first feeds take priority over future selected alternatives while fut
       return reply.kind === 'sources' && live.every(game =>
         reply.snapshot.games.find(row => row.gameId === game.id)?.freeChoiceCount === 1);
     });
-    for (let expected = 5; expected <= 36; expected++) {
+    for (let expected = 3; expected <= 36; expected++) {
       pending.shift()?.();
       await until(() => admissions.filter(row => row.phase === 'hold').length >= expected);
     }
     const next = admissions.filter(row => row.phase === 'hold').slice(0, 36).map(row => row.gameId);
     const firstLivePositions = live.map(game => next.indexOf(game.id) + 1);
-    assert.deepEqual(firstLivePositions, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-    assert.ok(next.slice(15).some(id => future.some(game => game.id === id)),
+    assert.deepEqual(firstLivePositions, [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    assert.ok(next.slice(13).some(id => future.some(game => game.id === id)),
       'future alternatives must keep receiving bounded background turns after first live proofs');
   } finally {
     for (const release of pending) release();

@@ -74,13 +74,13 @@ async function withFakeDeadline(run:(advance:(ms:number)=>void)=>Promise<void>) 
 
 for(const reactsToAbort of [false,true])test(reactsToAbort ?
   'the active budget defers before an abort-driven result' :
-  'four stalled observers defer but retain physical capacity until closed',async()=>{
+  'two stalled observers defer but retain physical capacity until closed',async()=>{
   const held:Array<ReturnType<typeof hold>>=[],started:string[]=[];
   const run=fixture(5,observed(async (locator,signal)=>{
     assert.equal(locator.provider,'gooz');
     if(locator.provider!=='gooz')throw new Error('Expected gooz');
     started.push(locator.playerId);
-    if(started.length===5)return {kind:'playable',proof:'media'};
+    if(started.length===3)return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     const gate=hold();held.push(gate);
     if(reactsToAbort)signal.addEventListener('abort',()=>gate.release({kind:'deferred',retryAfterMs:30_000}),{once:true});
     return gate.promise;
@@ -88,25 +88,25 @@ for(const reactsToAbort of [false,true])test(reactsToAbort ?
   try {
     await withFakeDeadline(async advance=>{
       await run.coordinator.refresh(true);
-      await until(()=>started.length===4,'four observers should occupy the physical slots');
+      await until(()=>started.length===2,'two observers should occupy the physical slots');
       run.setClock(at+65_000);
       advance(65_000);
-      if(reactsToAbort)await until(()=>started.length===5,'the fifth check should start after observer close');
-      else assert.equal(started.length,4);
+      if(reactsToAbort)await until(()=>started.length>=3,'the third check should start after observer close');
+      else assert.equal(started.length,2);
       if(!reactsToAbort){held[0].release({kind:'deferred',retryAfterMs:30_000});
-        await until(()=>started.length===5,'the fifth check should start after physical close');}
+        await until(()=>started.length>=3,'the third check should start after physical close');}
       await until(async()=>{
         const snapshot=await sources(run.coordinator);
-        return snapshot.games.find(row=>row.gameId===run.games[4].id)?.candidates[0]?.availability.kind==='playable';
-      },'the fifth candidate should become playable');
+        return snapshot.games.find(row=>row.gameId===run.games[2].id)?.candidates[0]?.availability.kind==='playable';
+      },'the third candidate should become playable');
       const snapshot=await sources(run.coordinator);
-      for(const row of snapshot.games.filter(row=>row.gameId!==run.games[4].id)){
+      for(const row of snapshot.games.slice(0,2)){
         const availability=row.candidates[0]?.availability;
         assert.deepEqual(availability,{kind:'checking',progress:{kind:'deferred',since:at+65_000,retryAt:at+365_000}});
       }
     });
   } finally {
-    for(const gate of held)gate.release({kind:'playable',proof:'media'});
+    for(const gate of held)gate.release({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await run.coordinator.stop();run.cleanup();
   }
 });
@@ -123,14 +123,14 @@ test('stop settles after abort even when a provider never answers',async()=>{
     void stopping.then(()=>{settled=true;});
     await until(()=>settled,'stop should settle without the provider answering');
   } finally {
-    gate.release({kind:'playable',proof:'media'});
+    gate.release({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await (stopping??run.coordinator.stop());run.cleanup();
   }
 });
 
 test('a late playable result cannot replace a newer check result',async()=>{
   const first=hold();let calls=0;
-  const run=fixture(1,observed(async()=>{calls++;return calls===1?first.promise:{kind:'playable',proof:'decoded'};}));
+  const run=fixture(1,observed(async()=>{calls++;return calls===1?first.promise:{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};}));
   try {
     await withFakeDeadline(async advance=>{
       await run.coordinator.refresh(true);
@@ -145,16 +145,16 @@ test('a late playable result cannot replace a newer check result',async()=>{
       await until(()=>calls===2,'the replacement check should begin');
       await until(async()=>{
         const availability=(await sources(run.coordinator)).games[0]?.candidates[0]?.availability;
-        return availability?.kind==='playable'&&availability.proof==='decoded';
-      },'the replacement should record decoded proof');
-      first.release({kind:'playable',proof:'media'});
+        return availability?.kind==='playable'&&availability.proof.kind==='advancing-video';
+      },'the replacement should record advancing video proof');
+      first.release({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
       for(let index=0;index<20;index++)await new Promise<void>(resolve=>setImmediate(resolve));
       const availability=(await sources(run.coordinator)).games[0]?.candidates[0]?.availability;
       assert.equal(availability?.kind,'playable');
-      if(availability?.kind==='playable')assert.equal(availability.proof,'decoded');
+      if(availability?.kind==='playable')assert.equal(availability.proof.kind,'advancing-video');
     });
   } finally {
-    first.release({kind:'playable',proof:'media'});
+    first.release({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await run.coordinator.stop();run.cleanup();
   }
 });

@@ -44,7 +44,7 @@ test('new decoded proof stays visible while an older probe remains active', asyn
     enrichObservation: value => value,
     compatiblePlayers: () => [{ id: 'server-1', label: 'Server 1', locator: { provider: 'gooz', playerId: '1' } }],
     probeCandidate: async () => {
-      if (++calls === 1) return { kind: 'playable' as const, proof: 'media' as const };
+      if (++calls === 1) return { kind: 'playable' as const, proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const };
       if(calls>2)return {kind:'unavailable' as const,reason:'upstream' as const};
       await pendingProbe;
       olderProbeSettled=true;
@@ -66,7 +66,7 @@ test('new decoded proof stays visible while an older probe remains active', asyn
     assert.deepEqual(await coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: true }), { kind: 'ok' });
     await until(async () => calls === 2);
     assert.deepEqual(await coordinator.command({ kind: 'playback-evidence', sessionId: session.id,
-      candidateId: 'server-1', generation: 1, evidence: { kind: 'decoded', startupMs: 100 } }), { kind: 'ok' });
+      candidateId: 'server-1', generation: 1, evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }), { kind: 'ok' });
     const sources = await coordinator.command({ kind: 'sources' });
     const board = await coordinator.command({ kind: 'board' });
     assert.equal(sources.kind, 'sources');
@@ -86,7 +86,7 @@ test('new decoded proof stays visible while an older probe remains active', asyn
     const decoded=await coordinator.command({kind:'sources'});
     assert.equal(decoded.kind,'sources');
     if(decoded.kind==='sources')assert.deepEqual(decoded.snapshot.games.find(row=>row.gameId===game.id)?.candidates[0]?.availability,
-      {kind:'playable',proof:'decoded',checkedAt:at});
+      {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at});
     clock+=10*60_000+1;
     await coordinator.refresh(true);
     await until(async()=>{

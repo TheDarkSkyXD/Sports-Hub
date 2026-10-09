@@ -362,12 +362,12 @@ export function BrowserProviderPlayer({ gameId, initialCandidateId, availableCan
     if(!currentFeed(url)||!session||!candidate)return;
     void change({...changes,origin:{id:session.id,candidateId:candidate.id,generation:session.generation}});
   };
-  const mediaDecoded=(url:string,startupMs:number)=>{
+  const mediaDecoded=(url:string,evidence:import('@/lib/playback/advancing-video').AdvancingVideo)=>{
     if(manualFeed||!currentFeed(url)||!session||!candidate||session.state!=='active')return;
     void fetch('/api/playback',{
       method:'PATCH',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({kind:'playback-evidence',sessionId:session.id,candidateId:candidate.id,
-        generation:session.generation,evidence:{kind:'decoded',startupMs}}),
+        generation:session.generation,evidence}),
       signal:AbortSignal.timeout(10000),
     }).catch(()=>{});
   };

@@ -49,7 +49,7 @@ test('all fresh games and alternatives warm without check-sources, even beyond q
       probed.push(locator.playerId);
       await new Promise<void>(resolve=>setImmediate(resolve));
       active--;
-      return {kind:'playable',proof:'media'};
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try {
@@ -63,7 +63,7 @@ test('all fresh games and alternatives warm without check-sources, even beyond q
     },()=>`all 300 candidates should become playable, observed ${lastCounts}`);
     assert.equal(probed.length,300);
     assert.equal(new Set(probed).size,300);
-    assert.ok(peak>=20&&peak<=40,`the live game frontier should admit at most two each: ${peak}`);
+    assert.equal(peak,2,'native checks share two physical slots');
     const firstGameFeeds=new Set(games.map((_,index)=>String(index*15+1)));
     assert.equal(probed.slice(0,30).filter(id=>firstGameFeeds.has(id)).length,20,
       'all 20 live games should get a first feed turn within 30 admissions');
@@ -100,7 +100,7 @@ test('explicit retry reaches an unavailable server after admitted siblings relea
         pending.push({resolve:settle});
         signal.addEventListener('abort',settle,{once:true});
       });
-      return {kind:'playable',proof:'media'};
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try {

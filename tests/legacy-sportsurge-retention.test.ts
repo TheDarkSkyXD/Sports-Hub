@@ -42,7 +42,7 @@ function fixture(allPlayable:boolean) {
     probeCandidate:async locator=>{
       assert.equal(locator.provider,'gooz');
       probes.push(locator.playerId);
-      return allPlayable||locator.playerId==='57561'?{kind:'playable' as const,proof:'media' as const}:
+      return allPlayable||locator.playerId==='57561'?{kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const}:
         {kind:'unavailable' as const,reason:'invalid-media' as const};
     },
   });
@@ -120,7 +120,7 @@ test('legacy Sportsurge keeps complete live proof while rereading detail after r
     await run.restart();
     const pendingRefresh=run.refresh();
     const cold=await run.snapshot();
-    assert.equal(cold.sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind,'collected');
+    assert.equal(cold.sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind,'pending');
     assert.equal(cold.sources.find(row=>row.id===source.id)?.lastAttempt?.at,initial);
     assert.equal(cold.games.find(row=>row.gameId===game.id)?.candidates.length,3);
     assert.equal(run.detailReads,1,'cold restore does not need a network detail read');

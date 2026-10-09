@@ -41,6 +41,7 @@ app.whenReady().then(async () => {
   try {
     observer = createSportsurgeObserver({ controlToken });
     observerOrigin = await observer.start();
+    observer.configureVerifier(origin);
   } catch (error) {
     observer?.stop();
     observer = undefined;

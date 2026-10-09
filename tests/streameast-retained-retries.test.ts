@@ -69,7 +69,7 @@ function fixture() {
       if (locator.provider !== 'streameast-server') throw new Error('unexpected locator');
       const count = (calls.get(locator.serverId) ?? 0) + 1;
       calls.set(locator.serverId, count);
-      if (count === 1) return Promise.resolve({ kind: 'playable', proof: 'media' });
+      if (count === 1) return Promise.resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
       if (count === 2) return Promise.resolve({ kind: 'unavailable', reason: 'upstream' });
       return new Promise<CandidateProbeResult>(resolve => { pending.set(locator.serverId, resolve); });
     },
@@ -127,7 +127,7 @@ test('a fresh matched board keeps older published StreamEast servers retryable a
     assert.ok(rows.every(row => row.availability.kind !== 'playable'));
     assert.ok((run.calls.get('2') ?? 0) >= 3);
     assert.ok(run.pending.has('2'));
-    run.pending.get('2')?.({ kind: 'playable', proof: 'media' });
+    run.pending.get('2')?.({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     await drain();
     assert.equal((await run.candidates()).find(row => row.id === 'streameast-server:ncaaf:46296:2')?.availability.kind, 'playable');
   } finally { await run.stop(); }

@@ -6,6 +6,7 @@ import { Popover } from 'radix-ui';
 import { AlertCircle, LoaderCircle, Maximize, Minimize, Pause, PictureInPicture2, Play, Radio, RotateCcw, Settings2, Volume2, VolumeX } from 'lucide-react';
 import { chooseDefaultLevel, type QualityLevel, type QualityPreference } from '@/lib/playback-quality';
 import type { Feed } from '@/lib/sunday';
+import { createAdvancingVideoSampler, type AdvancingVideo } from '@/lib/playback/advancing-video';
 
 type Status = 'loading' | 'ready' | 'buffering' | 'error' | 'gesture' | 'audio-gesture' | 'ended';
 type Quality = { index: number; label: string };
@@ -20,14 +21,15 @@ type Props = {
   onAudibleChange: (audible: boolean) => void;
   onVolumeChange: (volume: number) => void;
   onFatal?: (feedUrl:string) => void;
-  onDecoded?: (feedUrl:string,startupMs:number) => void;
+  onDecoded?: (feedUrl:string,evidence:AdvancingVideo) => void;
   onEnded?: (feedUrl:string) => void;
   onRetry?: (feedUrl:string) => void;
   errorHint?: string;
   startupTimeoutMs?: number;
+  purpose?: 'viewing'|'verification';
 };
 
-export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onDecoded, onEnded, onRetry, errorHint, startupTimeoutMs = 20000 }: Props) {
+export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onDecoded, onEnded, onRetry, errorHint, startupTimeoutMs = 20000, purpose='viewing' }: Props) {
   const shell = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -83,6 +85,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     sourceGeneration.current += 1;
     let failed = false;
     let hasLoaded = false;
+    let hasAdvancing = false;
     let deferredFailure = false;
     let manifestParsed = false;
     let metadataLoaded = false;
@@ -94,36 +97,31 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     const reset = window.setTimeout(() => { if (!active) return; setStatus('loading'); setSettings(false); if (!manifestParsed) { setQualities([]); setQuality(-1); setUsesHls(false); } if (!metadataLoaded) setNativeHeight(null); if (!liveRef.current && video.duration !== Infinity) setLive(false); setNativeHls(native); setNotice(''); }, 0);
     const ready = () => { if (active) { hasLoaded = true; setStatus(needsGesture.current ? 'audio-gesture' : 'ready'); syncToLive(); } };
     const loaded = () => { if (!active) return; hasLoaded = true; if (!playingRef.current) setStatus('ready'); syncToLive(); };
-    const canRecover = () => playingRef.current && navigator.onLine && !document.hidden;
-    let decodedReported = false;
-    let evidenceElapsed = 0;
-    let evidenceTick = performance.now();
-    let evidenceEligible = canRecover();
+    const canRecover = () => playingRef.current && navigator.onLine && (purpose==='verification'||!document.hidden);
+    const sampler=createAdvancingVideoSampler(performance.now());
+    let nextEvidenceAt=0;
     let frameCallback: number | undefined;
-    const sampleStartup = () => {
-      const now = performance.now();
-      const elapsed = now - evidenceTick;
-      const eligible = canRecover() && !needsGesture.current;
-      if (evidenceEligible && eligible && elapsed <= 6000) evidenceElapsed += elapsed;
-      evidenceTick = now;
-      evidenceEligible = eligible;
-    };
-    const reportDecoded = () => {
-      sampleStartup();
-      if (!active || failed || decodedReported || !canRecover() || video.paused || video.videoWidth <= 0 || video.videoHeight <= 0) return;
-      decodedReported = true;
-      callbacks.current.onDecoded?.(feed.url, Math.round(evidenceElapsed));
+    const sampleFrame=(mediaMs:number,frames:number)=>{
+      if(!active||failed||!canRecover()||needsGesture.current||video.paused){sampler.reset();return;}
+      const proof=sampler.sample({wallMs:performance.now(),mediaMs,currentMs:video.currentTime*1000,
+        frames,width:video.videoWidth,height:video.videoHeight,playing:true});
+      if(!proof)return;
+      hasAdvancing=true;
+      if(performance.now()>=nextEvidenceAt){
+        nextEvidenceAt=performance.now()+60_000;
+        callbacks.current.onDecoded?.(feed.url,proof);
+      }
     };
     const observeFrame = () => {
       frameCallback = video.requestVideoFrameCallback((_now, metadata) => {
-        if (metadata.presentedFrames > 0) reportDecoded();
-        if (active && !decodedReported) observeFrame();
+        sampleFrame(metadata.mediaTime*1000,metadata.presentedFrames);
+        if (active) observeFrame();
       });
     };
     const decodedProgress = () => {
       if (video.readyState < 2 || typeof video.getVideoPlaybackQuality !== 'function') return;
       const quality = video.getVideoPlaybackQuality();
-      if (quality.totalVideoFrames > quality.droppedVideoFrames) reportDecoded();
+      sampleFrame(video.currentTime*1000,quality.totalVideoFrames-quality.droppedVideoFrames);
     };
     if (typeof video.requestVideoFrameCallback === 'function') observeFrame();
     else video.addEventListener('timeupdate', decodedProgress);
@@ -139,8 +137,9 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       callbacks.current.onFatal?.(feed.url);
     };
     const ended = () => { if (active) { setStatus('ended'); callbacks.current.onEnded?.(feed.url); } };
-    const waiting = () => { if (active) setStatus(current => current === 'ready' ? 'buffering' : current); };
-    const paused = () => { if (active && !playingRef.current) setStatus(current => current === 'buffering' ? 'ready' : current); };
+    const waiting = () => { sampler.reset(); if (active) setStatus(current => current === 'ready' ? 'buffering' : current); };
+    const paused = () => { sampler.reset(); if (active && !playingRef.current) setStatus(current => current === 'buffering' ? 'ready' : current); };
+    const seeking = () => sampler.reset();
     const enterPip = () => { if (active) setPip(true); };
     const leavePip = () => { if (active) setPip(false); };
     const playInPip = () => { if (active && document.pictureInPictureElement === video) callbacks.current.onPlayingChange(true); };
@@ -151,6 +150,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     video.addEventListener('ended', ended);
     video.addEventListener('waiting', waiting);
     video.addEventListener('pause', paused);
+    video.addEventListener('seeking',seeking);
     video.addEventListener('enterpictureinpicture', enterPip);
     video.addEventListener('leavepictureinpicture', leavePip);
     video.addEventListener('play', playInPip);
@@ -162,7 +162,6 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     let lastPosition = video.currentTime;
     let lastProgress = performance.now();
     const stallCheck = window.setInterval(() => {
-      sampleStartup();
       const now = performance.now();
       const elapsed = now - lastTick;
       const slept = elapsed > 6000;
@@ -170,9 +169,9 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       const position = video.currentTime;
       if (deferredFailure && !slept && canRecover()) { deferredFailure = false; setRetry(value => value + 1); return; }
       if (!slept) syncToLive();
-      if (!hasLoaded && !slept && canRecover()) {
+      if (!hasAdvancing && !slept && canRecover()) {
         startupElapsed += elapsed;
-        if (startupElapsed >= startupTimeoutMs && video.readyState < 2) error();
+        if (startupElapsed >= startupTimeoutMs) error();
       }
       if (slept || !hasLoaded || !canRecover() || video.paused || video.ended) {
         lastPosition = position;
@@ -255,13 +254,14 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       video.removeEventListener('timeupdate', decodedProgress);
       video.removeEventListener('error', error); video.removeEventListener('ended', ended);
       video.removeEventListener('waiting', waiting); video.removeEventListener('pause', paused);
+      video.removeEventListener('seeking',seeking);
       video.removeEventListener('enterpictureinpicture', enterPip); video.removeEventListener('leavepictureinpicture', leavePip);
       video.removeEventListener('play', playInPip); video.removeEventListener('pause', pauseInPip);
       video.removeEventListener('durationchange', durationChanged); video.removeEventListener('progress', progressed);
       video.removeEventListener('loadedmetadata', onVideoDimensions); video.removeEventListener('resize', onVideoDimensions);
       video.removeAttribute('src'); video.load();
     };
-  }, [feed.url, retry, startupTimeoutMs, syncToLive]);
+  }, [feed.url, retry, startupTimeoutMs, syncToLive, purpose]);
 
   useEffect(() => {
     const video = ref.current;

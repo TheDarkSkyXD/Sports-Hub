@@ -29,7 +29,7 @@ test('a ready live league discovers feeds while another schedule partition is pe
     readHtml: async url => url === source.url
       ? `<a href="${detail}" datetime="${game.date}">Away vs Home</a>`
       : '<iframe src="https://gooz.aapmains.net/new-stream-embed/101"></iframe>',
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   const refreshing = coordinator.refresh(true);
   try {
@@ -82,7 +82,7 @@ test('live games receive probe slots until an explicit scheduled check takes pri
         pending.push({id,resolve});
         signal.addEventListener('abort',resolve,{once:true});
       });
-      return {kind:'playable',proof:'media'};
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   const until=async(count:number)=>{
@@ -92,11 +92,20 @@ test('live games receive probe slots until an explicit scheduled check takes pri
   };
   try {
     await coordinator.refresh(true);
-    await until(6);
-    assert.deepEqual(calls,['41','42','1','11','21','31']);
+    await until(2);
+    assert.deepEqual(calls,['41','42']);
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:['scheduled-3'],retry:false}),{kind:'ok'});
-    await until(7);
-    assert.equal(calls[6],'32');
+    pending.shift()?.resolve();
+    await until(3);
+    assert.equal(calls[2],'31');
+    pending.shift()?.resolve();
+    await until(4);
+    assert.equal(calls[3],'1','background games keep a turn');
+    for(let next=5;next<=9&&!calls.includes('32');next++){
+      pending.shift()?.resolve();
+      await until(next);
+    }
+    assert.equal(calls.includes('32'),true,JSON.stringify(calls));
   } finally {
     for(const job of pending)job.resolve();
     await coordinator.stop();

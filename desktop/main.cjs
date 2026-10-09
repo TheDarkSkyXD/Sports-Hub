@@ -130,6 +130,7 @@ app.whenReady().then(async () => {
     } catch {}
   }
   await startServer(observerOrigin);
+  sportsurgeObserver?.configureVerifier?.(origin);
   sportsurgeCollector=createSportsurgeCollector({origin,controlToken});
   sportsurgeCollector.start();
   streameastCollector=createStreameastCollector({origin,controlToken});

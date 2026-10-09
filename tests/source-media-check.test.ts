@@ -81,7 +81,7 @@ function fixture(options: { extraServers: boolean; secondGame: boolean; fifthSer
     probeCandidate: (locator, signal) => {
       assert.equal(locator.provider, 'event-page');
       calls.push(locator);
-      if (released) return Promise.resolve({ kind: 'playable', proof: 'media' });
+      if (released) return Promise.resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
       return new Promise<CandidateProbeResult>(resolve => {
         pending.push({ locator, signal, resolve });
         signal.addEventListener('abort', () => resolve({ kind: 'deferred', retryAfterMs: 60_000 }), { once: true });
@@ -95,7 +95,7 @@ function fixture(options: { extraServers: boolean; secondGame: boolean; fifthSer
   };
   const releaseAll = () => {
     released = true;
-    for (const job of pending) job.resolve({ kind: 'playable', proof: 'media' });
+    for (const job of pending) job.resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
   };
   const stop = async () => {
     releaseAll();
@@ -130,7 +130,7 @@ test('a completed media check gives both same-game event-page aliases the same h
   try {
     await run.coordinator.refresh(true);
     await until(async () => (await run.candidates()).length === 2 && run.pending.length >= 1);
-    run.pending[0].resolve({ kind: 'playable', proof: 'media' });
+    run.pending[0].resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     await until(async () => (await run.candidates()).some(candidate => candidate.availability.kind === 'playable'));
     assert.deepEqual((await run.candidates()).map(candidate => candidate.availability.kind), ['playable', 'playable']);
     assert.equal(run.calls.length, 1);
@@ -148,7 +148,7 @@ test('the same physical server is checked separately for different games', async
     const secondGame = run.pending.find(job => job.locator.provider === 'event-page' && job.locator.gameId === run.otherGame.id);
     assert.ok(firstGame);
     assert.ok(secondGame);
-    firstGame.resolve({ kind: 'playable', proof: 'media' });
+    firstGame.resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     secondGame.resolve({ kind: 'unavailable', reason: 'upstream' });
     await until(async () => (await run.candidates(run.otherGame.id))[0]?.availability.kind === 'unavailable');
     assert.equal((await run.candidates()).some(candidate => candidate.availability.kind === 'playable'), true);
@@ -175,7 +175,7 @@ test('source health reports queued, active, and deferred media-check progress wi
     assert.deepEqual(await availability('meth-0'), await availability('crack-0'));
 
     run.setClock(at + 1000);
-    run.pending[0].resolve({ kind: 'playable', proof: 'media' });
+    run.pending[0].resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     await until(async () => run.pending.length === 3);
     assert.equal(run.pending[2].locator.provider === 'event-page' ? run.pending[2].locator.serverUrl : '', servers[queuedIndex]);
     assert.deepEqual(await availability(`crack-${queuedIndex}`), { kind: 'checking', progress: { kind: 'active', since: at + 1000 } });
@@ -205,7 +205,7 @@ test('an invalid event-page alias cannot inherit proof from a valid alias with t
     await until(async () => (await run.candidates()).length === 3 && run.pending.length >= 2);
     const valid = run.pending.find(job => job.locator.provider === 'event-page' && job.locator.eventUrl === crackPage);
     assert.ok(valid);
-    valid.resolve({ kind: 'playable', proof: 'media' });
+    valid.resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     await until(async () => (await availability('crack-0')) === 'playable');
     assert.equal(await availability('meth-0'), 'playable');
     assert.equal(await availability('invalid-0'), 'checking');
@@ -214,7 +214,7 @@ test('an invalid event-page alias cannot inherit proof from a valid alias with t
   }
 });
 
-test('removing the chosen event page retains its in-flight media check through another valid alias', async () => {
+test('removing the chosen event page rechecks a surviving alias without accepting its old result', async () => {
   const run = fixture({ extraServers: false, secondGame: false });
   try {
     await run.coordinator.refresh(true);
@@ -227,10 +227,18 @@ test('removing the chosen event page retains its in-flight media check through a
     await run.coordinator.refresh(true);
     await until(async () => (await run.candidates()).length === 1);
     assert.equal((await run.candidates())[0].id, 'meth-0');
-    assert.equal(shared.signal.aborted, false);
-    shared.resolve({ kind: 'playable', proof: 'media' });
+    assert.equal(shared.signal.aborted, true);
+    shared.resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
+    await until(async()=>run.pending.some(job=>job.locator.provider==='event-page'&&
+      job.locator.eventUrl===methPage&&!job.signal.aborted));
+    assert.equal((await run.candidates())[0]?.availability.kind,'checking');
+    const replacement=run.pending.find(job=>job.locator.provider==='event-page'&&
+      job.locator.eventUrl===methPage&&!job.signal.aborted);
+    assert.ok(replacement);
+    replacement.resolve({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,
+      observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await until(async () => (await run.candidates())[0]?.availability.kind === 'playable');
-    assert.equal(run.calls.length, 1);
+    assert.equal(run.calls.length, 2);
   } finally {
     await run.stop();
   }
@@ -296,7 +304,7 @@ test('opening an unverified game requests its queued media check before older ba
     if (opened.kind === 'error') assert.equal(opened.status, 404);
     assert.equal(pending[0].locator.provider === 'event-page' ? pending[0].locator.gameId : '', background.id);
   } finally {
-    for (const job of pending) job.resolve({ kind: 'playable', proof: 'media' });
+    for (const job of pending) job.resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     await coordinator.stop();
     rmSync(directory, { recursive: true, force: true });
   }

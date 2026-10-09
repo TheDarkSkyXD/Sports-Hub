@@ -79,7 +79,7 @@ test('a due playable recheck gets the next game slot ahead of unknown siblings',
       if(locator.provider!=='gooz')throw new Error('Unexpected provider');
       calls.push(locator.playerId);
       if(locator.playerId==='2')await sibling;
-      return locator.playerId==='2'?{kind:'unavailable',reason:'invalid-media'}:{kind:'playable',proof:'media'};
+      return locator.playerId==='2'?{kind:'unavailable',reason:'invalid-media'}:{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try{
@@ -102,8 +102,8 @@ for(const demanded of [false,true])test(`a due recheck passes ${demanded?'live f
   let now=at;
   const kickoff=at+6*60*60_000;
   const games:Game[]=Array.from({length:12},(_,index)=>({id:String(1000+index),league:'nfl',
-    name:`Away ${index} at Home ${index}`,date:new Date(kickoff).toISOString(),status:demanded&&index>0?'in':'pre',
-    lifecycle:demanded&&index>0?'live':'scheduled',detail:demanded&&index>0?'Q1':'Scheduled',redzone:false,partitions:['nfl'],
+    name:`Away ${index} at Home ${index}`,date:new Date(kickoff).toISOString(),status:demanded?'in':'pre',
+    lifecycle:demanded?'live':'scheduled',detail:demanded?'Q1':'Scheduled',redzone:false,partitions:['nfl'],
     home:{name:`Home ${index}`,short:`Home ${index}`,abbreviation:`H${index}`,color:'112233',score:null},
     away:{name:`Away ${index}`,short:`Away ${index}`,abbreviation:`A${index}`,color:'332211',score:null}}));
   const observations:Observation[]=games.map((game,index)=>({id:`listing-${index}`,sourceId:'fixture',
@@ -128,14 +128,14 @@ for(const demanded of [false,true])test(`a due recheck passes ${demanded?'live f
         if(locator.provider!=='gooz')throw new Error('Unexpected provider');
         calls.push(locator.playerId);
         if(locator.playerId!=='1000')await new Promise<void>(resolve=>pending.push({id:locator.playerId,signal:active,release:resolve}));
-        return {kind:'playable',proof:'media'};
+        return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
       }finally{release();}
     }),
   });
   try{
     await coordinator.refresh(true);
-    for(let index=0;pending.length<4&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
-    assert.equal(pending.length,4);
+    for(let index=0;pending.length<2&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(pending.length,2);
     assert.equal(calls.filter(id=>id==='1000').length,1);
     now=at+300_001;
     await coordinator.refresh(true);
@@ -143,10 +143,10 @@ for(const demanded of [false,true])test(`a due recheck passes ${demanded?'live f
     pending[0].release();
     for(let index=0;calls.filter(id=>id==='1000').length<2&&index<100;index++)
       await new Promise<void>(resolve=>setImmediate(resolve));
-    assert.equal(calls[5],'1000',JSON.stringify(calls));
-    for(let index=0;calls.length<7&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
-    assert.equal(calls[6],'1005');
-    assert.equal(pending.slice(1,4).every(job=>!job.signal.aborted),true);
+    assert.equal(calls[3],'1000',JSON.stringify(calls));
+    for(let index=0;calls.length<5&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(calls[4],'1003');
+    assert.equal(pending[1].signal.aborted,false);
   }finally{
     for(const job of pending)job.release();
     await coordinator.stop();rmSync(directory,{recursive:true,force:true});
@@ -181,7 +181,7 @@ test('a background waiter advances through sustained newly due rechecks',async()
     probeCandidate:(locator,signal,onProgress)=>{
       assert.equal(locator.provider,'gooz');
       if(locator.provider!=='gooz')throw new Error('Unexpected provider');
-      if(now===at)return Promise.resolve({kind:'playable' as const,proof:'media' as const});
+      if(now===at)return Promise.resolve({kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const});
       if(locator.playerId===background){
         backgroundAttempts++;
         signal.addEventListener('abort',()=>backgroundAborts++,{once:true});
@@ -192,7 +192,7 @@ test('a background waiter advances through sustained newly due rechecks',async()
           calls.push(locator.playerId);
           if(locator.playerId!==background)
             await new Promise<void>(resolve=>held.push({id:locator.playerId,release:resolve,signal:active}));
-          return {kind:'playable' as const,proof:'media' as const};
+          return {kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const};
         }finally{release();}
       });
     },
@@ -217,13 +217,14 @@ test('a background waiter advances through sustained newly due rechecks',async()
     }
     assert.equal(backgroundVisible,true);
     for(let index=0;index<20;index++)await new Promise<void>(resolve=>setImmediate(resolve));
-    assert.equal(backgroundAttempts,1);
-    for(let index=0;held.length<4&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
-    assert.equal(held.length,4);
+    assert.equal(backgroundAttempts,0,'the background check waits for a physical slot');
+    for(let index=0;held.length<2&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(held.length,2);
     assert.equal(calls.includes(background),false);
     for(let round=0;round<30&&!calls.includes(background);round++){
       now+=300_001;
       held.shift()?.release();
+      await coordinator.refresh(true);
       for(let index=0;index<20;index++)await new Promise<void>(resolve=>setImmediate(resolve));
     }
     assert.ok(calls.includes(background),JSON.stringify({calls,backgroundAttempts,backgroundAborts}));

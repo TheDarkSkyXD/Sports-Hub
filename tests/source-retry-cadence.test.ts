@@ -72,7 +72,7 @@ test(`a 429 pauses same-host listings and details for ${cooldown}ms with Retry-A
     enrichObservation: value => value,
     compatiblePlayers: (_gameId, observation) => observation.sourceId === 'one'
       ? [{ id: 'server', label: 'Server', locator: { provider: 'gooz', playerId: '1' } }] : [],
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   const refresh = async (time: number) => { clock = time; await coordinator.refresh(true); await drain(); };
   try {

@@ -32,7 +32,7 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
   let queueRechecks = false;
   let releaseObserver = () => {};
   const resources = createProbeResources({ httpLimit: 8, observerLimit: 1, activeBudgetMs: 65_000 });
-  const nextResult: CandidateProbeResult = { kind: 'playable', proof: 'media' };
+  const nextResult: CandidateProbeResult = { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
   const calls: string[] = [];
   const pending = new Map<string, (result: CandidateProbeResult) => void>();
   const start = () => createFootballCoordinator(path, {
@@ -135,19 +135,19 @@ test('a due working feed is rechecked at five minutes while playback stays on it
     const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false });
     assert.ok(opened.kind === 'playback');
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     await run.refresh(coordinator, 300_000);
     assert.deepEqual(run.calls, ['100', '100']);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'checking', progress:{kind:'active',since:at+300_000} });
     const continuing = await coordinator.command({ kind: 'session', sessionId: opened.playback.session.id, generation: 0,
       failure: false, retry: false });
     assert.ok(continuing.kind === 'session');
     assert.equal(continuing.session.candidateId, opened.playback.session.candidateId);
-    run.release('100', { kind: 'playable', proof: 'media' });
+    run.release('100', { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     await drain();
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at + 300_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 300_000 });
     assert.equal(run.rows().length, 1);
   } finally { await run.stop(coordinator); }
 });
@@ -159,19 +159,19 @@ test('a playable route without durable proof is still rechecked at the saved int
     await run.refresh(coordinator, 0);
     assert.equal(run.rows().length, 0);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     await run.refresh(coordinator, 299_999);
     assert.deepEqual(run.calls, ['100']);
     await run.refresh(coordinator, 300_000);
     assert.deepEqual(run.calls, ['100', '100']);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at + 300_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 300_000 });
     assert.equal(run.rows().length, 0);
   } finally { await run.stop(coordinator); }
 });
 
 for (const daysUntilKickoff of [0, 1]) for (const phase of ['queued', 'active', 'deferred'] as const)
-  test(`an unpersisted scheduled route stays selectable after publication disappears during ${phase} recheck on day ${daysUntilKickoff}`, async () => {
+  test(`an unpersisted scheduled route stays eligible for recheck after publication disappears during ${phase} recheck on day ${daysUntilKickoff}`, async () => {
     const scheduled: Game = { ...live, lifecycle: 'scheduled', status: 'pre',
       date: new Date(at + (daysUntilKickoff * 24 + 1) * 60 * 60_000).toISOString() };
     const run = fixture({ game: scheduled, count: 6, persistable: false });
@@ -186,39 +186,22 @@ for (const daysUntilKickoff of [0, 1]) for (const phase of ['queued', 'active', 
       assert.equal(run.pending.size, phase === 'queued' ? 0 : 1);
       const targetRoute = 'route-0';
       assert.equal((await run.snapshot(coordinator)).games[0].candidates.find(row => row.id === targetRoute)?.availability.kind,
-        'playable');
+        'checking');
       if (phase === 'deferred') {
         run.release('100', { kind: 'deferred', retryAfterMs: 30_000 });
         await drain();
       }
-      const viewer = await coordinator.command({ kind: 'open', gameId: live.id, manual: false, initialCandidateId: 'route-1' });
-      assert.ok(viewer.kind === 'playback');
-      for (let elapsed = 360_000; elapsed <= 31 * 60_000; elapsed += 60_000) {
-        run.setClock(elapsed);
-        const heartbeat = await coordinator.command({ kind: 'authorize', sessionId: viewer.playback.session.id,
-          candidateId: 'route-1', generation: 0 });
-        assert.equal(heartbeat.kind, 'authorized');
-      }
       run.hidePublication();
       await run.refresh(coordinator, 31 * 60_000);
       const candidate = (await run.snapshot(coordinator)).games[0]?.candidates.find(row => row.id === targetRoute);
-      assert.deepEqual(candidate?.availability, { kind: 'playable', proof: 'media', checkedAt: at });
-      const continuing = await coordinator.command({ kind: 'session', sessionId: viewer.playback.session.id,
-        generation: 0, failure: false, retry: false });
-      assert.ok(continuing.kind === 'session');
-      assert.equal(continuing.session.candidateId, 'route-1');
-      assert.equal(continuing.candidates.find(row => row.id === targetRoute)?.availability.kind, 'playable');
+      assert.ok(candidate);
+      assert.notEqual(candidate.availability.kind, 'playable');
       const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false, initialCandidateId: targetRoute });
-      assert.ok(opened.kind === 'playback');
-      assert.equal(opened.playback.session.candidateId, targetRoute);
-      const reply = await coordinator.command({ kind: 'session', sessionId: opened.playback.session.id,
-        generation: 0, failure: false, retry: false });
-      assert.ok(reply.kind === 'session');
-      assert.equal(reply.candidates.find(row => row.id === targetRoute)?.availability.kind, 'playable');
+      assert.equal(opened.kind, 'error');
     } finally { await run.stop(coordinator); }
   });
 
-for (const daysUntilKickoff of [0, 1]) test(`an idle unpersisted working route stays selectable after its ${daysUntilKickoff ? 'tomorrow' : 'today'} listing disappears`, async () => {
+for (const daysUntilKickoff of [0, 1]) test(`an idle unpersisted working route remains eligible after its ${daysUntilKickoff ? 'tomorrow' : 'today'} listing disappears`, async () => {
   const scheduled: Game = { ...live, lifecycle: 'scheduled', status: 'pre',
     date: new Date(at + (daysUntilKickoff * 24 + 1) * 60 * 60_000).toISOString() };
   const run = fixture({ game: scheduled, persistable: false });
@@ -232,10 +215,10 @@ for (const daysUntilKickoff of [0, 1]) test(`an idle unpersisted working route s
     run.hidePublication();
     await run.refresh(coordinator, 31 * 60_000);
     assert.deepEqual((await run.snapshot(coordinator)).games[0]?.candidates.find(row => row.id === 'route-0')?.availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'checking', progress:{kind:'active',since:at+300_000} });
     const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false,
       initialCandidateId: 'route-0' });
-    assert.equal(opened.kind, 'playback');
+    assert.equal(opened.kind, 'error');
   } finally { await run.stop(coordinator); }
 });
 
@@ -262,7 +245,7 @@ test('a conclusive negative removes an unpersisted scheduled route from playable
   } finally { await run.stop(coordinator); }
 });
 
-test('a cache write failure does not remove an unselected playable route after an empty publication', async () => {
+test('a cache write failure retains an unselected route for recheck after an empty publication', async () => {
   const scheduled: Game = { ...live, lifecycle: 'scheduled', status: 'pre', date: new Date(at + 60 * 60_000).toISOString() };
   const run = fixture({ game: scheduled, count: 2 });
   const coordinator = run.start();
@@ -283,15 +266,14 @@ test('a cache write failure does not remove an unselected playable route after a
     const continuing=await coordinator.command({kind:'session',sessionId:viewer.playback.session.id,generation:0,failure:false,retry:false});
     assert.ok(continuing.kind==='session');
     assert.equal(continuing.session.candidateId,'route-0');
-    assert.equal(continuing.candidates.find(candidate=>candidate.id==='route-1')?.availability.kind,'playable');
+    assert.equal(continuing.candidates.find(candidate=>candidate.id==='route-1')?.availability.kind,'checking');
     const alternative=await coordinator.command({kind:'open',gameId:live.id,manual:false,initialCandidateId:'route-1'});
-    assert.ok(alternative.kind==='playback');
-    assert.equal(alternative.playback.session.candidateId,'route-1');
+    assert.equal(alternative.kind,'error');
     assert.equal(run.rows().length,0);
   } finally { await run.stop(coordinator); }
 });
 
-for (const result of [{kind:'playable',proof:'media'},{kind:'unavailable',reason:'invalid-media'}] as const)
+for (const result of [{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}},{kind:'unavailable',reason:'invalid-media'}] as const)
   test(`an old matchup ${result.kind} result cannot change proof after its game ID is reused`, async () => {
     const run=fixture({persistable:false});
     const coordinator=run.start();
@@ -316,9 +298,9 @@ for (const result of [{kind:'playable',proof:'media'},{kind:'unavailable',reason
       await drain();
       assert.equal((await run.snapshot(coordinator)).games.find(game=>game.gameId===live.id)?.workingChoiceCount??0,0);
       assert.equal((await coordinator.command({kind:'playback-evidence',sessionId:viewer.playback.session.id,
-        candidateId:'route-0',generation:0,evidence:{kind:'decoded',startupMs:100}})).kind,'error');
+        candidateId:'route-0',generation:0,evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}})).kind,'error');
       assert.ok(run.calls.filter(id=>id==='100').length>=3);
-      run.release('100',{kind:'playable',proof:'media'});
+      run.release('100',{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
       await drain();
       assert.equal((await run.snapshot(coordinator)).games[0].candidates.find(candidate=>candidate.id==='route-0')?.availability.kind,'playable');
       await coordinator.command({kind:'session',sessionId:viewer.playback.session.id,generation:0,failure:true,retry:false});
@@ -335,7 +317,7 @@ test('a failed recheck removes durable proof and the route recovers on its next 
     run.hold();
     await run.refresh(coordinator, 300_000);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'checking', progress:{kind:'active',since:at+300_000} });
     run.release('100', { kind: 'unavailable', reason: 'invalid-media' });
     await drain();
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
@@ -345,15 +327,15 @@ test('a failed recheck removes durable proof and the route recovers on its next 
     assert.deepEqual(run.calls, ['100', '100']);
     await run.refresh(coordinator, 600_000);
     assert.deepEqual(run.calls, ['100', '100', '100']);
-    run.release('100', { kind: 'playable', proof: 'media' });
+    run.release('100', { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     await drain();
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at + 600_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 600_000 });
     assert.equal(run.rows().length, 1);
   } finally { await run.stop(coordinator); }
 });
 
-test('a deferred recheck retains playable proof and does not immediately retry', async () => {
+test('a deferred recheck keeps its route for retry without claiming fresh playback', async () => {
   const run = fixture();
   const coordinator = run.start();
   try {
@@ -364,7 +346,7 @@ test('a deferred recheck retains playable proof and does not immediately retry',
     await drain();
     await run.refresh(coordinator, 300_001);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'checking', progress:{kind:'deferred',since:at+300_000,retryAt:at+600_000} });
     assert.equal(run.rows().length, 1);
     assert.deepEqual(run.calls, ['100', '100']);
   } finally { await run.stop(coordinator); }
@@ -383,12 +365,12 @@ test('decoded playback wins over an active working-feed recheck', async () => {
     assert.deepEqual(run.calls, ['100', '100']);
     const session = opened.playback.session;
     const reply = await coordinator.command({ kind: 'playback-evidence', sessionId: session.id,
-      candidateId: session.candidateId, generation: 0, evidence: { kind: 'decoded', startupMs: 100 } });
+      candidateId: session.candidateId, generation: 0, evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     assert.equal(reply.kind, 'ok');
     run.release('100', { kind: 'unavailable', reason: 'invalid-media' });
     await drain();
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates[0].availability,
-      { kind: 'playable', proof: 'decoded', checkedAt: at + 300_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 300_000 });
     assert.equal(run.rows().length, 1);
   } finally { await run.stop(coordinator); }
 });
@@ -398,19 +380,24 @@ test('decoded playback removes its queued recheck while other due routes proceed
   const coordinator = run.start();
   try {
     await run.refresh(coordinator, 0);
-    await run.holdQueued();
-    await run.refresh(coordinator, 300_000);
-    assert.deepEqual(run.calls, ['100', '101', '102', '103', '104', '105', '100', '101']);
     const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false,
       initialCandidateId: 'route-0' });
     assert.ok(opened.kind === 'playback');
+    for(let elapsed=60_000;elapsed<=299_999;elapsed+=60_000){
+      run.setClock(elapsed);
+      assert.equal((await coordinator.command({kind:'authorize',sessionId:opened.playback.session.id,
+        candidateId:'route-0',generation:0})).kind,'authorized');
+    }
+    await run.holdQueued();
+    await run.refresh(coordinator, 300_000);
+    assert.deepEqual(run.calls, ['100', '101', '102', '103', '104', '105', '100', '101']);
     const session = opened.playback.session;
     const reply = await coordinator.command({ kind: 'playback-evidence', sessionId: session.id,
-      candidateId: session.candidateId, generation: 0, evidence: { kind: 'decoded', startupMs: 100 } });
+      candidateId: session.candidateId, generation: 0, evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     assert.equal(reply.kind, 'ok');
     run.releaseQueued();
     for (let round = 0; round < 10 && run.calls.filter(id => id === '105').length < 2; round++) {
-      for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof: 'media' });
+      for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
       await drain();
     }
     await drain();
@@ -418,7 +405,7 @@ test('decoded playback removes its queued recheck while other due routes proceed
     assert.equal(run.calls.filter(id => id === '104').length, 2);
     assert.equal(run.calls.filter(id => id === '105').length, 2);
     assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates.find(row => row.id === 'route-0')?.availability,
-      { kind: 'playable', proof: 'decoded', checkedAt: at + 300_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 300_000 });
   } finally { await run.stop(coordinator); }
 });
 
@@ -465,7 +452,7 @@ test('a full maintenance queue eventually checks both working and failed routes'
     assert.equal(queued.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'queued').length, 0);
     assert.equal(queued.filter(row => row.availability.kind === 'unavailable').length, 135);
     for (let round = 0; round < 280 && (run.calls.length < 540 || run.pending.size > 0); round++) {
-      for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof: 'media' });
+      for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
       await drain();
     }
     assert.equal(run.calls.length, 540);

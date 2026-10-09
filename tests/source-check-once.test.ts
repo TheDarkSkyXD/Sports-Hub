@@ -53,7 +53,7 @@ function fixture(options: { count?: number; slow?: boolean; secondGame?: boolean
       const index = locator.provider === 'event-page' ? Number(locator.serverUrl.split('/').at(-1)) :
         locator.provider === 'gooz' ? Number(locator.playerId.slice(1)) : 0;
       const result: CandidateProbeResult = (options.allFail || index % 2) && !(options.recoverFailures && attempts > 1)
-        ? { kind: 'unavailable', reason: 'upstream' } : { kind: 'playable', proof: 'media' };
+        ? { kind: 'unavailable', reason: 'upstream' } : { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
       if (!options.slow && !(options.holdRetries && attempts > 1)) return Promise.resolve(result);
       return new Promise<CandidateProbeResult>(resolve => {
         const entry = { due: clock + 20_000, finish: () => { pending.delete(entry); resolve(result); } };
@@ -117,9 +117,9 @@ test('new published choices are discovered while working proof is refreshed at t
     await run.refresh(300_001);
     const after = (await run.snapshot()).games[0].candidates;
     assert.equal(after.length, 2);
-    assert.deepEqual(before, { kind: 'playable', proof: 'media', checkedAt: at });
+    assert.deepEqual(before, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     assert.deepEqual(after.find(row => row.id === 'route-000')?.availability,
-      { kind: 'playable', proof: 'media', checkedAt: at + 300_001 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 300_001 });
     assert.equal(run.calls.length, 3);
   } finally { await run.stop(); }
 });
@@ -132,9 +132,9 @@ test('automatic working rechecks and manual failed-feed retries use their own ca
     await run.refresh(11 * 60_000);
     const after = (await run.snapshot()).games[0].candidates;
     assert.deepEqual(before.find(row => row.id === 'route-000')?.availability,
-      { kind: 'playable', proof: 'media', checkedAt: at });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     assert.deepEqual(after.find(row => row.id === 'route-000')?.availability,
-      { kind: 'playable', proof: 'media', checkedAt: at + 11 * 60_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 11 * 60_000 });
     assert.equal(after.find(row => row.id === 'route-001')?.availability.kind, 'unavailable');
     assert.equal(run.calls.length, 4);
     assert.equal((await run.coordinator.command({ kind: 'open', gameId: game.id, manual: false })).kind, 'playback');
@@ -144,7 +144,7 @@ test('automatic working rechecks and manual failed-feed retries use their own ca
     assert.equal(run.calls[4].provider === 'gooz' && run.calls[4].playerId, '11');
     await run.refresh(31 * 60_000);
     assert.deepEqual((await run.snapshot()).games[0].candidates.find(row => row.id === 'route-000')?.availability,
-      { kind: 'playable', proof: 'media', checkedAt: at + 31 * 60_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 31 * 60_000 });
     assert.equal(run.calls.length, 7);
   } finally { await run.stop(); }
 });
@@ -248,11 +248,11 @@ test('decoded playback keeps its proof while other explicit retries still run', 
     assert.equal(failed.kind, 'session');
     await run.coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: true });
     await run.coordinator.command({ kind: 'playback-evidence', sessionId: session.id, candidateId: session.candidateId,
-      generation: 1, evidence: { kind: 'decoded', startupMs: 100 } });
+      generation: 1, evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     await drain();
     assert.ok(run.calls.slice(2).some(locator=>locator.provider==='gooz'&&locator.playerId==='11'));
     assert.deepEqual((await run.snapshot()).games[0].candidates.find(row => row.id === session.candidateId)?.availability,
-      {kind:'playable',proof:'decoded',checkedAt:at});
+      {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at});
   } finally { await run.stop(); }
 });
 

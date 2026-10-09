@@ -49,7 +49,7 @@ test('source snapshot retains stale live listings without counting them as compa
     observed('tvapp:unsafe','tvapp','https://edgestream4.pro/hls/private.m3u8?st=secret',['Florida Gators','Ole Miss Rebels']),
   ];
   const snapshot=sourceInventory({at,revision:7,lastDiscoveryAt:at-1000,sources,observations,
-    availability:()=>({kind:'playable',proof:'media',checkedAt:at}),
+    availability:()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at}),
     games:[florida,georgia,finished],candidates:new Map([[florida.id,[candidate('gooz-57069',['tvapp','sportsurge','old-source']),
       candidate('gooz-57069',['tvapp']),candidate('old',['tvapp'],at-31*60_000)]]]),
     attempts:{tvapp:{at,outcome:'parsed'},sportsurge:{at,outcome:'failed'}},browserCollectorsAvailable:false,
@@ -85,14 +85,14 @@ test('scheduled games publish fresh selectable servers without exposing locators
   const fresh={...candidate('fresh',['sportsurge-v2']),gameId:scheduled.id};
   const stale={...candidate('stale',['sportsurge-v2'],at-31*60_000),gameId:scheduled.id};
   const snapshot=sourceInventory({at,revision:1,lastDiscoveryAt:null,browserCollectorsAvailable:true,
-    availability:()=>({kind:'playable',proof:'media',checkedAt:at}),
+    availability:()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at}),
     sources:[],observations:[],games:[scheduled,finished],candidates:new Map([[scheduled.id,[fresh,stale]],
       [finished.id,[{...fresh,gameId:finished.id}]]]),attempts:{},
     sportsurgeCatalog:{current:null,lastComplete:null,previous:null},streameastCatalog:{current:null,lastComplete:null,previous:null}});
   assert.equal(SourcesSnapshotSchema.safeParse(snapshot).success,true);
   assert.deepEqual(snapshot.games.map(game=>game.gameId),[scheduled.id]);
   assert.deepEqual(snapshot.games[0].candidates,[{id:fresh.id,gameId:scheduled.id,label:fresh.label,
-    sourceIds:fresh.sourceIds,observedAt:fresh.observedAt,availability:{kind:'playable',proof:'media',checkedAt:at}}]);
+    sourceIds:fresh.sourceIds,observedAt:fresh.observedAt,availability:{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at}}]);
   assert.equal(JSON.stringify(snapshot).includes('playerId'),false);
 });
 

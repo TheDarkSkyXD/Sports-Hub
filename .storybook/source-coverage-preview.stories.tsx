@@ -34,7 +34,7 @@ const snapshot=SourcesSnapshotSchema.parse({
     gameId:live.id,name:live.name,sourceCount:3,freeChoiceCount:4,workingChoiceCount:2,uniqueFeedCount:2,
     candidates:[
       {id:'direct',gameId:live.id,label:'StreamEast · Server 1',sourceIds:['streameast'],observedAt:at,
-        availability:{kind:'playable',proof:'decoded',checkedAt:at-8_000}},
+        availability:{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at-8_000}},
       {id:'via-directory',gameId:live.id,label:'Sportsurge V2 · StreamEast',sourceIds:['sportsurge-v2'],observedAt:at,
         availability:{kind:'playable',proof:'media',checkedAt:at-12_000}},
       {id:'timeout',gameId:live.id,label:'VIPBox · Server 1',sourceIds:['vipbox-cfb'],observedAt:at,

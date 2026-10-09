@@ -68,7 +68,7 @@ test('undated Strikeout listing fetches detail before matching and attaches only
     parseListings,
     enrichObservation,
     compatiblePlayers,
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   try {
     await coordinator.refresh(true);
@@ -123,7 +123,7 @@ test('a tomorrow matchup automatically discovers newly published servers after t
     parseListings,
     enrichObservation,
     compatiblePlayers,
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   const drain = async () => { for (let index = 0; index < 80; index++) await new Promise<void>(resolve => setImmediate(resolve)); };
   try {

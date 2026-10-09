@@ -68,7 +68,7 @@ test('legacy Sportsurge resolves every unique undated NFL, FBS, and FCS game and
       id: `gooz-${gameId}-${player}`, label: `Server ${player}`, locator: { provider: 'gooz' as const, playerId: String(57000 + Number(gameId.replace(/\D/g, '')) * 2 + player) },
     })),
     retryAfterMs: () => 0,
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   try {
     await coordinator.refresh(true);
@@ -113,7 +113,7 @@ test('v2 checkpoint stores undated game assignments and final-protection binding
     parseListings: () => ({ outcome: 'empty', observations: [] }),
     enrichObservation: observation => observation,
     compatiblePlayers: () => [], retryAfterMs: () => 0,
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   try {
     assert.equal((await coordinator.command({ kind: 'sportsurge-catalog', catalog })).kind, 'catalog-ack');
@@ -139,7 +139,7 @@ test('Sportsurge v2 admits all providers for unique undated games and inventory 
     observations: [], games, candidates: new Map(games.map(game => [game.id, candidates.filter(candidate => candidate.gameId === game.id)])),
     attempts: {}, sportsurgeCatalog: { current: stored, previous: null, lastComplete: null },
     streameastCatalog: { current: null, previous: null, lastComplete: null },
-    availability: () => ({ kind: 'playable', proof: 'media', checkedAt: now }) });
+    availability: () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: now }) });
   assert.equal(inventory.sources[0].matchedGameCount, 4);
   assert.equal(inventory.sources[0].compatibleFeedCount, 8);
   for (const game of games) assert.equal(inventory.games.find(row => row.gameId === game.id)?.sourceLinks

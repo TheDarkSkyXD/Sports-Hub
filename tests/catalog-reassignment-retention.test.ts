@@ -74,7 +74,7 @@ function fixture(source: 'sportsurge-v2' | 'streameast' = 'sportsurge-v2', persi
     retryAfterMs: () => 0,
     persistableLocator: () => persistable,
     probeCandidate: () => holdProbes ? new Promise<CandidateProbeResult>(resolve => { pending.push(resolve); }) :
-      Promise.resolve({ kind: 'playable', proof: 'media' }),
+      Promise.resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   let coordinator = create();
   const snapshot = async () => {
@@ -204,7 +204,7 @@ test('a reassigned durable route stays withdrawn after restart and old viewer ev
     await run.publish(1, games[1]);
     assert.equal((await run.coordinator.command({ kind: 'playback-evidence', sessionId: opened.playback.session.id,
       candidateId: opened.playback.session.candidateId, generation: 0,
-      evidence: { kind: 'decoded', startupMs: 100 } })).kind, 'error');
+      evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} })).kind, 'error');
     assert.equal((await run.snapshot()).games.find(game => game.gameId === games[0].id)?.workingChoiceCount ?? 0, 0);
     await run.restart();
     assert.equal((await run.snapshot()).games.find(game => game.gameId === games[0].id)?.workingChoiceCount ?? 0, 0);
@@ -212,7 +212,7 @@ test('a reassigned durable route stays withdrawn after restart and old viewer ev
   } finally { await run.stop(); }
 });
 
-for (const result of [{ kind: 'playable', proof: 'media' }, { kind: 'unavailable', reason: 'invalid-media' }] as const)
+for (const result of [{ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }, { kind: 'unavailable', reason: 'invalid-media' }] as const)
   test(`a late ${result.kind} recheck cannot restore a reassigned Sportsurge route`, async () => {
     const run = fixture();
     try {
@@ -220,7 +220,7 @@ for (const result of [{ kind: 'playable', proof: 'media' }, { kind: 'unavailable
       run.hold();
       await run.advance(300_000);
       assert.equal(run.pending.length, 1);
-      assert.equal((await run.snapshot()).games.find(game => game.gameId === games[0].id)?.workingChoiceCount, 1);
+      assert.equal((await run.snapshot()).games.find(game => game.gameId === games[0].id)?.workingChoiceCount, 0);
       const oldResult = run.pending[0];
       await run.publish(1, games[1]);
       oldResult(result);

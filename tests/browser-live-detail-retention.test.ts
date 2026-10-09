@@ -29,7 +29,7 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} reuses
     now: () => clock, browserCollectorsAvailable: true,
     sources: [{ id: sourceId, url: surge ? 'https://v2.sportsurge.net/watch-nfl-streams/' : 'https://v2.streameast.ga/nfl-streams/', family: sourceId, kind: 'browser-catalog' }],
     readSchedule: async source => ({ games: source.id === 'nfl' ? [1, 2, 3].map(index => finished && index === 1 ? { ...game(index), status: 'post', lifecycle: 'final' as const, finalObservedAt: clock, graceEndsAt: clock + 300000 } : game(index)) : [], league: source.league, at: clock }),
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   const sweep = async (): Promise<SportsurgeCatalog | StreameastCatalog> => {
     await coordinator.refresh(true); await drain();
@@ -123,7 +123,7 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
     now: () => clock, browserCollectorsAvailable: true,
     sources: [{ id: sourceId, url: surge ? 'https://v2.sportsurge.net/watch-nfl-streams/' : 'https://v2.streameast.ga/nfl-streams/', family: sourceId, kind: 'browser-catalog' }],
     readSchedule: async source => ({ games: source.id === 'nfl' ? [game(1)] : [], league: source.league, at: clock }),
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   const sweep = async () => {
     await coordinator.refresh(true); await drain();
@@ -155,7 +155,7 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
     assert.equal(first.snapshot.games[0].workingChoiceCount, 1);
     const firstCandidateId = first.snapshot.games[0].candidates[0].id;
     const firstAvailability = first.snapshot.games[0].candidates[0].availability;
-    assert.deepEqual(firstAvailability, { kind: 'playable', proof: 'media', checkedAt: at });
+    assert.deepEqual(firstAvailability, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     assert.equal((await coordinator.command({ kind: 'set-feed-check-interval', minutes: 1 })).kind, 'board');
     clock += 60000;
     published = 2;
@@ -166,9 +166,9 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
     if (second.kind === 'sources') {
       assert.equal(second.snapshot.games[0].workingChoiceCount, 2);
       assert.deepEqual(second.snapshot.games[0].candidates.find(candidate => candidate.id === firstCandidateId)?.availability,
-        { kind: 'playable', proof: 'media', checkedAt: at });
+        { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
       assert.deepEqual(second.snapshot.games[0].candidates.find(candidate => candidate.id !== firstCandidateId)?.availability,
-        { kind: 'playable', proof: 'media', checkedAt: at + 60_000 });
+        { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 60_000 });
     }
     assert.equal(reads.filter(page => page === 'detail').length, 1);
   } finally { await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); }

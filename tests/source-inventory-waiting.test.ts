@@ -17,11 +17,11 @@ test('waiting time counts down to the real media retry deadline',()=>{
 
 test('an already queued check does not show an invented countdown',()=>{
   const queued:CandidateSummary={...candidate,availability:{kind:'checking',progress:{kind:'queued',since:at}}};
-  assert.equal(candidateEvidence(queued,at),'Media check scheduled');
-  assert.equal(candidateEvidence(queued,at+300_000),'Media check scheduled');
+  assert.equal(candidateEvidence(queued,at),'Playback check scheduled');
+  assert.equal(candidateEvidence(queued,at+300_000),'Playback check scheduled');
 });
 
 test('a candidate outside the admission frontier is not shown as queued',()=>{
   const unknown:CandidateSummary={...candidate,availability:{kind:'unknown'}};
-  assert.equal(candidateEvidence(unknown,at),'Media not checked yet');
+  assert.equal(candidateEvidence(unknown,at),'Playback not checked yet');
 });

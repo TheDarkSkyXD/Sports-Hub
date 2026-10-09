@@ -42,7 +42,7 @@ test('a bound final event and an unmatched lookalike remain out of the feed wind
     readSchedule:async()=>({games:[scheduled],at:clock,league:'ncaaf'}),
     readSeasonMembership:async()=>{throw new Error('unused');},readHtml:async()=>{throw new Error('unused');},
     parseListings:()=>({observations:[],outcome:'empty'}),enrichObservation:value=>value,compatiblePlayers:()=>[],
-    retryAfterMs:()=>0,probeCandidate:async()=>{probes++;return {kind:'playable',proof:'media'};},now:()=>clock,
+    retryAfterMs:()=>0,probeCandidate:async()=>{probes++;return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};},now:()=>clock,
     id:()=> '11111111-1111-4111-8111-111111111111'});
   const original=event('65345');
   try{

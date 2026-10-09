@@ -289,7 +289,7 @@ test('SportsBite uses exact event key and ignores upstream online metadata',asyn
   for(const player of players){
     assert.equal(CommandSchema.safeParse({kind:'open',gameId:'401892458',initialCandidateId:player.id}).success,true);
     assert.equal(CommandSchema.safeParse({kind:'playback-evidence',sessionId:randomUUID(),candidateId:player.id,
-      generation:1,evidence:{kind:'decoded',startupMs:100}}).success,true);
+      generation:1,evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}).success,true);
   }
 });
 

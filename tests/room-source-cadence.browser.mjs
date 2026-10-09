@@ -16,7 +16,10 @@ const board = {
 };
 const playable = {
   id: 'working', gameId: '1', label: 'Working', sourceIds: [], observedAt: now,
-  availability: { kind: 'playable', checkedAt: now, proof: 'media' },
+  availability: { kind: 'playable', checkedAt: now, proof: {
+    kind: 'advancing-video', version: 1, startupMs: 3000, observedMs: 3000,
+    mediaAdvanceMs: 3000, presentedFrames: 4,
+  } },
 };
 const pending = gameId => ({
   id: `pending-${gameId}`, gameId, label: 'Pending', sourceIds: [], observedAt: now,
