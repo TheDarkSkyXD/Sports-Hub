@@ -398,6 +398,12 @@ test('automatic failover reaches the fourth source without heartbeats postponing
   });
   try {
     await coordinator.refresh(true);
+    for(let attempt=0;attempt<50;attempt++){
+      const reply=await coordinator.command({kind:'sources'});
+      const candidates=reply.kind==='sources'?reply.snapshot.games.find(row=>row.gameId==='100')?.candidates:undefined;
+      if(candidates?.length===4&&candidates.every(candidate=>candidate.availability.kind==='playable'))break;
+      await new Promise(resolve=>setTimeout(resolve,10));
+    }
     let opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
     for (let attempt=0;opened.kind==='error' && attempt<30;attempt++) {
       await coordinator.command({kind:'check-sources',gameIds:['100'],retry:false});
@@ -506,6 +512,12 @@ test('an exhausted session waits for its fixed deadline before automatically ret
   });
   try {
     await coordinator.refresh(true);
+    for(let attempt=0;attempt<50;attempt++){
+      const reply=await coordinator.command({kind:'sources'});
+      const candidates=reply.kind==='sources'?reply.snapshot.games.find(row=>row.gameId==='100')?.candidates:undefined;
+      if(candidates?.length===3&&candidates.every(candidate=>candidate.availability.kind==='playable'))break;
+      await new Promise(resolve=>setTimeout(resolve,10));
+    }
     let opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
     for (let attempt=0;opened.kind==='error' && attempt<30;attempt++) {
       await coordinator.command({kind:'check-sources',gameIds:['100'],retry:false});

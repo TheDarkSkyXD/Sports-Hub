@@ -9,7 +9,7 @@ class Permits {
   private readonly waiting:Waiter[]=[];
   private readonly limit:number;
   constructor(limit:number) {this.limit=limit;}
-  acquire(signal:AbortSignal):Promise<()=>void> {
+  acquire(signal:AbortSignal,onWait:()=>void):Promise<()=>void> {
     if(signal.aborted)return Promise.reject(signal.reason);
     return new Promise((resolve,reject)=>{
       const waiter:Waiter={signal,resolve,reject,abort:()=>{
@@ -20,6 +20,7 @@ class Permits {
       signal.addEventListener('abort',waiter.abort,{once:true});
       this.waiting.push(waiter);
       this.drain();
+      if(this.waiting.includes(waiter))onWait();
     });
   }
   private drain():void {
@@ -77,12 +78,15 @@ class ProbeScope {
   }
   async acquire(resource:Resource,signal:AbortSignal):Promise<()=>void> {
     const combined=AbortSignal.any([this.signal,signal]);
-    if(!this.active)this.onProgress({kind:'waiting',since:Date.now()});
-    this.waiting++;
-    this.updateBudget();
+    let queued=false;
     let releasePermit:()=>void;
-    try{releasePermit=await this.pools[resource].acquire(combined);}
-    finally{this.waiting--;this.updateBudget();}
+    try{releasePermit=await this.pools[resource].acquire(combined,()=>{
+      queued=true;
+      this.waiting++;
+      if(!this.active)this.onProgress({kind:'waiting',since:Date.now()});
+      this.updateBudget();
+    });}
+    finally{if(queued){this.waiting--;this.updateBudget();}}
     if(combined.aborted){releasePermit();throw combined.reason;}
     this.active++;
     this.updateBudget();

@@ -454,10 +454,12 @@ test('a full maintenance queue eventually checks both working and failed routes'
   const coordinator = run.start();
   try {
     await run.refresh(coordinator, 0);
+    for(let round=0;run.calls.length<270&&round<300;round++)await drain();
     assert.equal(run.calls.length, 270);
     assert.equal((await run.snapshot(coordinator)).games[0].workingChoiceCount, 135);
     run.hold();
     await run.refresh(coordinator, 300_000);
+    for(let round=0;run.pending.size<2&&round<20;round++)await drain();
     assert.equal(run.pending.size, 2);
     const queued = (await run.snapshot(coordinator)).games[0].candidates;
     assert.equal(queued.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'queued').length, 0);

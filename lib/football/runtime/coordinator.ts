@@ -120,6 +120,8 @@ export class FootballCoordinator {
   private unknownAdmissions=0;
   private protectedBackgroundKey:string|undefined;
   private probePump:ReturnType<typeof setImmediate>|undefined;
+  private probeReplan:ReturnType<typeof setImmediate>|undefined;
+  private readonly probeKeys=new WeakMap<Candidate,string>();
   private backgroundCursor=0;
   private readonly now: () => number;
   private readonly browserCollectorsAvailable:boolean;
@@ -299,7 +301,11 @@ export class FootballCoordinator {
     return keys.length > 0 && keys.every(key => !this.errors.has(key) && this.now()-(this.store.partition(key)?.at || 0) <= 90000);
   }
   private probeKey(candidate:Candidate):string {
-    return JSON.stringify([candidate.gameId,this.probeIdentity(candidate.locator)]);
+    const existing=this.probeKeys.get(candidate);
+    if(existing!==undefined)return existing;
+    const key=JSON.stringify([candidate.gameId,this.probeIdentity(candidate.locator)]);
+    this.probeKeys.set(candidate,key);
+    return key;
   }
   private feedGame(game:Game|undefined):game is Game {
     return !!game&&this.scheduleFresh(game)&&feedEligible(game,this.now());
@@ -622,6 +628,7 @@ export class FootballCoordinator {
     return game?.lifecycle==='scheduled'&&kickoff>=this.now()&&kickoff<=this.now()+60*60_000?1:2;
   }
   private checkSources(gameIds:string[],retry:boolean):void {
+    if(this.probeReplan){clearImmediate(this.probeReplan);this.probeReplan=undefined;}
     const now=this.now();
     for(const [key,deferred] of this.deferredProbes)if(deferred.until<=now){
       clearTimeout(deferred.timer);
@@ -799,6 +806,13 @@ export class FootballCoordinator {
     if(priorityLevel<Infinity)this.pumpProbes();
     else this.probePump??=setImmediate(()=>{this.probePump=undefined;this.pumpProbes();});
   }
+  private scheduleProbeReplan():void {
+    if(this.stopped||this.probeReplan)return;
+    this.probeReplan=setImmediate(()=>{
+      this.probeReplan=undefined;
+      if(!this.stopped)this.checkSources([],false);
+    });
+  }
   private runProbe(job:ProbeJob):Promise<CandidateProbeResult> {
     const canceled:CandidateProbeResult={kind:'deferred',retryAfterMs:2000};
     if(job.controller.signal.aborted)return Promise.resolve(canceled);
@@ -821,7 +835,6 @@ export class FootballCoordinator {
           if(job.phase.kind!==kind){
             job.phase={kind,since:this.now()};
             this.revision++;
-            if(kind==='queued')this.checkSources([],false);
           }
         }))
         .then(finish,()=>finish({kind:'deferred',retryAfterMs:MEDIA_RECHECK_MS}));
@@ -893,7 +906,7 @@ export class FootballCoordinator {
         if(this.protectedBackgroundKey===job.key&&!job.controller.signal.aborted)this.protectedBackgroundKey=undefined;
         if(this.activeProbes.get(job.key)===job){this.activeProbes.delete(job.key);this.revision++;}
         this.pumpProbes();
-        if(!this.stopped)this.checkSources([],false);
+        this.scheduleProbeReplan();
       });
     }
   }
@@ -1815,6 +1828,7 @@ export class FootballCoordinator {
     this.stopped=true;
     clearInterval(this.tickTimer);
     clearImmediate(this.probePump);
+    clearImmediate(this.probeReplan);
     clearImmediate(this.detailPublication);
     this.controller.abort();
     for(const job of this.activeProbes.values())job.controller.abort();

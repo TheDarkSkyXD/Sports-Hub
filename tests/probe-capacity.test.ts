@@ -3,6 +3,16 @@ import {test} from 'node:test';
 import {createProbeResources,probeHttpResponse,probeObserverLease,releaseObserverAfterClose} from '../lib/playback/probe-capacity.ts';
 import {resource} from '../lib/playback/providers/public-page.ts';
 
+test('a free transport permit never reports a queued media check',async()=>{
+  const resources=createProbeResources({httpLimit:1,observerLimit:1,activeBudgetMs:65_000});
+  const progress:string[]=[];
+  await resources.run(new AbortController().signal,event=>progress.push(event.kind),async signal=>{
+    const response=await probeHttpResponse(signal,async()=>new Response('ok'));
+    assert.equal(await response.text(),'ok');
+  });
+  assert.deepEqual(progress,['active']);
+});
+
 test('observer work holds four slots while eight direct HTTP operations advance',async()=>{
   const resources=createProbeResources({httpLimit:8,observerLimit:4,activeBudgetMs:65_000});
   const observers:Array<()=>void>=[];
@@ -63,16 +73,19 @@ test('time spent waiting for a real permit does not spend the active budget',asy
   for(let index=0;!entered&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
   assert.equal(entered,true);
   let granted=false;
-  const second=resources.run(new AbortController().signal,()=>{},async signal=>{
+  const progress:string[]=[];
+  const second=resources.run(new AbortController().signal,event=>progress.push(event.kind),async signal=>{
     const release=await probeObserverLease(signal);
     granted=true;
     release();
   });
   await new Promise<void>(resolve=>setTimeout(resolve,60));
   assert.equal(granted,false);
+  assert.deepEqual(progress,['waiting']);
   releaseWork();
   await Promise.all([first,second]);
   assert.equal(granted,true);
+  assert.deepEqual(progress,['waiting','active']);
 });
 
 test('playlist header deadline begins after the HTTP permit is granted',async()=>{
