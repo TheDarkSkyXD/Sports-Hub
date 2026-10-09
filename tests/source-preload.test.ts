@@ -49,7 +49,7 @@ test('all fresh games and alternatives warm without check-sources, even beyond q
       probed.push(locator.playerId);
       await new Promise<void>(resolve=>setImmediate(resolve));
       active--;
-      return {kind:'playable',proof:'media'};
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try {
@@ -63,7 +63,7 @@ test('all fresh games and alternatives warm without check-sources, even beyond q
     },()=>`all 300 candidates should become playable, observed ${lastCounts}`);
     assert.equal(probed.length,300);
     assert.equal(new Set(probed).size,300);
-    assert.equal(peak,4);
+    assert.equal(peak,2,'native checks share two physical slots');
     const firstGameFeeds=new Set(games.map((_,index)=>String(index*15+1)));
     assert.equal(probed.slice(0,30).filter(id=>firstGameFeeds.has(id)).length,20,
       'all 20 live games should get a first feed turn within 30 admissions');
@@ -78,7 +78,7 @@ test('all fresh games and alternatives warm without check-sources, even beyond q
   }
 });
 
-test('explicit retry reaches an unavailable server while the background queue is full',async()=>{
+test('explicit retry reaches an unavailable server after admitted siblings release a game slot',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'source-retry-'));
   const match=game(0);
   let listed:Game=match;
@@ -100,7 +100,7 @@ test('explicit retry reaches an unavailable server while the background queue is
         pending.push({resolve:settle});
         signal.addEventListener('abort',settle,{once:true});
       });
-      return {kind:'playable',proof:'media'};
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try {
@@ -110,15 +110,15 @@ test('explicit retry reaches an unavailable server while the background queue is
       const reply=await coordinator.command({kind:'sources'});
       if(reply.kind==='sources')state=`${reply.snapshot.games[0]?.candidates.length} candidates, ${reply.snapshot.games[0]?.candidates.filter(candidate=>candidate.availability.kind==='checking').length} checking, ${reply.snapshot.games[0]?.candidates.find(candidate=>candidate.id==='candidate-0-0')?.availability.kind} first`;
       return reply.kind==='sources'&&reply.snapshot.games[0]?.candidates.find(candidate=>candidate.id==='candidate-0-0')?.availability.kind==='unavailable'&&
-        reply.snapshot.games[0].candidates.filter(candidate=>candidate.availability.kind==='checking').length===260;
-    },()=>`queue did not fill after the first failure, ${state}, calls ${calls.length}`);
+        reply.snapshot.games[0].candidates.filter(candidate=>candidate.availability.kind==='checking').length===2;
+    },()=>`game frontier did not fill after the first failure, ${state}, calls ${calls.length}`);
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[match.id],retry:true}),{kind:'ok'});
     const queued=await coordinator.command({kind:'sources'});
     assert.equal(queued.kind,'sources');
-    if(queued.kind==='sources')assert.equal(queued.snapshot.games[0].candidates.find(candidate=>candidate.id==='candidate-0-0')?.availability.kind,'checking');
+    if(queued.kind==='sources')assert.equal(queued.snapshot.games[0].candidates.find(candidate=>candidate.id==='candidate-0-0')?.availability.kind,'unavailable');
     pending.shift()?.resolve();
     await waitFor(async()=>calls.filter(id=>id==='1').length===2,()=>`retry did not start, calls ${calls.slice(0,8).join(',')}`);
-    assert.equal(calls[5],'1');
+    assert.equal(calls[3],'1');
     listed={...match,status:'post',lifecycle:'final',detail:'Final',finalObservedAt:at,graceEndsAt:at+300000};
     await coordinator.refresh(true);
     const finalSnapshot=await coordinator.command({kind:'sources'});

@@ -38,9 +38,9 @@ test('the live StreamEast game retains each published free server as a game-boun
   const raw:unknown = await runStreameastSweep({
     now: () => at, signal: new AbortController().signal,
     runId: '11111111-1111-4111-8111-111111111111', send: async () => {},
-    read: async (url:string,page:string) => {
+    read: async (url:string,page:string,league:string) => {
       visited.push(`${page}:${url}`);
-      if (page === 'category') return url.endsWith('/nfl-streams/') ? category : empty;
+      if (page === 'category') return url.endsWith('/nfl-streams/') ? category : empty.replace('CFB games',league==='ncaaf'?'CFB games':league==='f1'?'F1 races':`${league.toUpperCase()} games`);
       if (page === 'detail') return detail;
       const id = Number(url.slice(eventUrl.length));
       if (page !== 'server' || !Number.isInteger(id) || id < 1 || id > players.length) throw new Error('Unexpected server read');

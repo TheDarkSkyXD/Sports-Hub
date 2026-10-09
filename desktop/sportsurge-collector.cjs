@@ -53,6 +53,13 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
   sourceSession.setPermissionCheckHandler(() => false);
   sourceSession.on('will-download',event => event.preventDefault());
 
+  function releaseBrowser() {
+    const current = window;
+    window = undefined;
+    try { if (current && !current.isDestroyed()) current.destroy(); }
+    catch { window = current; }
+  }
+
   function browser() {
     if (window && !window.isDestroyed()) return window;
     window = new BrowserWindow({ title: 'Sportsurge v2 collector', show: false, webPreferences: {
@@ -71,6 +78,7 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
   }
 
   async function document(url, page, league, signal) {
+    if (stopped || signal.aborted) throw new Error('unavailable');
     if (page === 'category' ? url !== CATEGORY_URLS[league] : detailUrl(url, league)?.url !== url) throw new Error('invalid-detail-url');
     const current = browser();
     const deadline = Date.now() + readyTimeoutMs;
@@ -179,6 +187,7 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
         if(catalog.state.reason==='rate-limited')rateLimitedUntil=Math.max(rateLimitedUntil,Date.now()+5*60_000);
         return catalog;
       }).catch(()=>{}).finally(()=>{
+        releaseBrowser();
         active=undefined;controller=undefined;
         if(started&&!stopped)timer=setTimeout(requestSweep,Math.max(sourceRefreshMs,rateLimitedUntil-Date.now()));
       });
@@ -189,7 +198,7 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
     stopped = true;
     if (timer) clearTimeout(timer);
     controller?.abort();
-    if (window && !window.isDestroyed()) window.destroy();
+    releaseBrowser();
   }
   return { start, requestSweep, stop };
 }

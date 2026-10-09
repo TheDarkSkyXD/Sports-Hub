@@ -41,7 +41,7 @@ test('North Dakota historical listing reaches detail but an empty embed creates 
   const coordinator = createFootballCoordinator(path,{
     now:() => at,
     sources:[SOURCES[0]],
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
     readSchedule:async (partition,time) => ({games:partition.id==='fcs' ? [{...scheduled,partitions:['fcs']}] : [],at:time,league:partition.league}),
     readHtml:async url => {
       visited.push(url);
@@ -111,7 +111,7 @@ test('catalog event pages are checked while browser catalogs avoid generic detai
   const coordinator = createFootballCoordinator(path,{
     now:() => at,
     sources:[tvapp,sportsurge,browserCatalog],
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
     readSchedule:async (partition,time) => ({games:partition.id==='fbs' ? [florida,georgia,late] : [],at:time,league:partition.league}),
     readHtml:async url => { visited.push(url); return url===tvapp.url ? catalog : url===sportsurge.url ? listing :
       url.startsWith('https://tvapp1.pk/watch/') ? '<main>Stream will be available shortly</main>' :
@@ -228,7 +228,7 @@ test('a delayed schedule response starts final grace when the coordinator accept
   const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
     now:() => now,
     sources:[],
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
     readSchedule:async (partition,at) => {
       if (partition.id==='nfl') now += 90000;
       return {games:partition.id==='nfl' ? [final] : [],at,league:partition.league};
@@ -301,7 +301,7 @@ test('active playback rejects stale failures, drains at final, then closes on th
     now:() => now,
     sources:[SOURCES[0]],
     id:() => `00000000-0000-4000-8000-${String(++serial).padStart(12,'0')}`,
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
     readSchedule:async (partition,at) => ({games:partition.id==='nfl' && includeGame ? [status] : [],at,league:partition.league}),
     readHtml:async url => url===listUrl
       ? listing
@@ -390,7 +390,7 @@ test('automatic failover reaches the fourth source without heartbeats postponing
   const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
     now:() => now,
     sources:[SOURCES[0]],
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
     readSchedule:async (partition,at) => ({games:partition.id==='nfl' ? [live] : [],at,league:partition.league}),
     readHtml:async url => url===SOURCES[0].url
       ? `<a href="https://isportsurge.ws/watch/nfl/away-home/123" datetime="${new Date(kickoff).toISOString()}"><span class="team-name-event-row"><img alt="Away"></span><span class="team-name-event-row"><img alt="Home"></span></a>`
@@ -398,6 +398,12 @@ test('automatic failover reaches the fourth source without heartbeats postponing
   });
   try {
     await coordinator.refresh(true);
+    for(let attempt=0;attempt<50;attempt++){
+      const reply=await coordinator.command({kind:'sources'});
+      const candidates=reply.kind==='sources'?reply.snapshot.games.find(row=>row.gameId==='100')?.candidates:undefined;
+      if(candidates?.length===4&&candidates.every(candidate=>candidate.availability.kind==='playable'))break;
+      await new Promise(resolve=>setTimeout(resolve,10));
+    }
     let opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
     for (let attempt=0;opened.kind==='error' && attempt<30;attempt++) {
       await coordinator.command({kind:'check-sources',gameIds:['100'],retry:false});
@@ -446,7 +452,7 @@ test('a candidate discovered after the working route fails accompanies the sessi
   const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
     now:() => now,
     sources:[SOURCES[0]],
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
     readSchedule:async (partition,at) => ({games:partition.id==='nfl' ? [live] : [],at,league:partition.league}),
     readHtml:async url => url===SOURCES[0].url ? listing : detail,
   });
@@ -500,12 +506,18 @@ test('an exhausted session waits for its fixed deadline before automatically ret
   const coordinator = createFootballCoordinator(join(dir,'state.sqlite'),{
     now:() => now,
     sources:[SOURCES[0]],
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
     readSchedule:async (partition,at) => ({games:partition.id==='nfl' ? [live] : [],at,league:partition.league}),
     readHtml:async url => url===SOURCES[0].url ? listing : detail,
   });
   try {
     await coordinator.refresh(true);
+    for(let attempt=0;attempt<50;attempt++){
+      const reply=await coordinator.command({kind:'sources'});
+      const candidates=reply.kind==='sources'?reply.snapshot.games.find(row=>row.gameId==='100')?.candidates:undefined;
+      if(candidates?.length===3&&candidates.every(candidate=>candidate.availability.kind==='playable'))break;
+      await new Promise(resolve=>setTimeout(resolve,10));
+    }
     let opened = await coordinator.command({kind:'open',gameId:'100',manual:false});
     for (let attempt=0;opened.kind==='error' && attempt<30;attempt++) {
       await coordinator.command({kind:'check-sources',gameIds:['100'],retry:false});

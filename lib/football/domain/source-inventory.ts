@@ -1,12 +1,14 @@
 import { candidateSummary, type Candidate, type CandidateAvailability, type CollectionAttempt, type CollectionHealth, type DetailEvidence, type Game, type LinkEvidence, type Match, type Observation, type SourceAttempt, type SourceEventBinding, type SourceMatchReason, type SourcesSnapshot, type StoredSportsurgeCatalog, type StoredStreameastCatalog, type StreameastCatalog } from '../shared.ts';
+import { listingEventEvidence } from '../source-registry.ts';
 import { compareCandidates } from './lifecycle.ts';
 import { detailIdentity } from './source-policy.ts';
 import { resolvedLiveChannelMatch } from './live-channel.ts';
-import { feedDateEligible, feedEligible } from './feed-eligibility.ts';
+import { feedDateEligible, feedInventoryEligible, feedWindow } from './feed-eligibility.ts';
+import { sourceCoverage } from '../source-registry.ts';
 import type { ListingSource } from './ports.ts';
-import { confirmedFinishedBoundEvent, confirmedFinishedGameId, createObservationMatcher, matchSourceLiveGame, matchUndatedSportsurge, normalizedName } from './matching.ts';
-import { sportsurgeCatalogView, sportsurgeObservation } from './sportsurge-catalog.ts';
-import { streameastCatalogView, streameastObservation, verifiedStreameastMatch } from './streameast-catalog.ts';
+import { createFinishedGameMatcher, createSourceEventMatcher, normalizedName, type SourceEventEvidence } from './matching.ts';
+import { sportsurgeCatalogView, sportsurgeEvidence, sportsurgeObservation } from './sportsurge-catalog.ts';
+import { streameastCatalogView, streameastEvidence, streameastObservation } from './streameast-catalog.ts';
 
 type Input = {
   at:number; revision:number; lastDiscoveryAt:number|null; browserCollectorsAvailable:boolean; sources:readonly ListingSource[];
@@ -19,9 +21,23 @@ type Input = {
   candidateEligible?:(candidate:Candidate)=>boolean;
   compareCandidates?:(left:Candidate,right:Candidate)=>number;
   attempts:Record<string,SourceAttempt>;
+  scheduleScopes?:SourcesSnapshot['scheduleScopes'];
   sportsurgeCatalog:{current:StoredSportsurgeCatalog|null;lastComplete:StoredSportsurgeCatalog|null;previous:StoredSportsurgeCatalog|null};
   streameastCatalog:{current:StoredStreameastCatalog|null;lastComplete:StoredStreameastCatalog|null;previous:StoredStreameastCatalog|null};
 };
+
+type ReadState=SourcesSnapshot['scheduleScopes'][number]['read'];
+type FeedState=SourcesSnapshot['games'][number]['feeds'];
+function noPublishedFeed(evidence:LinkEvidence):boolean {
+  return evidence.kind==='missing'&&(evidence.reason==='no-published-player'||evidence.reason==='not-yet-published');
+}
+function feedCounts(rows:readonly Candidate[],availability:(candidate:Candidate)=>CandidateAvailability):FeedState {
+  const states=rows.map(availability);
+  return {kind:'feeds',discovered:rows.length,
+    mediaVerified:states.filter(state=>state.kind==='playable').length,
+    decoded:states.filter(state=>state.kind==='playable').length,
+    checking:states.filter(state=>state.kind==='unknown'||state.kind==='checking').length};
+}
 
 function publicObservationUrl(value:string,hosts:Set<string>):string|null {
   try {
@@ -36,7 +52,7 @@ function publicObservationUrl(value:string,hosts:Set<string>):string|null {
 function sourceReason(reason:string):SourceMatchReason {
   switch(reason) {
     case 'not-a-matchup': case 'unknown-teams': case 'unverified-kickoff': case 'unverified-contextual-kickoff':
-    case 'ambiguous-matchup': case 'conflicting-date': case 'finished-game': return reason;
+    case 'ambiguous-matchup': case 'conflicting-date': case 'conflicting-game-id': case 'finished-game': return reason;
     default: return 'other';
   }
 }
@@ -87,13 +103,14 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     candidate.observedAt>=windowStartAt&&candidate.observedAt<=at+60_000);
   const details=new Map((input.details||[]).map(detail=>[detail.observationId,detail]));
   const gameById=new Map(games.map(game=>[game.id,game]));
-  const visibleGameIds=input.visibleGameIds??new Set(games.filter(game=>feedEligible(game,at)).map(game=>game.id));
+  const visibleGameIds=input.visibleGameIds??new Set(games.filter(game=>feedInventoryEligible(game,at)).map(game=>game.id));
   const candidateEligible=(candidate:Candidate):boolean=>{
     return visibleGameIds.has(candidate.gameId)&&candidateCurrent(candidate);
   };
   const sourceById=new Map(sources.map(source=>[source.id,source]));
   const publicHosts=new Set(sources.flatMap(source=>[source.url,...(source.publicUrls || [])].map(value=>new URL(value).hostname)));
-  const match=createObservationMatcher(games,'inventory-live');
+  const match=createSourceEventMatcher(games,'inventory-live');
+  const finished=createFinishedGameMatcher(games);
   const freshGames=games.filter(game=>input.freshGameIds?.has(game.id));
   const visibleObservation=(observation:Observation,result:Match):boolean=>{
     if(result.kind==='matched') {
@@ -134,11 +151,10 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     return {kind:'missing',checkedAt:detail.at,reason:detail.reason,retryAt:detail.nextEligibleAt};
   };
   const add=(observation:Observation,fallback=false,event:StreameastCatalog['events'][number]|null=null,
-    sourceLive=false,catalogEvidence?:LinkEvidence,eventId?:string):void=>{
-    const expectedId=event?.espnEventId===null||!event?.espnEventId?undefined:
-      event.league==='nfl'?event.espnEventId:`${event.league}-${event.espnEventId}`;
-    if(confirmedFinishedGameId(observation,games,at,expectedId)||eventId&&
-      confirmedFinishedBoundEvent(observation,eventId,input.sourceEventBindings||[],games))return;
+    sourceEvidence:SourceEventEvidence|null=null,catalogEvidence?:LinkEvidence,eventId?:string):void=>{
+    const expectedId=event?streameastEvidence(event).externalGameId??undefined:undefined;
+    if(finished.finishedGameId(observation,at,expectedId)||eventId&&
+      finished.finishedBoundEvent(observation,eventId,input.sourceEventBindings||[]))return;
     if (!sourceById.has(observation.sourceId)) return;
     const url=publicObservationUrl(observation.url,publicHosts);
     if (!url || observation.observedAt>at+60_000) return;
@@ -147,13 +163,12 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     if (stale && (!observation.teams || kickoff===null || !liveDates.some(game=>
       (!observation.league || game.league===observation.league) && Math.abs(game.date-kickoff)<=3*60*60_000))) return;
     const links=linksBySource.get(observation.sourceId) || new Map();
-    if (links.has(url)) return;
-    const raw=match(observation,at);
-    const live=sourceLive&&!stale&&observation.league&&observation.teams&&observation.kickoff===null?
-      matchSourceLiveGame(raw,games,at):raw;
-    const resolved:Match=event===null?resolvedLiveChannelMatch(observation,live,freshGames,details.get(observation.id),at):
-      verifiedStreameastMatch(event,raw,gameById.get(raw.kind==='matched'?raw.gameId:''));
-    const result=matchUndatedSportsurge(observation,resolved,games,at);
+    const linkKey=url;
+    if (links.has(linkKey)) return;
+    const matchEvidence:SourceEventEvidence=event?streameastEvidence(event):sourceEvidence??
+      listingEventEvidence(observation.sourceId);
+    const decision=match(observation,matchEvidence,at);
+    const result:Match=event===null?resolvedLiveChannelMatch(observation,decision.match,freshGames,details.get(observation.id),at):decision.match;
     if(!visibleObservation(observation,result))return;
     const gameId=result.kind==='matched' && gameById.has(result.gameId) ? result.gameId : null;
     if (stale && (!gameId || gameById.get(gameId)?.lifecycle!=='live')) return;
@@ -164,7 +179,8 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       {...publishedEvidence,candidateIds:publishedEvidence.candidateIds.filter(id=>
         !!gameId&&(candidates.get(gameId)||[]).some(candidate=>candidate.id===id&&
           candidateEligible(candidate)))}:publishedEvidence;
-    links.set(url,{title:observation.title,url,gameId,observedAt:observation.observedAt,freshness,evidence});
+    links.set(linkKey,{title:observation.title,url,gameId,league:gameId?gameById.get(gameId)?.league??observation.league:observation.league,
+      observedAt:observation.observedAt,freshness,evidence});
     linksBySource.set(observation.sourceId,links);
     if (!gameId) {
       const reasons=reasonsBySource.get(observation.sourceId) || new Map<SourceMatchReason,number>();
@@ -195,8 +211,8 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     add(observation);
   }
   const datedLive=(observation:Observation,event:StreameastCatalog['events'][number]|null=null):boolean=>{
-    const raw=match(observation,at);
-    const result=event===null?raw:verifiedStreameastMatch(event,raw,gameById.get(raw.kind==='matched'?raw.gameId:''));
+    const result=match(observation,event?streameastEvidence(event):
+      {undated:'none',externalGameId:null},at).match;
     return result.kind==='matched' && visibleGameIds.has(result.gameId)&&gameById.get(result.gameId)?.lifecycle==='live';
   };
   const sportsurgeRuns=input.sportsurgeCatalog.current?.catalog.state.kind==='complete'?
@@ -232,11 +248,11 @@ export function sourceInventory(input:Input):SourcesSnapshot {
           return [sportsurgeObservation(prior,priorCategory.kind==='pending'?run.catalog.startedAt:priorCategory.at)];
         }).find(prior=>prior.kickoff!==null && sameMatchup(observation,prior));
         if (historical && datedLive(historical)) {
-          add({...observation,kickoff:historical.kickoff,rawTime:historical.rawTime},false,null,false,publishedEvidence,event.id);
+          add({...observation,kickoff:historical.kickoff,rawTime:historical.rawTime},false,null,sportsurgeEvidence(event,at),publishedEvidence,event.id);
           continue;
         }
       }
-      add(observation,false,null,category.kind==='collected' && event.sourceStatus==='live',publishedEvidence,event.id);
+      add(observation,false,null,sportsurgeEvidence(event,at),publishedEvidence,event.id);
     }
   }
   const streameastRuns=[input.streameastCatalog.current,input.streameastCatalog.previous,input.streameastCatalog.lastComplete];
@@ -264,9 +280,11 @@ export function sourceInventory(input:Input):SourcesSnapshot {
             .map(candidate=>candidate.id)};
       const publishedEvidence:LinkEvidence=catalogEvidence.kind==='collected'&&!catalogEvidence.candidateIds.length?
         {kind:'missing',checkedAt:catalogEvidence.checkedAt,
-          reason:event.detail.kind==='collected'&&event.detail.servers.length&&event.detail.servers.every(server=>server.availability.kind==='premium')?
-            'paid-only':event.detail.kind==='collected'&&event.detail.servers.some(server=>server.availability.kind==='free-unsupported')?
-              'unsupported-player':'no-published-player',retryAt:null}:catalogEvidence;
+          reason:event.detail.kind==='collected'&&(event.detail.publication?.unknown||event.detail.servers.some(server=>server.availability.kind==='unknown'))?
+            'parser-changed':event.detail.kind==='collected'&&event.detail.servers.some(server=>server.availability.kind==='free-unsupported')?
+              'unsupported-player':event.detail.kind==='collected'&&event.detail.servers.some(server=>server.availability.kind==='free-unresolved')?
+                'no-compatible-media':event.detail.kind==='collected'&&(event.detail.publication?.premium||event.detail.servers.some(server=>server.availability.kind==='premium'))?
+                'paid-only':event.detail.kind==='collected'&&event.detail.publication?'no-published-player':'parser-changed',retryAt:null}:catalogEvidence;
       if (runIndex===0 && observation.kickoff===null) {
         const historical=streameastHistory.flatMap((events,index)=>{
           const prior=events.get(event.id);
@@ -276,11 +294,11 @@ export function sourceInventory(input:Input):SourcesSnapshot {
           return [{event:prior,observation:streameastObservation(prior,priorCategory.kind==='pending'?run.catalog.startedAt:priorCategory.at)}];
         }).find(prior=>prior.observation.kickoff!==null && sameMatchup(observation,prior.observation));
         if (historical && datedLive(historical.observation,historical.event) && datedLive(historical.observation,event)) {
-          add(historical.observation,true,event,false,publishedEvidence);
+          add(historical.observation,true,event,null,publishedEvidence);
           continue;
         }
       }
-      add(observation,runIndex>0,event,false,publishedEvidence);
+      add(observation,runIndex>0,event,null,publishedEvidence);
     }
   }
   const sourceRows=sources.map(source=>{
@@ -297,8 +315,42 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       .filter(candidate=>candidateEligible(candidate)&&
         candidate.sourceIds.includes(source.id)&&availability(candidate).kind==='playable')
       .map(candidate=>`${gameId}:${candidate.id}`))).size;
+    const leagues=[...(source.leagues??sourceCoverage(source.id))];
+    const scopes=leagues.map(league=>{
+      const scopeLinks=links.filter(link=>link.freshness==='fresh'&&(link.league===league||link.league===null));
+      const run=source.id==='sportsurge-v2'?input.sportsurgeCatalog.current:source.id==='streameast'?input.streameastCatalog.current:null;
+      let read:ReadState;
+      if(source.kind==='pending')read={kind:'incomplete',reason:'unavailable',checkedAt:null};
+      else if(source.kind==='browser-catalog') {
+        const category=run?Object.entries(run.catalog.categories).find(([key])=>key===league)?.[1]:undefined;
+        read=!input.browserCollectorsAvailable?{kind:'incomplete',reason:'unavailable',checkedAt:null}:
+          !category||category.kind==='pending'?{kind:'incomplete',reason:'pending',checkedAt:null}:
+          category.kind==='failed'?{kind:'incomplete',reason:'failed',checkedAt:category.at}:
+          at-category.at>=30*60_000?{kind:'incomplete',reason:'stale',checkedAt:category.at}:
+          run?.catalog.rejectedGames.some(event=>event.league===league)||
+            source.id==='sportsurge-v2'&&input.sportsurgeCatalog.current?.catalog.catalogIssues.some(issue=>issue.league===league)?
+            {kind:'incomplete',reason:'partial',checkedAt:category.at}:
+          {kind:'complete',checkedAt:category.at};
+      } else {
+        const attempt=input.attempts[source.id];
+        read=!attempt?{kind:'incomplete',reason:'pending',checkedAt:null}:
+          at-attempt.at>=30*60_000?{kind:'incomplete',reason:'stale',checkedAt:attempt.at}:
+          attempt.outcome==='parsed'||attempt.outcome==='empty'?{kind:'complete',checkedAt:attempt.at}:
+          {kind:'incomplete',reason:'failed',checkedAt:attempt.at};
+      }
+      if(read.kind==='complete'&&scopeLinks.some(link=>link.league===null||link.gameId===null))
+        read={kind:'incomplete',reason:scopeLinks.some(link=>link.evidence.kind==='unmatched'&&
+          (link.evidence.reason==='unverified-kickoff'||link.evidence.reason==='unverified-contextual-kickoff'))?'unverified-date':'partial',checkedAt:read.checkedAt};
+      const rows=[...candidates.values()].flatMap(rows=>rows.filter(candidate=>candidateEligible(candidate)&&
+        candidate.sourceIds.includes(source.id)&&gameById.get(candidate.gameId)?.league===league));
+      const feeds:FeedState=rows.length?feedCounts(rows,availability):
+        read.kind==='complete'&&scopeLinks.length>0&&scopeLinks.every(link=>link.gameId!==null&&noPublishedFeed(link.evidence))?
+          {kind:'no-feeds',checkedAt:read.checkedAt}:{kind:'incomplete',reason:scopeLinks.length?'details':'listings'};
+      return {league,read,eventCount:scopeLinks.length,feeds};
+    });
     return {
       id:source.id,name:source.name || source.id.replace(/-/g,' '),catalogUrl:source.url,
+      leagues,scopes,
       publicUrls:[...new Set(source.publicUrls || [source.url])],pending:source.kind==='pending',
       collectionMode:'compatible-feed-discovery' as const,
       lastAttempt:input.attempts[source.id] || null,listingCount:links.length,matchedGameCount:matched.size,
@@ -314,7 +366,6 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     const sourceLinks=linksByGame.get(game.id) || [];
     const selectable=(candidates.get(game.id) || []).filter(candidate=>candidateEligible(candidate))
       .sort(input.compareCandidates??compareCandidates).map(candidate=>candidateSummary(candidate,availability(candidate)));
-    if (!sourceLinks.length && !selectable.length) return [];
     const sourceCount=new Set(sourceLinks.map(link=>link.sourceId)).size;
     const currentSources=new Set(sourceLinks.filter(link=>link.freshness==='fresh').map(link=>link.sourceId));
     const uniqueFeedCount=new Set((candidates.get(game.id) || []).filter(candidate=>candidateEligible(candidate) && candidate.sourceIds.some(sourceId=>currentSources.has(sourceId)) && availability(candidate).kind==='playable')
@@ -356,7 +407,14 @@ export function sourceInventory(input:Input):SourcesSnapshot {
         }
       }
     }
-    return [{gameId:game.id,name:game.name,sourceCount,uniqueFeedCount,
+    const relevant=sourceRows.flatMap(source=>source.scopes.filter(scope=>scope.league===game.league));
+    const complete= relevant.length>0&&relevant.every(scope=>scope.read.kind==='complete');
+    const feedState:FeedState=freshCandidates.length?feedCounts(freshCandidates,availability):
+      game.lifecycle==='unknown'||input.freshGameIds&&!input.freshGameIds.has(game.id)?{kind:'incomplete',reason:'schedule'}:
+      complete&&sourceLinks.every(link=>link.freshness==='fresh'&&noPublishedFeed(link.evidence))?
+        {kind:'no-feeds',checkedAt:Math.max(...relevant.map(scope=>scope.read.checkedAt??0))}:
+        {kind:'incomplete',reason:sourceLinks.length?'details':'listings'};
+    return [{gameId:game.id,name:game.name,league:game.league,date:game.date??null,feeds:feedState,sourceCount,uniqueFeedCount,
       freeChoiceCount:new Set(freshCandidates.map(candidate=>candidate.id)).size,
       workingChoiceCount:new Set(freshCandidates.filter(candidate=>availability(candidate).kind==='playable')
         .map(candidate=>candidate.id)).size,sharedRoutes,candidates:selectable,sourceLinks}];
@@ -365,14 +423,13 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     events:stored.catalog.events.filter(event=>{
       const category=stored.catalog.categories[event.league];
       const observation=sportsurgeObservation(event,category.kind==='pending'?stored.catalog.startedAt:category.at);
-      return visibleObservation(observation,match(observation,at));
+      return visibleObservation(observation,match(observation,sportsurgeEvidence(event,at),at).match);
     })}}:null;
   const scopedStreameast=(stored:StoredStreameastCatalog|null)=>stored?{...stored,catalog:{...stored.catalog,
     events:stored.catalog.events.filter(event=>{
       const category=stored.catalog.categories[event.league];
       const observation=streameastObservation(event,category.kind==='pending'?stored.catalog.startedAt:category.at);
-      const raw=match(observation,at);
-      return visibleObservation(observation,verifiedStreameastMatch(event,raw,gameById.get(raw.kind==='matched'?raw.gameId:'')));
+      return visibleObservation(observation,match(observation,streameastEvidence(event),at).match);
     })}}:null;
   const sportsurgeView=(stored:StoredSportsurgeCatalog|null)=>{
     const scoped=scopedSportsurge(stored);
@@ -382,7 +439,7 @@ export function sourceInventory(input:Input):SourcesSnapshot {
     const scoped=scopedStreameast(stored);
     return scoped?streameastCatalogView(scoped,games,at):null;
   };
-  return {at,revision:input.revision,windowStartAt,lastDiscoveryAt:input.lastDiscoveryAt,browserCollectorsAvailable:input.browserCollectorsAvailable,
+  return {at,revision:input.revision,windowStartAt,window:feedWindow(at),scheduleScopes:input.scheduleScopes??[],lastDiscoveryAt:input.lastDiscoveryAt,browserCollectorsAvailable:input.browserCollectorsAvailable,
     sportsurgeV2:{
       current:sportsurgeView(input.sportsurgeCatalog.current),
       lastComplete:sportsurgeView(input.sportsurgeCatalog.lastComplete),

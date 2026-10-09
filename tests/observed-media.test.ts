@@ -36,22 +36,34 @@ class ChromiumRequest extends EventEmitter {
 
 test('observed media preserves captured headers, ranges, cross-origin children, and capability lifetime', async () => {
   const requests: ChromiumRequest[] = [];
+  type FixtureCookie={url:string;name:string;value:string;path:string;secure:boolean};
   let connectionsClosed = 0;
   let sessionsCreated = 0;
   let authCachesCleared = 0;
+  let cookieStoresCleared = 0;
   const transport = createObservedMedia({
     pinAddress: async () => ({ address: '93.184.216.34', family: 4 }),
     validateUrl: sportsurgeUrl,
     idleMs: 1000,
-    network: { request({ url }: { url: string }) { const request = new ChromiumRequest(url); requests.push(request); return request; } },
-    sessions: { fromPartition: () => { sessionsCreated++; return {
+    network: { request({ url,session,useSessionCookies }: { url: string; session:{cookieJar:FixtureCookie[]};useSessionCookies:boolean }) {
+      const request = new ChromiumRequest(url);
+      const cookie=useSessionCookies && session.cookieJar.find(item=>new URL(item.url).hostname===new URL(url).hostname &&
+        new URL(url).pathname.startsWith(item.path));
+      if(cookie)request.headers.Cookie=`${cookie.name}=${cookie.value}`;
+      requests.push(request);
+      return request;
+    } },
+    sessions: { fromPartition: () => { sessionsCreated++; const cookieJar:FixtureCookie[]=[]; return {
+      cookieJar,cookies:{async set(value:FixtureCookie){cookieJar.push(value);}},
       setPermissionRequestHandler() {}, setPermissionCheckHandler() {},
       webRequest: { onBeforeRequest() {} },
       async setProxy() {}, async closeAllConnections() { connectionsClosed++; },
       async clearAuthCache() { authCachesCleared++; },
+      async clearStorageData() {cookieJar.length=0;cookieStoresCleared++;},
     }; } },
   });
-  const root = { url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium', origin: 'https://embed.example' };
+  const root = { url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium', origin: 'https://embed.example',
+    mediaCookie: 'session=published-player' };
   let capability = await transport.register(root);
   const server = createServer((request, response) => {
     transport.read(capability, new URL(request.url || '/', 'http://local').searchParams.get('url'), request.headers.range, response);
@@ -68,6 +80,14 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
     assert.equal(response.headers.get('content-range'), 'bytes 0-3/4');
     assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [0x47, 1, 2, 3]);
     assert.deepEqual(requests[0].headers, { 'User-Agent': 'Observed Chromium', Accept: '*/*', Origin: 'https://embed.example', Range: 'bytes=0-3' });
+    const sameOrigin = await read('https://media.example/segment.ts');
+    assert.equal(sameOrigin.status, 200);
+    await sameOrigin.arrayBuffer();
+    assert.equal(requests.at(-1)?.headers.Cookie, 'session=published-player');
+    const otherPort=await read('https://media.example:8443/segment.ts');
+    assert.equal(otherPort.status,200);
+    await otherPort.arrayBuffer();
+    assert.equal(requests.at(-1)?.headers.Cookie,undefined);
     for (const url of ['http://media.example/segment.ts', 'https://127.0.0.1/segment.ts', 'https://user@media.example/segment.ts']) {
       assert.equal((await read(url)).status, 404);
     }
@@ -90,9 +110,25 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
     transport.close(capability);
     assert.equal((await read('https://media.example/segment.ts')).status, 404);
     capability = await transport.register({ ...root, requestReferer: 'https://embed.example/player' });
+    const rootReplay = await read('https://media.example/root.m3u8');
+    assert.equal(rootReplay.status, 200);
+    await rootReplay.arrayBuffer();
+    assert.equal(requests.at(-1)?.headers.Referer, 'https://embed.example/player');
     const second = await read('https://media.example/segment.ts');
     assert.equal(second.status, 200);
     await second.arrayBuffer();
+    assert.equal(requests.at(-1)?.headers.Referer, 'https://embed.example/player');
+    const foreignOrigin = await read('https://segments.example/segment.ts');
+    assert.equal(foreignOrigin.status, 200);
+    await foreignOrigin.arrayBuffer();
+    assert.equal(requests.at(-1)?.headers.Referer, 'https://embed.example/');
+    const foreignPort = await read('https://media.example:8443/segment.ts');
+    assert.equal(foreignPort.status, 200);
+    await foreignPort.arrayBuffer();
+    assert.equal(requests.at(-1)?.headers.Referer, 'https://embed.example/');
+    const referringOrigin = await read('https://embed.example/segment.ts');
+    assert.equal(referringOrigin.status, 200);
+    await referringOrigin.arrayBuffer();
     assert.equal(requests.at(-1)?.headers.Referer, 'https://embed.example/player');
     await new Promise(resolve => setTimeout(resolve, 1100));
     assert.equal((await read('https://media.example/segment.ts')).status, 404);
@@ -104,6 +140,7 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
     }
     assert.equal(sessionsCreated, 1);
     assert.equal(authCachesCleared, 42);
+    assert.equal(cookieStoresCleared, 42);
   } finally {
     transport.stop();
     await new Promise<void>(resolve => server.close(() => resolve()));
@@ -135,6 +172,7 @@ test('transient native cleanup failures do not exhaust media partitions or reuse
           assert.equal(used, true);
           clean = true;
         },
+        async clearStorageData() {},
       };
     } },
   });
@@ -168,6 +206,7 @@ test('permanent native cleanup failures keep the media partition count bounded',
         async setProxy() {},
         async closeAllConnections() { throw new Error('permanent native cleanup failure'); },
         async clearAuthCache() {},
+        async clearStorageData() {},
       };
     } },
   });
@@ -201,6 +240,7 @@ test('a timed out native cleanup stays quarantined after its late completion', a
         async setProxy() {},
         closeAllConnections: () => first ? stalledCleanup : Promise.resolve(),
         async clearAuthCache() { if (first) clearAuthCalls++; },
+        async clearStorageData() {},
       };
     } },
   });

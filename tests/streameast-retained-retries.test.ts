@@ -69,7 +69,7 @@ function fixture() {
       if (locator.provider !== 'streameast-server') throw new Error('unexpected locator');
       const count = (calls.get(locator.serverId) ?? 0) + 1;
       calls.set(locator.serverId, count);
-      if (count === 1) return Promise.resolve({ kind: 'playable', proof: 'media' });
+      if (count === 1) return Promise.resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
       if (count === 2) return Promise.resolve({ kind: 'unavailable', reason: 'upstream' });
       return new Promise<CandidateProbeResult>(resolve => { pending.set(locator.serverId, resolve); });
     },
@@ -127,7 +127,7 @@ test('a fresh matched board keeps older published StreamEast servers retryable a
     assert.ok(rows.every(row => row.availability.kind !== 'playable'));
     assert.ok((run.calls.get('2') ?? 0) >= 3);
     assert.ok(run.pending.has('2'));
-    run.pending.get('2')?.({ kind: 'playable', proof: 'media' });
+    run.pending.get('2')?.({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     await drain();
     assert.equal((await run.candidates()).find(row => row.id === 'streameast-server:ncaaf:46296:2')?.availability.kind, 'playable');
   } finally { await run.stop(); }
@@ -252,14 +252,10 @@ test('a later run reusing older detail cannot outrank a newer collected-empty de
     const collecting = catalog(at + 6 * minute, { kind: 'pending' });
     const ack = await run.coordinator.command({ kind: 'streameast-catalog', catalog: collecting });
     assert.equal(ack.kind, 'catalog-ack');
-    assert.ok(ack.kind === 'catalog-ack' && ack.reuseDetails?.kind === 'streameast');
-    if (ack.reuseDetails?.kind !== 'streameast') throw new Error('expected collected detail reuse');
+    assert.equal(ack.reuseDetails, undefined);
     await run.publish({ ...collecting, sequence: 1, state: { kind: 'complete', at: at + 6 * minute },
-      events: ack.reuseDetails.events });
-    await run.advance(25);
-    await run.coordinator.command({ kind: 'set-feed-check-interval', minutes: 5 });
-    await drain();
-    assert.equal((await run.candidates()).filter(row => row.availability.kind === 'unavailable').length, 3);
+      events: [{ ...collecting.events[0], detail: { ...collected(at), retainedFromRunId: '11111111-1111-4111-8111-111111111111' } }] });
+    assert.equal((await run.candidates()).filter(row => row.availability.kind === 'playable').length, 0);
     await run.advance(31);
     await run.publish(catalog(at + 31 * minute, { kind: 'failed', at: at + 31 * minute, reason: 'rate-limited' }));
     assert.equal((await run.candidates()).length, 0);

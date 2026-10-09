@@ -49,6 +49,7 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 ### Requirements
 
 - **Node.js 24.6 or newer**, with npm. The pipeline uses Node's SQLite, TypeScript runtime support, and system certificate trust.
+- **Rust 1.93.1 or newer** with Cargo to build the source collector. Windows source builds also need the Visual Studio C++ build tools. Installed releases bundle the addon and need no Rust installation.
 - **Git** to clone the repository.
 - An internet connection for game data, provider pages, and video.
 - **Windows** for the included double-click launcher. The desktop workflow has been verified on Windows; other operating systems have not been validated.
@@ -65,6 +66,10 @@ npm run desktop
 After installing dependencies, Windows users can double-click **[Start Sunday Room.cmd](Start%20Sunday%20Room.cmd)** in the project folder.
 
 The launcher starts Electron and its own local Next.js server on `127.0.0.1`. It uses port `51931` when available and selects another local port when that port is occupied or reserved. Keep the project folder and dependencies in place; this is a source-based launcher, not a packaged installer.
+
+The first launch compiles the local server. Later launches reuse the compiled output while the source, assets, dependencies, and build settings are unchanged. Relaunch after a source edit to compile it. Use `npm run desktop:dev` when you want live updates while editing.
+
+Development, build, and test commands prepare the Rust collector automatically. Unchanged launches reuse the native artifact without invoking Cargo or rustc. Run `node scripts/build-rust-collector.mjs --force` after upgrading the Rust compiler. The collector runs in process and adds no background executable.
 
 On Windows, desktop launches and Electron tests prepare a branded runtime in `.desktop-runtime/electron`. The taskbar and Task Manager use the Sunday Room logo. Preparation refreshes the runtime when Electron or `public/favicon.svg` changes and preserves the original Electron installation. Close development windows before a runtime refresh.
 
@@ -139,7 +144,7 @@ flowchart TD
     UI["Sunday Room · React interface"] --> Games["GET /api/games"]
     Games --> Pipeline["App-owned football worker and SQLite"]
     Pipeline --> Scores["ESPN NFL, FBS, and FCS schedules"]
-    Pipeline --> Directory["17 registered discovery sources"]
+    Pipeline --> Directory["Rust collection for 47 registered discovery sources"]
     UI --> Resolve["GET /api/playback?game=ID"]
     Resolve --> Session["Independent playback session"]
     Session --> Pipeline
@@ -169,6 +174,8 @@ When ESPN confirms a final, the game leaves live discovery immediately. Existing
 
 The pipeline stores bounded observations, diagnostics, identity mappings, and final deadlines in local SQLite. Desktop data lives in Electron's user-data directory. Browser development defaults to `.desktop-runtime/`. Collection runs while the desktop app is open, including when minimized, and stops with its owned server. There is no cloud collector or preference sync. Local servers bind to `127.0.0.1`; provider requests still use the internet. Saved feed URLs are not encrypted.
 
+`npm run dev` and `npm run start` use `.desktop-runtime/` when `SUNDAY_ROOM_DATA_DIR` is unset. Set `SUNDAY_ROOM_DATA_DIR` to a writable directory when starting Next.js directly, including `.next/standalone/server.js`.
+
 ## Development
 
 ### Browser development
@@ -193,10 +200,10 @@ Run `npm run storybook:check` after adding a component. It follows static import
 ### Desktop development
 
 ```sh
-npm run desktop
+npm run desktop:dev
 ```
 
-The desktop shell always starts a development server from source. Save changes to see them in the app. Local development and Electron tests do not need a production build or `dist-electron`. A browser dev server on port 3001 can run independently of the desktop server, which prefers port 51931.
+This command starts the desktop development server with live updates. `npm run desktop` starts the compiled local server and builds it when the source has changed. Neither command needs `dist-electron`. A browser dev server on port 3001 can run independently of the desktop server, which prefers port 51931.
 
 Run `npm run desktop:smoke` to check the source Electron window and game-data API with a separate profile.
 
@@ -215,7 +222,8 @@ The `Electron release` workflow builds and tests the Windows installer on pull r
 | `npm run dev` | Start the local Next.js development server |
 | `npm run build` | Compile and type-check the production app |
 | `npm run start` | Serve the production browser build |
-| `npm run desktop` | Open Electron from source with its development server |
+| `npm run desktop` | Open Electron with a reusable compiled local server |
+| `npm run desktop:dev` | Open Electron with live source updates |
 | `npm run desktop:package` | Build the Windows x64 NSIS installer from the compiled app |
 | `npm run desktop:smoke` | Check the source Electron window and game-data API |
 | `npm run desktop:smoke:packaged` | Verify an isolated release package in CI |
@@ -314,7 +322,7 @@ Use `developer` for ongoing work and `main` for the published baseline. Keep cha
 | **Scores differ from the video clock** | Data and broadcasts have different delays. Use spoiler-free mode; direct feeds can be delayed within their buffer. |
 | **Electron cannot be found** | Run `npm ci`. If the binary download was skipped, run `node node_modules/electron/install.js`. |
 | **The desktop window will not start** | Check `.desktop-runtime/server.log` and, if present, `.desktop-runtime/startup.log` for a source checkout. For an installed app, check `logs/server.log` and `logs/startup.log` under the Electron user data directory. The viewer tries another local port when 51931 is occupied or reserved. |
-| **The viewer shows older code** | Check out the intended source branch and relaunch with `npm run desktop`. |
+| **The viewer shows older code** | Check out the intended source branch and relaunch with `npm run desktop`, or use `npm run desktop:dev` while editing. |
 | **Room preferences are unexpected** | Open **Room settings** → **Reset room and remove saved feeds** to clear saved choices and feed links. |
 
 ## Scope and availability

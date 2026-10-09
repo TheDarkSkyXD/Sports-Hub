@@ -11,15 +11,22 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dtolnay/rust-toolchain@1.93.1
+        with:
+          components: rustfmt, clippy
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: cargo fmt --manifest-path native/collector/Cargo.toml -- --check
+      - run: cargo clippy --locked --all-targets --manifest-path native/collector/Cargo.toml -- -D warnings
+      - run: cargo test --locked --manifest-path native/collector/Cargo.toml
       - run: npm test
+      - run: node --experimental-strip-types tests/record-collector-parity.mjs
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run storybook:check

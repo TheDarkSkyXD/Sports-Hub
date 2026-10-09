@@ -1,15 +1,17 @@
-import type { CandidateLocator, CollectionAttempt, DetailEvidence, Game, League, Match, MissingPlayerReason, Observation, ResolvedPlayer, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
+import type { AdvancingVideo, CandidateLocator, CollectionAttempt, DetailEvidence, Game, League, Match, MediaPhase, MissingPlayerReason, Observation, ResolvedPlayer, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog, VerificationTarget } from '../shared.ts';
 import type { WorkingFeed } from './working-feed.ts';
 
 export type CandidateProbeResult =
-  | {kind:'playable';proof:'media'|'decoded'}
-  | {kind:'unavailable';reason:'upstream'|'unsupported'|'invalid-media'|'timeout'}
-  | {kind:'deferred';retryAfterMs:number};
+  | {kind:'playable';proof:AdvancingVideo}
+  | {kind:'unavailable';reason:'upstream'|'unsupported'|'invalid-media'|'timeout'|'no-feed'|'playback';phase?:MediaPhase}
+  | {kind:'deferred';retryAfterMs:number;phase?:MediaPhase};
+
+export type ProbeProgress={kind:'waiting'|'active';since:number};
 
 export type ScheduleSource = { id: string; league: League; sport?: 'football' | 'basketball' | 'hockey' | 'baseball' | 'racing'; path: string; group: string | null };
-export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[]; parserVersion?: number };
+export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[]; parserVersion?: number; leagues?: readonly League[] };
 export type SchedulePartition = { games: Game[]; at: number; week?: number };
-export type ScheduleResult = SchedulePartition & { league: League; horizonErrors?: string[] };
+export type ScheduleResult = SchedulePartition & { league: League; horizonErrors?: string[]; historyErrors?: string[] };
 export type ListingResult = { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' };
 
 export class PartialListingReadError extends Error {
@@ -36,6 +38,7 @@ export interface FootballRepository {
   finals(): Game[];
   observe(observation: Observation, result: Match): void;
   observations(): Observation[];
+  observation(id:string):Observation|null;
   sourceEventBindings():SourceEventBinding[];
   removeFinalEvidence(gameIds:readonly string[],now:number):void;
   sourceAttempts(): Record<string,SourceAttempt>;
@@ -61,14 +64,16 @@ export type FootballDependencies = {
   schedules: readonly ScheduleSource[];
   sources: readonly ListingSource[];
   readSchedule: (source: ScheduleSource, now: number, signal: AbortSignal, onCurrent?: (result: ScheduleResult) => void) => Promise<ScheduleResult>;
+  closeSchedule?: () => Promise<void>;
   readSeasonMembership: (season: number, signal: AbortSignal) => Promise<SeasonMembership>;
   readHtml: (url: string, signal: AbortSignal) => Promise<string>;
   parseListings: (source: ListingSource, html: string, now: number) => ListingResult;
   enrichObservation: (observation: Observation, html: string) => Observation;
-  compatiblePlayers: (gameId: string, observation: Observation, html: string) => ResolvedPlayer[];
+  compatiblePlayers?: (gameId: string, observation: Observation, html: string) => ResolvedPlayer[];
   tvappPlayers?: (gameId:string,observation:Observation,html:string,signal:AbortSignal)=>Promise<ResolvedPlayer[]>;
+  resolvePlayers?: (gameId:string,observation:Observation,html:string,signal:AbortSignal)=>Promise<ResolvedPlayer[]>;
   missingPlayerReason: (observation: Observation, html: string) => MissingPlayerReason;
-  probeCandidate: (locator: CandidateLocator, signal: AbortSignal) => Promise<CandidateProbeResult>;
+  probeCandidate: (locator: CandidateLocator, signal: AbortSignal, onProgress:(progress:ProbeProgress)=>void,target:VerificationTarget) => Promise<CandidateProbeResult>;
   probeIdentity?: (locator: CandidateLocator) => string;
   persistableLocator?: (locator: CandidateLocator) => boolean;
   retryAfterMs: (error: unknown) => number;

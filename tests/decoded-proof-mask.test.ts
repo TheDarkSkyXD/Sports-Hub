@@ -44,7 +44,8 @@ test('new decoded proof stays visible while an older probe remains active', asyn
     enrichObservation: value => value,
     compatiblePlayers: () => [{ id: 'server-1', label: 'Server 1', locator: { provider: 'gooz', playerId: '1' } }],
     probeCandidate: async () => {
-      if (++calls === 1) return { kind: 'playable' as const, proof: 'media' as const };
+      if (++calls === 1) return { kind: 'playable' as const, proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const };
+      if(calls>2)return {kind:'unavailable' as const,reason:'upstream' as const};
       await pendingProbe;
       olderProbeSettled=true;
       return { kind: 'unavailable' as const, reason: 'upstream' as const };
@@ -65,7 +66,7 @@ test('new decoded proof stays visible while an older probe remains active', asyn
     assert.deepEqual(await coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: true }), { kind: 'ok' });
     await until(async () => calls === 2);
     assert.deepEqual(await coordinator.command({ kind: 'playback-evidence', sessionId: session.id,
-      candidateId: 'server-1', generation: 1, evidence: { kind: 'decoded', startupMs: 100 } }), { kind: 'ok' });
+      candidateId: 'server-1', generation: 1, evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }), { kind: 'ok' });
     const sources = await coordinator.command({ kind: 'sources' });
     const board = await coordinator.command({ kind: 'board' });
     assert.equal(sources.kind, 'sources');
@@ -82,12 +83,17 @@ test('new decoded proof stays visible while an older probe remains active', asyn
       return olderProbeSettled&&reply.kind==='sources'&&
         reply.snapshot.games.find(row=>row.gameId===game.id)?.candidates[0]?.availability.kind==='playable';
     });
+    const decoded=await coordinator.command({kind:'sources'});
+    assert.equal(decoded.kind,'sources');
+    if(decoded.kind==='sources')assert.deepEqual(decoded.snapshot.games.find(row=>row.gameId===game.id)?.candidates[0]?.availability,
+      {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at});
     clock+=10*60_000+1;
     await coordinator.refresh(true);
-    const retained=await coordinator.command({kind:'sources'});
-    assert.equal(retained.kind,'sources');
-    if(retained.kind==='sources')assert.equal(retained.snapshot.games.find(row=>row.gameId===game.id)?.workingChoiceCount,1);
-    assert.equal(calls,2,'decoded proof should not trigger another media check');
+    await until(async()=>{
+      const reply=await coordinator.command({kind:'sources'});
+      return calls===3&&reply.kind==='sources'&&
+        reply.snapshot.games.find(row=>row.gameId===game.id)?.workingChoiceCount===0;
+    });
   } finally {
     releaseProbe();
     await coordinator.stop();

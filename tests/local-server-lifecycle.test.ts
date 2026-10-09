@@ -8,11 +8,20 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { HEAD } from '../app/api/internal/ready/route.ts';
+import { stageNativeArtifact } from './native-artifact-fixture.ts';
 
 const require = createRequire(import.meta.url);
+const { sourceIdentity } = require('../desktop/source-identity.cjs');
+const { buildDirectory, completeArtifact } = require('../desktop/compiled-artifact.cjs');
 const root = path.resolve('.');
 const source = readFileSync(path.join(root, 'desktop/local-server.cjs'), 'utf8');
 const fastTimeout: typeof setTimeout = (callback, _delay, ...args) => setTimeout(callback, 10, ...args);
+const compiledPreparationWatchdogMs = 15_000;
+function nativeRoot(prefix: string) {
+  const serverRoot = mkdtempSync(path.join(tmpdir(), prefix));
+  stageNativeArtifact(serverRoot);
+  return serverRoot;
+}
 
 class Child extends EventEmitter {
   pid = 830001;
@@ -29,13 +38,14 @@ type TimerPolicy = {
 };
 
 function localServer(options: {
-  spawn: (command: string, args: string[], options: { env: NodeJS.ProcessEnv }) => EventEmitter;
+  spawn: (command: string, args: string[], options: { env: NodeJS.ProcessEnv; cwd: string }) => EventEmitter;
   fetch?: typeof fetch;
   origin?: string;
   port?: number;
   onReady?: () => void;
   timers?: TimerPolicy;
   serverRoot?: string;
+  mode?: 'compiled' | 'dev' | 'packaged';
 }) {
   const logDir = mkdtempSync(path.join(tmpdir(), 'sunday-local-server-test-'));
   const wrapper = runInNewContext(`(function(require, __dirname, process, fetch, AbortSignal) { const module = { exports: {} }; ${source}\nreturn module.exports.createLocalServer; })`, {
@@ -43,46 +53,239 @@ function localServer(options: {
     clearTimeout: options.timers?.clearTimeout ?? clearTimeout,
     setInterval, clearInterval,
   });
-  const createLocalServer = wrapper((name: string) => name === 'node:child_process' ? { spawn: options.spawn } : require(name),
+  const createLocalServer = wrapper((name: string) => name === 'node:child_process' ? { spawn: options.spawn } :
+    name.startsWith('./') ? require(path.join(root, 'desktop', name)) : require(name),
     path.join(root, 'desktop'), {
       platform: 'win32', execPath: 'node.exe', env: {},
     }, options.fetch ?? (() => new Promise(() => {})), AbortSignal);
   const service = createLocalServer({
     root: options.serverRoot ?? root, origin: options.origin ?? 'http://127.0.0.1:49300', port: options.port ?? 49300,
     userData: logDir, controlToken: 'test-control-token', logDir,
+    mode: options.mode ?? 'dev',
+    ensureCollector: async () => {},
     onReady: options.onReady ?? (() => {}),
   });
   return { service, dispose: () => rmSync(logDir, { recursive: true, force: true }) };
 }
 
-test('unpackaged desktop launches source development despite a previous build', async () => {
-  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-source-test-'));
+test('ordinary unpackaged desktop prepares compiled output instead of launching development',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
+  const serverRoot = nativeRoot('sunday-local-source-test-');
   mkdirSync(path.join(serverRoot, '.next'));
+  mkdirSync(path.join(serverRoot, 'node_modules'));
   writeFileSync(path.join(serverRoot, '.next', 'BUILD_ID'), 'stale-build');
   const child = new Child();
   let launch: string[] | undefined;
+  let didLaunch = () => {};
+  const launched = new Promise<void>(resolve => { didLaunch = resolve; });
   const room = localServer({
-    serverRoot,
+    serverRoot, mode: 'compiled',
     spawn(command, args) {
-      if (command !== 'taskkill.exe') launch = Array.from(args);
+      if (command !== 'taskkill.exe') { launch = Array.from(args); didLaunch(); }
       return child;
     },
   });
   try {
     const ready = room.service.start();
+    const rejected = assert.rejects(ready, /stop/i);
     try {
-      assert.deepEqual(launch, [
-        path.join(root, 'desktop', 'server-supervisor.cjs'),
-        path.join(serverRoot, 'node_modules', 'next', 'dist', 'bin', 'next'),
-        'dev', '49300',
-      ]);
+      await launched;
+      assert.equal(launch?.[2], 'build');
     } finally {
       room.service.beginStop();
-      await assert.rejects(ready, /stop/i);
+      await rejected;
     }
   } finally {
     room.service.beginStop();
     room.dispose();
+    rmSync(serverRoot, { recursive: true, force: true });
+  }
+});
+
+test('a failed compiled build fails startup without serving an older build',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
+  const serverRoot = nativeRoot('sunday-local-failed-build-');
+  mkdirSync(path.join(serverRoot, 'node_modules'));
+  const child = new Child();
+  const modes: string[] = [];
+  const room = localServer({
+    serverRoot, mode: 'compiled',
+    spawn(command, args) {
+      if (command === 'taskkill.exe') {
+        const killer = new EventEmitter();
+        setImmediate(() => { killer.emit('exit', 0); child.exit(0); });
+        return killer;
+      }
+      modes.push(args[2]);
+      setImmediate(() => child.emit('message', { kind: 'complete', code: 1 }));
+      return child;
+    },
+  });
+  try {
+    await assert.rejects(room.service.start(), /build failed with code 1/);
+    assert.deepEqual(modes, ['build']);
+    await within(room.service.stop());
+  } finally {
+    room.service.beginStop(); room.dispose();
+    rmSync(serverRoot, { recursive: true, force: true });
+  }
+});
+
+test('stopping during a compiled build terminates its owned tree before serving',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
+  const serverRoot = nativeRoot('sunday-local-cancel-build-');
+  mkdirSync(path.join(serverRoot, 'node_modules'));
+  const child = new Child();
+  let launched = () => {};
+  const buildStarted = new Promise<void>(resolve => { launched = resolve; });
+  const modes: string[] = [];
+  let treeKills = 0;
+  const room = localServer({
+    serverRoot, mode: 'compiled',
+    spawn(command, args) {
+      if (command === 'taskkill.exe') {
+        treeKills++;
+        const killer = new EventEmitter();
+        setImmediate(() => { killer.emit('exit', 0); child.exit(0); });
+        return killer;
+      }
+      modes.push(args[2]);
+      launched();
+      return child;
+    },
+  });
+  try {
+    const ready = room.service.start();
+    const rejected = assert.rejects(ready, /stop/i);
+    await buildStarted;
+    room.service.beginStop();
+    await within(room.service.stop(), 1000);
+    await rejected;
+    assert.deepEqual(modes, ['build']);
+    assert.equal(treeKills, 1);
+    assert.equal(child.exitCode, 0);
+  } finally {
+    room.service.beginStop(); room.dispose();
+    rmSync(serverRoot, { recursive: true, force: true });
+  }
+});
+
+test('compiled startup reuses complete output and rebuilds after a source edit',
+  { timeout: compiledPreparationWatchdogMs }, async () => {
+  const serverRoot = nativeRoot('sunday-local-reuse-');
+  mkdirSync(path.join(serverRoot, 'node_modules'));
+  mkdirSync(path.join(serverRoot, 'app'));
+  writeFileSync(path.join(serverRoot, 'app', 'page.tsx'), 'before');
+  const sourceId = await sourceIdentity(serverRoot);
+  const distDir = buildDirectory('abcd');
+  const standalone = path.join(serverRoot, distDir, 'standalone');
+  for (const [name, contents] of [
+    [path.join(serverRoot, distDir, 'BUILD_ID'), sourceId],
+    [path.join(standalone, distDir, 'BUILD_ID'), sourceId],
+    [path.join(standalone, distDir, 'static', 'app.js'), 'asset'],
+    [path.join(standalone, 'public', 'favicon.svg'), 'icon'],
+    [path.join(standalone, 'server.cjs'), 'server'],
+  ]) {
+    mkdirSync(path.dirname(name), { recursive: true });
+    writeFileSync(name, contents);
+  }
+  await completeArtifact(serverRoot, distDir, sourceId);
+  const child = new Child();
+  let instanceId = '';
+  const modes: string[] = [];
+  const room = localServer({
+    serverRoot, mode: 'compiled',
+    fetch: async () => new Response(null, { status: 204, headers: { 'x-sunday-server-instance-id': instanceId } }),
+    spawn(command, args, options) {
+      if (command === 'taskkill.exe') {
+        const killer = new EventEmitter();
+        setImmediate(() => { killer.emit('exit', 0); child.exit(0); });
+        return killer;
+      }
+      modes.push(args[2]);
+      instanceId = options.env.SUNDAY_ROOM_SERVER_INSTANCE_ID ?? '';
+      assert.equal(options.cwd, standalone);
+      assert.equal(args[1], path.join(standalone, 'server.cjs'));
+      return child;
+    },
+  });
+  try {
+    await room.service.start();
+    assert.deepEqual(modes, ['standalone']);
+    await within(room.service.stop(), 1000);
+  } finally { room.service.beginStop(); room.dispose(); }
+
+  writeFileSync(path.join(serverRoot, 'app', 'page.tsx'), 'after');
+  let rebuilt = () => {};
+  const buildStarted = new Promise<void>(resolve => { rebuilt = resolve; });
+  const nextChild = new Child();
+  const nextRoom = localServer({
+    serverRoot, mode: 'compiled',
+    spawn(command, args) {
+      if (command !== 'taskkill.exe') { modes.push(args[2]); rebuilt(); }
+      return nextChild;
+    },
+  });
+  try {
+    const ready = nextRoom.service.start();
+    const rejected = assert.rejects(ready, /stop/i);
+    await buildStarted;
+    assert.deepEqual(modes, ['standalone', 'build']);
+    nextRoom.service.beginStop();
+    await rejected;
+  } finally {
+    nextRoom.service.beginStop(); nextRoom.dispose();
+    rmSync(serverRoot, { recursive: true, force: true });
+  }
+});
+
+test('source changes during preparation prevent a compiled server from starting', { timeout: 10_000 }, async () => {
+  const serverRoot = nativeRoot('sunday-local-source-change-');
+  mkdirSync(path.join(serverRoot, 'node_modules'));
+  mkdirSync(path.join(serverRoot, 'app'));
+  writeFileSync(path.join(serverRoot, 'app', 'page.tsx'), 'before');
+  const modes: string[] = [];
+  let reportMutation = () => {};
+  const mutated = new Promise<void>(resolve => { reportMutation = resolve; });
+  let currentChild: Child;
+  const room = localServer({
+    serverRoot, mode: 'compiled',
+    spawn(command, args, options) {
+      if (command === 'taskkill.exe') {
+        const killer = new EventEmitter();
+        setImmediate(() => { killer.emit('exit', 0); currentChild.exit(0); });
+        return killer;
+      }
+      modes.push(args[2]);
+      const child = new Child();
+      currentChild = child;
+      if (args[2] === 'build') {
+        setImmediate(async () => {
+          const distDir = options.env.SUNDAY_ROOM_NEXT_DIST_DIR ?? '';
+          const sourceId = await sourceIdentity(serverRoot, options.env.SUNDAY_ROOM_BUILD_PUBLIC_ENV);
+          for (const name of [path.join(serverRoot, distDir, 'BUILD_ID'),
+            path.join(serverRoot, distDir, 'standalone', distDir, 'BUILD_ID')]) {
+            mkdirSync(path.dirname(name), { recursive: true });
+            writeFileSync(name, sourceId);
+          }
+          child.emit('message', { kind: 'complete', code: 0 });
+        });
+      } else if (args[2] === 'prepare') {
+        setImmediate(() => {
+          writeFileSync(path.join(serverRoot, 'app', 'page.tsx'), 'after');
+          reportMutation();
+          child.emit('message', { kind: 'complete', code: 0 });
+        });
+      }
+      return child;
+    },
+  });
+  try {
+    await Promise.all([mutated, assert.rejects(room.service.start(), /Source changed while preparing/)]);
+    assert.deepEqual(modes, ['build', 'prepare']);
+    await within(room.service.stop());
+  } finally {
+    room.service.beginStop(); room.dispose();
     rmSync(serverRoot, { recursive: true, force: true });
   }
 });

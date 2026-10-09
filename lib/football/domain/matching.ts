@@ -1,6 +1,7 @@
 import { isRaceGame, isMotorsportsLeague, type Game, type Match, type MatchupGame, type Observation, type RaceGame, type SourceEventBinding } from '../shared.ts';
 import { COLLEGE_TEAM_CATALOG } from './college-teams.generated.ts';
 import { feedEligible } from './feed-eligibility.ts';
+import { sourceCoverage } from '../source-registry.ts';
 
 export function normalizedName(value: string): string {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\band\b/g, '&').replace(/[^a-z0-9]/g, '');
@@ -18,7 +19,7 @@ for (const team of COLLEGE_TEAM_CATALOG) {
   }
 }
 
-export function createObservationMatcher(games: Game[], mode: 'current' | 'inventory-live' = 'current'): (observation: Observation, now: number) => Match {
+export function createObservationMatcher(games: readonly Game[], mode: 'current' | 'inventory-live' = 'current'): (observation: Observation, now: number) => Match {
   const identity = (game: MatchupGame, team: MatchupGame['home']) => `${game.league}:${team.id || normalizedName(team.name)}`;
   const aliases = (game: MatchupGame, team: MatchupGame['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || [])].map(normalizedName).filter(Boolean)]);
   const matchups=games.filter((game):game is MatchupGame=>!isRaceGame(game));
@@ -41,8 +42,24 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
     const catalog = game.league === 'ncaaf' ? collegeOwners.get(alias) : undefined;
     return (!live || live.size === 1 && live.has(owner)) && (!catalog || catalog.size === 1 && catalog.has(owner));
   }));
-  const prepared=matchups.map(game=>({game,home:names(game,game.home,0),away:names(game,game.away,1),
-    date:game.date ? Date.parse(game.date) : NaN}));
+  const prepared=matchups.map((game,index)=>({game,index,home:names(game,game.home,0),away:names(game,game.away,1),
+    homeId:identity(game,game.home),awayId:identity(game,game.away),date:game.date ? Date.parse(game.date) : NaN}));
+  const homeByAlias=new Map<string,typeof prepared>();
+  const awayByAlias=new Map<string,typeof prepared>();
+  const collegeByTeam=new Map<string,typeof prepared>();
+  const add=(index:Map<string,typeof prepared>,key:string,row:typeof prepared[number])=>{
+    const rows=index.get(key)||[];
+    rows.push(row);
+    index.set(key,rows);
+  };
+  for(const row of prepared) {
+    for(const alias of row.home)add(homeByAlias,alias,row);
+    for(const alias of row.away)add(awayByAlias,alias,row);
+    if(row.game.league==='ncaaf'&&collegeAliases.has(row.game.home.id||'')&&collegeAliases.has(row.game.away.id||'')) {
+      add(collegeByTeam,row.homeId,row);
+      if(row.awayId!==row.homeId)add(collegeByTeam,row.awayId,row);
+    }
+  }
   return (observation,now) => {
     if(observation.league&&isMotorsportsLeague(observation.league))return matchRaceObservation(observation,races,now,mode);
     if (!observation.teams) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
@@ -51,28 +68,24 @@ export function createObservationMatcher(games: Game[], mode: 'current' | 'inven
       return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[]};
     const [first,second]=observation.teams.map(normalizedName);
     if (!first || !second || first===second) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
-    const strict=prepared.filter(({game,home,away})=>{
-      if (observation.league && game.league!==observation.league) return false;
-      if (observation.sourceId==='tvapp-nba' && game.league!=='nba' && game.league!=='wnba') return false;
-      if (observation.sourceId==='tvapp-nhl' && game.league!=='nhl') return false;
-      if (observation.sourceId==='tvapp-mlb' && game.league!=='mlb') return false;
-      if (observation.sourceId==='tvapp' && game.league!=='nfl' && game.league!=='ncaaf') return false;
-      return home.has(first) && away.has(second) || home.has(second) && away.has(first);
-    });
-    const anchored=(anchorName:string,otherName:string,anchorId:string,otherId:string):boolean=>{
+    const strictRows=new Set<typeof prepared[number]>();
+    for(const row of homeByAlias.get(first)||[])if((!observation.league||row.game.league===observation.league)&&row.away.has(second))strictRows.add(row);
+    for(const row of awayByAlias.get(first)||[])if((!observation.league||row.game.league===observation.league)&&row.home.has(second))strictRows.add(row);
+    const strict=[...strictRows].sort((left,right)=>left.index-right.index);
+    const anchored=(anchorName:string,otherName:string):typeof prepared=>{
       const anchorOwners=collegeOwners.get(anchorName),otherOwners=collegeOwners.get(otherName);
       const activeAnchor=liveOwners.get(`ncaaf:${anchorName}`),activeOther=liveOwners.get(`ncaaf:${otherName}`);
-      return !!anchorOwners&&anchorOwners.size===1&&anchorOwners.has(anchorId)&&
-        !!otherOwners&&otherOwners.size>1&&otherOwners.has(otherId)&&
-        !!activeAnchor&&activeAnchor.size===1&&activeAnchor.has(anchorId)&&
-        !!activeOther&&activeOther.has(otherId)&&[...activeOther].every(owner=>otherOwners.has(owner));
+      if(!anchorOwners||anchorOwners.size!==1||!otherOwners||otherOwners.size<=1||
+        !activeAnchor||activeAnchor.size!==1||!activeOther||
+        [...activeOther].some(owner=>!otherOwners.has(owner)))return [];
+      const anchorId=anchorOwners.values().next().value;
+      if(!anchorId||!activeAnchor.has(anchorId))return [];
+      return (collegeByTeam.get(anchorId)||[]).filter(row=>
+        row.homeId===anchorId&&otherOwners.has(row.awayId)&&activeOther.has(row.awayId)||
+        row.awayId===anchorId&&otherOwners.has(row.homeId)&&activeOther.has(row.homeId));
     };
-    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='nhl'||observation.league==='mlb'||observation.sourceId==='tvapp-nba'||observation.sourceId==='tvapp-nhl'||observation.sourceId==='tvapp-mlb'?[]:prepared.filter(({game})=>{
-      if(game.league!=='ncaaf'||!collegeAliases.has(game.home.id||'')||!collegeAliases.has(game.away.id||''))return false;
-      const home=identity(game,game.home),away=identity(game,game.away);
-      return anchored(first,second,home,away)||anchored(second,first,away,home)||
-        anchored(first,second,away,home)||anchored(second,first,home,away);
-    });
+    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='nhl'||observation.league==='mlb'?[]:
+      [...new Set([...anchored(first,second),...anchored(second,first)])].sort((left,right)=>left.index-right.index);
     const possible=[...new Map([...strict,...contextual].map(row=>[row.game.id,row])).values()];
     const ids=[...new Set(possible.map(({game})=>game.id))];
     if (observation.kickoff===null) return {kind:'unmatched',reason:!ids.length?'unknown-teams':
@@ -130,39 +143,77 @@ export function detailCandidateGameIds(result:Match):readonly string[] {
     ?result.possibleGameIds:[];
 }
 
-export function matchUndatedSportsurge(observation:Observation,result:Match,games:readonly Game[],now:number):Match {
-  if((observation.sourceId!=='sportsurge'&&observation.sourceId!=='sportsurge-v2')||
-    observation.kickoff!==null||now-observation.observedAt>=30*60_000||observation.observedAt>now+60_000||
-    result.kind!=='unmatched'||result.reason!=='unverified-kickoff'||result.possibleGameIds.length!==1)return result;
-  const game=games.find(game=>game.id===result.possibleGameIds[0]);
-  return game&&observation.league===game.league&&feedEligible(game,now)?{kind:'matched',gameId:game.id}:result;
+export type SourceEventEvidence = {
+  undated: 'none' | 'published-listing' | 'live-claim' | 'retained-live-detail';
+  externalGameId: string | null;
+};
+
+export type SourceEventDecision =
+  | {kind:'matched';gameId:string;match:Extract<Match,{kind:'matched'}>}
+  | {kind:'possible';gameIds:string[];reason:string;match:Extract<Match,{kind:'unmatched'}>}
+  | {kind:'rejected';reason:string;match:Extract<Match,{kind:'unmatched'}>};
+
+export function createSourceEventMatcher(games:readonly Game[],mode:'current'|'inventory-live'='current') {
+  const prepared=new Map<string,ReturnType<typeof createObservationMatcher>>();
+  const byId=new Map(games.map(game=>[game.id,game]));
+  return (observation:Observation,evidence:SourceEventEvidence,now:number):SourceEventDecision=>{
+    const declared=sourceCoverage(observation.sourceId);
+    const leagues=declared.length?declared:observation.league?[observation.league]:
+      [...new Set(games.map(game=>game.league))];
+    const key=[...leagues].sort().join(',');
+    let match=prepared.get(key);
+    if(!match){
+      match=createObservationMatcher(games.filter(game=>leagues.includes(game.league)),mode);
+      prepared.set(key,match);
+    }
+    let result=match(observation,now);
+    const fresh=now-observation.observedAt<30*60_000&&observation.observedAt<=now+60_000;
+    if(result.kind==='unmatched'&&observation.kickoff===null&&
+      result.reason==='unverified-kickoff'&&result.possibleGameIds.length===1&&
+      (evidence.undated==='retained-live-detail'||fresh)){
+      const game=byId.get(result.possibleGameIds[0]);
+      if(game&&game.lifecycle!=='final'&&observation.league===game.league&&
+        (evidence.undated==='published-listing'&&feedEligible(game,now)||
+          evidence.undated==='retained-live-detail'&&(game.lifecycle==='live'||fresh)&&feedEligible(game,now)||
+          evidence.undated==='live-claim'&&feedEligible(game,now)&&game.date!==undefined&&
+            Math.abs(Date.parse(game.date)-now)<=30*60_000))
+        result={kind:'matched',gameId:game.id};
+    }
+    if(evidence.externalGameId!==null&&
+      (result.kind==='matched'&&result.gameId!==evidence.externalGameId||
+        result.kind==='unmatched'&&result.possibleGameIds.length>0&&
+          !result.possibleGameIds.includes(evidence.externalGameId)))
+      result={kind:'unmatched',reason:'conflicting-game-id',possibleGameIds:result.kind==='matched'?[result.gameId]:result.possibleGameIds};
+    if(result.kind==='matched')return {kind:'matched',gameId:result.gameId,match:result};
+    if(result.possibleGameIds.length&&result.reason!=='finished-game'&&result.reason!=='conflicting-game-id')
+      return {kind:'possible',gameIds:result.possibleGameIds,reason:result.reason,match:result};
+    return {kind:'rejected',reason:result.reason,match:result};
+  };
 }
 
-export function matchSourceLiveGame(result:Match,games:readonly Game[],now:number):Match {
-  if(result.kind!=='unmatched'||result.reason!=='unverified-kickoff'||result.possibleGameIds.length!==1)return result;
-  const game=games.find(game=>game.id===result.possibleGameIds[0]);
-  return game&&(game.lifecycle==='live'||game.lifecycle==='scheduled'&&game.date!==undefined&&Math.abs(Date.parse(game.date)-now)<=30*60_000)
-    ?{kind:'matched',gameId:game.id}:result;
-}
-
-export function confirmedFinishedGameId(observation:Observation,games:Game[],now:number,expectedGameId?:string):string|null {
-  if(observation.kickoff===null)return null;
-  const result=createObservationMatcher(games,'inventory-live')({...observation,observedAt:now},now);
-  return result.kind==='unmatched'&&result.reason==='finished-game'&&result.possibleGameIds.length===1&&
-    (!expectedGameId||result.possibleGameIds[0]===expectedGameId)?result.possibleGameIds[0]:null;
-}
-
-export function confirmedFinishedBoundEvent(observation:Observation,eventId:string,bindings:readonly SourceEventBinding[],games:Game[]):string|null {
-  if(observation.kickoff!==null)return null;
-  const teams=observation.teams;
-  if(!teams)return null;
-  const pair=(teams:readonly string[])=>teams.map(normalizedName).sort().join('|');
-  const binding=bindings.find(row=>row.sourceId===observation.sourceId&&row.eventId===eventId&&
-    row.url===observation.url&&row.league===observation.league&&pair(row.teams)===pair(teams));
-  if(!binding||!games.some(game=>game.id===binding.gameId&&game.lifecycle==='final'))return null;
-  const current=createObservationMatcher(games,'inventory-live')(observation,observation.observedAt);
-  return current.kind==='unmatched'&&current.possibleGameIds.length===1&&
-    current.possibleGameIds[0]===binding.gameId?binding.gameId:null;
+export function createFinishedGameMatcher(games:readonly Game[]) {
+  const match=createObservationMatcher(games,'inventory-live');
+  const finalIds=new Set(games.filter(game=>game.lifecycle==='final').map(game=>game.id));
+  return {
+    finishedGameId(observation:Observation,now:number,expectedGameId?:string):string|null {
+      if(observation.kickoff===null)return null;
+      const result=match({...observation,observedAt:now},now);
+      return result.kind==='unmatched'&&result.reason==='finished-game'&&result.possibleGameIds.length===1&&
+        (!expectedGameId||result.possibleGameIds[0]===expectedGameId)?result.possibleGameIds[0]:null;
+    },
+    finishedBoundEvent(observation:Observation,eventId:string,bindings:readonly SourceEventBinding[]):string|null {
+      if(observation.kickoff!==null)return null;
+      const teams=observation.teams;
+      if(!teams)return null;
+      const pair=(teams:readonly string[])=>teams.map(normalizedName).sort().join('|');
+      const binding=bindings.find(row=>row.sourceId===observation.sourceId&&row.eventId===eventId&&
+        row.url===observation.url&&row.league===observation.league&&pair(row.teams)===pair(teams));
+      if(!binding||!finalIds.has(binding.gameId))return null;
+      const current=match(observation,observation.observedAt);
+      return current.kind==='unmatched'&&current.possibleGameIds.length===1&&
+        current.possibleGameIds[0]===binding.gameId?binding.gameId:null;
+    },
+  };
 }
 
 export function mergeSchedulePartitions(partitions: Game[][]): Game[] {

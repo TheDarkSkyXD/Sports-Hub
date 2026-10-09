@@ -1,3 +1,4 @@
+import { browserCategory } from '../lib/football/source-registry.ts';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -28,7 +29,7 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} reuses
     now: () => clock, browserCollectorsAvailable: true,
     sources: [{ id: sourceId, url: surge ? 'https://v2.sportsurge.net/watch-nfl-streams/' : 'https://v2.streameast.ga/nfl-streams/', family: sourceId, kind: 'browser-catalog' }],
     readSchedule: async source => ({ games: source.id === 'nfl' ? [1, 2, 3].map(index => finished && index === 1 ? { ...game(index), status: 'post', lifecycle: 'final' as const, finalObservedAt: clock, graceEndsAt: clock + 300000 } : game(index)) : [], league: source.league, at: clock }),
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   const sweep = async (): Promise<SportsurgeCatalog | StreameastCatalog> => {
     await coordinator.refresh(true); await drain();
@@ -40,10 +41,10 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} reuses
         assert.deepEqual(await coordinator.command(command), ack, 'wire replay must stay idempotent');
         return ack;
       },
-      read: async (url: string, page: string) => {
+      read: async (url: string, page: string, league: string) => {
         reads.push(page);
         if (page === 'category') {
-          if (!url.includes('nfl')) return surge ? '<main id="match-list-container"><div class="watch-empty-state">No live or upcoming games</div></main>' : '<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">No CFB games available</h2></div>';
+          if (!url.includes('nfl')) return surge ? '<main id="match-list-container"><div class="watch-empty-state">No live or upcoming games</div></main>' : `<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">${browserCategory('streameast',league)?.emptyTitles?.[0]}</h2></div>`;
           return surge ? `<main id="match-list-container">${listed.map(index => `<a class="match-row" href="watch-${10000 + index}-nfl-away-home-${index}/"><span class="match-row-team-name">Away ${index}</span><span class="match-row-team-name">Home ${index}</span><time class="match-time" data-timestamp="${Date.parse(game(index).date || '') / 1000}"></time>${index !== 3 ? '<span class="live-badge">Live</span>' : ''}2 Streams</a>`).join('')}</main>` : listed.map(index => `<article class="m-card" data-match-id="${10000 + index}" data-team-names="Away ${index}|Home ${index}" data-time="${Date.parse(game(index).date || '') / 1000}"><a class="m-card__link" href="https://v2.streameast.ga/nfl/away-${index}-vs-home-${index}-${at / 1000}/"></a></article>`).join('');
         }
         const index = Number(/home-(\d)/.exec(url)?.[1]);
@@ -59,7 +60,8 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} reuses
     assert.equal(reads.filter(page => page === 'detail').length, 2);
     const before = await coordinator.command({ kind: 'sources' });
     assert.equal(before.kind, 'sources');
-    if (before.kind === 'sources') assert.deepEqual(before.snapshot.games.map(row => row.workingChoiceCount), [2, 2]);
+    if (before.kind === 'sources') assert.deepEqual(before.snapshot.games.map(row => [row.gameId, row.workingChoiceCount]),
+      [['10001', 2], ['10002', 2], ['10003', 0]]);
     clock += 60000; listed = [1, 2, 3]; reads.length = 0;
     const second = await sweep(); await drain();
     assert.equal(second.state.kind, 'complete');
@@ -121,7 +123,7 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
     now: () => clock, browserCollectorsAvailable: true,
     sources: [{ id: sourceId, url: surge ? 'https://v2.sportsurge.net/watch-nfl-streams/' : 'https://v2.streameast.ga/nfl-streams/', family: sourceId, kind: 'browser-catalog' }],
     readSchedule: async source => ({ games: source.id === 'nfl' ? [game(1)] : [], league: source.league, at: clock }),
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   const sweep = async () => {
     await coordinator.refresh(true); await drain();
@@ -132,10 +134,10 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
         assert.equal(ack.kind, 'catalog-ack', JSON.stringify(ack));
         return ack;
       },
-      read: async (url: string, page: string) => {
+      read: async (url: string, page: string, league: string) => {
         reads.push(page);
         if (page === 'category') {
-          if (!url.includes('nfl')) return surge ? '<main id="match-list-container"><div class="watch-empty-state">No live or upcoming games</div></main>' : '<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">No CFB games available</h2></div>';
+          if (!url.includes('nfl')) return surge ? '<main id="match-list-container"><div class="watch-empty-state">No live or upcoming games</div></main>' : `<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">${browserCategory('streameast',league)?.emptyTitles?.[0]}</h2></div>`;
           return surge ? `<main id="match-list-container"><a class="match-row" href="watch-10001-nfl-away-home-1/"><span class="match-row-team-name">Away 1</span><span class="match-row-team-name">Home 1</span> <time class="match-time" data-timestamp="${at / 1000}"></time><span class="live-badge">Live</span> 2 Streams</a></main>` :
             `<article class="m-card" data-match-id="10001" data-team-names="Away 1|Home 1" data-time="${at / 1000}"><a class="m-card__link" href="https://v2.streameast.ga/nfl/away-1-vs-home-1-${at / 1000}/"></a></article>`;
         }
@@ -153,7 +155,7 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
     assert.equal(first.snapshot.games[0].workingChoiceCount, 1);
     const firstCandidateId = first.snapshot.games[0].candidates[0].id;
     const firstAvailability = first.snapshot.games[0].candidates[0].availability;
-    assert.deepEqual(firstAvailability, { kind: 'playable', proof: 'media', checkedAt: at });
+    assert.deepEqual(firstAvailability, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     assert.equal((await coordinator.command({ kind: 'set-feed-check-interval', minutes: 1 })).kind, 'board');
     clock += 60000;
     published = 2;
@@ -164,7 +166,9 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
     if (second.kind === 'sources') {
       assert.equal(second.snapshot.games[0].workingChoiceCount, 2);
       assert.deepEqual(second.snapshot.games[0].candidates.find(candidate => candidate.id === firstCandidateId)?.availability,
-        { kind: 'playable', proof: 'media', checkedAt: at + 60_000 });
+        { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
+      assert.deepEqual(second.snapshot.games[0].candidates.find(candidate => candidate.id !== firstCandidateId)?.availability,
+        { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 60_000 });
     }
     assert.equal(reads.filter(page => page === 'detail').length, 1);
   } finally { await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); }

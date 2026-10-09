@@ -123,7 +123,7 @@ test('CFB discovery publishes all four verified live channels under the correct 
     now:()=>at,sources:[source],
     readSchedule:async schedule=>({games:schedule.id==='fbs'?games:[],league:schedule.league,at}),
     readHtml:async url=>url===source.url?fixture('catalog'):detail(url),
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   try{
     await coordinator.refresh();

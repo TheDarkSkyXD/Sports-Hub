@@ -1,10 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { DEFAULT_FEED_CHECK_INTERVAL_MINUTES, DEFAULT_FINISHED_GAME_RETENTION_MINUTES, FeedCheckIntervalMinutesSchema, FinishedGameRetentionMinutesSchema, DetailEvidenceSchema, GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema, SourceEventBindingSchema, StoredSportsurgeCatalogSchema, StoredStreameastCatalogSchema } from '../shared.ts';
+import { LeagueSchema, DEFAULT_FEED_CHECK_INTERVAL_MINUTES, DEFAULT_FINISHED_GAME_RETENTION_MINUTES, FeedCheckIntervalMinutesSchema, FinishedGameRetentionMinutesSchema, DetailEvidenceSchema, GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema, SourceEventBindingSchema, StoredSportsurgeCatalogSchema, StoredStreameastCatalogSchema } from '../shared.ts';
 import type { CollectionAttempt, DetailEvidence, Game, Match, Observation, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
 import { recordFinal } from '../domain/lifecycle.ts';
-import { confirmedFinishedBoundEvent, confirmedFinishedGameId } from '../domain/matching.ts';
+import { createFinishedGameMatcher } from '../domain/matching.ts';
 import { SOURCE_REFRESH_MS, rebaseRetryDeadline, retryDeadline } from '../domain/source-policy.ts';
 import { WorkingFeedSchema, type WorkingFeed } from '../domain/working-feed.ts';
 
@@ -177,6 +177,12 @@ export class FootballStore {
       return result.success ? [result.data] : [];
     });
   }
+  observation(id:string):Observation|null {
+    const row=this.db.prepare('SELECT payload FROM observations WHERE id=?').get(id);
+    if(typeof row?.payload!=='string')return null;
+    const result=ObservationSchema.safeParse(JSON.parse(row.payload));
+    return result.success?result.data:null;
+  }
   sourceAttempts(): Record<string,SourceAttempt> {
     const attempts=Object.fromEntries(this.db.prepare('SELECT id,payload FROM sources').all().flatMap<[string,SourceAttempt]>(row => {
       if (typeof row.id !== 'string' || typeof row.payload !== 'string') return [];
@@ -257,16 +263,18 @@ export class FootballStore {
       if(parsed.success)for(const game of parsed.data.games)if(!current.has(game.id))current.set(game.id,game);
     }
     const canonicalGames=[...current.values()];
+    const selectedFinals=createFinishedGameMatcher(finals);
+    const canonical=createFinishedGameMatcher(canonicalGames);
     const ids=this.db.prepare('SELECT id,payload,result FROM observations').all().flatMap(row=>{
       if(typeof row.id!=='string'||typeof row.payload!=='string'||typeof row.result!=='string')return [];
       const parsed=ObservationSchema.safeParse(JSON.parse(row.payload));
       if(!parsed.success)return [];
       const result=JSON.parse(row.result) as Match;
-      const sportsurgeId=/^https:\/\/v2\.sportsurge\.net\/watch-(\d{1,12})-(cfb|nfl|nba)-/.exec(parsed.data.url);
-      const eventId=sportsurgeId?`${sportsurgeId[2]==='cfb'?'ncaaf':sportsurgeId[2]}:${sportsurgeId[1]}`:null;
-      const boundGameId=confirmedFinishedBoundEvent(parsed.data,eventId||parsed.data.id,bindings,canonicalGames);
+      const sportsurgeId=/^https:\/\/v2\.sportsurge\.net\/watch-(\d{1,12})-[a-z0-9]+-/.exec(parsed.data.url);
+      const eventId=sportsurgeId&&parsed.data.league?`${parsed.data.league}:${sportsurgeId[1]}`:null;
+      const boundGameId=canonical.finishedBoundEvent(parsed.data,eventId||parsed.data.id,bindings);
       const bound=result.kind==='matched'&&finals.some(game=>game.id===result.gameId)||
-        confirmedFinishedGameId(parsed.data,finals,now)!==null||
+        selectedFinals.finishedGameId(parsed.data,now)!==null||
         boundGameId!==null&&finals.some(game=>game.id===boundGameId);
       return bound?[row.id]:[];
     });
@@ -289,18 +297,19 @@ export class FootballStore {
         typeof row.outcome!=='string')return [];
       const outcome=SourceAttemptSchema.shape.outcome.safeParse(row.outcome);
       if(!outcome.success)return [];
-      const category=/^(.*):(ncaaf|nfl|nba)$/.exec(row.source_id);
-      const league=category?.[2]==='ncaaf'?'ncaaf':category?.[2]==='nfl'?'nfl':category?.[2]==='nba'?'nba':null;
-      return [{sourceId:category?category[1]:row.source_id,league,
+      const category=/^(.*):([a-z0-9-]+)$/.exec(row.source_id);
+      const parsedLeague=LeagueSchema.safeParse(category?.[2]);
+      const league=parsedLeague.success?parsedLeague.data:null;
+      return [{sourceId:category&&league?category[1]:row.source_id,league,
         at:row.at,outcome:outcome.data,count:row.count}];
     });
   }
-  private recordCatalogAttempts(sourceId:string, catalog:{categories:Record<'ncaaf'|'nfl',
+  private recordCatalogAttempts(sourceId:string, catalog:{categories:Record<string,
     {kind:'pending'}|{kind:'collected';at:number}|{kind:'failed';at:number;reason:string}>;
-    events:{league:'ncaaf'|'nfl'}[]}):void {
+    events:{league:string}[]}):void {
     const insert=this.db.prepare('INSERT OR IGNORE INTO catalog_attempts VALUES (?,?,?,?,?)');
     const diagnostic=this.db.prepare('INSERT INTO diagnostics (source_id,at,outcome,count,error) VALUES (?,?,?,?,?)');
-    for(const league of ['ncaaf','nfl'] as const) {
+    for(const league of Object.keys(catalog.categories)) {
       const category=catalog.categories[league];
       if(category.kind==='pending')continue;
       const count=category.kind==='collected'?catalog.events.filter(event=>event.league===league).length:0;

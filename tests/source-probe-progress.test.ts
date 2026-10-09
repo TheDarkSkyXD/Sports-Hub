@@ -20,8 +20,8 @@ const games: Game[] = Array.from({ length: 5 }, (_, index) => ({
 }));
 
 for (const late of [false, true]) test(late
-  ? 'a newly discovered direct feed starts while four event-page probes are pending'
-  : 'a direct live feed gets a probe slot before slow event-page feeds fill the pool', async () => {
+  ? 'a newly discovered direct feed starts as held event-page slots release'
+  : 'a direct live feed starts after held event-page slots release', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'source-probe-progress-'));
   const source = { id: 'fixture', url: 'https://fixture.example/list', family: 'fixture' };
   const observations: Observation[] = games.map((game, index) => ({
@@ -58,33 +58,31 @@ for (const late of [false, true]) test(late
           if (!late) resolve();
         }, { once: true });
       });
-      return { kind: 'playable', proof: 'media' };
+      return { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
     },
   });
   try {
     await coordinator.refresh(true);
-    for (let attempt = 0; started.length < 4 && attempt < 100; attempt++)
+    for (let attempt = 0; started.length < 2 && attempt < 100; attempt++)
       await new Promise<void>(resolve => setImmediate(resolve));
+    assert.deepEqual(started, ['event-page', 'event-page']);
     if (late) {
-      assert.deepEqual(started, ['event-page', 'event-page', 'event-page', 'event-page']);
       visibleCount = 5;
       now += 300_001;
       await coordinator.refresh(true);
-      for (let attempt = 0; aborted.length < 1 && attempt < 100; attempt++)
-        await new Promise<void>(resolve => setImmediate(resolve));
-      assert.deepEqual(aborted, ['event-page']);
+      assert.deepEqual(aborted, []);
       for (let index = 0; index < 3; index++)
         assert.deepEqual(await coordinator.command({ kind: 'check-sources', gameIds: ['5'], retry: false }), { kind: 'ok' });
-      assert.deepEqual(aborted, ['event-page']);
-      pending.find(job => job.signal.aborted)?.resolve();
-      for (let attempt = 0; started.length < 5 && attempt < 100; attempt++)
+      assert.deepEqual(aborted, []);
+    }
+    for (let expected = 3; expected <= 5 && !started.includes('gooz'); expected++) {
+      pending.shift()?.resolve();
+      for (let attempt = 0; started.length < expected && attempt < 100; attempt++)
         await new Promise<void>(resolve => setImmediate(resolve));
-      assert.deepEqual(started, ['event-page', 'event-page', 'event-page', 'event-page', 'gooz']);
-      const reply = await coordinator.command({ kind: 'sources' });
-      assert.equal(reply.kind, 'sources');
-      if (reply.kind === 'sources') assert.deepEqual(reply.snapshot.games.slice(0, 5).map(game =>
-        game.candidates[0]?.availability.kind), ['checking', 'checking', 'checking', 'checking', 'checking']);
-    } else assert.deepEqual(started, ['gooz', 'event-page', 'event-page', 'event-page']);
+      assert.equal(started.length, expected);
+    }
+    assert.deepEqual(started, ['event-page', 'event-page', 'event-page', 'event-page', 'gooz']);
+    assert.deepEqual(aborted, []);
   } finally {
     for (const job of pending) job.resolve();
     await coordinator.stop();
@@ -92,7 +90,7 @@ for (const late of [false, true]) test(late
   }
 });
 
-test('a requested game admits all unknown servers past a full background probe queue', async () => {
+test('a requested game admits two servers while a background game holds its first check', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'source-requested-probe-'));
   const scheduled: Game[] = Array.from({ length: 1 }, (_, index) => ({
     ...games[0], id: String(1000 + index), name: `Away ${index} at Home ${index}`,
@@ -132,18 +130,18 @@ test('a requested game admits all unknown servers past a full background probe q
         pending.push({ id, resolve });
         signal.addEventListener('abort', resolve, { once: true });
       });
-      return { kind: 'playable', proof: 'media' };
+      return { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
     },
   });
   try {
     await coordinator.refresh(true);
-    for (let attempt = 0; calls.length < 4 && attempt < 100; attempt++)
+    for (let attempt = 0; calls.length < 1 && attempt < 100; attempt++)
       await new Promise<void>(resolve => setImmediate(resolve));
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 1);
     const full = await coordinator.command({ kind: 'sources' });
     assert.equal(full.kind, 'sources');
     if (full.kind === 'sources') assert.equal(full.snapshot.games.find(game => game.gameId === scheduled[0].id)?.candidates.filter(candidate =>
-      candidate.availability.kind === 'checking').length, 256);
+      candidate.availability.kind === 'checking').length, 1);
     includeTarget = true;
     now += 300_001;
     await coordinator.refresh(true);
@@ -156,23 +154,29 @@ test('a requested game admits all unknown servers past a full background probe q
     assert.equal(populated.kind, 'sources');
     if (populated.kind === 'sources') {
       assert.equal(populated.snapshot.games.find(game => game.gameId === scheduled[0].id)?.candidates.filter(candidate =>
-        candidate.availability.kind === 'checking').length, 260);
+        candidate.availability.kind === 'checking').length, 1);
       assert.deepEqual(populated.snapshot.games.find(game => game.gameId === target.id)?.candidates.map(candidate =>
-        candidate.availability.kind), Array(5).fill('unknown'));
+        candidate.availability.kind), ['checking', 'unknown', 'unknown', 'unknown', 'unknown']);
     }
     assert.deepEqual(await coordinator.command({ kind: 'check-sources', gameIds: [target.id], retry: false }), { kind: 'ok' });
     const requested = await coordinator.command({ kind: 'sources' });
     assert.equal(requested.kind, 'sources');
     if (requested.kind === 'sources') {
       assert.equal(requested.snapshot.games.find(game => game.gameId === scheduled[0].id)?.candidates.filter(candidate =>
-        candidate.availability.kind === 'checking').length, 255);
+        candidate.availability.kind === 'checking').length, 1);
       assert.deepEqual(requested.snapshot.games.find(game => game.gameId === target.id)?.candidates.map(candidate =>
-        candidate.availability.kind), Array(5).fill('checking'));
+        candidate.availability.kind), ['checking', 'checking', 'unknown', 'unknown', 'unknown']);
     }
-    pending[0].resolve();
-    for (let attempt = 0; calls.length < 5 && attempt < 100; attempt++)
+    const secondBackground = pending.find(job => job.id === '80000');
+    assert.ok(secondBackground,'the new background route occupies the second slot');
+    secondBackground.resolve();
+    for (let attempt = 0; !calls.includes('90000') && attempt < 100; attempt++)
       await new Promise<void>(resolve => setImmediate(resolve));
-    assert.equal(calls[4], '90000');
+    assert.equal(calls.includes('90000'), true);
+    pending.find(job => job.id === '90000')?.resolve();
+    for (let attempt = 0; !calls.includes('90001') && attempt < 100; attempt++)
+      await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(calls.includes('90001'), true);
   } finally {
     for (const job of pending) job.resolve();
     await coordinator.stop();

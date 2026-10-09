@@ -20,11 +20,11 @@ async function drain() { for (let index = 0; index < 60; index++) await new Prom
 function fixture() {
   const directory = mkdtempSync(join(tmpdir(), 'working-feed-cache-')), path = join(directory, 'state.sqlite');
   let clock = at, current: Game[] = [game], visible = true, failSchedule = false, listingVersion = 1;
-  let probe: (locator: CandidateLocator) => Promise<CandidateProbeResult> = async () => ({ kind: 'playable', proof: 'media' });
+  let probe: (locator: CandidateLocator) => Promise<CandidateProbeResult> = async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
   let sourceIds = ['fixture'], locators: CandidateLocator[] = [{ provider: 'gooz', playerId: '100' }], partitionIds = ['nfl'];
   const partitionResults = new Map<string, Game[] | Promise<Game[]>>();
   const probes: CandidateLocator[] = [];
-  let detailReads = 0;
+  let listingReads = 0, detailReads = 0;
   const eventUrl = (sourceId: string, gameId: string) => {
     const locator = locators[sourceIds.indexOf(sourceId)];
     return locator?.provider === 'event-page' ? locator.eventUrl : `https://fixture.example/event/${gameId}/${listingVersion}`;
@@ -34,7 +34,10 @@ function fixture() {
     sources: sourceIds.map(id => ({ id, url: `https://fixture.example/list/${id}`, family: 'fixture',
       publicUrls: locators.flatMap(locator => locator.provider === 'event-page' ? [locator.eventUrl] : []) })),
     readSchedule: async source => { if (failSchedule) throw new Error('schedule offline'); return { games: await (partitionResults.get(source.id) ?? current), league: 'nfl', at: clock }; },
-    readHtml: async () => { detailReads++; return '<main>published</main>'; },
+    readHtml: async url => {
+      if (new URL(url).pathname.startsWith('/list/')) listingReads++; else detailReads++;
+      return '<main>published</main>';
+    },
     parseListings: source => ({ outcome: visible ? 'parsed' : 'empty', observations: visible ? current.map(row => ({
       id: `${source.id}:${row.id}`, sourceId: source.id, url: eventUrl(source.id, row.id),
       title: row.name, league: row.league, teams: [row.away.name, row.home.name], kickoff: Date.parse(row.date!),
@@ -45,7 +48,7 @@ function fixture() {
       [{ id: `${observation.sourceId}-${index}`, label: `Free ${index}`, locator }]),
     probeCandidate: async locator => { probes.push(locator); return probe(locator); },
   });
-  return { path, probes, start, detailReads: () => detailReads,
+  return { path, probes, start, reads: () => ({ listingReads, detailReads }),
     setClock: (value: number) => { clock = value; }, hide: () => { visible = false; },
     setGames: (value: Game[]) => { current = value; }, setSources: (value: string[]) => { sourceIds = value; },
     setLocators: (value: CandidateLocator[]) => { locators = value; }, setScheduleFailure: (value: boolean) => { failSchedule = value; },
@@ -95,8 +98,8 @@ test('public Sportsurge query pages retain media proof across coordinator restar
     const before = (await snapshot(coordinator)).games[0].candidates;
     assert.equal(before.length, 2);
     assert.deepEqual(before.map(row => row.availability), [
-      { kind: 'playable', proof: 'media', checkedAt: at },
-      { kind: 'playable', proof: 'media', checkedAt: at },
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at },
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at },
     ]);
     assert.equal(run.probes.length, 2);
     await coordinator.stop(); run.hide(); run.setClock(at + 60_000);
@@ -108,7 +111,32 @@ test('public Sportsurge query pages retain media proof across coordinator restar
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 
-test('old live and scheduled working choices are visible before schedule refresh', async () => {
+test('legacy media and decoded cache rows remain recheck hints, never Available proof',async()=>{
+  for(const legacyProof of ['media','decoded'] as const){
+    const run=fixture();
+    run.setSources(['sportsurge-v2']);
+    run.setLocators([{provider:'sportsurge-v2',eventId:'nfl:10001',providerId:'sportsupa',
+      url:'https://sportsupa.st/event/?id=san-francisco-49ers-vs-denver-broncos-2475434&src=best&sno=1'}]);
+    let coordinator=run.start();
+    try{
+      await coordinator.refresh(true);await drain();
+      const rows=run.readRows();
+      assert.equal(rows.length,1);
+      await coordinator.stop();
+      run.writeRows(rows.map(row=>({...row,version:1 as const,proof:legacyProof})));
+      run.hide();run.setClock(at+31*60_000);
+      run.setProbe(async()=>({kind:'deferred',retryAfterMs:30_000}));
+      coordinator=run.start();
+      await coordinator.refresh(true);await drain();
+      const candidates=(await snapshot(coordinator)).games[0].candidates;
+      assert.equal(candidates.length,1);
+      assert.notEqual(candidates[0].availability.kind,'playable');
+      assert.equal(run.probes.length,2);
+    }finally{await coordinator.stop();run.cleanup();}
+  }
+});
+
+test('old live and scheduled routes remain visible for recheck before schedule refresh', async () => {
   for (const scheduled of [false, true]) {
     const run = fixture();
     if (scheduled) run.setGames([{ ...game, lifecycle: 'scheduled', status: 'pre', date: '2026-10-05T17:00:00Z' }]);
@@ -118,17 +146,19 @@ test('old live and scheduled working choices are visible before schedule refresh
       const before = (await snapshot(coordinator)).games[0].candidates[0];
       await coordinator.stop(); run.hide(); run.setClock(at + 31 * 60_000);
       coordinator = run.start();
-      assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0], before);
+      const restored = (await snapshot(coordinator)).games[0].candidates[0];
+      assert.equal(restored.id, before.id);
+      assert.equal(restored.availability.kind, 'unknown');
       assert.equal(run.probes.length, 1);
       await coordinator.refresh(true); await drain();
       assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0],
-        { ...before, availability: { kind: 'playable', proof: 'media', checkedAt: at + 31 * 60_000 } });
+        { ...before, availability: { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 31 * 60_000 } });
       assert.equal(run.probes.length, 2);
     } finally { await coordinator.stop(); run.cleanup(); }
   }
 });
 
-test('a held schedule refresh leaves saved working feeds open without network or media reads', async () => {
+test('a held schedule refresh retains saved routes without detail or media reads', async () => {
   for (const scheduled of [false, true]) {
     const run = fixture();
     if (scheduled) run.setGames([{ ...game, lifecycle: 'scheduled', status: 'pre', date: '2026-10-05T17:00:00Z' }]);
@@ -138,26 +168,21 @@ test('a held schedule refresh leaves saved working feeds open without network or
     try {
       await coordinator.refresh(true); await drain();
       const candidate = (await snapshot(coordinator)).games[0].candidates[0];
-      const reads = run.detailReads();
+      const reads = run.reads();
       await coordinator.stop(); run.hide(); run.setClock(at + (scheduled ? 25 * 60 : 31) * 60_000);
       run.partitionResults.set('nfl', new Promise<Game[]>(resolve => { release = resolve; }));
       coordinator = run.start(); pending = coordinator.refresh(true); await drain();
       const sources = await snapshot(coordinator);
-      assert.deepEqual(sources.games[0].candidates[0], candidate);
+      assert.equal(sources.games[0].candidates[0].id, candidate.id);
+      assert.equal(sources.games[0].candidates[0].availability.kind, 'unknown');
       const board = await coordinator.command({ kind: 'board' });
       assert.equal(board.kind, 'board');
-      if (board.kind === 'board') assert.equal(board.board.games.find(row => row.id === game.id)?.sourceUrl, `/play/${game.id}`);
+      if (board.kind === 'board') assert.equal(board.board.games.find(row => row.id === game.id)?.sourceUrl, undefined);
       const opened = await coordinator.command({ kind: 'open', gameId: game.id, manual: false });
-      assert.equal(opened.kind, 'playback');
-      if (opened.kind === 'playback') {
-        assert.deepEqual(opened.playback.candidates.map(row => row.id), [candidate.id]);
-        const session = opened.playback.session;
-        assert.equal((await coordinator.command({ kind: 'authorize', sessionId: session.id,
-          candidateId: session.candidateId, generation: session.generation })).kind, 'authorized');
-      }
+      assert.equal(opened.kind, 'error');
       assert.equal((await coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: false })).kind, 'error');
       assert.equal(run.probes.length, 1);
-      assert.equal(run.detailReads(), reads);
+      assert.deepEqual(run.reads(), { ...reads, listingReads: reads.listingReads + 1 });
     } finally {
       release?.([]); await pending;
       await coordinator.stop(); run.cleanup();
@@ -168,7 +193,7 @@ test('a held schedule refresh leaves saved working feeds open without network or
 test('stale saved proof excludes unverified sibling routes and yesterday live games', async () => {
   const run = fixture(); run.setLocators([{ provider: 'gooz', playerId: '100' }, { provider: 'gooz', playerId: '200' }]);
   run.setProbe(async locator => locator.provider === 'gooz' && locator.playerId === '100' ?
-    { kind: 'playable', proof: 'media' } : { kind: 'unavailable', reason: 'timeout' });
+    { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} } : { kind: 'unavailable', reason: 'timeout' });
   let coordinator = run.start();
   try {
     await coordinator.refresh(true); await drain();
@@ -189,7 +214,7 @@ test('stale saved proof excludes unverified sibling routes and yesterday live ga
       if (sessionReply.kind === 'session') assert.equal(sessionReply.candidates.length, 1);
     }
     await coordinator.stop(); run.setClock(at + 25 * 60 * 60_000); coordinator = run.start();
-    assert.equal((await snapshot(coordinator)).games.length, 0);
+    assert.deepEqual((await snapshot(coordinator)).games.map(row => [row.gameId, row.candidates]), [[game.id, []]]);
     const board = await coordinator.command({ kind: 'board' });
     assert.equal(board.kind, 'board');
     if (board.kind === 'board') assert.equal(board.board.games.find(row => row.id === game.id), undefined);
@@ -290,7 +315,7 @@ test('absence cleanup waits for every league partition and final cleanup needs n
         coordinator = run.start(); const refresh = coordinator.refresh(true); await drain();
         try {
           assert.equal(run.readRows().length, 1);
-          assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
+          assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'unknown');
         } finally { release([]); } await refresh; await drain();
         assert.equal(run.readRows().length, 0);
         continue;
@@ -313,6 +338,45 @@ test('corrupt and unsupported cache rows are removed without blocking restart', 
     assert.equal(run.readRows().length, 1);
     assert.equal(run.probes.length, 1);
   } finally { await coordinator.stop(); run.cleanup(); }
+});
+
+test('complete unchanged empty partitions evict orphan saved proof after startup coverage',async()=>{
+  const run=fixture();run.setPartitions(['nfl','other']);
+  run.setGames([{...game,partitions:['nfl','other']}]);
+  let coordinator=run.start();
+  try{
+    await coordinator.refresh(true);await drain();await coordinator.stop();
+    assert.equal(run.readRows().length,1);
+    run.hide();run.setGames([]);
+    run.sql("UPDATE partitions SET payload=json_set(payload,'$.games',json('[]')); DELETE FROM observations; DELETE FROM details;");
+    let release:(games:Game[])=>void=()=>{};
+    run.partitionResults.set('other',new Promise<Game[]>(resolve=>{release=resolve;}));
+    coordinator=run.start();
+    const refresh=coordinator.refresh(true);
+    try{await drain();assert.equal(run.readRows().length,1);}
+    finally{release([]);}
+    await refresh;await drain();
+    assert.equal(run.readRows().length,0);
+    assert.deepEqual((await snapshot(coordinator)).games,[]);
+  }finally{await coordinator.stop();run.cleanup();}
+});
+
+test('an unchanged fresh schedule restores saved feeds when Chicago midnight opens its feed window',async()=>{
+  const run=fixture();let coordinator=run.start();
+  try{
+    await coordinator.refresh(true);await drain();await coordinator.stop();
+    run.hide();run.setProbe(async()=>({kind:'deferred',retryAfterMs:60_000}));
+    run.setClock(Date.parse('2026-10-09T04:59:30Z'));
+    run.setGames([{...game,status:'pre',lifecycle:'scheduled',date:'2026-10-10T17:00:00Z'}]);
+    coordinator=run.start();await coordinator.refresh(true);await drain();
+    assert.equal((await snapshot(coordinator)).games.flatMap(row=>row.candidates).length,0);
+    assert.equal(run.readRows().length,1);
+    run.setClock(Date.parse('2026-10-09T05:00:01Z'));
+    await coordinator.refresh(true);await drain();
+    const candidates=(await snapshot(coordinator)).games.find(row=>row.gameId===game.id)?.candidates;
+    assert.equal(candidates?.length,1);
+    assert.deepEqual(candidates[0].availability,{kind:'checking',progress:{kind:'deferred',since:Date.parse('2026-10-09T05:00:01Z'),retryAt:Date.parse('2026-10-09T05:05:01Z')}});
+  }finally{await coordinator.stop();run.cleanup();}
 });
 
 test('a failed durable positive write leaves real media playable and reports the storage failure', async () => {
@@ -354,7 +418,7 @@ test('an aged scheduled working route and its changed-locator alias both survive
     const after = (await snapshot(coordinator)).games[0].candidates;
     assert.deepEqual(after.map(row => row.id), before.map(row => row.id));
     assert.deepEqual(after.map(row => row.availability),
-      Array.from({ length: 2 }, () => ({ kind: 'playable', proof: 'media', checkedAt: at + 40 * 60_000 })));
+      Array.from({ length: 2 }, () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 40 * 60_000 })));
     assert.equal(run.probes.length, 5);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
@@ -395,13 +459,15 @@ test('decoded playback persists and a late canceled probe cannot overwrite it ac
     await coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: true }); await drain();
     assert.equal(run.probes.length, 2);
     const decoded = await coordinator.command({ kind: 'playback-evidence', sessionId: session.id, candidateId: session.candidateId,
-      generation: 1, evidence: { kind: 'decoded', startupMs: 100 } });
+      generation: 1, evidence:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
     assert.equal(decoded.kind, 'ok');
     release({ kind: 'unavailable', reason: 'timeout' }); await drain();
-    assert.equal(run.readRows()[0].proof, 'decoded');
+    assert.deepEqual(run.readRows()[0].proof,{kind:'advancing-video',version:1,startupMs:100,
+      observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4});
     await coordinator.stop(); coordinator = run.start(); await coordinator.refresh(true); await drain();
     assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
-    assert.equal(run.readRows()[0].proof, 'decoded');
+    assert.deepEqual(run.readRows()[0].proof,{kind:'advancing-video',version:1,startupMs:100,
+      observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4});
     assert.equal(run.probes.length, 2);
   } finally { release({ kind: 'unavailable', reason: 'timeout' }); await coordinator.stop(); run.cleanup(); }
 });
@@ -412,7 +478,7 @@ test('a failed startup schedule keeps stale working choices visible with durable
     await coordinator.refresh(true); await drain(); await coordinator.stop();
     run.hide(); run.setClock(at + 31 * 60_000); run.setScheduleFailure(true);
     coordinator = run.start(); await coordinator.refresh(true); await drain();
-    assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');
+    assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'unknown');
     assert.equal(run.readRows().length, 1);
     run.setScheduleFailure(false); await coordinator.refresh(true); await drain();
     assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'playable');

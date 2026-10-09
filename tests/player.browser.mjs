@@ -44,7 +44,7 @@ const games = Array.from({ length: 4 }, (_, i) => ({
 const results = [];
 const desktopApp = desktop ? await electron.launch({
   executablePath: await prepareDevelopmentElectron(),
-  args: [path.resolve('desktop/main.cjs'), `--user-data-dir=${path.join(artifacts, 'profile')}`],
+  args: [path.resolve('desktop/main.cjs'), '--dev', `--user-data-dir=${path.join(artifacts, 'profile')}`],
   env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
 }) : null;
 const desktopPage = desktopApp ? await desktopApp.firstWindow() : null;
@@ -102,7 +102,7 @@ async function openRoom({ live = false, provider = false, manyQualities = false,
     id: `gooz-${gameId}-${index}`, gameId, playerId: String(57000 + index),
     url: `https://gooz.aapmains.net/new-stream-embed/${57000 + index}`,
     label: index ? 'Backup' : 'Primary', sourceIds: ['fixture'], observedAt: Date.now(),
-    availability: { kind: 'playable', proof: 'media', checkedAt: Date.now() },
+    availability: { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: Date.now() },
   }));
   const publicSession = session => ({ id: session.id, gameId: session.gameId, candidateId: session.candidateId, generation: session.generation, state: session.state, graceEndsAt: session.graceEndsAt });
   let finishFailures;
@@ -421,7 +421,7 @@ try {
   assert.equal(defaultRoom.sessionCounts.closed, 0);
   await defaultRoom.page.getByRole('button', { name: 'Close', exact: true }).click();
   await defaultRoom.page.getByRole('button', { name: 'Remove Away 1 at Home 1', exact: true }).click();
-  await defaultRoom.page.getByTitle('Add Away 1 at Home 1', { exact: true }).click();
+  await defaultRoom.page.locator('.center-game[data-game-id="910001"]').getByRole('button', { name: 'Add game' }).click();
   await defaultRoom.page.waitForFunction(() => {
     const videos = [...document.querySelectorAll('.game-tile video')];
     return videos.length === 4 && videos.every(video => video.readyState >= 2 && video.videoHeight === 360);
@@ -893,7 +893,7 @@ try {
   await scheduledRoom.page.waitForFunction(() => [...document.querySelectorAll('video')].every(video => !video.paused));
   await scheduledRoom.page.getByRole('button', { name: 'Remove Away 1 at Home 1', exact: true }).click();
   assert.equal(await scheduledRoom.page.locator('video').count(), 3);
-  await scheduledRoom.page.getByTitle('Add Away 1 at Home 1', { exact: true }).click();
+  await scheduledRoom.page.locator('.center-game[data-game-id="910001"]').getByRole('button', { name: 'Add game' }).click();
   await scheduledRoom.page.waitForFunction(() => document.querySelectorAll('video').length === 4 && [...document.querySelectorAll('video')].every(video => video.readyState >= 2 && !video.paused));
   assert.deepEqual(scheduledRoom.pageErrors, []);
   results.push('Scheduled games with active sources and newly listed sources auto-connect; focused pause survives refresh, and re-added games auto-start.');

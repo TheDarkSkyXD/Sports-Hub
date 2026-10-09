@@ -1,0 +1,51 @@
+{
+  "categoryName": "NFL",
+  "subCategories": [
+    {
+      "subCategoryName": "NFL",
+      "subCategoryImage": "/assets/images/logos/nfl.webp",
+      "games": [
+        {
+          "sourceLink": "https://totalsportek1.is/game/dallas-cowboys-vs-tampa-bay-buccaneers/69318/",
+          "streamerLinks": [],
+          "matchDate": "Thu, 08 Oct 2026 23:14:15 GMT",
+          "matchTime": "16 hours and 11 minutes from now UTC",
+          "teamA": "Dallas Cowboys",
+          "teamB": "Tampa Bay Buccaneers",
+          "teamAImage": "/assets/images/logos/dallas-cowboys.webp",
+          "teamBImage": "/assets/images/logos/tampa-bay-buccaneers.webp"
+        },
+        {
+          "sourceLink": "https://totalsportek1.is/game/jacksonville-jaguars-vs-philadelphia-eagles/69319/",
+          "streamerLinks": [],
+          "matchDate": "Sun, 11 Oct 2026 13:30:00 GMT",
+          "matchTime": "11-10-2026 1:30 pm UTC",
+          "teamA": "Jacksonville Jaguars",
+          "teamB": "Philadelphia Eagles",
+          "teamAImage": "/assets/images/logos/jacksonville-jaguars.webp",
+          "teamBImage": "/assets/images/logos/philadelphia-eagles.webp"
+        },
+        {
+          "sourceLink": "https://totalsportek1.is/game/nfl-redzone-vs-live/78782/",
+          "streamerLinks": [],
+          "matchDate": "Sun, 11 Oct 2026 16:00:00 GMT",
+          "matchTime": "11-10-2026 4:00 pm UTC",
+          "teamA": "NFL Redzone",
+          "teamB": "Live",
+          "teamAImage": "/assets/images/logos/defaultImage.webp",
+          "teamBImage": "/assets/images/logos/defaultImage.webp"
+        },
+        {
+          "sourceLink": "https://totalsportek1.is/game/nfl-network-vs-live/78783/",
+          "streamerLinks": [],
+          "matchDate": "Sun, 11 Oct 2026 16:00:00 GMT",
+          "matchTime": "11-10-2026 4:00 pm UTC",
+          "teamA": "NFL NETWORK",
+          "teamB": "Live",
+          "teamAImage": "/assets/images/logos/defaultImage.webp",
+          "teamBImage": "/assets/images/logos/defaultImage.webp"
+        }
+      ]
+    }
+  ]
+}

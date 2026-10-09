@@ -3,10 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SOURCES, parseListings } from '../lib/football/adapters/sources.ts';
+import { SOURCES, compatiblePlayers, parseListings } from '../lib/football/adapters/sources.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
-import type { Game } from '../lib/football/shared.ts';
-import { parsePlayers } from '../lib/sunday.ts';
+import type { Game, Observation } from '../lib/football/shared.ts';
 
 const at = Date.parse('2026-10-02T18:00:00Z');
 const kickoff = new Date(at).toISOString();
@@ -18,15 +17,17 @@ const game: Game = {
 };
 
 test('Gooz iframe sources accept quoted attributes and exclude lookalikes', () => {
+  const observation: Observation = {id:'gooz-coverage',sourceId:'sportsurge',url:'https://isportsurge.ws/watch/nfl/away-home/100',
+    title:'Away vs Home',league:'nfl',teams:['Away','Home'],kickoff:null,rawTime:'',observedAt:at,parserVersion:1};
   const html = `<iframe data-src="https://gooz.aapmains.net/new-stream-embed/99"
     SRC = 'https://gooz.aapmains.net/new-stream-embed/101'></iframe>
     <iframe src="https://gooz.aapmains.net/new-stream-embed/202"></iframe>
     <iframe src='https://gooz.aapmains.net.attacker.test/new-stream-embed/303'></iframe>
     <button onclick="changeStream(404)"></button>`;
-  assert.deepEqual(parsePlayers(html).map(player => [player.id, player.label]), [
-    ['101', 'Primary'], ['202', 'Backup 1'], ['404', 'Backup 2'],
+  assert.deepEqual(compatiblePlayers('100',observation,html).map(player => [player.id, player.label]), [
+    ['gooz-101', 'Primary'], ['gooz-202', 'Backup 1'], ['gooz-404', 'Backup 2'],
   ]);
-  assert.deepEqual(parsePlayers(`<iframe data-src='https://gooz.aapmains.net/new-stream-embed/505'></iframe>
+  assert.deepEqual(compatiblePlayers('100',observation,`<iframe data-src='https://gooz.aapmains.net/new-stream-embed/505'></iframe>
     <button onclick="changeStream(606)"></button>`), []);
 });
 
@@ -61,7 +62,7 @@ test('two dated live listings with compatible media retain both playable source 
       if (url === firstUrl || url === secondUrl) visitedDetails.add(url);
       return body;
     },
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   try {
     await coordinator.refresh(true);

@@ -2,11 +2,18 @@ const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { sourceIdentity, publicEnvironment } = require('./source-identity.cjs');
+const { buildDirectory, reusableArtifact, completeArtifact } = require('./compiled-artifact.cjs');
 
 const retryDelays = [1000, 2000, 5000, 10000, 30000];
 const healthIntervalMs = 5000;
 
-function createLocalServer({ root, origin, port, userData, controlToken, observerOrigin, packaged = false, logDir = path.join(root, '.desktop-runtime'), onReady, onHealthy }) {
+async function prepareCollector(root) {
+  const { ensureCollectorAddon } = await import('../scripts/build-rust-collector.mjs');
+  await ensureCollectorAddon(root);
+}
+
+function createLocalServer({ root, origin, port, userData, controlToken, observerOrigin, mode = 'compiled', logDir = path.join(root, '.desktop-runtime'), onReady, onHealthy, ensureCollector = prepareCollector }) {
   fs.mkdirSync(logDir, { recursive: true });
   const logPath = path.join(logDir, 'server.log');
   let owned;
@@ -23,6 +30,9 @@ function createLocalServer({ root, origin, port, userData, controlToken, observe
   let healthFailures = 0;
   let restartAttempt = 0;
   let stopping = false;
+  let preparation;
+  let serverTarget;
+  let preparationTimer;
 
   function record(message) {
     try { fs.appendFileSync(logPath, `[desktop ${new Date().toISOString()}] ${message}\n`); }
@@ -210,22 +220,104 @@ function createLocalServer({ root, origin, port, userData, controlToken, observe
     if (session === owned && !stopping) await replace(session);
   }
 
+  function commandEnvironment(instanceId, extra = {}) {
+    return { ...process.env, ...extra, NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA ?? '1',
+      ELECTRON_RUN_AS_NODE: '1', SUNDAY_ROOM_DESKTOP: '1', SUNDAY_ROOM_BROWSER_COLLECTORS: '1',
+      SUNDAY_ROOM_DATA_DIR: userData, SUNDAY_ROOM_CONTROL_TOKEN: controlToken,
+      SUNDAY_ROOM_SERVER_INSTANCE_ID: instanceId, SUNDAY_ROOM_APP_ORIGIN: origin,
+      ...(observerOrigin ? { SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN: observerOrigin } : {}) };
+  }
+
+  async function runPreparation(entry, mode, distDir, extra = {}) {
+    if (stopping) throw new Error('Local server preparation was cancelled');
+    record(`Preparing local server: ${mode}`);
+    const log = fs.openSync(logPath, 'a');
+    let target;
+    try {
+      target = spawn(process.execPath, [path.join(__dirname, 'server-supervisor.cjs'), entry, mode, distDir], {
+        cwd: root, windowsHide: true, env: commandEnvironment(randomUUID(), extra),
+        stdio: ['ignore', log, log, 'ipc'],
+      });
+    } finally { fs.closeSync(log); }
+    const session = { target, instanceId: '', phase: 'preparing', termination: undefined,
+      targetExited: false, treeCommandSucceeded: false };
+    owned = session;
+    try {
+      let completionCode;
+      await new Promise((resolve, reject) => {
+        const onMessage = message => {
+          if (message?.kind === 'complete') { completionCode = message.code; finish(); }
+        };
+        const onExit = (code, signal) => {
+          session.targetExited = true;
+          finish(new Error(`Local server ${mode} exited before completion: ${code ?? signal}`));
+        };
+        const onError = error => finish(error);
+        const finish = error => {
+          target.off('message', onMessage);
+          target.off('exit', onExit);
+          target.off('error', onError);
+          if (error) reject(error);
+          else resolve();
+        };
+        target.on('message', onMessage);
+        target.once('exit', onExit);
+        target.once('error', onError);
+      });
+      await terminate(session);
+      if (completionCode !== 0) throw new Error(`Local server ${mode} failed with code ${completionCode}`);
+      if (stopping) throw new Error('Local server preparation was cancelled');
+    } finally {
+      if (session === owned && session.treeCommandSucceeded && session.targetExited) owned = undefined;
+    }
+  }
+
+  async function resolveServerTarget() {
+    await ensureCollector(root);
+    const inheritedPublicEnvironment = publicEnvironment();
+    const sourceId = await sourceIdentity(root, inheritedPublicEnvironment);
+    if (stopping) throw new Error('Local server preparation was cancelled');
+    const reusable = await reusableArtifact(root, sourceId);
+    if (reusable && publicEnvironment() === inheritedPublicEnvironment &&
+        await sourceIdentity(root, inheritedPublicEnvironment) === sourceId) return reusable;
+    const distDir = buildDirectory(randomUUID());
+    const buildRoot = path.join(root, distDir);
+    fs.mkdirSync(buildRoot, { recursive: true });
+    const configRoot = path.join(root, '.desktop-runtime', 'local-build-config');
+    fs.mkdirSync(configRoot, { recursive: true });
+    fs.writeFileSync(path.join(configRoot, `${path.basename(distDir)}.json`), JSON.stringify({
+      extends: '../../tsconfig.json', compilerOptions: { baseUrl: '../..', paths: { '@/*': ['./*'] } },
+    }));
+    const realModules = fs.realpathSync(path.join(root, 'node_modules'));
+    const linkedModules = path.normalize(realModules) !== path.normalize(path.join(root, 'node_modules'));
+    await runPreparation(path.join(root, 'node_modules', 'next', 'dist', 'bin', 'next'), 'build', distDir,
+      { SUNDAY_ROOM_NEXT_DIST_DIR: distDir, SUNDAY_ROOM_BUILD_PUBLIC_ENV: inheritedPublicEnvironment,
+        SUNDAY_ROOM_BUILD_WEBPACK: linkedModules ? '1' : '0' });
+    await runPreparation(path.join(root, 'scripts', 'prepare-desktop.mjs'), 'prepare', distDir);
+    if (publicEnvironment() !== inheritedPublicEnvironment ||
+        await sourceIdentity(root, inheritedPublicEnvironment) !== sourceId)
+      throw new Error('Source changed while preparing the desktop server');
+    const target = await completeArtifact(root, distDir, sourceId);
+    if (publicEnvironment() !== inheritedPublicEnvironment ||
+        await sourceIdentity(root, inheritedPublicEnvironment) !== sourceId)
+      throw new Error('Source changed before starting the desktop server');
+    return target;
+  }
+
   function spawnServer() {
     if (stopping || owned) return;
     const instanceId = randomUUID();
     const log = fs.openSync(logPath, 'a');
-    const serverTarget = packaged ? path.join(root, 'server.js') : path.join(root, 'node_modules', 'next', 'dist', 'bin', 'next');
+    const { entry, cwd, kind } = serverTarget;
     let target;
     try {
       target = spawn(process.execPath, [
         path.join(__dirname, 'server-supervisor.cjs'),
-        serverTarget,
-        packaged ? 'standalone' : 'dev', String(port),
+        entry,
+        kind, String(port),
       ], {
-        cwd: root, windowsHide: true,
-        env: { ...process.env, NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA ?? '1', ELECTRON_RUN_AS_NODE: '1', SUNDAY_ROOM_DESKTOP: '1', SUNDAY_ROOM_BROWSER_COLLECTORS: '1', SUNDAY_ROOM_DATA_DIR: userData,
-          SUNDAY_ROOM_CONTROL_TOKEN: controlToken, SUNDAY_ROOM_SERVER_INSTANCE_ID: instanceId,
-          ...(observerOrigin ? { SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN: observerOrigin } : {}) },
+        cwd, windowsHide: true,
+        env: commandEnvironment(instanceId),
         stdio: ['ignore', log, log, 'ipc'],
       });
     } finally { fs.closeSync(log); }
@@ -251,9 +343,24 @@ function createLocalServer({ root, origin, port, userData, controlToken, observe
     if (stopping) return Promise.reject(new Error('Local server is stopping'));
     if (startup) return startup;
     startup = new Promise((resolve, reject) => { resolveStartup = resolve; rejectStartup = reject; });
-    startupTimer = setTimeout(() => beginStop(new Error('Local server startup timed out')), 120000);
-    try { spawnServer(); }
-    catch (error) { beginStop(error); }
+    if (mode === 'dev' || mode === 'packaged') {
+      serverTarget = mode === 'dev'
+        ? { kind: 'dev', cwd: root, entry: path.join(root, 'node_modules', 'next', 'dist', 'bin', 'next') }
+        : { kind: 'standalone', cwd: root, entry: path.join(root, 'server.js') };
+      startupTimer = setTimeout(() => beginStop(new Error('Local server startup timed out')), 120000);
+      try { spawnServer(); } catch (error) { beginStop(error); }
+      return startup;
+    }
+    preparationTimer = setTimeout(() => { beginStop(new Error(`Local server preparation timed out. See ${logPath}`)); void stop(); }, 600000);
+    preparation = resolveServerTarget();
+    void preparation.then(target => {
+      if (stopping) return;
+      clearTimeout(preparationTimer);
+      preparationTimer = undefined;
+      serverTarget = target;
+      startupTimer = setTimeout(() => beginStop(new Error('Local server startup timed out')), 120000);
+      spawnServer();
+    }).catch(error => beginStop(new Error(`Local server preparation failed. See ${logPath}: ${error.message}`, { cause: error })));
     return startup;
   }
 
@@ -261,6 +368,7 @@ function createLocalServer({ root, origin, port, userData, controlToken, observe
     if (stopping) return;
     stopping = true;
     settleStartup(error);
+    clearTimeout(preparationTimer);
     record('Stopping local server with desktop app');
     clearTimeout(restartTimer);
     restartTimer = undefined;
@@ -272,11 +380,13 @@ function createLocalServer({ root, origin, port, userData, controlToken, observe
   async function stop() {
     beginStop();
     if (stopInFlight) return stopInFlight;
-    const session = owned;
-    if (!session) return;
     const done = (async () => {
-      await terminate(session);
-      if (session === owned) owned = undefined;
+      const session = owned;
+      if (session) {
+        await terminate(session);
+        if (session === owned) owned = undefined;
+      }
+      if (preparation) await preparation.catch(() => {});
       clearHealth();
     })();
     stopInFlight = done;

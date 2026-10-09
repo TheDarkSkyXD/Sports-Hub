@@ -1,5 +1,5 @@
 const { BrowserWindow,session } = require('electron');
-const { ORIGIN,CATEGORY_URLS,MAX_PAGE_BYTES,MAX_CHECKPOINT_BYTES,eventUrl } = require('./streameast-catalog.cjs');
+const { ORIGIN,CATEGORIES,CATEGORY_URLS,MAX_PAGE_BYTES,MAX_CHECKPOINT_BYTES,eventUrl } = require('./streameast-catalog.cjs');
 const { runStreameastSweep } = require('./streameast-sweep.cjs');
 
 const READY_TIMEOUT_MS=30000;
@@ -54,6 +54,13 @@ function createStreameastCollector({origin,controlToken}) {
   sourceSession.setPermissionCheckHandler(()=>false);
   sourceSession.on('will-download',event=>event.preventDefault());
 
+  function releaseBrowser() {
+    const current=window;
+    window=undefined;
+    try {if(current&&!current.isDestroyed())current.destroy();}
+    catch {window=current;}
+  }
+
   function browser() {
     if (window && !window.isDestroyed()) return window;
     window=new BrowserWindow({title:'StreamEast collector',show:false,webPreferences:{
@@ -70,6 +77,7 @@ function createStreameastCollector({origin,controlToken}) {
   }
 
   async function document(url,page,league,signal) {
+    if(stopped||signal.aborted)throw new Error('unavailable');
     const path=new URL(url).pathname;
     const category=page==='category';
     if (category ? url!==CATEGORY_URLS[league] : !eventUrl(page==='server'?url.replace(/\d{1,4}$/,''):url,league))
@@ -98,7 +106,7 @@ function createStreameastCollector({origin,controlToken}) {
         if(!documentReady || pageStatus<200 || pageStatus>=300) {await pause(400,signal);continue;}
         try {
           const state=await beforeDeadline(current.webContents.mainFrame.executeJavaScript(`({url:location.href,title:document.title,cards:document.querySelectorAll('.m-card').length,
-          empty:!!document.querySelector('#m-schedule-empty.m-empty .m-empty__title') && /no (?:college football|cfb|nfl) games available/i.test(document.querySelector('#m-schedule-empty.m-empty .m-empty__title').textContent||''),
+          empty:!!document.querySelector('#m-schedule-empty.m-empty .m-empty__title') && ${JSON.stringify(CATEGORIES[league]?.emptyTitles || [])}.some(title=>title.toLowerCase()===(document.querySelector('#m-schedule-empty.m-empty .m-empty__title').textContent||'').trim().toLowerCase()),
           detail:(()=>{if(document.querySelector('.stream-alt-list a.stream-alt-item'))return true;
             const list=document.querySelector('#se-streams-list.se-streams__list');
             const rows=[...(list?.querySelectorAll('.se-stream:not(.se-stream--share)')||[])];
@@ -201,13 +209,14 @@ function createStreameastCollector({origin,controlToken}) {
         if(catalog.state.reason==='rate-limited')rateLimitedUntil=Math.max(rateLimitedUntil,Date.now()+5*60_000);
         return catalog;
       }).catch(()=>{}).finally(()=>{
+        releaseBrowser();
         active=undefined;controller=undefined;
         if(started&&!stopped)timer=setTimeout(requestSweep,Math.max(sourceRefreshMs,rateLimitedUntil-Date.now()));
       });
     return active;
   }
   function start() {if(stopped||started)return;started=true;requestSweep();}
-  function stop() {stopped=true;if(timer)clearTimeout(timer);controller?.abort();if(window&&!window.isDestroyed())window.destroy();}
+  function stop() {stopped=true;if(timer)clearTimeout(timer);controller?.abort();releaseBrowser();}
   return {start,requestSweep,stop};
 }
 

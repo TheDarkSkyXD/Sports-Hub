@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { compatiblePlayers, enrichObservation, parseListings, SOURCES } from '../lib/football/adapters/sources.ts';
-import { matchObservation, matchSourceLiveGame } from '../lib/football/domain/matching.ts';
+import { createSourceEventMatcher, matchObservation } from '../lib/football/domain/matching.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 import type { Game } from '../lib/football/shared.ts';
 
@@ -68,7 +68,7 @@ test('undated Strikeout listing fetches detail before matching and attaches only
     parseListings,
     enrichObservation,
     compatiblePlayers,
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   try {
     await coordinator.refresh(true);
@@ -86,7 +86,8 @@ test('an undated contextual candidate cannot be promoted by a live source flag',
   const preliminary = matchObservation(row, [trojansGame], observedAt);
   assert.deepEqual(preliminary, { kind: 'unmatched', reason: 'unverified-contextual-kickoff',
     possibleGameIds: [trojansGame.id] });
-  assert.deepEqual(matchSourceLiveGame(preliminary, [trojansGame], kickoff - 10_000), preliminary);
+  assert.deepEqual(createSourceEventMatcher([trojansGame])({...row,observedAt:kickoff-10_000},
+    {undated:'live-claim',externalGameId:null},kickoff-10_000).match,preliminary);
   const wrongDate = enrichObservation(row, detail.replace('1791331200', '1791417600'));
   assert.equal(matchObservation(wrongDate, [trojansGame], observedAt).kind, 'unmatched');
 });
@@ -97,7 +98,8 @@ test('an undated matchup with two globally unique college names retains ordinary
   const row = { ...sourceRow, teams: names };
   const preliminary = matchObservation(row, [trojansGame], observedAt);
   assert.deepEqual(preliminary, { kind: 'unmatched', reason: 'unverified-kickoff', possibleGameIds: [trojansGame.id] });
-  assert.deepEqual(matchSourceLiveGame(preliminary, [trojansGame], kickoff - 10_000),
+  assert.deepEqual(createSourceEventMatcher([trojansGame])({...row,observedAt:kickoff-10_000},
+    {undated:'live-claim',externalGameId:null},kickoff-10_000).match,
     { kind: 'matched', gameId: trojansGame.id });
 });
 
@@ -121,7 +123,7 @@ test('a tomorrow matchup automatically discovers newly published servers after t
     parseListings,
     enrichObservation,
     compatiblePlayers,
-    probeCandidate: async () => ({ kind: 'playable', proof: 'media' }),
+    probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   const drain = async () => { for (let index = 0; index < 80; index++) await new Promise<void>(resolve => setImmediate(resolve)); };
   try {

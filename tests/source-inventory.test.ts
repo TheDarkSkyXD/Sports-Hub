@@ -49,7 +49,7 @@ test('source snapshot retains stale live listings without counting them as compa
     observed('tvapp:unsafe','tvapp','https://edgestream4.pro/hls/private.m3u8?st=secret',['Florida Gators','Ole Miss Rebels']),
   ];
   const snapshot=sourceInventory({at,revision:7,lastDiscoveryAt:at-1000,sources,observations,
-    availability:()=>({kind:'playable',proof:'media',checkedAt:at}),
+    availability:()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at}),
     games:[florida,georgia,finished],candidates:new Map([[florida.id,[candidate('gooz-57069',['tvapp','sportsurge','old-source']),
       candidate('gooz-57069',['tvapp']),candidate('old',['tvapp'],at-31*60_000)]]]),
     attempts:{tvapp:{at,outcome:'parsed'},sportsurge:{at,outcome:'failed'}},browserCollectorsAvailable:false,
@@ -85,13 +85,37 @@ test('scheduled games publish fresh selectable servers without exposing locators
   const fresh={...candidate('fresh',['sportsurge-v2']),gameId:scheduled.id};
   const stale={...candidate('stale',['sportsurge-v2'],at-31*60_000),gameId:scheduled.id};
   const snapshot=sourceInventory({at,revision:1,lastDiscoveryAt:null,browserCollectorsAvailable:true,
-    availability:()=>({kind:'playable',proof:'media',checkedAt:at}),
+    availability:()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at}),
     sources:[],observations:[],games:[scheduled,finished],candidates:new Map([[scheduled.id,[fresh,stale]],
       [finished.id,[{...fresh,gameId:finished.id}]]]),attempts:{},
     sportsurgeCatalog:{current:null,lastComplete:null,previous:null},streameastCatalog:{current:null,lastComplete:null,previous:null}});
   assert.equal(SourcesSnapshotSchema.safeParse(snapshot).success,true);
   assert.deepEqual(snapshot.games.map(game=>game.gameId),[scheduled.id]);
   assert.deepEqual(snapshot.games[0].candidates,[{id:fresh.id,gameId:scheduled.id,label:fresh.label,
-    sourceIds:fresh.sourceIds,observedAt:fresh.observedAt,availability:{kind:'playable',proof:'media',checkedAt:at}}]);
+    sourceIds:fresh.sourceIds,observedAt:fresh.observedAt,availability:{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at}}]);
   assert.equal(JSON.stringify(snapshot).includes('playerId'),false);
+});
+
+test('LiveSportPro keeps distinct event links for matched and unclassified listings',()=>{
+  const urls=[
+    'https://api.kultsport.com/api/matches/all#florida-ole-miss-a',
+    'https://api.kultsport.com/api/matches/all#florida-ole-miss-b',
+    'https://api.kultsport.com/api/matches/all#unknown-game-a',
+    'https://api.kultsport.com/api/matches/all#unknown-game-b',
+  ];
+  const observations=[
+    observed('lsp:one','livesportpro',urls[0],['Florida Gators','Ole Miss Rebels']),
+    observed('lsp:two','livesportpro',urls[1],['Florida Gators','Ole Miss Rebels']),
+    observed('lsp:three','livesportpro',urls[2],['Unknown A','Unknown B']),
+    observed('lsp:four','livesportpro',urls[3],['Unknown C','Unknown D']),
+  ];
+  const snapshot=sourceInventory({at,revision:1,lastDiscoveryAt:at,browserCollectorsAvailable:true,
+    sources:[{id:'livesportpro',url:'https://api.kultsport.com/api/matches/all',family:'livesportpro',
+      kind:'catalog',publicUrls:['https://livesportpro.com/'],leagues:['ncaaf']}],
+    observations,games:[florida],candidates:new Map(),attempts:{livesportpro:{at,outcome:'parsed'}},
+    sportsurgeCatalog:{current:null,lastComplete:null,previous:null},
+    streameastCatalog:{current:null,lastComplete:null,previous:null}});
+  assert.deepEqual(snapshot.sources[0].links.map(link=>link.url),urls);
+  assert.deepEqual(snapshot.games[0].sourceLinks.map(link=>link.url),urls.slice(0,2));
+  assert.deepEqual(snapshot.sources[0].links.filter(link=>link.gameId===null).map(link=>link.url),urls.slice(2));
 });

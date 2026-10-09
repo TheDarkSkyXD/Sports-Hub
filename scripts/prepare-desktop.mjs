@@ -1,14 +1,37 @@
-import { cp, mkdir, readFile, stat } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { activeCollectorAddon } from './build-rust-collector.mjs';
 
-const standalone = path.resolve('.next/standalone');
+const distDir = process.argv[2] ?? '.next';
+if (distDir !== '.next' && !/^\.desktop-runtime\/local-builds\/[a-f0-9-]+$/.test(distDir))
+  throw new Error('Invalid desktop build directory');
+const standalone = path.resolve(distDir, 'standalone');
+if (await realpath(path.join(standalone, 'node_modules')).catch(() => null) === await realpath('node_modules'))
+  throw new Error('This checkout links node_modules outside the standalone build. Install dependencies inside the checkout before building the local desktop server.');
 const server = path.join(standalone, 'server.js');
-const staticFiles = path.resolve('.next/static');
+const staticFiles = path.resolve(distDir, 'static');
 
 await stat(server);
+const addon = await activeCollectorAddon(path.resolve('.'));
+const collectorDirectory = path.join(standalone, 'native', 'collector');
+await mkdir(collectorDirectory, { recursive: true });
+await cp(addon.binary, path.join(collectorDirectory, addon.filename));
+await cp(addon.manifestFile, path.join(collectorDirectory, 'active.json'));
+await cp(addon.registry, path.join(collectorDirectory, 'source-registry.json'));
+await cp(path.resolve('native/collector/bridge.cjs'), path.join(collectorDirectory, 'bridge.cjs'));
+const oldBootstrap = `process.env.SUNDAY_ROOM_COLLECTOR_DIR ||= require('node:path').join(__dirname, 'native', 'collector');\n`;
+const bootstrap = `import { dirname as collectorDirname, join as collectorJoin } from 'node:path';\nimport { fileURLToPath as collectorFileURLToPath } from 'node:url';\nprocess.env.SUNDAY_ROOM_COLLECTOR_DIR ||= collectorJoin(collectorDirname(collectorFileURLToPath(import.meta.url)), 'native', 'collector');\n`;
+const originalServer = await readFile(server, 'utf8');
+const serverBody = originalServer.startsWith(oldBootstrap) ? originalServer.slice(oldBootstrap.length) : originalServer;
+if (!serverBody.startsWith(bootstrap)) await writeFile(server, bootstrap + serverBody);
+if (distDir !== '.next') {
+  await writeFile(path.join(standalone, 'server.cjs'),
+    `process.env.SUNDAY_ROOM_COLLECTOR_DIR ||= require('node:path').join(__dirname, 'native', 'collector');\nvoid import('./server.js');\n`);
+  await cp(path.resolve('package.json'), path.join(standalone, 'package.json'));
+}
 await stat(staticFiles);
-await mkdir(path.join(standalone, '.next'), { recursive: true });
-await cp(staticFiles, path.join(standalone, '.next/static'), { recursive: true, force: true });
+await mkdir(path.join(standalone, distDir), { recursive: true });
+await cp(staticFiles, path.join(standalone, distDir, 'static'), { recursive: true, force: true });
 await cp(path.resolve('public'), path.join(standalone, 'public'), { recursive: true, force: true });
 
 const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));
@@ -48,8 +71,50 @@ while (pending.length) {
     pending.push(dependency);
   }
 }
+if (distDir !== '.next') {
+  const aliases = path.join(standalone, distDir, 'node_modules');
+  const sourceModules = await realpath('node_modules');
+  const served = await realpath(standalone);
+  async function materialize(directory) {
+    const entries = await readdir(directory, { withFileTypes: true }).catch(error => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    });
+    for (const entry of entries) {
+      const alias = path.join(directory, entry.name);
+      if (entry.isDirectory() && entry.name.startsWith('@')) {
+        await materialize(alias);
+        continue;
+      }
+      if (!entry.isSymbolicLink()) continue;
+      const relative = path.relative(sourceModules, await realpath(alias));
+      const parts = relative.split(path.sep);
+      if (relative.startsWith('..') || path.isAbsolute(relative) ||
+          !(parts.length === 1 || (parts.length === 2 && parts[0].startsWith('@'))) ||
+          !copied.has(`node_modules/${parts.join('/')}`))
+        throw new Error(`Unowned standalone package alias: ${alias}`);
+      const owned = path.join(standalone, 'node_modules', ...parts);
+      const ownedRelative = path.relative(served, await realpath(owned));
+      if (ownedRelative.startsWith('..') || path.isAbsolute(ownedRelative) || !(await stat(owned)).isDirectory())
+        throw new Error(`Standalone package alias lacks an owned copy: ${alias}`);
+      await unlink(alias);
+      await cp(owned, alias, { recursive: true });
+    }
+  }
+  await materialize(aliases);
+}
 await stat(path.join(standalone, 'lib/football/runtime/worker.ts'));
+await stat(path.join(standalone, 'lib/football/runtime/schedule-worker.ts'));
+await stat(path.join(standalone, 'lib/football/runtime/schedule-client.ts'));
+await stat(path.join(standalone, 'lib/football/runtime/schedule-queue.ts'));
 await stat(path.join(standalone, 'lib/football/runtime/composition.ts'));
+await stat(path.join(standalone, 'lib/football/source-registry.json'));
+await stat(path.join(standalone, 'native/collector/bridge.cjs'));
+await stat(path.join(standalone, 'native/collector/active.json'));
+await stat(path.join(standalone, 'native/collector', addon.filename));
+for (const name of ['catalog-stream', 'catalog-stream-policy'])
+  await stat(path.join(standalone, `lib/playback/providers/${name}.ts`));
 await stat(path.join(standalone, 'lib/playback/probe.ts'));
 await stat(path.join(standalone, 'lib/sunday.ts'));
+await stat(path.join(standalone, 'lib/game-timing.ts'));
 console.log(`Prepared standalone worker and ${copied.size} runtime package trees.`);

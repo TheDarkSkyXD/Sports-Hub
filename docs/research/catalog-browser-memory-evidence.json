@@ -1,0 +1,153 @@
+{
+  "recordedAt": "2026-10-09T22:33:54.542Z",
+  "comparison": {
+    "before": {
+      "label": "baseline-repeat",
+      "sourceFile": "resources.json",
+      "plannedFiveMinuteRunComplete": true,
+      "comparisonWindowSeconds": 240,
+      "firstSample": "2026-10-09T22:08:22.1014400Z",
+      "lastSample": "2026-10-09T22:12:21.7839932Z",
+      "sampleCount": 104,
+      "meanPrivateMb": 1401.94,
+      "maxPrivateMb": 1984.9,
+      "meanProcesses": 15.08,
+      "maxProcesses": 18,
+      "idleCatalogueMeanMiB": 204.52,
+      "idleCatalogueMeanWindows": 2,
+      "catalogueSampleCount": 60,
+      "lastCatalogueWindows": [
+        {
+          "id": 3,
+          "pid": 16468
+        },
+        {
+          "id": 2,
+          "pid": 17472
+        }
+      ]
+    },
+    "after": {
+      "label": "after-final",
+      "sourceFile": "resources.json.partial",
+      "plannedFiveMinuteRunComplete": false,
+      "comparisonWindowSeconds": 240,
+      "firstSample": "2026-10-09T22:23:34.3489940Z",
+      "lastSample": "2026-10-09T22:27:33.7347087Z",
+      "sampleCount": 107,
+      "meanPrivateMb": 1191.89,
+      "maxPrivateMb": 1631.68,
+      "meanProcesses": 13.14,
+      "maxProcesses": 15,
+      "idleCatalogueMeanMiB": 0,
+      "idleCatalogueMeanWindows": 0,
+      "catalogueSampleCount": 60,
+      "lastCatalogueWindows": []
+    },
+    "deltaMeanPrivateMiB": -210.05,
+    "deltaCatalogueIdleMiB": -204.52,
+    "target500MiBMet": false,
+    "limitation": "Final app exited before the five-minute sampler completed. Four-minute prefixes are complete; the exit initiator and final live-source workload were not established."
+  },
+  "provenance": {
+    "baseline": {
+      "variant": "baseline",
+      "checkedFiles": 273,
+      "differences": [
+        {
+          "relative": "desktop/main.cjs",
+          "before": "18ae56a8fe5ddc6647bdda9e621f076c1673cfef10d69e80081f6cd32a70ad69",
+          "after": "86701fd99abf5a8a207b40efd76e675d3ce06d8babfc9e084e722f87c569bfc8"
+        }
+      ],
+      "additions": [],
+      "onlyExpectedMainWrapper": true,
+      "binarySha256": "9d926962934d7d7e03eda3d06e3dee1477a25de0d81f6acd2a6121e5df9bcb89",
+      "matchesWorktree": true
+    },
+    "after": {
+      "variant": "after",
+      "checkedFiles": 273,
+      "differences": [
+        {
+          "relative": "desktop/main.cjs",
+          "before": "18ae56a8fe5ddc6647bdda9e621f076c1673cfef10d69e80081f6cd32a70ad69",
+          "after": "86701fd99abf5a8a207b40efd76e675d3ce06d8babfc9e084e722f87c569bfc8"
+        },
+        {
+          "relative": "desktop/sportsurge-collector.cjs",
+          "before": "00dfb653c06d402894263f65c223b12f7c6c199da921ffb0d016938ec884800e",
+          "after": "a3ae4e722c6fff1a7b813e9b573aeb80792ed6cdc900794ec8da0b24c86cdea3"
+        },
+        {
+          "relative": "desktop/streameast-collector.cjs",
+          "before": "be4e54ee8ba4a3a2d150e2b7698578475aae04b7287eb78fc5ee4fd1c6b6fdc4",
+          "after": "72d30cae43acecb1e69af3cdfb4f44402e9188d13004d9dd2b30f28e4873c90d"
+        }
+      ],
+      "additions": [],
+      "onlyExpectedMainWrapper": true,
+      "binarySha256": "9d926962934d7d7e03eda3d06e3dee1477a25de0d81f6acd2a6121e5df9bcb89",
+      "matchesWorktree": true
+    }
+  },
+  "cleanup": {
+    "baseline": {
+      "scopedRemaining": [],
+      "elapsedSeconds": 2.8255261999999997,
+      "observedIdentities": 89,
+      "remaining": [],
+      "at": "2026-10-09T22:13:33.5878301Z"
+    },
+    "after": {
+      "scopedRemaining": [],
+      "elapsedSeconds": 0.510871,
+      "observedIdentities": 84,
+      "remaining": [],
+      "at": "2026-10-09T22:31:15.9616306Z"
+    },
+    "player": {
+      "at": "2026-10-09T22:32:50.6844220Z",
+      "remaining": []
+    }
+  },
+  "lifecycleFixture": {
+    "pass": true,
+    "results": [
+      {
+        "provider": "sportsurge",
+        "partition": "sportsurge-catalog",
+        "rendererPids": [
+          15504,
+          18412
+        ],
+        "requests": 4,
+        "cookieVisibleInSecondRenderer": true,
+        "rendererExitedAfterEachSweep": true
+      },
+      {
+        "provider": "streameast",
+        "partition": "streameast-catalog",
+        "rendererPids": [
+          4800,
+          14756
+        ],
+        "requests": 4,
+        "cookieVisibleInSecondRenderer": true,
+        "rendererExitedAfterEachSweep": true
+      }
+    ]
+  },
+  "rawArtifactSha256": {
+    "baseline-repeat/resources.json": "07bce544b5da3dd734d15070a5e18c3a36a4af4593279c8c986112523286e6e4",
+    "baseline-repeat/windows.jsonl": "36edf38fdde62b8eb9bbdebaeaa3e43b0123e6317cefbe08f90927b9dec6fd8f",
+    "after-final/resources.json.partial": "3b89ec0e1174de7d08971f7b17c69055de30a756502416e39e6fa1540f134427",
+    "after-final/windows.jsonl": "6fbaac9f75906b9ed14017c5d297384b456c5fdcb8fdb17697246d90cf342a1b",
+    "final-electron-fixture.txt": "808b8b6dff7bb14a31ea7e098dec34ca1f85e7526602890318fe805ad6b081f6",
+    "final-focused-green.txt": "96d37c2b04cad2539e1b6b9a2cf90998c7da802c556a2ba54cc8ad27c161444f",
+    "final-full-tests.txt": "96b247e251e0174512f01456ef60bc17d9f561eb4710b2c3616d63ddce3932b6",
+    "scoped-eslint.txt": "e05222033cd2c7b46b6fad5ec87b44b62f844dbb6f004476498f71d0e3c9875b",
+    "final-player-run.txt": "7ca25df7c1aa3f9c1acf13b2e63f1608466421f0c65a958fc759bed0bb8a9347",
+    "final-player-cleanup.json": "c6876c4e2cd15e52b35de4855fc42f2c00473f2680860f2987e1a049ce3a7849"
+  }
+}

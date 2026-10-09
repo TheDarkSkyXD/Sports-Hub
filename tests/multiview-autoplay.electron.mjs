@@ -35,7 +35,7 @@ const games = Array.from({ length: 6 }, (_, index) => ({
 const candidates = gameId => [0, 1].map(index => ({
   id: `fixture-${gameId}-${index}`, gameId, label: index ? 'Backup 1' : 'Primary',
   sourceIds: ['fixture'], observedAt: Date.now(),
-  availability: { kind: 'playable', proof: 'media', checkedAt: Date.now() },
+  availability: { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: Date.now() },
 }));
 let revision = 1;
 let delayedPlayable = false;
@@ -48,7 +48,7 @@ const errors = [];
 try {
   desktop = await electron.launch({
     executablePath: await prepareDevelopmentElectron(),
-    args: [path.join(appRoot, 'desktop/main.cjs'), `--user-data-dir=${path.join(temporary, 'profile')}`],
+    args: [path.join(appRoot, 'desktop/main.cjs'), '--dev', `--user-data-dir=${path.join(temporary, 'profile')}`],
     cwd: appRoot,
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
   });

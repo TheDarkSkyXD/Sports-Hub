@@ -18,12 +18,15 @@ const live: Game = { id: '10001', league: 'nfl', name: 'Away at Home', date: new
 async function drain() { for (let index = 0; index < 60; index++) await new Promise<void>(resolve => setImmediate(resolve)); }
 function fixture() {
   const directory = mkdtempSync(join(tmpdir(), 'finished-retention-')), path = join(directory, 'state.sqlite');
-  let now = at, games: Game[] = [live], reads = 0, probes = 0, published = true;
+  let now = at, games: Game[] = [live], listingReads = 0, detailReads = 0, probes = 0, published = true;
   const start = () => createFootballCoordinator(path, {
     now: () => now, schedules: [{ id: 'nfl', league: 'nfl', path: '/fixture', group: null }],
     sources: [{ id: 'fixture', url: 'https://fixture.example/list', family: 'fixture' }],
     readSchedule: async () => ({ games, league: 'nfl', at: now }),
-    readHtml: async () => { reads++; return '<main>fixture</main>'; },
+    readHtml: async url => {
+      if (url === 'https://fixture.example/list') listingReads++; else detailReads++;
+      return '<main>fixture</main>';
+    },
     parseListings: () => ({ outcome: published ? 'parsed' : 'empty', observations: published ? [{
       id: 'fixture-game', sourceId: 'fixture', url: 'https://fixture.example/event', title: live.name,
       league: 'nfl', teams: [live.away.name, live.home.name], kickoff: at, rawTime: '', observedAt: now, parserVersion: 2,
@@ -31,9 +34,9 @@ function fixture() {
     enrichObservation: value => value,
     compatiblePlayers: () => [1, 2].map(index => ({ id: `server-${index}`, label: `Server ${index}`,
       locator: { provider: 'gooz' as const, playerId: String(index) } })),
-    probeCandidate: async () => { probes++; return { kind: 'playable', proof: 'media' }; },
+    probeCandidate: async () => { probes++; return { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }; },
   });
-  return { path, start, counts: () => ({ reads, probes }), clock: (value: number) => { now = value; },
+  return { path, start, counts: () => ({ listingReads, detailReads, probes }), clock: (value: number) => { now = value; },
     finish: () => { published = false; games = [recordFinal({ ...live, lifecycle: 'final', status: 'post' }, now)]; },
     disappear: () => { games = []; },
     sql: (statement: string) => { const db = new DatabaseSync(path); try { db.exec(statement); } finally { db.close(); } },
@@ -114,39 +117,32 @@ test('finished games and saved servers survive missing schedules and cold restor
     const counts = run.counts();
     run.clock(at + 10 * 60_000); run.finish();
     await coordinator.refresh(true); await drain();
+    assert.deepEqual(run.counts(), { ...counts, listingReads: counts.listingReads + 1 });
     run.disappear(); await coordinator.refresh(true); await drain();
     await coordinator.stop(); run.clock(at + 10 * 60_000 + day - 1); coordinator = run.start();
-    assert.deepEqual((await sources(coordinator)).games[0].candidates, before);
+    const restored = (await sources(coordinator)).games[0].candidates;
+    assert.deepEqual(restored.map(row => row.id), before.map(row => row.id));
+    assert.ok(restored.every(row => row.availability.kind === 'unknown'));
     const board = await coordinator.command({ kind: 'set-retention', minutes: 1440 });
     assert.equal(board.kind, 'board');
     if (board.kind === 'board') {
       assert.equal(board.board.finishedGameRetentionMinutes, 1440);
-      assert.equal(board.board.games[0].sourceUrl, `/play/${live.id}`);
+      assert.equal(board.board.games[0].sourceUrl, undefined);
       assert.equal(board.board.games[0].finalObservedAt, at + 10 * 60_000);
     }
-    const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false });
-    assert.equal(opened.kind, 'playback');
-    if (opened.kind !== 'playback') return;
-    assert.equal(opened.playback.session.state, 'draining');
-    const switched = await coordinator.command({ kind: 'session', sessionId: opened.playback.session.id, generation: 0,
-      candidateId: 'server-2', failure: false, retry: false });
-    assert.equal(switched.kind, 'session');
-    if (switched.kind !== 'session') return;
-    assert.equal(switched.session.candidateId, 'server-2');
-    assert.equal(switched.session.generation, 1);
-    assert.equal((await coordinator.command({ kind: 'authorize', sessionId: switched.session.id, candidateId: 'server-2', generation: 1 })).kind, 'authorized');
+    assert.equal((await coordinator.command({ kind: 'open', gameId: live.id, manual: false })).kind, 'error');
     assert.equal((await coordinator.command({ kind: 'check-sources', gameIds: [live.id], retry: true })).kind, 'error');
-    assert.deepEqual(run.counts(), counts);
+    assert.deepEqual(run.counts(), { ...counts, listingReads: counts.listingReads + 1 });
     run.clock(at + 10 * 60_000 + day);
     assert.deepEqual((await sources(coordinator)).games, []);
-    assert.equal((await coordinator.command({ kind: 'authorize', sessionId: switched.session.id, candidateId: 'server-2', generation: 1 })).kind, 'error');
+    assert.equal((await coordinator.command({ kind: 'open', gameId: live.id, manual: false })).kind, 'error');
     for (const table of ['working_feeds', 'observations', 'details'] as const) assert.equal(run.count(table), 0);
     const expired = await coordinator.command({ kind: 'set-retention', minutes: 1440 });
     assert.equal(expired.kind, 'board');
     if (expired.kind === 'board') assert.deepEqual(expired.board.games, []);
     await coordinator.stop(); coordinator = run.start();
     assert.deepEqual((await sources(coordinator)).games, []);
-    assert.deepEqual(run.counts(), counts);
+    assert.deepEqual(run.counts(), { ...counts, listingReads: counts.listingReads + 1 });
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 
@@ -154,18 +150,18 @@ test('changing retention updates draining sessions and never recreates already p
   const run = fixture(); let coordinator = run.start();
   try {
     await coordinator.refresh(true); await drain();
-    run.clock(at + 10 * 60_000); run.finish(); await coordinator.refresh(true); await drain();
+    run.clock(at + 4 * 60_000); run.finish(); await coordinator.refresh(true); await drain();
     const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false });
     assert.equal(opened.kind, 'playback');
     if (opened.kind !== 'playback') return;
     const changed = await coordinator.command({ kind: 'set-retention', minutes: 60 });
     assert.equal(changed.kind, 'board');
-    if (changed.kind === 'board') assert.equal(changed.board.games[0].finalObservedAt, at + 10 * 60_000);
+    if (changed.kind === 'board') assert.equal(changed.board.games[0].finalObservedAt, at + 4 * 60_000);
     const session = await coordinator.command({ kind: 'session', sessionId: opened.playback.session.id, generation: 0, failure: false, retry: false });
     assert.equal(session.kind, 'session');
-    if (session.kind === 'session') assert.equal(session.session.graceEndsAt, at + 70 * 60_000);
+    if (session.kind === 'session') assert.equal(session.session.graceEndsAt, at + 64 * 60_000);
     const counts = run.counts();
-    run.clock(at + 16 * 60_000);
+    run.clock(at + 10 * 60_000);
     const shortened = await coordinator.command({ kind: 'set-retention', minutes: 5 });
     assert.equal(shortened.kind, 'board');
     if (shortened.kind === 'board') assert.deepEqual(shortened.board.games, []);
@@ -175,7 +171,7 @@ test('changing retention updates draining sessions and never recreates already p
     if (increased.kind === 'board') {
       assert.equal(increased.board.games.length, 1);
       assert.equal(increased.board.games[0].sourceUrl, undefined);
-      assert.equal(increased.board.games[0].finalObservedAt, at + 10 * 60_000);
+      assert.equal(increased.board.games[0].finalObservedAt, at + 4 * 60_000);
     }
     assert.equal((await coordinator.command({ kind: 'open', gameId: live.id, manual: false })).kind, 'error');
     assert.deepEqual((await sources(coordinator)).games, []);

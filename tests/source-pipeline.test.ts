@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { FootballStore } from '../lib/football/adapters/store.ts';
 import { recordFinal } from '../lib/football/domain/lifecycle.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
+import { createProbeResources, probeObserverLease } from '../lib/playback/probe-capacity.ts';
 import type { Candidate, Game, Observation } from '../lib/football/shared.ts';
 import type { ScheduleResult } from '../lib/football/domain/ports.ts';
 
@@ -47,7 +48,7 @@ test('a late schedule partition resolves a saved listing without refetching its 
     parseListings:()=>({outcome:'parsed',observations:[observation('ncaaf')]}),
     enrichObservation:value=>value,
     compatiblePlayers:(gameId)=>players(gameId),
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   const refreshing=coordinator.refresh(true);
   try{
@@ -87,7 +88,7 @@ test('published event pages persist as separate alternatives but count only prob
     compatiblePlayers:(gameId:string)=>[1,2,3,4].map(number=>({id:`event-page-${number}`,label:`Server ${number}`,
       locator:{provider:'event-page' as const,gameId,eventUrl,serverUrl:`https://vipbox.fm/live/ncaaf/away-vs-home-${number}`}})),
     probeCandidate:async(locator:Candidate['locator'])=>locator.provider==='event-page' && locator.serverUrl.endsWith('-1')
-      ? {kind:'playable' as const,proof:'media' as const}
+      ? {kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const}
       : {kind:'unavailable' as const,reason:'upstream' as const},
   };
   let coordinator=createFootballCoordinator(path,options);
@@ -127,7 +128,7 @@ test('published event pages persist as separate alternatives but count only prob
     assert.equal(reply.kind,'sources');
     if(reply.kind==='sources')assert.deepEqual(reply.snapshot.games.find(item=>item.gameId===current.id)?.candidates.map(candidate=>({
       id:candidate.id,availability:candidate.availability})),[
-      {id:'event-page-1',availability:{kind:'playable',checkedAt:at,proof:'media'}},
+      {id:'event-page-1',availability:{kind:'playable',checkedAt:at,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}},
     ]);
     await coordinator.stop();
     const staleDb=new DatabaseSync(path);
@@ -146,7 +147,7 @@ test('published event pages persist as separate alternatives but count only prob
     assert.equal(reply.kind,'sources');
     if(reply.kind==='sources')assert.deepEqual(reply.snapshot.games.find(item=>item.gameId===current.id)?.candidates.map(candidate=>({
       id:candidate.id,availability:candidate.availability})),[
-      {id:'event-page-1',availability:{kind:'playable',checkedAt:at,proof:'media'}},
+      {id:'event-page-1',availability:{kind:'playable',checkedAt:at,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}},
     ]);
     unblock();
     await until(async()=>{
@@ -169,7 +170,7 @@ test('a detail player bound to another game cannot project into a matched event'
     enrichObservation:value=>value,
     compatiblePlayers:()=>[{id:'wrong-game',label:'Wrong game',locator:{provider:'event-page',
       gameId:'ncaaf-999',eventUrl,serverUrl:'https://vipbox.fm/live/ncaaf/away-vs-home-1'}}],
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   try {
     await coordinator.refresh(true);
@@ -203,7 +204,7 @@ test('a retained live VIP event gains current candidates only after its page pub
       id:`event-page-${number}`,label:`Server ${number}`,locator:{provider:'event-page' as const,gameId,
         eventUrl:value.url,serverUrl:`https://vipbox.fm/live/ncaaf/away-vs-home-${number}`},
     })),{id:'gooz-7',label:'Free backup',locator:{provider:'gooz' as const,playerId:'7'}}]:[],
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   try {
     await coordinator.refresh(true);
@@ -249,7 +250,7 @@ test('live rollover rejects missing routes, changed game state, and a replaced l
         locator:{provider:'event-page' as const,gameId:scenario==='wrong-event'?'ncaaf-999':gameId,
           eventUrl:scenario==='wrong-url'?'https://vipbox.fm/onair/ncaaf/other-event':value.url,
           serverUrl:'https://vipbox.fm/live/ncaaf/away-vs-home-1'}}],
-      probeCandidate:async()=>({kind:'playable',proof:'media'}),
+      probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
     });
     try {
       await coordinator.refresh(true);
@@ -334,7 +335,7 @@ test('published PPV players enter the bounded detail queue alongside rotating so
     enrichObservation:value=>value,
     compatiblePlayers:(gameId,value)=>[{id:`gooz-${value.id}`,label:'Server 1',
       locator:{provider:'gooz',playerId:gameId.slice('ncaaf-'.length)}}],
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   try {
     await coordinator.refresh(true);
@@ -363,7 +364,7 @@ test('a corrected kickoff with the same game ID rematches saved listings and ret
     parseListings:()=>({outcome:'parsed',observations:[observation()]}),
     enrichObservation:value=>value,
     compatiblePlayers:gameId=>players(gameId),
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   try{
     await coordinator.refresh(true);
@@ -403,7 +404,7 @@ test('a detail response cannot restore a candidate after its schedule match chan
     parseListings:()=>({outcome:'parsed',observations:[observation()]}),
     enrichObservation:value=>value,
     compatiblePlayers:gameId=>players(gameId),
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   try{
     await coordinator.refresh(true);
@@ -486,8 +487,8 @@ test('fatal playback cools a shared locator and only current decoded evidence re
     compatiblePlayers:gameId=>players(gameId),
     probeCandidate:async locator=>{
       if(locator.provider==='gooz'&&locator.playerId==='1'&&++firstProbes>1)
-        return await new Promise<{kind:'playable';proof:'media'}>((_,reject)=>{rejectLate=reject;});
-      return {kind:'playable',proof:'media'};
+        return await new Promise<{kind:'playable';proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}>((_,reject)=>{rejectLate=reject;});
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     },
   });
   try{
@@ -509,9 +510,9 @@ test('fatal playback cools a shared locator and only current decoded evidence re
     if(second.kind==='playback'){
       assert.equal(second.playback.session.candidateId,'gooz-2');
       assert.deepEqual(await coordinator.command({kind:'playback-evidence',sessionId:second.playback.session.id,
-        candidateId:'gooz-2',generation:0,evidence:{kind:'decoded',startupMs:500}}),{kind:'ok'});
+        candidateId:'gooz-2',generation:0,evidence:{kind:'advancing-video',version:1,startupMs:500,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),{kind:'ok'});
     }
-    assert.equal((await coordinator.command({kind:'playback-evidence',sessionId:session.id,candidateId:'gooz-1',generation:0,evidence:{kind:'decoded',startupMs:1000}})).kind,'error');
+    assert.equal((await coordinator.command({kind:'playback-evidence',sessionId:session.id,candidateId:'gooz-1',generation:0,evidence:{kind:'advancing-video',version:1,startupMs:1000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}})).kind,'error');
     const cooled=await coordinator.command({kind:'sources'});
     if(cooled.kind==='sources'){
       const rows=cooled.snapshot.games.find(row=>row.gameId===game().id)?.candidates;
@@ -520,7 +521,7 @@ test('fatal playback cools a shared locator and only current decoded evidence re
     }
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[game().id],retry:true}),{kind:'ok'});
     await until(async()=>rejectLate!==undefined);
-    assert.deepEqual(await coordinator.command({kind:'playback-evidence',sessionId:session.id,candidateId:'gooz-1',generation:1,evidence:{kind:'decoded',startupMs:1000}}),{kind:'ok'});
+    assert.deepEqual(await coordinator.command({kind:'playback-evidence',sessionId:session.id,candidateId:'gooz-1',generation:1,evidence:{kind:'advancing-video',version:1,startupMs:1000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),{kind:'ok'});
     rejectLate?.(new Error('late probe failure'));
     await until(async()=>{
       const recovered=await coordinator.command({kind:'sources'});
@@ -540,7 +541,7 @@ test('a selected HTML player remains authorized during final-game grace',async()
     parseListings:()=>({outcome:'parsed',observations:[observation()]}),
     enrichObservation:value=>value,
     compatiblePlayers:gameId=>players(gameId),
-    probeCandidate:async()=>({kind:'playable',proof:'media'}),
+    probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
   try{
     await coordinator.command({kind:'set-retention',minutes:5});
@@ -611,7 +612,7 @@ test('accepted browser categories record one durable attempt and replay adds non
   } finally {db.close();rmSync(dir,{recursive:true,force:true});}
 });
 
-test('new live first feeds advance while existing sessions and background work keep turns',async()=>{
+test('new live first feeds advance through two native check slots',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'pipeline-fairness-'));
   const matches=Array.from({length:8},(_,index):Game=>({
     ...game(),id:`game-${index}`,name:`Away ${index} at Home ${index}`,
@@ -625,6 +626,7 @@ test('new live first feeds advance while existing sessions and background work k
   const calls:string[]=[];
   const pending:(()=>void)[]=[];
   let active=0,peak=0;
+  const resources=createProbeResources({httpLimit:8,observerLimit:4,activeBudgetMs:65_000});
   const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
     now:()=>at,sources:[source],
     readSchedule:async partition=>({games:partition.id==='nfl'?matches:[],league:partition.league,at}),
@@ -635,29 +637,33 @@ test('new live first feeds advance while existing sessions and background work k
       id:`${gameId}-${index}`,gameId,label:`Server ${index}`,sourceIds:[source.id],observedAt:at,
       locator:{provider:'gooz',playerId:String(Number(value.id.slice('listing-'.length))*6+index+1)},
     })),
-    probeCandidate:async(locator,signal)=>{
+    probeCandidate:(locator,signal,onProgress)=>resources.run(signal,onProgress,async activeSignal=>{
+      const release=await probeObserverLease(activeSignal);
+      try{
       assert.equal(locator.provider,'gooz');
       calls.push(locator.playerId);
       active++;peak=Math.max(peak,active);
       await new Promise<void>(resolve=>{
         pending.push(resolve);
-        signal.addEventListener('abort',resolve,{once:true});
+        activeSignal.addEventListener('abort',resolve,{once:true});
       });
       active--;
-      return {kind:'playable',proof:'media'};
-    },
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
+      }finally{release();}
+    }),
   });
   try{
     await coordinator.refresh(true);
-    await until(async()=>calls.length===4);
-    assert.deepEqual(calls,['1','7','13','19']);
-    assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[matches[7].id],retry:false}),{kind:'ok'});
-    for(let expected=5;expected<=8;expected++){
+    await until(async()=>calls.length===2);
+    assert.deepEqual(calls,['1','7']);
+    const firstFeeds=['1','7','13','19','25','31','37','43'];
+    for(let expected=3;expected<=16&&!firstFeeds.every(id=>calls.includes(id));expected++){
       pending.shift()?.();
       await until(async()=>calls.length===expected);
     }
-    assert.deepEqual(calls.slice(4,7),['25','31','37']);
-    assert.equal(peak,4);
+    assert.deepEqual(calls.filter(id=>firstFeeds.includes(id)),firstFeeds);
+    assert.equal(calls.some(id=>!firstFeeds.includes(id)),true,'alternatives receive background turns');
+    assert.equal(peak,2);
   } finally {
     for(const release of pending)release();
     await coordinator.stop();
@@ -665,7 +671,7 @@ test('new live first feeds advance while existing sessions and background work k
   }
 });
 
-test('manually retried live servers reenter a full background probe queue without taking every slot',async()=>{
+test('manual live retries progress alongside a held background route',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'pipeline-probe-retry-'));
   const live=game('ncaaf');
   const scheduled:Game={...game('ncaaf',at+3600_000),id:'ncaaf-101',name:'Other at Elsewhere',
@@ -675,11 +681,11 @@ test('manually retried live servers reenter a full background probe queue withou
     ...observation('ncaaf'),id:`listing-${match.id}`,url:`https://fixture.example/detail/${match.id}`,
     title:match.name,teams:[match.away.name,match.home.name],kickoff:Date.parse(match.date || ''),parserVersion:2 as const,
   }));
-  let clock=at,targetChecks=0,backgroundChecks=0;
+  let targetChecks=0,backgroundChecks=0;
   const pending:(()=>void)[]=[];
   const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
-    now:()=>clock,sources:[source],
-    readSchedule:async partition=>({games:partition.id==='fcs'?[live,scheduled]:[],league:partition.league,at:clock}),
+    now:()=>at,sources:[source],
+    readSchedule:async partition=>({games:partition.id==='fcs'?[live,scheduled]:[],league:partition.league,at}),
     readHtml:async()=>'<main>published</main>',
     parseListings:()=>({outcome:'parsed',observations:listings}),
     enrichObservation:value=>value,
@@ -703,17 +709,11 @@ test('manually retried live servers reenter a full background probe queue withou
   };
   try {
     await coordinator.refresh(true);
-    await until(async()=>targetChecks===17&&pending.length===4);
+    await until(async()=>targetChecks===17&&pending.length===1);
     assert.deepEqual(new Set(await availability()),new Set(['unavailable']));
     await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false});
     assert.equal(targetChecks,17);
-    clock+=301_000;
-    await coordinator.refresh(true);
-    await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false});
-    assert.equal(targetChecks,17);
-    assert.deepEqual(new Set(await availability()),new Set(['unavailable']));
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:true}),{kind:'ok'});
-    assert.deepEqual(new Set(await availability()),new Set(['checking']));
     const backgroundBefore=backgroundChecks;
     await until(async()=>{
       for(const release of pending.splice(0))release();

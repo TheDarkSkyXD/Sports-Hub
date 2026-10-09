@@ -18,7 +18,7 @@ try {
   await mkdir(output, { recursive: true });
   desktop = await electron.launch({
     executablePath: await prepareDevelopmentElectron(),
-    args: [path.join(root, 'desktop/main.cjs'), `--user-data-dir=${profile}`],
+    args: [path.join(root, 'desktop/main.cjs'), '--dev', `--user-data-dir=${profile}`],
     cwd: root,
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
     timeout: 90_000,

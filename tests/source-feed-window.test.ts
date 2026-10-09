@@ -57,11 +57,11 @@ function fixture(options: { emptyPlayers?: boolean; holdDetail?: string; holdPro
       assert.equal(locator.provider, 'gooz');
       probes.push(locator.playerId);
       if (locator.playerId === options.holdProbe) return new Promise<CandidateProbeResult>(resolve => {
-        const release = () => resolve({ kind: 'playable', proof: 'media' });
+        const release = () => resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });
         heldProbes.push({ signal, release });
         signal.addEventListener('abort', release, { once: true });
       });
-      return { kind: 'playable', proof: 'media' };
+      return { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
     },
   });
   return { coordinator, current, detailReads, probes, heldDetails, heldProbes,
@@ -156,7 +156,7 @@ test('rescheduling aborts active media work while completed proof survives a tem
     run.reschedule(1, '2026-10-04T17:00:00Z');
     await run.refresh();
     assert.equal((await run.snapshot()).games.find(row => row.gameId === '10002')?.workingChoiceCount, 1);
-    assert.equal(run.probes.filter(id => id === '10002').length, 1);
+    assert.equal(run.probes.filter(id => id === '10002').length, 2);
   } finally { await run.stop(); }
 });
 

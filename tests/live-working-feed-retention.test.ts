@@ -57,7 +57,7 @@ function fixture(upcoming = false, catalog = false) {
         pending.push({ id, resolve });
         signal.addEventListener('abort', () => resolve({ kind: 'deferred', retryAfterMs: 1000 }), { once: true });
       });
-      return { kind: 'playable', proof: 'media' };
+      return { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} };
     },
   });
   const snapshot = async () => {
@@ -124,14 +124,16 @@ test('a playback failure removes only the retained route whose listing is gone',
   } finally { await run.stop(); }
 });
 
-test('final games retain proven working choices throughout their retention window without more checks', async () => {
+test('final games retain routes throughout their retention window without more checks', async () => {
   const run = fixture();
   try {
     await run.refresh(at);
     assert.equal((await run.snapshot()).games.length, 2);
     run.finish();
     await run.refresh(at + 301000);
-    assert.deepEqual((await run.snapshot()).games.map(row => row.workingChoiceCount), [2, 2]);
+    const retained = (await run.snapshot()).games;
+    assert.deepEqual(retained.map(row => row.candidates.length), [2, 2]);
+    assert.deepEqual(retained.map(row => row.workingChoiceCount), [0, 0]);
     assert.equal(run.checks(), 4);
     await run.refresh(at + 301000 + 24 * 60 * 60_000);
     assert.deepEqual((await run.snapshot()).games, []);
@@ -149,7 +151,7 @@ test('working upcoming choices survive expired listings while the game remains e
     const snapshot = await run.snapshot();
     assert.deepEqual(snapshot.games.map(row => row.workingChoiceCount), [2, 2]);
     assert.deepEqual(snapshot.games.flatMap(row => row.candidates.map(candidate => candidate.availability)),
-      Array.from({ length: 4 }, () => ({ kind: 'playable', checkedAt: at + 31 * 60000, proof: 'media' })));
+      Array.from({ length: 4 }, () => ({ kind: 'playable', checkedAt: at + 31 * 60000, proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} })));
     assert.equal(run.checks(), 8);
   } finally { await run.stop(); }
 });

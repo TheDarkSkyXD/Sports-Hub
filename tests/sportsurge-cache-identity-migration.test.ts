@@ -40,8 +40,8 @@ function fixture(options:{catalog?:boolean;otherRoute?:boolean;oldCheckedAt?:num
     const locator=legacyLocator(url,id);
     const candidate={id:candidateId(url,id),gameId:game.id,label:id,sourceIds:['sportsurge-v2'],observedAt:at,locator};
     const identityHash=createHash('sha256').update(JSON.stringify([game.id,JSON.stringify(locator)])).digest('hex');
-    const feed:WorkingFeed={version:1,identityHash,candidate,owner:workingFeedOwner(game,['fbs']),
-      checkedAt:options.oldCheckedAt??at,proof:'media'};
+    const feed:WorkingFeed={version:2,identityHash,candidate,owner:workingFeedOwner(game,['fbs']),
+      checkedAt:options.oldCheckedAt??at,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
     store.replaceWorkingIdentity(game.id,identityHash,[feed]);
     feeds.push(feed);
   }
@@ -49,7 +49,7 @@ function fixture(options:{catalog?:boolean;otherRoute?:boolean;oldCheckedAt?:num
   store.close();
   const probes:Array<{locator:CandidateLocator;signal:AbortSignal}>=[];
   let probe:(locator:CandidateLocator,signal:AbortSignal)=>Promise<CandidateProbeResult>=async locator=>
-    locator.provider==='sportsurge-v2'&&locator.expectedMatchup?{kind:'unavailable',reason:'invalid-media'}:{kind:'playable',proof:'media'};
+    locator.provider==='sportsurge-v2'&&locator.expectedMatchup?{kind:'unavailable',reason:'invalid-media'}:{kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
   const start=()=>createFootballCoordinator(path,{now:()=>at,browserCollectorsAvailable:true,
     schedules:[{id:'fbs',league:'ncaaf',path:'college-football',group:80}],
     sources:[{id:'sportsurge-v2',url:'https://v2.sportsurge.net/watch-cfb-streams/',family:'sportsurge',kind:'browser-catalog'}],
@@ -118,7 +118,7 @@ test('a late old-route media recheck cannot restore proof after verified matchup
     assert.ok(old);
     assert.equal((await coordinator.command({kind:'sportsurge-catalog',catalog})).kind,'catalog-ack');
     assert.equal(old.signal.aborted,true);
-    resolveOld({kind:'playable',proof:'media'});await drain();
+    resolveOld({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});await drain();
     await coordinator.refresh(true);await drain();
     assert.equal((await candidates(coordinator))?.workingChoiceCount,0);
     assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false})).kind,'error');

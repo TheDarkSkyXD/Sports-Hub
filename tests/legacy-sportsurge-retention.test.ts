@@ -42,7 +42,7 @@ function fixture(allPlayable:boolean) {
     probeCandidate:async locator=>{
       assert.equal(locator.provider,'gooz');
       probes.push(locator.playerId);
-      return allPlayable||locator.playerId==='57561'?{kind:'playable' as const,proof:'media' as const}:
+      return allPlayable||locator.playerId==='57561'?{kind:'playable' as const,proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} as const}:
         {kind:'unavailable' as const,reason:'invalid-media' as const};
     },
   });
@@ -84,8 +84,11 @@ test('legacy Sportsurge rereads a live page with missing playable siblings after
     await until(async()=>run.detailReads===3&&(await run.choices()).length===3&&
       (await run.snapshot()).sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind==='collected',
     'fresh detail with all three published players');
-    assert.equal((await run.choices()).length,3);
-    assert.deepEqual(run.probes.sort(),['57561','57561','57562','57563']);
+    await until(async()=>['57561','57562','57563'].every(id=>run.probes.filter(value=>value===id).length>=2),
+      'each published route should receive a due recheck');
+    assert.deepEqual((await run.choices()).map(row=>[row.label,row.availability.kind]),
+      [['Primary','playable'],['Backup 1','unavailable'],['Backup 2','unavailable']]);
+    assert.ok(run.probes.filter(id=>id==='57561').length>=3);
   } finally {await run.close();}
 });
 
@@ -117,7 +120,7 @@ test('legacy Sportsurge keeps complete live proof while rereading detail after r
     await run.restart();
     const pendingRefresh=run.refresh();
     const cold=await run.snapshot();
-    assert.equal(cold.sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind,'collected');
+    assert.equal(cold.sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind,'pending');
     assert.equal(cold.sources.find(row=>row.id===source.id)?.lastAttempt?.at,initial);
     assert.equal(cold.games.find(row=>row.gameId===game.id)?.candidates.length,3);
     assert.equal(run.detailReads,1,'cold restore does not need a network detail read');
@@ -128,6 +131,7 @@ test('legacy Sportsurge keeps complete live proof while rereading detail after r
     const afterRestart=await run.snapshot();
     assert.equal(afterRestart.sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind,'collected');
     assert.equal(run.detailReads,2,'eligible live detail is checked again after its interval');
-    assert.deepEqual(run.probes.sort(),['57561','57562','57563']);
+    await until(async()=>run.probes.length===6,'all restored working routes should receive their due checks');
+    assert.deepEqual(run.probes.sort(),['57561','57561','57562','57562','57563','57563']);
   } finally {run.releaseNetwork();await run.close();}
 });
