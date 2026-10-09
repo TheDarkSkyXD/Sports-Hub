@@ -307,7 +307,6 @@
           "https://v2.streameast.ga/nhl-streams/",
           "https://v2.streameast.ga/mlb-streams/",
           "https://v2.streameast.ga/wnba-streams/",
-          "https://v2.streameast.ga/ncaab-streams/",
           "https://v2.streameast.ga/f1-streams/"
         ],
         "leagues": [
@@ -317,7 +316,6 @@
           "nhl",
           "mlb",
           "wnba",
-          "ncaab",
           "f1"
         ],
         "browserCategories": [
@@ -373,14 +371,6 @@
             "pathCode": null,
             "emptyTitles": [
               "No WNBA games available"
-            ]
-          },
-          {
-            "league": "ncaab",
-            "url": "https://v2.streameast.ga/ncaab-streams/",
-            "pathCode": null,
-            "emptyTitles": [
-              "No NCAAB games available"
             ]
           },
           {
@@ -448,8 +438,7 @@
         "parserVersion": 4,
         "leagues": [
           "nba",
-          "wnba",
-          "ncaab"
+          "wnba"
         ]
       },
       {
@@ -461,9 +450,7 @@
         "publicUrls": [],
         "parserVersion": 4,
         "leagues": [
-          "nhl",
-          "ncaah",
-          "ncaawh"
+          "nhl"
         ]
       },
       {
@@ -587,7 +574,6 @@
           "https://v2.sportsurge.net/watch-baseball-streams/",
           "https://v2.sportsurge.net/watch-f1-streams/",
           "https://v2.sportsurge.net/watch-wnba-streams/",
-          "https://v2.sportsurge.net/watch-ncaab-streams/",
           "https://v2.sportsurge.net/watch-motogp-streams/",
           "https://v2.sportsurge.net/watch-nascar-streams/"
         ],
@@ -599,7 +585,6 @@
           "mlb",
           "f1",
           "wnba",
-          "ncaab",
           "motogp",
           "nascar-cup",
           "nascar-truck"
@@ -638,11 +623,6 @@
           {
             "league": "wnba",
             "url": "https://v2.sportsurge.net/watch-wnba-streams/",
-            "pathCode": null
-          },
-          {
-            "league": "ncaab",
-            "url": "https://v2.sportsurge.net/watch-ncaab-streams/",
             "pathCode": null
           },
           {
@@ -698,8 +678,7 @@
         "family": "event",
         "leagues": [
           "nba",
-          "wnba",
-          "ncaab"
+          "wnba"
         ]
       },
       {
@@ -708,8 +687,7 @@
         "family": "event",
         "leagues": [
           "nba",
-          "wnba",
-          "ncaab"
+          "wnba"
         ]
       },
       {
@@ -741,9 +719,7 @@
         "url": "https://methstreams.st/NHL",
         "family": "event",
         "leagues": [
-          "nhl",
-          "ncaah",
-          "ncaawh"
+          "nhl"
         ]
       },
       {
@@ -751,9 +727,7 @@
         "url": "https://crackstreams.st/NHL",
         "family": "event",
         "leagues": [
-          "nhl",
-          "ncaah",
-          "ncaawh"
+          "nhl"
         ]
       },
       {
@@ -819,10 +793,7 @@
           "nfl",
           "nba",
           "wnba",
-          "ncaab",
           "nhl",
-          "ncaah",
-          "ncaawh",
           "mlb",
           "f1",
           "nascar-cup",
@@ -847,10 +818,7 @@
           "nfl",
           "nba",
           "wnba",
-          "ncaab",
           "nhl",
-          "ncaah",
-          "ncaawh",
           "mlb",
           "f1",
           "nascar-cup",
@@ -875,10 +843,7 @@
           "nfl",
           "nba",
           "wnba",
-          "ncaab",
           "nhl",
-          "ncaah",
-          "ncaawh",
           "mlb",
           "f1",
           "nascar-cup",
@@ -900,10 +865,7 @@
           "nfl",
           "nba",
           "wnba",
-          "ncaab",
           "nhl",
-          "ncaah",
-          "ncaawh",
           "mlb",
           "f1",
           "nascar-cup",
@@ -926,10 +888,7 @@
           "nfl",
           "nba",
           "wnba",
-          "ncaab",
           "nhl",
-          "ncaah",
-          "ncaawh",
           "mlb",
           "f1",
           "nascar-cup",
@@ -948,13 +907,13 @@
               "sourceId": "sportsurge",
               "url": "https://isportsurge.ws/watch/cfb/brown-harvard/397359440",
               "title": "Brown Bears vs Harvard Crimson",
+              "league": "ncaaf",
               "teams": [
                 "Brown Bears",
                 "Harvard Crimson"
               ],
-              "league": "ncaaf",
-              "rawTime": "",
               "kickoff": null,
+              "rawTime": "",
               "observedAt": 1791493800000,
               "parserVersion": 2,
               "legacyId": "ncaaf-source-397359440"
@@ -967,13 +926,13 @@
           "sourceId": "sportsurge",
           "url": "https://isportsurge.ws/watch/cfb/brown-harvard/397359440",
           "title": "Brown Bears vs Harvard Crimson",
+          "league": "ncaaf",
           "teams": [
             "Brown Bears",
             "Harvard Crimson"
           ],
-          "league": "ncaaf",
-          "rawTime": "2026-09-25 22:30ET",
           "kickoff": 1790389800000,
+          "rawTime": "2026-09-25 22:30ET",
           "observedAt": 1791493800000,
           "parserVersion": 2,
           "legacyId": "ncaaf-source-397359440"
@@ -981,22 +940,22 @@
         "compatible": [
           {
             "id": "gooz-57069",
+            "label": "Primary",
             "locator": {
               "provider": "gooz",
               "playerId": "57069"
-            },
-            "label": "Primary"
+            }
           }
         ],
         "missing": "no-compatible-media",
         "resolved": [
           {
             "id": "gooz-57069",
+            "label": "Primary",
             "locator": {
               "provider": "gooz",
               "playerId": "57069"
-            },
-            "label": "Primary"
+            }
           }
         ]
       },
@@ -1008,13 +967,13 @@
               "sourceId": "buffstream-cfb",
               "url": "https://ms.buffstream.io/cfb-streams/montana-state-live-stream",
               "title": "Montana State vs Idaho",
+              "league": "ncaaf",
               "teams": [
                 "Montana State",
                 "Idaho"
               ],
-              "league": "ncaaf",
-              "rawTime": "10:30 pm ET",
               "kickoff": null,
+              "rawTime": "10:30 pm ET",
               "observedAt": 1791493800000,
               "parserVersion": 2
             },
@@ -1023,13 +982,13 @@
               "sourceId": "buffstream-cfb",
               "url": "https://ms.buffstream.io/cfb-streams/idaho-live-stream",
               "title": "Montana State vs Idaho",
+              "league": "ncaaf",
               "teams": [
                 "Montana State",
                 "Idaho"
               ],
-              "league": "ncaaf",
-              "rawTime": "10:30 pm ET",
               "kickoff": null,
+              "rawTime": "10:30 pm ET",
               "observedAt": 1791493800000,
               "parserVersion": 2
             }
@@ -1041,13 +1000,13 @@
           "sourceId": "buffstream-cfb",
           "url": "https://ms.buffstream.io/cfb-streams/montana-state-live-stream",
           "title": "Montana State vs Idaho",
+          "league": "ncaaf",
           "teams": [
             "Montana State",
             "Idaho"
           ],
-          "league": "ncaaf",
-          "rawTime": "10:30 pm ET",
           "kickoff": null,
+          "rawTime": "10:30 pm ET",
           "observedAt": 1791493800000,
           "parserVersion": 2
         },
@@ -1063,11 +1022,11 @@
               "sourceId": "livetv",
               "url": "https://livetv.sx/enx/eventinfo/478510070__/",
               "title": "Buffalo Bills vs New England Patriots",
+              "league": "nfl",
               "teams": [
                 "Buffalo Bills",
                 "New England Patriots"
               ],
-              "league": "nfl",
               "kickoff": null,
               "rawTime": "",
               "observedAt": 1791493800000,
@@ -1081,11 +1040,11 @@
           "sourceId": "livetv",
           "url": "https://livetv.sx/enx/eventinfo/478510070__/",
           "title": "Buffalo Bills vs New England Patriots",
+          "league": "nfl",
           "teams": [
             "Buffalo Bills",
             "New England Patriots"
           ],
-          "league": "nfl",
           "kickoff": 1791133200000,
           "rawTime": "2026-10-04T20:00:00+03:00",
           "observedAt": 1791493800000,
@@ -1125,13 +1084,13 @@
               "sourceId": "strikeout-nfl",
               "url": "https://strikeout.im/nfl/stream-carolina-panthers-vs-detroit-lions-live",
               "title": "Carolina Panthers vs Detroit Lions",
+              "league": "nfl",
               "teams": [
                 "Carolina Panthers",
                 "Detroit Lions"
               ],
-              "league": "nfl",
-              "rawTime": "2026-10-05T01:20",
               "kickoff": null,
+              "rawTime": "2026-10-05T01:20",
               "observedAt": 1791493800000,
               "parserVersion": 2
             },
@@ -1140,13 +1099,13 @@
               "sourceId": "strikeout-nfl",
               "url": "https://strikeout.im/nfl/stream-new-orleans-saints-vs-atlanta-falcons-live",
               "title": "New Orleans Saints vs Atlanta Falcons",
+              "league": "nfl",
               "teams": [
                 "New Orleans Saints",
                 "Atlanta Falcons"
               ],
-              "league": "nfl",
-              "rawTime": "2026-10-06T01:15",
               "kickoff": null,
+              "rawTime": "2026-10-06T01:15",
               "observedAt": 1791493800000,
               "parserVersion": 2
             }
@@ -1158,13 +1117,13 @@
           "sourceId": "strikeout-nfl",
           "url": "https://strikeout.im/nfl/stream-carolina-panthers-vs-detroit-lions-live",
           "title": "Carolina Panthers vs Detroit Lions",
+          "league": "nfl",
           "teams": [
             "Carolina Panthers",
             "Detroit Lions"
           ],
-          "league": "nfl",
-          "rawTime": "1791159600",
           "kickoff": 1791159600000,
+          "rawTime": "1791159600",
           "observedAt": 1791493800000,
           "parserVersion": 2
         },
@@ -1262,11 +1221,11 @@
               "sourceId": "nflstreams",
               "url": "https://nflstreams.org/teams/carolina-panthers-live/",
               "title": "Detroit Lions vs Carolina Panthers",
+              "league": "nfl",
               "teams": [
                 "Detroit Lions",
                 "Carolina Panthers"
               ],
-              "league": "nfl",
               "kickoff": 1791159600000,
               "rawTime": "2026-10-05T00:20:00Z",
               "observedAt": 1791493800000,
@@ -1280,11 +1239,11 @@
           "sourceId": "nflstreams",
           "url": "https://nflstreams.org/teams/carolina-panthers-live/",
           "title": "Detroit Lions vs Carolina Panthers",
+          "league": "nfl",
           "teams": [
             "Detroit Lions",
             "Carolina Panthers"
           ],
-          "league": "nfl",
           "kickoff": 1791159600000,
           "rawTime": "2026-10-05T00:20:00Z",
           "observedAt": 1791493800000,
@@ -1424,13 +1383,13 @@
               "sourceId": "crackstreams-st",
               "url": "https://crackstreams.st/event/m-detroit-lions-vs-carolina-panthers-1005",
               "title": "Detroit Lions vs Carolina Panthers",
+              "league": null,
               "teams": [
                 "Detroit Lions",
                 "Carolina Panthers"
               ],
-              "league": null,
-              "rawTime": "1791159600",
               "kickoff": 1791159600000,
+              "rawTime": "1791159600",
               "observedAt": 1791493800000,
               "parserVersion": 2
             },
@@ -1439,13 +1398,13 @@
               "sourceId": "crackstreams-st",
               "url": "https://crackstreams.st/event/m-atlanta-falcons-vs-new-orleans-saints-1006",
               "title": "Atlanta Falcons vs New Orleans Saints",
+              "league": null,
               "teams": [
                 "Atlanta Falcons",
                 "New Orleans Saints"
               ],
-              "league": null,
-              "rawTime": "2026-10-06T00:15:00Z",
               "kickoff": 1791245700000,
+              "rawTime": "2026-10-06T00:15:00Z",
               "observedAt": 1791493800000,
               "parserVersion": 2
             }
@@ -1457,13 +1416,13 @@
           "sourceId": "crackstreams-st",
           "url": "https://crackstreams.st/event/m-detroit-lions-vs-carolina-panthers-1005",
           "title": "Detroit Lions vs Carolina Panthers",
+          "league": null,
           "teams": [
             "Detroit Lions",
             "Carolina Panthers"
           ],
-          "league": null,
-          "rawTime": "1791159600",
           "kickoff": 1791159600000,
+          "rawTime": "1791159600",
           "observedAt": 1791493800000,
           "parserVersion": 2
         },
@@ -1479,11 +1438,11 @@
               "sourceId": "tvapp",
               "url": "https://tvapp1.pk/watch/2498915",
               "title": "Illinois vs Purdue",
+              "league": null,
               "teams": [
                 "Illinois",
                 "Purdue"
               ],
-              "league": null,
               "kickoff": 1791055800000,
               "rawTime": "2026-10-03T19:30:00.000Z",
               "observedAt": 1791493800000,
@@ -1497,11 +1456,11 @@
           "sourceId": "tvapp",
           "url": "https://tvapp1.pk/watch/2498915",
           "title": "Illinois vs Purdue",
+          "league": null,
           "teams": [
             "Illinois",
             "Purdue"
           ],
-          "league": null,
           "kickoff": 1791055800000,
           "rawTime": "2026-10-03T19:30:00.000Z",
           "observedAt": 1791493800000,
@@ -1569,11 +1528,11 @@
               "sourceId": "ppv",
               "url": "https://ppv.st/live/cfb/2026-09-26/miss-fla",
               "title": "Ole Miss Rebels at Florida Gators",
+              "league": "ncaaf",
               "teams": [
                 "Florida Gators",
                 "Ole Miss Rebels"
               ],
-              "league": "ncaaf",
               "kickoff": 1791493800000,
               "rawTime": "2026-10-08T21:10:00.000Z",
               "observedAt": 1791493800000,
@@ -1587,11 +1546,11 @@
           "sourceId": "ppv",
           "url": "https://ppv.st/live/cfb/2026-09-26/miss-fla",
           "title": "Ole Miss Rebels at Florida Gators",
+          "league": "ncaaf",
           "teams": [
             "Florida Gators",
             "Ole Miss Rebels"
           ],
-          "league": "ncaaf",
           "kickoff": 1791493800000,
           "rawTime": "2026-10-08T21:10:00.000Z",
           "observedAt": 1791493800000,
@@ -1609,8 +1568,8 @@
               "sourceId": "methstreams-f1",
               "url": "https://methstreams.st/event/m-f1-singapore-gp",
               "title": "Singapore Grand Prix - Practice",
-              "teams": null,
               "league": "f1",
+              "teams": null,
               "kickoff": 1791534600000,
               "rawTime": "1791534600",
               "observedAt": 1791493800000,
@@ -1624,8 +1583,8 @@
           "sourceId": "methstreams-f1",
           "url": "https://methstreams.st/event/m-f1-singapore-gp",
           "title": "Singapore Grand Prix - Practice",
-          "teams": null,
           "league": "f1",
+          "teams": null,
           "kickoff": 1791534600000,
           "rawTime": "1791534600",
           "observedAt": 1791493800000,
@@ -1643,11 +1602,11 @@
               "sourceId": "streamcenter",
               "url": "https://streamcenter.st/api/stream-link/iframe/event-espn-league-football-college-football-401856699/aef974e2-5ef2-412c-b65e-e6905af1edfa",
               "title": "Ole Miss Rebels vs Florida Gators",
+              "league": "ncaaf",
               "teams": [
                 "Ole Miss Rebels",
                 "Florida Gators"
               ],
-              "league": "ncaaf",
               "kickoff": 1790451000000,
               "rawTime": "2026-09-26T19:30:00.000Z",
               "observedAt": 1791493800000,
@@ -1661,11 +1620,11 @@
           "sourceId": "streamcenter",
           "url": "https://streamcenter.st/api/stream-link/iframe/event-espn-league-football-college-football-401856699/aef974e2-5ef2-412c-b65e-e6905af1edfa",
           "title": "Ole Miss Rebels vs Florida Gators",
+          "league": "ncaaf",
           "teams": [
             "Ole Miss Rebels",
             "Florida Gators"
           ],
-          "league": "ncaaf",
           "kickoff": 1790451000000,
           "rawTime": "2026-09-26T19:30:00.000Z",
           "observedAt": 1791493800000,
@@ -1674,24 +1633,24 @@
         "compatible": [
           {
             "id": "streamcenter-401856699-aef974e2-5ef2-412c-b65e-e6905af1edfa",
+            "label": "Streamcenter",
             "locator": {
               "provider": "streamcenter",
               "eventId": "401856699",
               "linkId": "aef974e2-5ef2-412c-b65e-e6905af1edfa"
-            },
-            "label": "Streamcenter"
+            }
           }
         ],
         "missing": "no-compatible-media",
         "resolved": [
           {
             "id": "streamcenter-401856699-aef974e2-5ef2-412c-b65e-e6905af1edfa",
+            "label": "Streamcenter",
             "locator": {
               "provider": "streamcenter",
               "eventId": "401856699",
               "linkId": "aef974e2-5ef2-412c-b65e-e6905af1edfa"
-            },
-            "label": "Streamcenter"
+            }
           }
         ]
       },
@@ -1703,11 +1662,11 @@
               "sourceId": "swac",
               "url": "https://tv.swac.org/program-group/e1dbe7ec9a7e686b42b53ab33c3e30e4/program/ab602b73ed920d6e93fab5c4fb5f793e",
               "title": "Arkansas Pine-Bluff vs Southern",
+              "league": "ncaaf",
               "teams": [
                 "Arkansas Pine-Bluff",
                 "Southern"
               ],
-              "league": "ncaaf",
               "kickoff": 1791068400000,
               "rawTime": "2026-10-03T23:00:00.000Z",
               "observedAt": 1791075600000,
@@ -1721,11 +1680,11 @@
           "sourceId": "swac",
           "url": "https://tv.swac.org/program-group/e1dbe7ec9a7e686b42b53ab33c3e30e4/program/ab602b73ed920d6e93fab5c4fb5f793e",
           "title": "Arkansas Pine-Bluff vs Southern",
+          "league": "ncaaf",
           "teams": [
             "Arkansas Pine-Bluff",
             "Southern"
           ],
-          "league": "ncaaf",
           "kickoff": 1791068400000,
           "rawTime": "2026-10-03T23:00:00.000Z",
           "observedAt": 1791075600000,
@@ -1734,56 +1693,56 @@
         "compatible": [
           {
             "id": "swac:ab602b73ed920d6e93fab5c4fb5f793e",
+            "label": "SWAC TV",
             "locator": {
               "provider": "swac",
               "eventId": "ab602b73ed920d6e93fab5c4fb5f793e"
-            },
-            "label": "SWAC TV"
+            }
           }
         ],
         "missing": "no-compatible-media",
         "resolved": [
           {
             "id": "swac:ab602b73ed920d6e93fab5c4fb5f793e",
+            "label": "SWAC TV",
             "locator": {
               "provider": "swac",
               "eventId": "ab602b73ed920d6e93fab5c4fb5f793e"
-            },
-            "label": "SWAC TV"
+            }
           }
         ]
       },
       "streamed": {
         "parsed": {
-          "outcome": "parsed",
           "observations": [
             {
               "id": "streamed:buffalo-sabres-vs-dallas-stars-2591545",
               "sourceId": "streamed",
               "url": "https://streamed.st/watch/buffalo-sabres-vs-dallas-stars-2591545",
               "title": "Buffalo Sabres vs Dallas Stars",
+              "league": null,
               "teams": [
                 "Buffalo Sabres",
                 "Dallas Stars"
               ],
-              "league": null,
               "kickoff": 1791500400000,
               "rawTime": "2026-10-08T23:00:00.000Z",
               "observedAt": 1791493800000,
               "parserVersion": 1
             }
-          ]
+          ],
+          "outcome": "parsed"
         },
         "enriched": {
           "id": "streamed:buffalo-sabres-vs-dallas-stars-2591545",
           "sourceId": "streamed",
           "url": "https://streamed.st/watch/buffalo-sabres-vs-dallas-stars-2591545",
           "title": "Buffalo Sabres vs Dallas Stars",
+          "league": null,
           "teams": [
             "Buffalo Sabres",
             "Dallas Stars"
           ],
-          "league": null,
           "kickoff": 1791500400000,
           "rawTime": "2026-10-08T23:00:00.000Z",
           "observedAt": 1791493800000,
@@ -1816,35 +1775,35 @@
       },
       "livesportpro": {
         "parsed": {
-          "outcome": "parsed",
           "observations": [
             {
               "id": "livesportpro:buffalo-sabres-vs-dallas-stars-2591545",
               "sourceId": "livesportpro",
               "url": "https://api.kultsport.com/api/matches/all#buffalo-sabres-vs-dallas-stars-2591545",
               "title": "Buffalo Sabres vs Dallas Stars",
+              "league": null,
               "teams": [
                 "Buffalo Sabres",
                 "Dallas Stars"
               ],
-              "league": null,
               "kickoff": 1791500400000,
               "rawTime": "2026-10-08T23:00:00.000Z",
               "observedAt": 1791493800000,
               "parserVersion": 1
             }
-          ]
+          ],
+          "outcome": "parsed"
         },
         "enriched": {
           "id": "livesportpro:buffalo-sabres-vs-dallas-stars-2591545",
           "sourceId": "livesportpro",
           "url": "https://api.kultsport.com/api/matches/all#buffalo-sabres-vs-dallas-stars-2591545",
           "title": "Buffalo Sabres vs Dallas Stars",
+          "league": null,
           "teams": [
             "Buffalo Sabres",
             "Dallas Stars"
           ],
-          "league": null,
           "kickoff": 1791500400000,
           "rawTime": "2026-10-08T23:00:00.000Z",
           "observedAt": 1791493800000,
@@ -1877,18 +1836,17 @@
       },
       "sportsfeed24": {
         "parsed": {
-          "outcome": "parsed",
           "observations": [
             {
               "id": "sportsfeed24:67739",
               "sourceId": "sportsfeed24",
               "url": "https://sportsfeed24.st/fixture/Baycurrent%20Classic-vs-Golf",
               "title": "Baycurrent Classic vs Golf",
+              "league": null,
               "teams": [
                 "Baycurrent Classic",
                 "Golf"
               ],
-              "league": null,
               "kickoff": 1791442999000,
               "rawTime": "Thu, 08 Oct 2026 07:03:19 GMT",
               "observedAt": 1791493800000,
@@ -1899,11 +1857,11 @@
               "sourceId": "sportsfeed24",
               "url": "https://sportsfeed24.st/fixture/Dallas%20Cowboys-vs-Tampa%20Bay%20Buccaneers",
               "title": "Dallas Cowboys vs Tampa Bay Buccaneers",
+              "league": "nfl",
               "teams": [
                 "Dallas Cowboys",
                 "Tampa Bay Buccaneers"
               ],
-              "league": "nfl",
               "kickoff": 1791501255000,
               "rawTime": "Thu, 08 Oct 2026 23:14:15 GMT",
               "observedAt": 1791493800000,
@@ -1914,11 +1872,11 @@
               "sourceId": "sportsfeed24",
               "url": "https://sportsfeed24.st/fixture/Jacksonville%20Jaguars-vs-Philadelphia%20Eagles",
               "title": "Jacksonville Jaguars vs Philadelphia Eagles",
+              "league": "nfl",
               "teams": [
                 "Jacksonville Jaguars",
                 "Philadelphia Eagles"
               ],
-              "league": "nfl",
               "kickoff": 1791725400000,
               "rawTime": "Sun, 11 Oct 2026 13:30:00 GMT",
               "observedAt": 1791493800000,
@@ -1929,8 +1887,8 @@
               "sourceId": "sportsfeed24",
               "url": "https://sportsfeed24.st/fixture/F1%20Singapore%20Grand%20Prix-vs-Live",
               "title": "F1 Singapore Grand Prix vs Live",
-              "teams": null,
               "league": "f1",
+              "teams": null,
               "kickoff": 1791534600000,
               "rawTime": "Fri, 09 Oct 2026 08:30:00 GMT",
               "observedAt": 1791493800000,
@@ -1941,25 +1899,26 @@
               "sourceId": "sportsfeed24",
               "url": "https://sportsfeed24.st/fixture/NASCAR%20Charlotte%20Motor%20Speedway-vs-Live",
               "title": "NASCAR Charlotte Motor Speedway vs Live",
-              "teams": null,
               "league": "motorsport",
+              "teams": null,
               "kickoff": 1791748800000,
               "rawTime": "Sun, 11 Oct 2026 20:00:00 GMT",
               "observedAt": 1791493800000,
               "parserVersion": 1
             }
-          ]
+          ],
+          "outcome": "parsed"
         },
         "enriched": {
           "id": "sportsfeed24:67739",
           "sourceId": "sportsfeed24",
           "url": "https://sportsfeed24.st/fixture/Baycurrent%20Classic-vs-Golf",
           "title": "Baycurrent Classic vs Golf",
+          "league": null,
           "teams": [
             "Baycurrent Classic",
             "Golf"
           ],
-          "league": null,
           "kickoff": null,
           "rawTime": "Thu, 08 Oct 2026 07:03:19 GMT",
           "observedAt": 1791493800000,
@@ -1971,18 +1930,17 @@
       },
       "crichd": {
         "parsed": {
-          "outcome": "parsed",
           "observations": [
             {
               "id": "crichd:dallas-cowboys-vs-buccaneers-live",
               "sourceId": "crichd",
               "url": "https://crichd.pk/event/dallas-cowboys-vs-buccaneers-live",
               "title": "Dallas Cowboys vs Tampa Bay Buccaneers",
+              "league": null,
               "teams": [
                 "Dallas Cowboys",
                 "Tampa Bay Buccaneers"
               ],
-              "league": null,
               "kickoff": 1791504900000,
               "rawTime": "2026-10-09T00:15:00+00:00",
               "observedAt": 1791493800000,
@@ -1993,8 +1951,8 @@
               "sourceId": "crichd",
               "url": "https://crichd.pk/event/motogp-indonesia-grand-prix",
               "title": "MotoGP Indonesia Grand Prix",
-              "teams": null,
               "league": "motogp",
+              "teams": null,
               "kickoff": 1791507600000,
               "rawTime": "2026-10-09T01:00:00+00:00",
               "observedAt": 1791493800000,
@@ -2005,25 +1963,26 @@
               "sourceId": "crichd",
               "url": "https://crichd.pk/event/f1-singapore-grand-prix",
               "title": "F1 Singapore Grand Prix",
-              "teams": null,
               "league": "f1",
+              "teams": null,
               "kickoff": 1791532800000,
               "rawTime": "2026-10-09T08:00:00+00:00",
               "observedAt": 1791493800000,
               "parserVersion": 1
             }
-          ]
+          ],
+          "outcome": "parsed"
         },
         "enriched": {
           "id": "crichd:dallas-cowboys-vs-buccaneers-live",
           "sourceId": "crichd",
           "url": "https://crichd.pk/event/dallas-cowboys-vs-buccaneers-live",
           "title": "Dallas Cowboys vs Tampa Bay Buccaneers",
+          "league": null,
           "teams": [
             "Dallas Cowboys",
             "Tampa Bay Buccaneers"
           ],
-          "league": null,
           "kickoff": 1791504900000,
           "rawTime": "2026-10-09T00:15:00+00:00",
           "observedAt": 1791493800000,
@@ -2056,35 +2015,35 @@
       },
       "sportsbite": {
         "parsed": {
-          "outcome": "parsed",
           "observations": [
             {
               "id": "sportsbite:fg-buffalo-sabres-vs-dallas-stars",
               "sourceId": "sportsbite",
               "url": "https://sportsbite.org/event/fg-buffalo-sabres-vs-dallas-stars",
               "title": "Buffalo Sabres vs Dallas Stars",
+              "league": null,
               "teams": [
                 "Buffalo Sabres",
                 "Dallas Stars"
               ],
-              "league": null,
               "kickoff": 1791500400000,
               "rawTime": "2026-10-08T23:00:00.000Z",
               "observedAt": 1791493800000,
               "parserVersion": 1
             }
-          ]
+          ],
+          "outcome": "parsed"
         },
         "enriched": {
           "id": "sportsbite:fg-buffalo-sabres-vs-dallas-stars",
           "sourceId": "sportsbite",
           "url": "https://sportsbite.org/event/fg-buffalo-sabres-vs-dallas-stars",
           "title": "Buffalo Sabres vs Dallas Stars",
+          "league": null,
           "teams": [
             "Buffalo Sabres",
             "Dallas Stars"
           ],
-          "league": null,
           "kickoff": 1791500400000,
           "rawTime": "2026-10-08T23:00:00.000Z",
           "observedAt": 1791493800000,
@@ -3243,7 +3202,7 @@
       "sportsurge": {
         "final": {
           "runId": "11111111-1111-4111-8111-111111111111",
-          "sequence": 15,
+          "sequence": 14,
           "startedAt": 1791493800000,
           "state": {
             "kind": "complete",
@@ -3275,10 +3234,6 @@
               "at": 1791493800000
             },
             "wnba": {
-              "kind": "collected",
-              "at": 1791493800000
-            },
-            "ncaab": {
               "kind": "collected",
               "at": 1791493800000
             },
@@ -3356,9 +3311,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "motogp": {
                 "kind": "pending"
               },
@@ -3400,9 +3352,6 @@
                 "kind": "pending"
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "motogp": {
@@ -3451,9 +3400,6 @@
                 "kind": "pending"
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "motogp": {
@@ -3505,9 +3451,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "motogp": {
                 "kind": "pending"
               },
@@ -3556,9 +3499,6 @@
                 "kind": "pending"
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "motogp": {
@@ -3612,9 +3552,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "motogp": {
                 "kind": "pending"
               },
@@ -3665,9 +3602,6 @@
                 "at": 1791493800000
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "motogp": {
@@ -3723,9 +3657,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "motogp": {
                 "kind": "pending"
               },
@@ -3779,12 +3710,9 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
+              "motogp": {
                 "kind": "collected",
                 "at": 1791493800000
-              },
-              "motogp": {
-                "kind": "pending"
               },
               "nascar-cup": {
                 "kind": "pending"
@@ -3836,16 +3764,13 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "motogp": {
                 "kind": "collected",
                 "at": 1791493800000
               },
               "nascar-cup": {
-                "kind": "pending"
+                "kind": "collected",
+                "at": 1791493800000
               },
               "nascar-truck": {
                 "kind": "pending"
@@ -3894,10 +3819,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "motogp": {
                 "kind": "collected",
                 "at": 1791493800000
@@ -3907,7 +3828,8 @@
                 "at": 1791493800000
               },
               "nascar-truck": {
-                "kind": "pending"
+                "kind": "collected",
+                "at": 1791493800000
               }
             },
             "eventIds": [
@@ -3950,10 +3872,6 @@
                 "at": 1791493800000
               },
               "wnba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "ncaab": {
                 "kind": "collected",
                 "at": 1791493800000
               },
@@ -4013,70 +3931,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "motogp": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nascar-cup": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nascar-truck": {
-                "kind": "collected",
-                "at": 1791493800000
-              }
-            },
-            "eventIds": [
-              "ncaaf:123"
-            ],
-            "detailKinds": [
-              "pending"
-            ],
-            "rejectedGames": 0,
-            "catalogIssues": 0
-          },
-          {
-            "sequence": 13,
-            "state": {
-              "kind": "collecting"
-            },
-            "categories": {
-              "ncaaf": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nfl": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nhl": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "mlb": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "f1": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "wnba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "motogp": {
                 "kind": "collected",
                 "at": 1791493800000
@@ -4100,7 +3954,7 @@
             "catalogIssues": 0
           },
           {
-            "sequence": 14,
+            "sequence": 13,
             "state": {
               "kind": "complete",
               "at": 1791493800000
@@ -4131,10 +3985,6 @@
                 "at": 1791493800000
               },
               "wnba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "ncaab": {
                 "kind": "collected",
                 "at": 1791493800000
               },
@@ -4165,7 +4015,7 @@
       "sportsurge-partial": {
         "final": {
           "runId": "11111111-1111-4111-8111-111111111111",
-          "sequence": 15,
+          "sequence": 14,
           "startedAt": 1791493800000,
           "state": {
             "kind": "partial",
@@ -4199,10 +4049,6 @@
               "at": 1791493800000
             },
             "wnba": {
-              "kind": "collected",
-              "at": 1791493800000
-            },
-            "ncaab": {
               "kind": "collected",
               "at": 1791493800000
             },
@@ -4280,9 +4126,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "motogp": {
                 "kind": "pending"
               },
@@ -4324,9 +4167,6 @@
                 "kind": "pending"
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "motogp": {
@@ -4376,9 +4216,6 @@
                 "kind": "pending"
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "motogp": {
@@ -4431,9 +4268,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "motogp": {
                 "kind": "pending"
               },
@@ -4483,9 +4317,6 @@
                 "kind": "pending"
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "motogp": {
@@ -4540,9 +4371,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "motogp": {
                 "kind": "pending"
               },
@@ -4594,9 +4422,6 @@
                 "at": 1791493800000
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "motogp": {
@@ -4653,9 +4478,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "motogp": {
                 "kind": "pending"
               },
@@ -4710,12 +4532,9 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
+              "motogp": {
                 "kind": "collected",
                 "at": 1791493800000
-              },
-              "motogp": {
-                "kind": "pending"
               },
               "nascar-cup": {
                 "kind": "pending"
@@ -4768,16 +4587,13 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "motogp": {
                 "kind": "collected",
                 "at": 1791493800000
               },
               "nascar-cup": {
-                "kind": "pending"
+                "kind": "collected",
+                "at": 1791493800000
               },
               "nascar-truck": {
                 "kind": "pending"
@@ -4827,10 +4643,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "motogp": {
                 "kind": "collected",
                 "at": 1791493800000
@@ -4840,7 +4652,8 @@
                 "at": 1791493800000
               },
               "nascar-truck": {
-                "kind": "pending"
+                "kind": "collected",
+                "at": 1791493800000
               }
             },
             "eventIds": [
@@ -4884,10 +4697,6 @@
                 "at": 1791493800000
               },
               "wnba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "ncaab": {
                 "kind": "collected",
                 "at": 1791493800000
               },
@@ -4948,71 +4757,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "motogp": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nascar-cup": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nascar-truck": {
-                "kind": "collected",
-                "at": 1791493800000
-              }
-            },
-            "eventIds": [
-              "ncaaf:123"
-            ],
-            "detailKinds": [
-              "pending"
-            ],
-            "rejectedGames": 0,
-            "catalogIssues": 0
-          },
-          {
-            "sequence": 13,
-            "state": {
-              "kind": "collecting"
-            },
-            "categories": {
-              "ncaaf": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nfl": {
-                "kind": "failed",
-                "at": 1791493800000,
-                "reason": "timeout"
-              },
-              "nba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nhl": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "mlb": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "f1": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "wnba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "motogp": {
                 "kind": "collected",
                 "at": 1791493800000
@@ -5036,7 +4780,7 @@
             "catalogIssues": 0
           },
           {
-            "sequence": 14,
+            "sequence": 13,
             "state": {
               "kind": "partial",
               "at": 1791493800000,
@@ -5072,10 +4816,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "motogp": {
                 "kind": "collected",
                 "at": 1791493800000
@@ -5103,7 +4843,7 @@
       "streameast": {
         "final": {
           "runId": "11111111-1111-4111-8111-111111111111",
-          "sequence": 13,
+          "sequence": 12,
           "startedAt": 1791493800000,
           "state": {
             "kind": "complete",
@@ -5131,10 +4871,6 @@
               "at": 1791493800000
             },
             "wnba": {
-              "kind": "collected",
-              "at": 1791493800000
-            },
-            "ncaab": {
               "kind": "collected",
               "at": 1791493800000
             },
@@ -5203,9 +4939,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "f1": {
                 "kind": "pending"
               }
@@ -5237,9 +4970,6 @@
                 "kind": "pending"
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "f1": {
@@ -5280,9 +5010,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "f1": {
                 "kind": "pending"
               }
@@ -5320,9 +5047,6 @@
                 "kind": "pending"
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "f1": {
@@ -5365,9 +5089,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "f1": {
                 "kind": "pending"
               }
@@ -5407,9 +5128,6 @@
                 "at": 1791493800000
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "f1": {
@@ -5454,9 +5172,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "f1": {
                 "kind": "pending"
               }
@@ -5499,12 +5214,9 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
+              "f1": {
                 "kind": "collected",
                 "at": 1791493800000
-              },
-              "f1": {
-                "kind": "pending"
               }
             },
             "eventIds": [
@@ -5542,10 +5254,6 @@
                 "at": 1791493800000
               },
               "wnba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "ncaab": {
                 "kind": "collected",
                 "at": 1791493800000
               },
@@ -5592,10 +5300,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "f1": {
                 "kind": "collected",
                 "at": 1791493800000
@@ -5639,57 +5343,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "f1": {
-                "kind": "collected",
-                "at": 1791493800000
-              }
-            },
-            "eventIds": [
-              "ncaaf:12345"
-            ],
-            "detailKinds": [
-              "pending"
-            ],
-            "rejectedGames": 0
-          },
-          {
-            "sequence": 11,
-            "state": {
-              "kind": "collecting"
-            },
-            "categories": {
-              "ncaaf": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nfl": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nhl": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "mlb": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "wnba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "f1": {
                 "kind": "collected",
                 "at": 1791493800000
@@ -5704,7 +5357,7 @@
             "rejectedGames": 0
           },
           {
-            "sequence": 12,
+            "sequence": 11,
             "state": {
               "kind": "complete",
               "at": 1791493800000
@@ -5734,10 +5387,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "f1": {
                 "kind": "collected",
                 "at": 1791493800000
@@ -5756,7 +5405,7 @@
       "streameast-partial": {
         "final": {
           "runId": "11111111-1111-4111-8111-111111111111",
-          "sequence": 13,
+          "sequence": 12,
           "startedAt": 1791493800000,
           "state": {
             "kind": "partial",
@@ -5789,10 +5438,6 @@
               "kind": "collected",
               "at": 1791493800000
             },
-            "ncaab": {
-              "kind": "collected",
-              "at": 1791493800000
-            },
             "f1": {
               "kind": "collected",
               "at": 1791493800000
@@ -5858,9 +5503,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "f1": {
                 "kind": "pending"
               }
@@ -5892,9 +5534,6 @@
                 "kind": "pending"
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "f1": {
@@ -5936,9 +5575,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "f1": {
                 "kind": "pending"
               }
@@ -5977,9 +5613,6 @@
                 "kind": "pending"
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "f1": {
@@ -6023,9 +5656,6 @@
               "wnba": {
                 "kind": "pending"
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "f1": {
                 "kind": "pending"
               }
@@ -6066,9 +5696,6 @@
                 "at": 1791493800000
               },
               "wnba": {
-                "kind": "pending"
-              },
-              "ncaab": {
                 "kind": "pending"
               },
               "f1": {
@@ -6114,9 +5741,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "pending"
-              },
               "f1": {
                 "kind": "pending"
               }
@@ -6160,12 +5784,9 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
+              "f1": {
                 "kind": "collected",
                 "at": 1791493800000
-              },
-              "f1": {
-                "kind": "pending"
               }
             },
             "eventIds": [
@@ -6204,10 +5825,6 @@
                 "at": 1791493800000
               },
               "wnba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "ncaab": {
                 "kind": "collected",
                 "at": 1791493800000
               },
@@ -6255,10 +5872,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "f1": {
                 "kind": "collected",
                 "at": 1791493800000
@@ -6303,58 +5916,6 @@
                 "kind": "collected",
                 "at": 1791493800000
               },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "f1": {
-                "kind": "collected",
-                "at": 1791493800000
-              }
-            },
-            "eventIds": [
-              "ncaaf:12345"
-            ],
-            "detailKinds": [
-              "pending"
-            ],
-            "rejectedGames": 0
-          },
-          {
-            "sequence": 11,
-            "state": {
-              "kind": "collecting"
-            },
-            "categories": {
-              "ncaaf": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nfl": {
-                "kind": "failed",
-                "at": 1791493800000,
-                "reason": "timeout"
-              },
-              "nba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "nhl": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "mlb": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "wnba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "ncaab": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
               "f1": {
                 "kind": "collected",
                 "at": 1791493800000
@@ -6369,7 +5930,7 @@
             "rejectedGames": 0
           },
           {
-            "sequence": 12,
+            "sequence": 11,
             "state": {
               "kind": "partial",
               "at": 1791493800000,
@@ -6398,10 +5959,6 @@
                 "at": 1791493800000
               },
               "wnba": {
-                "kind": "collected",
-                "at": 1791493800000
-              },
-              "ncaab": {
                 "kind": "collected",
                 "at": 1791493800000
               },
@@ -6434,24 +5991,24 @@
         "message": "http-503",
         "retryAfterMs": null,
         "listing": {
-          "outcome": "parsed",
           "observations": [
             {
               "id": "sportsfeed24:67739",
               "sourceId": "sportsfeed24",
               "url": "https://sportsfeed24.st/fixture/Baycurrent%20Classic-vs-Golf",
               "title": "Baycurrent Classic vs Golf",
+              "league": null,
               "teams": [
                 "Baycurrent Classic",
                 "Golf"
               ],
-              "league": null,
               "kickoff": 1791442999000,
               "rawTime": "Thu, 08 Oct 2026 07:03:19 GMT",
               "observedAt": 1791493800000,
               "parserVersion": 1
             }
-          ]
+          ],
+          "outcome": "parsed"
         }
       }
     },

@@ -19,26 +19,18 @@ const scoreboard=(id:string,away:string,home:string,at=now,awayId='1',homeId='2'
   ]}],
 }]});
 const nhl=parseScoreboard(scoreboard('401892456','Edmonton Oilers','Anaheim Ducks'),'nhl')[0];
-const men=parseScoreboard(scoreboard('401904793','Merrimack Warriors','New Hampshire Wildcats',now,'59','60'),'ncaah')[0];
-const women=parseScoreboard(scoreboard('401904103','St. Lawrence Saints','Clarkson Golden Knights',now,'2779','2810'),'ncaawh')[0];
 
-test('three hockey schedules keep ESPN identities and use independent hockey endpoints',async()=>{
-  for(const [league,path,game] of [
-    ['nhl','nhl',nhl],['ncaah','mens-college-hockey',men],['ncaawh','womens-college-hockey',women],
-  ] as const){
-    assert.equal(game.id,`${league}-${league==='nhl'?'401892456':league==='ncaah'?'401904793':'401904103'}`);
-    assert.match(game.away.id||'',new RegExp(`^espn:${league}:`));
-    assert.equal(game.redzone,false);
-    assert.equal(game.down,undefined);
-    assert.equal(game.possession,undefined);
-    assert.equal(validGameId(game.id),true);
-    const partition=SCHEDULES.find(source=>source.id===league);
-    assert.ok(partition);
-    assert.equal(partition.sport,'hockey');
-    assert.equal(partition.path,path);
-  }
+test('NHL schedule keeps ESPN identities and uses its hockey endpoint',async()=>{
+  assert.equal(nhl.id,'nhl-401892456');
+  assert.match(nhl.away.id||'',/^espn:nhl:/);
+  assert.equal(nhl.redzone,false);
+  assert.equal(nhl.down,undefined);
+  assert.equal(nhl.possession,undefined);
+  assert.equal(validGameId(nhl.id),true);
   const partition=SCHEDULES.find(source=>source.id==='nhl');
   assert.ok(partition);
+  assert.equal(partition.sport,'hockey');
+  assert.equal(partition.path,'nhl');
   const original=globalThis.fetch;
   const requested:string[]=[];
   globalThis.fetch=async input=>{
@@ -55,7 +47,7 @@ test('three hockey schedules keep ESPN identities and use independent hockey end
   }finally{globalThis.fetch=original;}
 });
 
-test('hockey catalogs and gendered event sections match only their own schedule games',()=>{
+test('hockey catalogs keep NHL rows and discard college hockey rows',()=>{
   const tvapp=SOURCES.find(source=>source.id==='tvapp-nhl');
   const meth=SOURCES.find(source=>source.id==='methstreams-nhl');
   const football=SOURCES.find(source=>source.id==='tvapp');
@@ -71,17 +63,15 @@ test('hockey catalogs and gendered event sections match only their own schedule 
   ];
   const result=parseListings(tvapp,JSON.stringify(rows),now);
   assert.equal(result.outcome,'parsed');
-  assert.equal(result.observations.length,3);
-  const matches=result.observations.map(observation=>matchObservation(observation,[nhl,men,women],now));
-  assert.deepEqual(matches.map(match=>match.kind==='matched'?match.gameId:null),
-    ['nhl-401892456','ncaawh-401904103','ncaah-401904793']);
+  assert.equal(result.observations.length,1);
+  assert.deepEqual(matchObservation(result.observations[0],[nhl],now),{kind:'matched',gameId:nhl.id});
   assert.equal(parseListings(football,JSON.stringify(rows),now).observations.length,0);
-  const listing=`<section class="lg" id="g-lg-womens-college-hockey-20261008"><a class="ev" href="/event/saint-lawrence-saints-vs-clarkson-golden-knights" data-start="${now/1000}" title="Saint Lawrence Saints vs Clarkson Golden Knights"><span class="ev-side"><span class="nm-l">Saint Lawrence Saints</span></span><span class="ev-side"><span class="nm-l">Clarkson Golden Knights</span></span></a></section>
+  const listing=`<section class="lg" id="g-lg-nhl-20261008"><a class="ev" href="/event/edmonton-oilers-vs-anaheim-ducks" data-start="${now/1000}" title="Edmonton Oilers vs Anaheim Ducks"><span class="ev-side"><span class="nm-l">Edmonton Oilers</span></span><span class="ev-side"><span class="nm-l">Anaheim Ducks</span></span></a></section>
+    <section class="lg" id="g-lg-womens-college-hockey-20261008"><a class="ev" href="/event/saint-lawrence-saints-vs-clarkson-golden-knights" data-start="${now/1000}" title="Saint Lawrence Saints vs Clarkson Golden Knights"><span class="ev-side"><span class="nm-l">Saint Lawrence Saints</span></span><span class="ev-side"><span class="nm-l">Clarkson Golden Knights</span></span></a></section>
     <section class="lg" id="g-lg-mens-college-hockey-20261008"><a class="ev" href="/event/merrimack-warriors-vs-new-hampshire-wildcats" data-start="${now/1000}" title="Merrimack Warriors vs New Hampshire Wildcats"><span class="ev-side"><span class="nm-l">Merrimack Warriors</span></span><span class="ev-side"><span class="nm-l">New Hampshire Wildcats</span></span></a></section>`;
   const events=parseListings(meth,listing,now);
-  assert.deepEqual(events.observations.map(observation=>observation.league),['ncaawh','ncaah']);
-  assert.deepEqual(events.observations.map(observation=>matchObservation(observation,[nhl,men,women],now)).map(match=>match.kind==='matched'?match.gameId:null),
-    ['ncaawh-401904103','ncaah-401904793']);
+  assert.deepEqual(events.observations.map(observation=>observation.league),['nhl']);
+  assert.deepEqual(matchObservation(events.observations[0],[nhl],now),{kind:'matched',gameId:nhl.id});
 });
 
 test('NHL providers publish exact locators and reject mixed-sport player routes',()=>{
@@ -93,7 +83,7 @@ test('NHL providers publish exact locators and reject mixed-sport player routes'
   const card=`<article class="game-card-row"><p class="game-card-league">NHL</p><time datetime="${new Date(now).toISOString()}"></time><span class="game-card-team" title="Edmonton Oilers"></span><span class="game-card-team" title="Anaheim Ducks"></span><a class="game-card-open-link" href="${link}">English</a></article>`;
   const row=parseListings(streamcenter,card,now);
   assert.equal(row.outcome,'parsed');
-  assert.deepEqual(matchObservation(row.observations[0],[nhl,men,women],now),{kind:'matched',gameId:nhl.id});
+  assert.deepEqual(matchObservation(row.observations[0],[nhl],now),{kind:'matched',gameId:nhl.id});
   const streamPlayers=compatiblePlayers(nhl.id,row.observations[0],'<iframe src="https://streame.center/embed/hls.php?stream=nhl52"></iframe>');
   assert.equal(streamPlayers.length,1);
   assert.deepEqual(streamPlayers[0].locator,{provider:'streamcenter',eventId:'401892456',linkId:'dbf33b39-195b-4ff1-b5c1-23447b0980ec',league:'nhl'});
@@ -120,15 +110,15 @@ test('NHL providers publish exact locators and reject mixed-sport player routes'
     'https://fxtrend.st/event/m-edmonton-oilers-vs-anaheim-ducks-1008/main/1'),true);
 });
 
-test('NCAA hockey TVApp candidate and playback revalidate against the hockey catalog',async()=>{
+test('NHL TVApp candidate and playback revalidate against the hockey catalog',async()=>{
   const source=SOURCES.find(source=>source.id==='tvapp-nhl');
   assert.ok(source);
-  const match={id:'live_ncaa-women_saint-lawrence-saints-clarkson-golden-knights-live-streaming-653940000',
-    title:'Saint Lawrence Saints vs Clarkson Golden Knights',category:'hockey',date:now,
-    sources:[{source:'delta',id:'live_ncaa-women_saint-lawrence-saints-clarkson-golden-knights-live-streaming-653940000'}]};
+  const match={id:'anaheim-ducks-vs-edmonton-oilers-2591539',
+    title:'Anaheim Ducks vs Edmonton Oilers',category:'hockey',date:now,
+    sources:[{source:'delta',id:'anaheim-ducks-vs-edmonton-oilers-2591539'}]};
   const observation=parseListings(source,JSON.stringify([match]),now).observations[0];
-  assert.deepEqual(matchObservation(observation,[men,women],now),{kind:'matched',gameId:women.id});
-  const watch='https://tvapp1.pk/watch/653940000';
+  assert.deepEqual(matchObservation(observation,[nhl],now),{kind:'matched',gameId:nhl.id});
+  const watch='https://tvapp1.pk/watch/2591539';
   const page=`<link rel="canonical" href="${watch}"><meta property="og:url" content="${watch}">
     <meta property="og:title" content="${match.title} - Live Stream Free in HD | TheTVApp">
     <meta name="description" content="Watch ${match.title} live stream free in HD on TheTVApp.">
@@ -141,7 +131,7 @@ test('NCAA hockey TVApp candidate and playback revalidate against the hockey cat
     urls.push(url);
     return JSON.stringify(url.endsWith('/matches/sport/hockey')?[match]:[stream]);
   };
-  const players=await tvappPlayers(women.id,observation,page,new AbortController().signal,read);
+  const players=await tvappPlayers(nhl.id,observation,page,new AbortController().signal,read);
   assert.equal(players.length,1);
   assert.equal(players[0].locator.provider,'tvapp');
   assert.deepEqual(urls,[source.url,`https://api-backups.handleapi.win/streams/delta/${ref.id}`]);
@@ -163,12 +153,10 @@ test('NCAA hockey TVApp candidate and playback revalidate against the hockey cat
   assert.deepEqual(requests,[source.url,`https://api-backups.handleapi.win/streams/delta/${ref.id}`]);
 });
 
-test('an older persisted board gains empty hockey status while preserving its metadata',()=>{
+test('an older persisted board gains empty NHL status while preserving its metadata',()=>{
   const status={scoresAt:'2026-10-08T02:00:00.000Z',sourceAt:null,errors:[]};
   const board=BoardSchema.parse({schemaVersion:2,revision:7,scheduleState:'ready',games:[],updatedAt:status.scoresAt,
-    aliases:{},leagues:{nfl:status,ncaaf:status,nba:status,wnba:status,ncaab:status}});
+    aliases:{},leagues:{nfl:status,ncaaf:status,nba:status,wnba:status}});
   assert.deepEqual(board.leagues.nhl,{scoresAt:null,sourceAt:null,errors:[]});
-  assert.deepEqual(board.leagues.ncaah,{scoresAt:null,sourceAt:null,errors:[]});
-  assert.deepEqual(board.leagues.ncaawh,{scoresAt:null,sourceAt:null,errors:[]});
   assert.equal(board.revision,7);
 });

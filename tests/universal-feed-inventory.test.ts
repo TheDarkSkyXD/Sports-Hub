@@ -315,13 +315,13 @@ test('the common pipeline collects today and tomorrow across every supported lea
       const reply=await coordinator.command({kind:'sources'});
       if(reply.kind!=='sources')assert.fail('expected sources reply');
       if(index===249)last=JSON.stringify(reply.snapshot.games.map(row=>({id:row.gameId,feeds:row.feeds,links:row.sourceLinks.length})));
-      if(reply.snapshot.games.length===32&&reply.snapshot.games.every(row=>row.feeds.kind==='feeds'&&row.feeds.mediaVerified===1)){
+      if(reply.snapshot.games.length===26&&reply.snapshot.games.every(row=>row.feeds.kind==='feeds'&&row.feeds.mediaVerified===1)){
         assert.deepEqual(reply.snapshot.games.map(row=>row.gameId).sort(),[
           'f1-1','f1-2','mlb-1','mlb-2','motogp-1','motogp-2','motorsport-1','motorsport-2',
           'nascar-cup-1','nascar-cup-2','nascar-truck-1','nascar-truck-2','nba-1','nba-2',
-          'ncaab-1','ncaab-2','ncaaf-1','ncaaf-2','ncaah-1','ncaah-2','ncaawh-1','ncaawh-2',
+          'ncaaf-1','ncaaf-2',
           'nfl-1','nfl-2','nhl-1','nhl-2','tna-1','tna-2','wnba-1','wnba-2','wwe-1','wwe-2']);
-        assert.equal(reply.snapshot.sources[0].scopes.length,16);
+        assert.equal(reply.snapshot.sources[0].scopes.length,13);
         return;
       }
       await new Promise<void>(resolve=>setImmediate(resolve));

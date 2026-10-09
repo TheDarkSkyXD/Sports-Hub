@@ -87,6 +87,27 @@ test('retention persists and rebases finals from the first observation, includin
   } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
+test('retention updates supported partitions while preserving an older removed league partition', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'retention-removed-league-')), path = join(directory, 'state.sqlite');
+  const store = new FootballStore(path);
+  try {
+    store.savePartition('nfl', { games: [recordFinal({ ...live, lifecycle: 'final', status: 'post' }, at)], at });
+    const oldPartition = JSON.stringify({ games: [{ ...live, id: 'ncaah-1', league: 'ncaah', partitions: ['ncaah'] }], at });
+    const db = new DatabaseSync(path);
+    try { db.prepare('INSERT INTO partitions VALUES (?,?)').run('ncaah', oldPartition); }
+    finally { db.close(); }
+
+    store.setFinishedGameRetentionMinutes(60);
+
+    assert.equal(store.finishedGameRetentionMinutes(), 60);
+    assert.equal(store.partition('nfl')?.games[0].graceEndsAt, at + 60 * 60_000);
+    assert.equal(store.partition('ncaah'), undefined);
+    const saved = new DatabaseSync(path);
+    try { assert.equal(saved.prepare('SELECT payload FROM partitions WHERE id=?').get('ncaah')?.payload, oldPartition); }
+    finally { saved.close(); }
+  } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
 test('finished games and saved servers survive missing schedules and cold restore until the exact 24-hour deadline', async () => {
   const run = fixture(); let coordinator = run.start();
   try {

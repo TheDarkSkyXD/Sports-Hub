@@ -17,7 +17,7 @@ type BadgeTone = 'neutral'|'warning'|'fetched'|'complete'|'progress';
 type ScopeFilters={sourceQuery:string;sourceFilter:SourceFilter;gameQuery:string;gameLimit:number};
 const GAME_PAGE_SIZE=20;
 const defaultScopeFilters=():ScopeFilters=>({sourceQuery:'',sourceFilter:'all',gameQuery:'',gameLimit:GAME_PAGE_SIZE});
-const leagueName:Record<InventoryLeague,string>={nfl:'NFL',ncaaf:'NCAA CFB',nba:'NBA',wnba:'WNBA',ncaab:'NCAA BB',nhl:'NHL',ncaah:'NCAA Hockey',ncaawh:"NCAA Women's Hockey",mlb:'MLB',f1:'F1','nascar-cup':'NASCAR Cup','nascar-truck':'NASCAR Trucks',motogp:'MotoGP',motorsport:'Motorsport',wwe:'WWE',tna:'TNA'};
+const leagueName:Record<InventoryLeague,string>={nfl:'NFL',ncaaf:'NCAA CFB',nba:'NBA',wnba:'WNBA',nhl:'NHL',mlb:'MLB',f1:'F1','nascar-cup':'NASCAR Cup','nascar-truck':'NASCAR Trucks',motogp:'MotoGP',motorsport:'Motorsport',wwe:'WWE',tna:'TNA'};
 function isInventoryLeague(value:string):value is InventoryLeague{return value in leagueName;}
 const statusMeta:Record<SourceStatus,{label:string;attention:boolean}>={
   'integration-pending':{label:'Integration pending',attention:false},
@@ -386,7 +386,7 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
   const [view,setView]=useState<'sources'|'games'>('sources');
   const [selectedLeague,setSelectedLeague]=useState<InventoryLeague|null>(null);
   const league=selectedLeague??branding?.games.find(game=>gameIds.includes(game.id))?.league??'nfl';
-  const [filters,setFilters]=useState<Record<InventoryLeague,ScopeFilters>>(()=>({nfl:defaultScopeFilters(),ncaaf:defaultScopeFilters(),nba:defaultScopeFilters(),wnba:defaultScopeFilters(),ncaab:defaultScopeFilters(),nhl:defaultScopeFilters(),ncaah:defaultScopeFilters(),ncaawh:defaultScopeFilters(),mlb:defaultScopeFilters(),f1:defaultScopeFilters(),'nascar-cup':defaultScopeFilters(),'nascar-truck':defaultScopeFilters(),motogp:defaultScopeFilters(),motorsport:defaultScopeFilters(),wwe:defaultScopeFilters(),tna:defaultScopeFilters()}));
+  const [filters,setFilters]=useState<Record<InventoryLeague,ScopeFilters>>(()=>({nfl:defaultScopeFilters(),ncaaf:defaultScopeFilters(),nba:defaultScopeFilters(),wnba:defaultScopeFilters(),nhl:defaultScopeFilters(),mlb:defaultScopeFilters(),f1:defaultScopeFilters(),'nascar-cup':defaultScopeFilters(),'nascar-truck':defaultScopeFilters(),motogp:defaultScopeFilters(),motorsport:defaultScopeFilters(),wwe:defaultScopeFilters(),tna:defaultScopeFilters()}));
   const {sourceQuery,sourceFilter,gameQuery,gameLimit}=filters[league];
   const updateFilters=(change:Partial<ScopeFilters>)=>setFilters(current=>({...current,[league]:{...current[league],...change}}));
   const [error,setError]=useState('');
@@ -538,15 +538,12 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
     {loading&&!snapshot&&<p className="source-inventory-state">Loading source inventory…</p>}
     {error&&<p className="source-inventory-error" role="alert">{error}</p>}
     {snapshot&&<Tabs value={league} onValueChange={value=>{if(isInventoryLeague(value))setSelectedLeague(value);}} className="source-inventory-leagues">
-      <TabsList aria-label="League"><TabsTrigger value="nfl">NFL</TabsTrigger><TabsTrigger value="ncaaf">NCAA CFB</TabsTrigger><TabsTrigger value="nba">NBA</TabsTrigger><TabsTrigger value="wnba">WNBA</TabsTrigger><TabsTrigger value="ncaab">NCAA BB</TabsTrigger><TabsTrigger value="nhl">NHL</TabsTrigger><TabsTrigger value="ncaah">NCAA Hockey</TabsTrigger><TabsTrigger value="ncaawh">NCAA Women&apos;s Hockey</TabsTrigger><TabsTrigger value="mlb">MLB</TabsTrigger><TabsTrigger value="f1">F1</TabsTrigger><TabsTrigger value="nascar-cup">NASCAR Cup</TabsTrigger><TabsTrigger value="nascar-truck">NASCAR Trucks</TabsTrigger><TabsTrigger value="motogp">MotoGP</TabsTrigger><TabsTrigger value="motorsport">Motorsport</TabsTrigger><TabsTrigger value="wwe">WWE</TabsTrigger><TabsTrigger value="tna">TNA</TabsTrigger></TabsList>
+      <TabsList aria-label="League"><TabsTrigger value="nfl">NFL</TabsTrigger><TabsTrigger value="ncaaf">NCAA CFB</TabsTrigger><TabsTrigger value="nba">NBA</TabsTrigger><TabsTrigger value="wnba">WNBA</TabsTrigger><TabsTrigger value="nhl">NHL</TabsTrigger><TabsTrigger value="mlb">MLB</TabsTrigger><TabsTrigger value="f1">F1</TabsTrigger><TabsTrigger value="nascar-cup">NASCAR Cup</TabsTrigger><TabsTrigger value="nascar-truck">NASCAR Trucks</TabsTrigger><TabsTrigger value="motogp">MotoGP</TabsTrigger><TabsTrigger value="motorsport">Motorsport</TabsTrigger><TabsTrigger value="wwe">WWE</TabsTrigger><TabsTrigger value="tna">TNA</TabsTrigger></TabsList>
       <TabsContent value="nfl" forceMount hidden={league!=="nfl"}>{league==="nfl"&&content}</TabsContent>
       <TabsContent value="ncaaf" forceMount hidden={league!=="ncaaf"}>{league==="ncaaf"&&content}</TabsContent>
       <TabsContent value="nba" forceMount hidden={league!=="nba"}>{league==="nba"&&content}</TabsContent>
       <TabsContent value="wnba" forceMount hidden={league!=="wnba"}>{league==="wnba"&&content}</TabsContent>
-      <TabsContent value="ncaab" forceMount hidden={league!=="ncaab"}>{league==="ncaab"&&content}</TabsContent>
       <TabsContent value="nhl" forceMount hidden={league!=="nhl"}>{league==="nhl"&&content}</TabsContent>
-      <TabsContent value="ncaah" forceMount hidden={league!=="ncaah"}>{league==="ncaah"&&content}</TabsContent>
-      <TabsContent value="ncaawh" forceMount hidden={league!=="ncaawh"}>{league==="ncaawh"&&content}</TabsContent>
       <TabsContent value="mlb" forceMount hidden={league!=="mlb"}>{league==="mlb"&&content}</TabsContent>
       <TabsContent value="f1" forceMount hidden={league!=="f1"}>{league==="f1"&&content}</TabsContent>
       <TabsContent value="nascar-cup" forceMount hidden={league!=="nascar-cup"}>{league==="nascar-cup"&&content}</TabsContent>

@@ -449,11 +449,7 @@ fn first_attr(element: ElementRef<'_>, selector: &str, name: &str) -> Option<Str
 
 fn section_league(section: &str, hockey: bool, baseball: bool) -> Option<League> {
     if hockey {
-        if pattern!(r"^g-lg-womens-college-hockey-\d{8}$", section) {
-            Some(League::Ncaawh)
-        } else if pattern!(r"^g-lg-mens-college-hockey-\d{8}$", section) {
-            Some(League::Ncaah)
-        } else if pattern!(r"^g-lg-nhl-\d{8}$", section) {
+        if pattern!(r"^g-lg-nhl-\d{8}$", section) {
             Some(League::Nhl)
         } else {
             None

@@ -9,10 +9,6 @@ export function normalizedName(value: string): string {
 }
 
 const collegeAliases = new Map<string, readonly string[]>();
-const hockeyAliases = new Map<string, readonly string[]>([
-  ['espn:ncaawh:2779',['Saint Lawrence Saints']],
-  ['espn:ncaawh:2815',['Lindenwood Lady Lions']],
-]);
 const collegeOwners = new Map<string, Set<string>>();
 for (const team of COLLEGE_TEAM_CATALOG) {
   const aliases = [...new Set(team.aliases.map(normalizedName).filter(Boolean))];
@@ -26,7 +22,7 @@ for (const team of COLLEGE_TEAM_CATALOG) {
 
 export function createObservationMatcher(games: readonly Game[], mode: 'current' | 'inventory-live' = 'current'): (observation: Observation, now: number) => Match {
   const identity = (game: MatchupGame, team: MatchupGame['home']) => `${game.league}:${team.id || normalizedName(team.name)}`;
-  const aliases = (game: MatchupGame, team: MatchupGame['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || []), ...(hockeyAliases.get(team.id || '') || [])].map(normalizedName).filter(Boolean)]);
+  const aliases = (game: MatchupGame, team: MatchupGame['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || [])].map(normalizedName).filter(Boolean)]);
   const matchups=games.filter(isMatchupGame);
   const races=games.filter(isRaceGame);
   const wrestling=games.filter(isWrestlingGame);
@@ -91,7 +87,7 @@ export function createObservationMatcher(games: readonly Game[], mode: 'current'
         row.homeId===anchorId&&otherOwners.has(row.awayId)&&activeOther.has(row.awayId)||
         row.awayId===anchorId&&otherOwners.has(row.homeId)&&activeOther.has(row.homeId));
     };
-    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='ncaab'||observation.league==='nhl'||observation.league==='ncaah'||observation.league==='ncaawh'||observation.league==='mlb'?[]:
+    const contextual=observation.league==='nfl'||observation.league==='nba'||observation.league==='wnba'||observation.league==='nhl'||observation.league==='mlb'?[]:
       [...new Set([...anchored(first,second),...anchored(second,first)])].sort((left,right)=>left.index-right.index);
     const possible=[...new Map([...strict,...contextual].map(row=>[row.game.id,row])).values()];
     const ids=[...new Set(possible.map(({game})=>game.id))];

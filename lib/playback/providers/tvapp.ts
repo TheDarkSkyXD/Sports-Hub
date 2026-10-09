@@ -26,8 +26,8 @@ export function tvappProvider(requester:Requester=(url,signal,headers,timeoutMs)
     const eventUrl=new URL(locator.eventUrl);
     if(eventUrl.origin!=='https://tvapp1.pk'||eventUrl.search||eventUrl.hash||
       !/^\/watch\/[a-zA-Z0-9-]{1,120}$/.test(eventUrl.pathname))throw new Error('Unsupported TVApp watch page');
-    const catalog=await publicJson(/^mlb-/.test(locator.gameId)?BASEBALL_CATALOG:/^(?:nhl|ncaah|ncaawh)-/.test(locator.gameId)?HOCKEY_CATALOG:
-      /^(?:nba|wnba|ncaab)-/.test(locator.gameId)?BASKETBALL_CATALOG:CATALOG,eventUrl,signal,requester);
+    const catalog=await publicJson(/^mlb-/.test(locator.gameId)?BASEBALL_CATALOG:/^nhl-/.test(locator.gameId)?HOCKEY_CATALOG:
+      /^(?:nba|wnba)-/.test(locator.gameId)?BASKETBALL_CATALOG:CATALOG,eventUrl,signal,requester);
     if(!Array.isArray(catalog))throw new Error('TVApp catalog changed');
     const found=catalog.flatMap(value=>{
       const item=tvappIdentity(value);

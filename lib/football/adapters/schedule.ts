@@ -12,10 +12,7 @@ export const SCHEDULES = [
   {id:'fcs',league:'ncaaf',path:'college-football',group:'81'},
   {id:'nba',league:'nba',sport:'basketball',path:'nba',group:null},
   {id:'wnba',league:'wnba',sport:'basketball',path:'wnba',group:null},
-  {id:'ncaab',league:'ncaab',sport:'basketball',path:'mens-college-basketball',group:'50'},
   {id:'nhl',league:'nhl',sport:'hockey',path:'nhl',group:null},
-  {id:'ncaah',league:'ncaah',sport:'hockey',path:'mens-college-hockey',group:null},
-  {id:'ncaawh',league:'ncaawh',sport:'hockey',path:'womens-college-hockey',group:null},
   {id:'mlb',league:'mlb',sport:'baseball',path:'mlb',group:null},
   {id:'f1',league:'f1',sport:'racing',path:'f1',group:null},
   {id:'nascar-cup',league:'nascar-cup',sport:'racing',path:'nascar-premier',group:null},
@@ -105,7 +102,7 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
   const horizonErrors: string[] = [];
   const fetchDay = async (day: string, priority:SchedulePriority, withWeek = false): Promise<{games:Game[];week?:number}> => {
     const url = new URL(`https://site.api.espn.com/apis/site/v2/sports/${partition.sport ?? 'football'}/${partition.path}/scoreboard`);
-    const limit = partition.league === 'ncaab' ? 500 : 200;
+    const limit = 200;
     url.searchParams.set('limit',String(limit));
     url.searchParams.set('dates',day);
     if (partition.group) url.searchParams.set('groups',partition.group);
