@@ -260,13 +260,14 @@ export class FootballCoordinator {
             this.store.savePartition(source.id,{...result,games,at:acceptedAt});
             const accepted = this.store.partition(source.id);
             this.errors.delete(source.id);
+            const historyPending=!!result.historyErrors?.length&&result.historyErrors.every(error=>error.endsWith(':pending'));
             if(result.historyErrors?.length) {
               this.refreshedSchedules.delete(source.id);
               this.errors.set(`${source.id}-history`,result.historyErrors.join('; ').slice(0,120));
             } else this.errors.delete(`${source.id}-history`);
             if(result.games.length || previous?.games.length || this.workingFeeds.size) {
               if(!wasFresh || feedCalendarDay(previous.at)!==feedCalendarDay(acceptedAt) ||
-                projectedCoverage!==this.refreshedSchedules.has(source.id) ||
+                !historyPending&&projectedCoverage!==this.refreshedSchedules.has(source.id) ||
                 !isDeepStrictEqual(previous.games,accepted?.games)) this.rebuild();
               else {
                 this.reconcileProbeJobs();
