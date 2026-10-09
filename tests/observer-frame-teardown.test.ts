@@ -56,11 +56,11 @@ function createObserverHarness(mainFrame: { framesInSubtree: unknown[] },
     observer: createSlot(0),
     tick() { assert.equal(typeof tick, 'function'); tick?.(); },
     window() { const window = windows.at(-1); assert.ok(window); return window; },
-    request(details: unknown) {
+    request(details: unknown, expected = { cancel: false }) {
       assert.ok(beforeRequest);
-      let admitted: unknown;
-      beforeRequest(details, result => { admitted = result; });
-      assert.deepEqual(admitted, { cancel: false });
+      const decisions: unknown[] = [];
+      beforeRequest(details, result => { decisions.push(result); });
+      assert.deepEqual(decisions, [expected]);
     },
     sendHeaders(details: unknown) {
       assert.ok(beforeSendHeaders);
@@ -72,6 +72,69 @@ function createObserverHarness(mainFrame: { framesInSubtree: unknown[] },
     },
   };
 }
+
+test('the observer cancels the shared ad document and admits neighboring player requests', async () => {
+  const harness = createObserverHarness({ framesInSubtree: [] });
+  const operation = harness.observer.observe('https://embed.st/embed/golf/2120/2', 'probe');
+  assert.ok(operation);
+  operation.start();
+  const cases: { url: string; resourceType: string; cancel: boolean }[] = [
+    { url: 'https://embed.st/ad.html', resourceType: 'subFrame', cancel: true },
+    { url: 'https://embed.st/ad.html?slot=2', resourceType: 'subFrame', cancel: true },
+    { url: 'https://rockystream.st/', resourceType: 'subFrame', cancel: false },
+    { url: 'https://embed.st/embed/ingest/game/1/', resourceType: 'subFrame', cancel: false },
+    { url: 'https://embed.st/cdn-cgi/challenge-platform/test', resourceType: 'subFrame', cancel: false },
+    { url: 'https://media.example/playlist.m3u8', resourceType: 'media', cancel: false },
+    { url: 'https://embed.st/ad.html', resourceType: 'media', cancel: false },
+    { url: 'https://embed.st/ad.htmlx', resourceType: 'subFrame', cancel: false },
+    { url: 'https://ads.embed.st/ad.html', resourceType: 'subFrame', cancel: false },
+    { url: 'https://other.example/ad.html', resourceType: 'subFrame', cancel: false },
+  ];
+  for (const [index, request] of cases.entries())
+    harness.request({ id: index, url: request.url, resourceType: request.resourceType },
+      { cancel: request.cancel });
+  harness.request({ id: 20, url: 'https://embed.st/embed/golf/2120/2', resourceType: 'mainFrame' });
+  harness.request({ id: 21, url: 'https://embed.st/ad.html', resourceType: 'mainFrame' }, { cancel: true });
+  operation.cancel();
+  assert.equal(await operation.promise, null);
+  harness.request({ id: 22, url: 'https://embed.st/ad.html', resourceType: 'subFrame' }, { cancel: true });
+
+  const adDocument = harness.observer.observe('https://embed.st/ad.html', 'probe');
+  assert.ok(adDocument);
+  harness.request({ id: 23, url: 'https://embed.st/ad.html', resourceType: 'mainFrame' });
+  adDocument.cancel();
+  assert.equal(await adDocument.promise, null);
+});
+
+test('a canceled ad document cannot provide media evidence', async () => {
+  const player = {
+    url: 'https://player.example/watch',
+    isDestroyed: () => false,
+    executeJavaScript: () => Promise.resolve(true),
+  };
+  const harness = createObserverHarness({ framesInSubtree: [player] });
+  const operation = harness.observer.observe('https://embed.st/embed/golf/2120/2', 'probe');
+  assert.ok(operation);
+  operation.start();
+  harness.request({ id: 1, url: 'https://embed.st/ad.html', resourceType: 'subFrame' }, { cancel: true });
+  harness.sendHeaders({ id: 1, url: 'https://embed.st/ad.html', requestHeaders: {
+    referer: player.url, 'user-agent': 'Observer test',
+  }, initiatorOrigin: 'https://player.example' });
+  harness.receiveHeaders({ id: 1, url: 'https://embed.st/ad.html', statusCode: 200, responseHeaders: {
+    'content-type': ['application/vnd.apple.mpegurl'],
+  } });
+  await new Promise(resolve => setImmediate(resolve));
+
+  const mediaUrl = 'https://media.example/live.m3u8';
+  harness.request({ id: 2, url: mediaUrl, resourceType: 'media' });
+  harness.sendHeaders({ id: 2, url: mediaUrl, requestHeaders: {
+    referer: player.url, 'user-agent': 'Observer test',
+  }, initiatorOrigin: 'https://player.example' });
+  harness.receiveHeaders({ id: 2, url: mediaUrl, statusCode: 200, responseHeaders: {
+    'content-type': ['application/vnd.apple.mpegurl'],
+  } });
+  assert.equal((await operation.promise)?.url, mediaUrl);
+});
 
 test('the observer keeps scanning one live player while Electron tears down sibling iframes', async () => {
   let playerChecks = 0;
