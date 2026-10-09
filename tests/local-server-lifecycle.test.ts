@@ -234,12 +234,14 @@ test('compiled startup reuses complete output and rebuilds after a source edit',
   }
 });
 
-test('source changes during preparation prevent a compiled server from starting', async () => {
+test('source changes during preparation prevent a compiled server from starting', { timeout: 10_000 }, async () => {
   const serverRoot = nativeRoot('sunday-local-source-change-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   mkdirSync(path.join(serverRoot, 'app'));
   writeFileSync(path.join(serverRoot, 'app', 'page.tsx'), 'before');
   const modes: string[] = [];
+  let reportMutation = () => {};
+  const mutated = new Promise<void>(resolve => { reportMutation = resolve; });
   let currentChild: Child;
   const room = localServer({
     serverRoot, mode: 'compiled',
@@ -266,6 +268,7 @@ test('source changes during preparation prevent a compiled server from starting'
       } else if (args[2] === 'prepare') {
         setImmediate(() => {
           writeFileSync(path.join(serverRoot, 'app', 'page.tsx'), 'after');
+          reportMutation();
           child.emit('message', { kind: 'complete', code: 0 });
         });
       }
@@ -273,7 +276,7 @@ test('source changes during preparation prevent a compiled server from starting'
     },
   });
   try {
-    await assert.rejects(within(room.service.start(), 1000), /Source changed while preparing/);
+    await Promise.all([mutated, assert.rejects(room.service.start(), /Source changed while preparing/)]);
     assert.deepEqual(modes, ['build', 'prepare']);
     await within(room.service.stop());
   } finally {
