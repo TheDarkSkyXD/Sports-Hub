@@ -6,6 +6,7 @@ import {mock,test} from 'node:test';
 import {createFootballCoordinator} from '../lib/football/runtime/composition.ts';
 import type {CandidateProbeResult,FootballDependencies} from '../lib/football/domain/ports.ts';
 import type {Game,Observation} from '../lib/football/shared.ts';
+import {createProbeResources,probeObserverLease} from '../lib/playback/probe-capacity.ts';
 
 const at=Date.parse('2026-10-03T18:00:00Z');
 function game(index:number):Game {
@@ -52,6 +53,13 @@ function hold() {
   const promise=new Promise<CandidateProbeResult>(resolve=>{release=resolve;});
   return {promise,release};
 }
+function observed(probe:FootballDependencies['probeCandidate']):FootballDependencies['probeCandidate'] {
+  const resources=createProbeResources({httpLimit:8,observerLimit:4,activeBudgetMs:65_000});
+  return (locator,signal,onProgress)=>resources.run(signal,onProgress,async active=>{
+    const release=await probeObserverLease(active);
+    try{return await probe(locator,active,onProgress);}finally{release();}
+  });
+}
 async function withFakeDeadline(run:(advance:(ms:number)=>void)=>Promise<void>) {
   const original=AbortSignal.timeout;
   mock.timers.enable({apis:['setTimeout']});
@@ -65,10 +73,10 @@ async function withFakeDeadline(run:(advance:(ms:number)=>void)=>Promise<void>) 
 }
 
 for(const reactsToAbort of [false,true])test(reactsToAbort ?
-  'the probe deadline defers before an abort-driven result' :
-  'four stalled probes time out, free a slot, and use the saved five-minute retry',async()=>{
+  'the active budget defers before an abort-driven result' :
+  'four stalled observers defer but retain physical capacity until closed',async()=>{
   const held:Array<ReturnType<typeof hold>>=[],started:string[]=[];
-  const run=fixture(5,async (locator,signal)=>{
+  const run=fixture(5,observed(async (locator,signal)=>{
     assert.equal(locator.provider,'gooz');
     if(locator.provider!=='gooz')throw new Error('Expected gooz');
     started.push(locator.playerId);
@@ -76,14 +84,17 @@ for(const reactsToAbort of [false,true])test(reactsToAbort ?
     const gate=hold();held.push(gate);
     if(reactsToAbort)signal.addEventListener('abort',()=>gate.release({kind:'deferred',retryAfterMs:30_000}),{once:true});
     return gate.promise;
-  });
+  }));
   try {
     await withFakeDeadline(async advance=>{
       await run.coordinator.refresh(true);
-      await until(()=>started.length===4,'four checks should occupy the probe slots');
+      await until(()=>started.length===4,'four observers should occupy the physical slots');
       run.setClock(at+65_000);
       advance(65_000);
-      await until(()=>started.length===5,'the fifth check should start after the 65-second budget');
+      if(reactsToAbort)await until(()=>started.length===5,'the fifth check should start after observer close');
+      else assert.equal(started.length,4);
+      if(!reactsToAbort){held[0].release({kind:'deferred',retryAfterMs:30_000});
+        await until(()=>started.length===5,'the fifth check should start after physical close');}
       await until(async()=>{
         const snapshot=await sources(run.coordinator);
         return snapshot.games.find(row=>row.gameId===run.games[4].id)?.candidates[0]?.availability.kind==='playable';
@@ -119,7 +130,7 @@ test('stop settles after abort even when a provider never answers',async()=>{
 
 test('a late playable result cannot replace a newer check result',async()=>{
   const first=hold();let calls=0;
-  const run=fixture(1,async()=>{calls++;return calls===1?first.promise:{kind:'playable',proof:'decoded'};});
+  const run=fixture(1,observed(async()=>{calls++;return calls===1?first.promise:{kind:'playable',proof:'decoded'};}));
   try {
     await withFakeDeadline(async advance=>{
       await run.coordinator.refresh(true);

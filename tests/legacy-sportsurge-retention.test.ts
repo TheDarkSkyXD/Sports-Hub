@@ -85,7 +85,7 @@ test('legacy Sportsurge rereads a live page with missing playable siblings after
       (await run.snapshot()).sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind==='collected',
     'fresh detail with all three published players');
     assert.equal((await run.choices()).length,3);
-    assert.deepEqual(run.probes.sort(),['57561','57561','57562','57563']);
+    assert.deepEqual(run.probes.sort(),['57561','57561','57561','57562','57562','57562','57563','57563','57563']);
   } finally {await run.close();}
 });
 
@@ -128,6 +128,6 @@ test('legacy Sportsurge keeps complete live proof while rereading detail after r
     const afterRestart=await run.snapshot();
     assert.equal(afterRestart.sources.find(row=>row.id===source.id)?.links[0]?.evidence.kind,'collected');
     assert.equal(run.detailReads,2,'eligible live detail is checked again after its interval');
-    assert.deepEqual(run.probes.sort(),['57561','57562','57563']);
+    assert.deepEqual(run.probes.sort(),['57561','57561','57562','57562','57563','57563']);
   } finally {run.releaseNetwork();await run.close();}
 });

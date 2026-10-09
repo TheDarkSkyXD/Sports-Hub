@@ -1,5 +1,6 @@
 import type { CandidateLocator } from '../../football/shared.ts';
 import { boundedText, sanitizedRead, type PlaybackProvider, type ProviderPlayback, type ProviderResource, type ResourceKind } from '../provider.ts';
+import {scopedFetch,timedFetch} from '../probe-capacity.ts';
 
 type GoozLocator = Extract<CandidateLocator,{provider:'gooz'}>;
 const VARIANT_HOSTS = new Set(['red.redirector1.space','pl.kamfir5.space','pl.goozekhar2.space','pl.playlist3.space','pl.playlist4.space','pl.playlist5.space','pl.playlist6.space']);
@@ -61,19 +62,20 @@ function nflSegment(reference: string, playlist: string, fetcher: typeof fetch):
   return {
     kind:'media',identity:stable.href,
     async read({signal,range}) {
-      return sanitizedRead(await fetcher(target.href,{cache:'no-store',redirect:'manual',
-        signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:range?{Range:range}:{}}));
+      return sanitizedRead(await timedFetch(fetcher,target.href,{cache:'no-store',redirect:'manual',
+        signal,headers:range?{Range:range}:{}},10000));
     },
     resolve() { return null; },
   };
 }
 
-export function goozResource(url: string, playerId: string, kind: ResourceKind, fetcher: typeof fetch = fetch): ProviderResource | null {
+export function goozResource(url: string, playerId: string, kind: ResourceKind, fetcher: typeof fetch = scopedFetch): ProviderResource | null {
   if (!validGoozResourceUrl(url,playerId,kind)) return null;
   return {
     kind,identity:identity(url,kind),
     async read({signal,range}) {
-      const response=await fetcher(url,{cache:'no-store',redirect:'manual',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:{...headers,...(range?{Range:range}:{})}});
+      const response=await timedFetch(fetcher,url,{cache:'no-store',redirect:'manual',signal,
+        headers:{...headers,...(range?{Range:range}:{})}},10000);
       return sanitizedRead(response);
     },
     resolve(reference,expected) {
@@ -90,8 +92,8 @@ export const goozProvider: PlaybackProvider<GoozLocator> = {
   async open(locator,signal): Promise<ProviderPlayback> {
     const {playerId}=locator;
     if (!/^\d{1,20}$/.test(playerId)) throw new Error('Unsupported Gooz player');
-    const response=await fetch(`https://gooz.aapmains.net/new-stream-embed/${playerId}`,
-      {cache:'no-store',redirect:'manual',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers});
+    const response=await timedFetch(scopedFetch,`https://gooz.aapmains.net/new-stream-embed/${playerId}`,
+      {cache:'no-store',redirect:'manual',signal,headers},10000);
     const source=goozSourceFromEmbed(await boundedText(response),playerId);
     const root=source && goozResource(source,playerId,'playlist');
     if (!root) throw new Error('Gooz player did not publish supported HLS');

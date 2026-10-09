@@ -1,4 +1,5 @@
 import { sanitizedRead, type ProviderResource, type ResourceKind } from '../provider.ts';
+import {timedFetch} from '../probe-capacity.ts';
 
 export type MediaSession = {stream:string;host:string;referer:string;fetcher:typeof fetch};
 const mediaHosts=new Set(['edgestream1.pro','edgestream3.pro','edgestream4.pro','edgestream5.pro','edgestream6.pro','edgestream7.pro']);
@@ -28,8 +29,8 @@ export function edgestreamResource(url:string,session:MediaSession,kind:Resource
   if(!validEdgestreamResourceUrl(url,session,kind))return null;
   return {kind,identity:url,
     async read({signal,range}) {
-      const response=await session.fetcher(url,{cache:'no-store',redirect:'manual',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),
-        headers:{Origin:'https://streame.center',Referer:session.referer,...(range?{Range:range}:{})}});
+      const response=await timedFetch(session.fetcher,url,{cache:'no-store',redirect:'manual',signal,
+        headers:{Origin:'https://streame.center',Referer:session.referer,...(range?{Range:range}:{})}},10000);
       return sanitizedRead(response);
     },
     resolve(reference,expected) {try{return edgestreamResource(new URL(reference,url).href,session,expected);}catch{return null;}},

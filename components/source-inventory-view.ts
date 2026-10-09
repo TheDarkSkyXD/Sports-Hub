@@ -11,7 +11,7 @@ export function candidateEvidence(candidate:CandidateSummary,now:number):string 
     case 'checking':{
       const progress=candidate.availability.progress;
       switch(progress.kind) {
-        case 'queued':return 'Queued for media check · Waiting for a checker slot';
+        case 'queued':return 'Media check scheduled';
         case 'active':return `Checking media · ${duration(now-progress.since)} elapsed`;
         case 'deferred':return `Check incomplete${progress.phase?` during ${progress.phase}`:''} · Retrying in ${duration(progress.retryAt-now)}`;
         default:{const exhaustive:never=progress;return exhaustive;}
@@ -24,7 +24,7 @@ export function candidateEvidence(candidate:CandidateSummary,now:number):string 
         'invalid-media':'No valid video returned',timeout:'Media check timed out',playback:'Playback failed','no-feed':'No feed available from source',
       }[candidate.availability.reason];
       return candidate.availability.retryAt>now?`${label} · Waiting ${duration(candidate.availability.retryAt-now)} for next check`:
-        `${label} · Check due · Waiting for a checker slot`;
+        `${label} · Check due`;
     }
     default:{const exhaustive:never=candidate.availability;return exhaustive;}
   }

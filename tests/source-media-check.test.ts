@@ -113,8 +113,8 @@ test('same-game event-page aliases consume one probe slot and leave capacity for
   const run = fixture({ extraServers: true, secondGame: false });
   try {
     await run.coordinator.refresh(true);
-    await until(async () => (await run.candidates()).length === 5 && run.calls.length >= 4);
-    assert.equal(new Set(run.calls.slice(0, 4).map(locator => locator.provider === 'event-page' ? locator.serverUrl : '')).size, 4);
+    await until(async () => (await run.candidates()).length === 5 && run.calls.length >= 2);
+    assert.equal(new Set(run.calls.slice(0, 2).map(locator => locator.provider === 'event-page' ? locator.serverUrl : '')).size, 2);
     run.releaseAll();
     await until(async () => (await run.candidates()).every(candidate => candidate.availability.kind === 'playable'));
     assert.equal(run.calls.length, 4);
@@ -164,21 +164,20 @@ test('source health reports queued, active, and deferred media-check progress wi
   const availability = async (id: string) => (await run.candidates()).find(candidate => candidate.id === id)?.availability;
   try {
     await run.coordinator.refresh(true);
-    await until(async () => (await run.candidates()).length === 6 && run.pending.length === 4);
+    await until(async () => (await run.candidates()).length === 6 && run.pending.length === 2);
     const servers = [sharedServer, ...otherServers, fifthServer];
     const activeServers = new Set(run.pending.map(job => job.locator.provider === 'event-page' ? job.locator.serverUrl : ''));
-    assert.equal(activeServers.size, 4);
+    assert.equal(activeServers.size, 2);
     const queuedIndex = servers.findIndex(server => !activeServers.has(server));
     assert.notEqual(queuedIndex, -1);
-    for (const [index, server] of servers.entries()) assert.deepEqual(await availability(`crack-${index}`), {
-      kind: 'checking', progress: { kind: activeServers.has(server) ? 'active' : 'queued', since: at },
-    });
+    for (const [index, server] of servers.entries()) assert.deepEqual(await availability(`crack-${index}`),
+      activeServers.has(server) ? {kind:'checking',progress:{kind:'active',since:at}} : {kind:'unknown'});
     assert.deepEqual(await availability('meth-0'), await availability('crack-0'));
 
     run.setClock(at + 1000);
     run.pending[0].resolve({ kind: 'playable', proof: 'media' });
-    await until(async () => run.pending.length === 5);
-    assert.equal(run.pending[4].locator.provider === 'event-page' ? run.pending[4].locator.serverUrl : '', servers[queuedIndex]);
+    await until(async () => run.pending.length === 3);
+    assert.equal(run.pending[2].locator.provider === 'event-page' ? run.pending[2].locator.serverUrl : '', servers[queuedIndex]);
     assert.deepEqual(await availability(`crack-${queuedIndex}`), { kind: 'checking', progress: { kind: 'active', since: at + 1000 } });
 
     run.setClock(at + 2000);
@@ -190,7 +189,7 @@ test('source health reports queued, active, and deferred media-check progress wi
       return value?.kind === 'checking' && value.progress.kind === 'deferred';
     });
     assert.deepEqual(await availability(deferredId), {
-      kind: 'checking', progress: { kind: 'deferred', since: at + 2000, retryAt: at + 4000 },
+      kind: 'checking', progress: { kind: 'deferred', since: at + 2000, retryAt: at + 302_000 },
     });
   } finally {
     await run.stop();
@@ -280,7 +279,7 @@ test('opening an unverified game requests its queued media check before older ba
     await until(async () => {
       const reply = await coordinator.command({ kind: 'sources' });
       return reply.kind === 'sources' && reply.snapshot.games.find(row => row.gameId === background.id)?.candidates.length === 6 &&
-        pending.length === 4;
+        pending.length === 1;
     });
     assert.equal(pending.every(job => job.locator.provider === 'event-page' && job.locator.gameId === background.id), true);
     requestedVisible = true;
@@ -290,13 +289,12 @@ test('opening an unverified game requests its queued media check before older ba
       const reply = await coordinator.command({ kind: 'sources' });
       return reply.kind === 'sources' && reply.snapshot.games.find(row => row.gameId === requested.id)?.candidates.length === 1;
     });
-    assert.equal(pending.length, 4);
+    await until(()=>pending.length===2);
+    assert.equal(pending[1].locator.provider === 'event-page' ? pending[1].locator.gameId : '', requested.id);
     const opened = await coordinator.command({ kind: 'open', gameId: requested.id, manual: false });
     assert.equal(opened.kind, 'error');
     if (opened.kind === 'error') assert.equal(opened.status, 404);
-    pending[0].resolve({ kind: 'playable', proof: 'media' });
-    await until(() => pending.length === 5);
-    assert.equal(pending[4].locator.provider === 'event-page' ? pending[4].locator.gameId : '', requested.id);
+    assert.equal(pending[0].locator.provider === 'event-page' ? pending[0].locator.gameId : '', background.id);
   } finally {
     for (const job of pending) job.resolve({ kind: 'playable', proof: 'media' });
     await coordinator.stop();

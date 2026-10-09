@@ -5,7 +5,7 @@ import { SOURCES, SourceFetchError, compatiblePlayers, enrichObservation, missin
 import type { FootballDependencies } from '../domain/ports.ts';
 import { FootballCoordinator } from './coordinator.ts';
 import { PartialListingReadError } from '../domain/ports.ts';
-import { probeCandidate, probeIdentity } from '../../playback/probe.ts';
+import { configuredProbeCandidate, probeIdentity } from '../../playback/probe.ts';
 import { persistableLocator } from '../../playback/persistent-locator.ts';
 
 type Overrides = Partial<Omit<FootballDependencies, 'store'>> & { ownerToken?: string; reclaimToken?: string };
@@ -27,7 +27,7 @@ export function createFootballCoordinator(path: string, options: Overrides = {})
       tvappPlayers:options.tvappPlayers ?? tvappPlayers,
       resolvePlayers:options.resolvePlayers ?? (options.compatiblePlayers||options.tvappPlayers?undefined:resolvePlayers),
       missingPlayerReason:options.missingPlayerReason ?? missingPlayerReason,
-      probeCandidate:options.probeCandidate ?? probeCandidate,
+      probeCandidate:options.probeCandidate ?? configuredProbeCandidate,
       probeIdentity:options.probeIdentity ?? probeIdentity,
       persistableLocator:options.persistableLocator ?? persistableLocator,
       retryAfterMs:options.retryAfterMs ?? (error => error instanceof SourceFetchError || error instanceof PartialListingReadError ? error.retryAfterMs || 0 : 0),

@@ -1,9 +1,10 @@
 import { createDecipheriv } from 'node:crypto';
-import type { CandidateProbeResult } from '../football/domain/ports.ts';
+import type { CandidateProbeResult,ProbeProgress } from '../football/domain/ports.ts';
 import type { CandidateLocator } from '../football/shared.ts';
 import { openProvider } from './provider-registry.ts';
 export { providerProbeIdentity as probeIdentity } from './provider-registry.ts';
 import { ProviderDeferredError, ProviderNoFeedError, type ProviderPlayback, type ProviderResource } from './provider.ts';
+import {createProbeResources} from './probe-capacity.ts';
 
 type Range = { start: number; length: number };
 type Encryption = { uri: string; iv?: string };
@@ -223,3 +224,12 @@ export async function probeCandidate(locator: CandidateLocator, signal: AbortSig
     closePlayback();
   }
 }
+
+export function createProbeCandidate(options={httpLimit:8,observerLimit:4,activeBudgetMs:65_000},
+  opener:typeof openProvider=openProvider) {
+  const resources=createProbeResources(options);
+  return (locator:CandidateLocator,signal:AbortSignal,onProgress:(progress:ProbeProgress)=>void):Promise<CandidateProbeResult>=>
+    resources.run(signal,onProgress,active=>probeCandidate(locator,active,opener));
+}
+
+export const configuredProbeCandidate=createProbeCandidate();

@@ -6,6 +6,8 @@ export type CandidateProbeResult =
   | {kind:'unavailable';reason:'upstream'|'unsupported'|'invalid-media'|'timeout'|'no-feed';phase?:MediaPhase}
   | {kind:'deferred';retryAfterMs:number;phase?:MediaPhase};
 
+export type ProbeProgress={kind:'waiting'|'active';since:number};
+
 export type ScheduleSource = { id: string; league: League; sport?: 'football' | 'basketball' | 'hockey' | 'baseball' | 'racing'; path: string; group: string | null };
 export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[]; parserVersion?: number; leagues?: readonly League[] };
 export type SchedulePartition = { games: Game[]; at: number; week?: number };
@@ -69,7 +71,7 @@ export type FootballDependencies = {
   tvappPlayers?: (gameId:string,observation:Observation,html:string,signal:AbortSignal)=>Promise<ResolvedPlayer[]>;
   resolvePlayers?: (gameId:string,observation:Observation,html:string,signal:AbortSignal)=>Promise<ResolvedPlayer[]>;
   missingPlayerReason: (observation: Observation, html: string) => MissingPlayerReason;
-  probeCandidate: (locator: CandidateLocator, signal: AbortSignal) => Promise<CandidateProbeResult>;
+  probeCandidate: (locator: CandidateLocator, signal: AbortSignal, onProgress:(progress:ProbeProgress)=>void) => Promise<CandidateProbeResult>;
   probeIdentity?: (locator: CandidateLocator) => string;
   persistableLocator?: (locator: CandidateLocator) => boolean;
   retryAfterMs: (error: unknown) => number;

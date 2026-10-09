@@ -43,10 +43,9 @@ function swacResource(url:URL,scope:MediaScope,kind:ResourceKind,requester:Reque
     async read({signal,range}){
       const headers=new Headers({Accept:kind==='playlist'?'application/vnd.apple.mpegurl':'video/MP2T'});
       if(range){if(!/^bytes=(?:\d+-\d*|-\d+)$/.test(range))throw new Error('Unsupported media range');headers.set('Range',range);}
-      const active=AbortSignal.any([signal,AbortSignal.timeout(30000)]);
       let address=url;
       for(let hop=0;hop<=3;hop++){
-        const response=await requester(address,active,headers,30000);
+        const response=await requester(address,signal,headers,30000);
         if([301,302,303,307,308].includes(response.status)){
           const location=response.headers.get('location');await response.body?.cancel();
           if(!location || hop===3)throw new Error('Unsupported SWAC media redirect');
@@ -68,9 +67,9 @@ export function swacProvider(requester:Requester=(url,signal,headers,timeout)=>p
   return {
     provider:'swac',
     async open(locator,signal){
-      const active=AbortSignal.any([signal,AbortSignal.timeout(10000)]);
       const read=async(command:'getVideo'|'getVideoUrls'):Promise<unknown>=>{
-        const response=await requester(new URL(swacApiUrl(command,locator.eventId)),active,new Headers({Accept:'application/json'}));
+        const response=await requester(new URL(swacApiUrl(command,locator.eventId)),signal,
+          new Headers({Accept:'application/json'}),10000);
         return JSON.parse(await boundedText(response));
       };
       const event=parseSwacEvent(await read('getVideo'));

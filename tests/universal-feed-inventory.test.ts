@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { sourceInventory } from '../lib/football/domain/source-inventory.ts';
 import { feedWindow } from '../lib/football/domain/feed-eligibility.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
+import {createProbeResources,probeHttpResponse} from '../lib/playback/probe-capacity.ts';
 import { GameSchema, LeagueSchema, SourcesSnapshotSchema, SportsurgeCatalogSchema, StreameastCatalogSchema, isMotorsportsLeague, isRaceGame, type Candidate, type DetailEvidence, type Game, type Observation } from '../lib/football/shared.ts';
 
 const at=Date.parse('2026-10-08T17:00:00Z');
@@ -196,30 +197,47 @@ test('a listing after the former thousand-row limit still reaches source setting
   } finally {await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 
-test('all choices beyond the dispatch queue are checked with bounded concurrency',async()=>{
+test('all choices across game frontiers are checked with eight physical HTTP operations',async()=>{
   const directory=mkdtempSync(join(tmpdir(),'universal-probe-backlog-'));
+  const games=Array.from({length:20},(_,index)=>({...game,id:String(100+index),
+    name:`Away ${index} at Home ${index}`,home:{...game.home,name:`Home ${index}`},away:{...game.away,name:`Away ${index}`}}));
+  const observations=games.map(match=>({...observation,id:`event-${match.id}`,
+    url:`https://fixture.example/event/${match.id}`,title:match.name,teams:[match.away.name,match.home.name]}));
+  const resources=createProbeResources({httpLimit:8,observerLimit:4,activeBudgetMs:65_000});
   let active=0,maximum=0;
+  const completed:string[]=[];
   const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{now:()=>at,sources:[source],
     schedules:[{id:'nfl',league:'nfl',path:'football/nfl',group:null}],
-    readSchedule:async()=>({league:'nfl',games:[game],at}),readHtml:async()=>'<main>fixture</main>',
-    parseListings:()=>({outcome:'parsed',observations:[observation]}),
-    compatiblePlayers:()=>Array.from({length:300},(_,index)=>({id:`choice-${index}`,label:`Server ${index}`,
-      locator:{provider:'gooz',playerId:String(index+1)}})),
-    probeCandidate:async()=>{active++;maximum=Math.max(maximum,active);await new Promise<void>(resolve=>setImmediate(resolve));active--;return {kind:'playable',proof:'media'};}});
+    readSchedule:async()=>({league:'nfl',games,at}),readHtml:async()=>'<main>fixture</main>',
+    parseListings:()=>({outcome:'parsed',observations}),enrichObservation:value=>value,
+    compatiblePlayers:gameId=>Array.from({length:15},(_,index)=>({id:`choice-${gameId}-${index}`,label:`Server ${index}`,
+      locator:{provider:'gooz',playerId:String(Number(gameId)*100+index)}})),
+    probeCandidate:(locator,signal,onProgress)=>resources.run(signal,onProgress,async activeSignal=>{
+      const response=await probeHttpResponse(activeSignal,async()=>{
+        active++;maximum=Math.max(maximum,active);
+        try{await new Promise<void>(resolve=>setImmediate(resolve));return new Response('ok');}
+        finally{active--;}
+      });
+      await response.text();
+      completed.push(locator.playerId);
+      return {kind:'playable',proof:'media'};
+    })});
   try {
     await coordinator.refresh();
-    for(let index=0;index<600;index++){
+    for(let index=0;index<2000;index++){
       const reply=await coordinator.command({kind:'sources'});
       if(reply.kind!=='sources')assert.fail('expected sources reply');
-      const row=reply.snapshot.games[0];
-      if(row?.feeds.kind==='feeds'&&row.feeds.mediaVerified===300){
-        assert.deepEqual(row.feeds,{kind:'feeds',discovered:300,mediaVerified:300,decoded:0,checking:0});
-        assert.equal(maximum,4);
+      if(reply.snapshot.games.reduce((count,row)=>count+(row.feeds.kind==='feeds'?row.feeds.mediaVerified:0),0)===300){
+        assert.equal(reply.snapshot.games.length,20);
+        assert.equal(new Set(completed).size,300);
+        assert.equal(new Set(completed.slice(0,20).map(id=>Math.floor(Number(id)/100))).size,20);
+        assert.equal(maximum,8);
         return;
       }
       await new Promise<void>(resolve=>setImmediate(resolve));
     }
-    assert.fail('remaining choices did not leave the probe backlog');
+    const pending=await coordinator.command({kind:'sources'});
+    assert.fail(`remaining choices did not leave the probe backlog: ${completed.length}, ${pending.kind==='sources'?pending.snapshot.games.reduce((count,row)=>count+row.candidates.length,0):pending.kind} candidates`);
   } finally {await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 

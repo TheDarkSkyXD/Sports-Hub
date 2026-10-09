@@ -70,7 +70,7 @@ test('live games receive probe slots until an explicit scheduled check takes pri
     readHtml:async()=>'<div>fixture</div>',
     parseListings:()=>({outcome:'parsed',observations}),
     enrichObservation:value=>value,
-    compatiblePlayers:(gameId,value)=>Array.from({length:gameId==='live'?6:1},(_,index):Candidate=>({
+    compatiblePlayers:(gameId,value)=>Array.from({length:gameId==='live'?6:gameId==='scheduled-3'?2:1},(_,index):Candidate=>({
       id:`${gameId}-${index}`,gameId,label:`Server ${index}`,sourceIds:[value.sourceId],observedAt:at,
       locator:{provider:'gooz',playerId:String(games.findIndex(match=>match.id===gameId)*10+index+1)},
     })),
@@ -92,16 +92,11 @@ test('live games receive probe slots until an explicit scheduled check takes pri
   };
   try {
     await coordinator.refresh(true);
-    await until(4);
-    assert.deepEqual(calls,['41','42','43','1']);
-    for(const job of pending.splice(0,4))job.resolve();
-    await until(8);
-    assert.deepEqual(calls.slice(4,7),['44','45','46']);
-    assert.ok(['11','21'].includes(calls[7]), 'a scheduled game receives the background slot');
+    await until(6);
+    assert.deepEqual(calls,['41','42','1','11','21','31']);
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:['scheduled-3'],retry:false}),{kind:'ok'});
-    pending.shift()?.resolve();
-    await until(9);
-    assert.equal(calls[8],'31');
+    await until(7);
+    assert.equal(calls[6],'32');
   } finally {
     for(const job of pending)job.resolve();
     await coordinator.stop();

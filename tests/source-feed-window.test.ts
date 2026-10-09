@@ -156,7 +156,7 @@ test('rescheduling aborts active media work while completed proof survives a tem
     run.reschedule(1, '2026-10-04T17:00:00Z');
     await run.refresh();
     assert.equal((await run.snapshot()).games.find(row => row.gameId === '10002')?.workingChoiceCount, 1);
-    assert.equal(run.probes.filter(id => id === '10002').length, 1);
+    assert.equal(run.probes.filter(id => id === '10002').length, 2);
   } finally { await run.stop(); }
 });
 

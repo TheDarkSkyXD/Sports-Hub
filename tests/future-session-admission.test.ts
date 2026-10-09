@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
+import { createProbeResources, probeObserverLease } from '../lib/playback/probe-capacity.ts';
 import type { Game, Observation } from '../lib/football/shared.ts';
 
 const at = Date.parse('2026-10-03T18:00:00Z');
@@ -35,9 +36,11 @@ test('live first feeds take priority over future selected alternatives while fut
   const directory = mkdtempSync(join(tmpdir(), 'future-session-admission-'));
   let clock = at;
   let publishLive = false;
+  let listLive = false;
   let hold = false;
   const admissions: Array<{ gameId: string; phase: 'seed' | 'hold' }> = [];
   const pending: Array<() => void> = [];
+  const resources=createProbeResources({httpLimit:8,observerLimit:4,activeBudgetMs:65_000});
   const coordinator = createFootballCoordinator(join(directory, 'state.sqlite'), {
     now: () => clock,
     sources: [source],
@@ -46,7 +49,7 @@ test('live first feeds take priority over future selected alternatives while fut
       league: partition.league, at: clock,
     }),
     readHtml: async () => '<main>fixture</main>',
-    parseListings: () => ({ outcome: 'parsed', observations: [...future, ...(publishLive ? live : [])].map(observation) }),
+    parseListings: () => ({ outcome: 'parsed', observations: [...future, ...(listLive ? live : [])].map(observation) }),
     enrichObservation: value => value,
     compatiblePlayers: (gameId, listing) => [
       ...(!gameId.startsWith('ncaaf') ? [{ id: `direct-${gameId}`, label: 'Direct', locator: { provider: 'gooz' as const, playerId: gameId } }] : []),
@@ -56,18 +59,26 @@ test('live first feeds take priority over future selected alternatives while fut
           serverUrl: `https://fixture.example/server/${gameId}/${index}` },
       })),
     ],
-    probeCandidate: async (locator, signal) => {
+    probeCandidate: async (locator, signal, onProgress) => {
       if (locator.provider === 'gooz') return { kind: 'playable' as const, proof: 'media' as const };
       assert.equal(locator.provider, 'event-page');
-      admissions.push({ gameId: locator.gameId, phase: hold ? 'hold' : 'seed' });
-      if (!hold) return { kind: 'deferred' as const, retryAfterMs: 2000 };
-      await new Promise<void>(resolve => {
-        pending.push(resolve);
-        signal.addEventListener('abort', resolve, { once: true });
+      if (!hold) {
+        admissions.push({ gameId: locator.gameId, phase: 'seed' });
+        return { kind: 'deferred' as const, retryAfterMs: 2000 };
+      }
+      return resources.run(signal,onProgress,async active=>{
+        const release=await probeObserverLease(active);
+        try{
+          admissions.push({gameId:locator.gameId,phase:'hold'});
+          await new Promise<void>(resolve=>{
+            pending.push(resolve);
+            active.addEventListener('abort',resolve,{once:true});
+          });
+          return locator.gameId.startsWith('ncaaf')
+            ? {kind:'playable' as const,proof:'media' as const}
+            : {kind:'unavailable' as const,reason:'upstream' as const};
+        }finally{release();}
       });
-      return locator.gameId.startsWith('ncaaf')
-        ? { kind: 'playable' as const, proof: 'media' as const }
-        : { kind: 'unavailable' as const, reason: 'upstream' as const };
     },
   });
   try {
@@ -91,6 +102,12 @@ test('live first feeds take priority over future selected alternatives while fut
         assert.equal(reply.kind, 'session');
       }
     }
+    hold = true;
+    listLive = true;
+    clock += 1;
+    await coordinator.refresh(true);
+    await until(() => admissions.filter(row => row.phase === 'hold').length >= 4);
+    assert.equal(admissions.filter(row=>row.phase==='hold').slice(0,4).every(row=>future.some(game=>game.id===row.gameId)),true);
     clock += 1;
     publishLive = true;
     await coordinator.refresh(true);
@@ -99,20 +116,14 @@ test('live first feeds take priority over future selected alternatives while fut
       return reply.kind === 'sources' && live.every(game =>
         reply.snapshot.games.find(row => row.gameId === game.id)?.freeChoiceCount === 1);
     });
-    hold = true;
-    clock += 2001;
-    await coordinator.refresh(true);
-    await until(() => admissions.filter(row => row.phase === 'hold').length >= 4);
-    for (let expected = 5; expected <= 44; expected++) {
+    for (let expected = 5; expected <= 36; expected++) {
       pending.shift()?.();
       await until(() => admissions.filter(row => row.phase === 'hold').length >= expected);
     }
-    const next = admissions.filter(row => row.phase === 'hold').slice(0, 44).map(row => row.gameId);
+    const next = admissions.filter(row => row.phase === 'hold').slice(0, 36).map(row => row.gameId);
     const firstLivePositions = live.map(game => next.indexOf(game.id) + 1);
-    assert.deepEqual(firstLivePositions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
-    assert.equal(next.slice(0, 4).filter(id => id.startsWith('ncaaf')).length, 4,
-      'live games without working choices should take the next four admissions');
-    assert.ok(next.slice(11).some(id => future.some(game => game.id === id)),
+    assert.deepEqual(firstLivePositions, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    assert.ok(next.slice(15).some(id => future.some(game => game.id === id)),
       'future alternatives must keep receiving bounded background turns after first live proofs');
   } finally {
     for (const release of pending) release();

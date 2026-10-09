@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
+import { createProbeResources, probeObserverLease } from '../lib/playback/probe-capacity.ts';
 import type { CandidateProbeResult } from '../lib/football/domain/ports.ts';
 import type { Game } from '../lib/football/shared.ts';
 
@@ -28,6 +29,9 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
   let game = options.game ?? live;
   let listed = true;
   let holdRechecks = false;
+  let queueRechecks = false;
+  let releaseObserver = () => {};
+  const resources = createProbeResources({ httpLimit: 8, observerLimit: 1, activeBudgetMs: 65_000 });
   const nextResult: CandidateProbeResult = { kind: 'playable', proof: 'media' };
   const calls: string[] = [];
   const pending = new Map<string, (result: CandidateProbeResult) => void>();
@@ -47,7 +51,7 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
     compatiblePlayers: () => listed ? Array.from({ length: options.count ?? 1 }, (_, index) => ({
       id: `route-${index}`, label: `Route ${index}`, locator: { provider: 'gooz' as const, playerId: String(index + 100) },
     })) : [],
-    probeCandidate: locator => {
+    probeCandidate: (locator, signal, onProgress) => {
       assert.ok(locator.provider === 'gooz', 'Expected gooz locator');
       calls.push(locator.playerId);
       const attempts = calls.filter(id => id === locator.playerId).length;
@@ -55,6 +59,11 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
         attempts === 1) return Promise.resolve({ kind: 'unavailable', reason: 'upstream' });
       if (attempts === 1) return Promise.resolve(nextResult);
       if (!holdRechecks) return Promise.resolve(nextResult);
+      if (queueRechecks) return resources.run(signal, onProgress, async active => {
+        const release = await probeObserverLease(active);
+        try { return await new Promise<CandidateProbeResult>(resolve => { pending.set(locator.playerId, resolve); }); }
+        finally { release(); }
+      });
       return new Promise<CandidateProbeResult>(resolve => { pending.set(locator.playerId, resolve); });
     },
   });
@@ -71,6 +80,21 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
   return {
     calls, pending, rows, snapshot, start,
     hold: () => { holdRechecks = true; },
+    releaseQueued: () => releaseObserver(),
+    async holdQueued() {
+      holdRechecks = true;
+      queueRechecks = true;
+      const acquired = Promise.withResolvers<void>();
+      const held = Promise.withResolvers<void>();
+      void resources.run(new AbortController().signal, () => {}, async active => {
+        const release = await probeObserverLease(active);
+        releaseObserver = () => held.resolve();
+        acquired.resolve();
+        try { await held.promise; }
+        finally { release(); }
+      });
+      await acquired.promise;
+    },
     hidePublication: () => { listed = false; },
     failCacheWrites: () => {
       const db = new DatabaseSync(path);
@@ -91,6 +115,7 @@ function fixture(options: { game?: Game; count?: number; persistable?: boolean; 
       resolve(result);
     },
     async stop(coordinator: ReturnType<typeof start>) {
+      releaseObserver();
       for (const resolve of pending.values()) resolve({ kind: 'deferred', retryAfterMs: 1000 });
       pending.clear();
       await coordinator.stop();
@@ -155,10 +180,13 @@ for (const daysUntilKickoff of [0, 1]) for (const phase of ['queued', 'active', 
       await run.refresh(coordinator, 0);
       assert.equal(run.rows().length, 0);
       assert.equal((await run.snapshot(coordinator)).games[0].workingChoiceCount, 6);
-      run.hold();
+      if (phase === 'queued') await run.holdQueued();
+      else run.hold();
       await run.refresh(coordinator, 300_000);
-      assert.equal(run.pending.size, 4);
-      const targetRoute = phase === 'queued' ? 'route-4' : 'route-0';
+      assert.equal(run.pending.size, phase === 'queued' ? 0 : 1);
+      const targetRoute = 'route-0';
+      assert.equal((await run.snapshot(coordinator)).games[0].candidates.find(row => row.id === targetRoute)?.availability.kind,
+        'playable');
       if (phase === 'deferred') {
         run.release('100', { kind: 'deferred', retryAfterMs: 30_000 });
         await drain();
@@ -370,21 +398,26 @@ test('decoded playback removes its queued recheck while other due routes proceed
   const coordinator = run.start();
   try {
     await run.refresh(coordinator, 0);
-    run.hold();
+    await run.holdQueued();
     await run.refresh(coordinator, 300_000);
-    assert.deepEqual(run.calls, ['100', '101', '102', '103', '104', '105', '100', '101', '102', '103']);
+    assert.deepEqual(run.calls, ['100', '101', '102', '103', '104', '105', '100', '101']);
     const opened = await coordinator.command({ kind: 'open', gameId: live.id, manual: false,
-      initialCandidateId: 'route-4' });
+      initialCandidateId: 'route-0' });
     assert.ok(opened.kind === 'playback');
     const session = opened.playback.session;
     const reply = await coordinator.command({ kind: 'playback-evidence', sessionId: session.id,
       candidateId: session.candidateId, generation: 0, evidence: { kind: 'decoded', startupMs: 100 } });
     assert.equal(reply.kind, 'ok');
-    for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof: 'media' });
+    run.releaseQueued();
+    for (let round = 0; round < 10 && run.calls.filter(id => id === '105').length < 2; round++) {
+      for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof: 'media' });
+      await drain();
+    }
     await drain();
-    assert.equal(run.calls.filter(id => id === '104').length, 1);
+    assert.equal(run.pending.has('100'), false);
+    assert.equal(run.calls.filter(id => id === '104').length, 2);
     assert.equal(run.calls.filter(id => id === '105').length, 2);
-    assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates.find(row => row.id === 'route-4')?.availability,
+    assert.deepEqual((await run.snapshot(coordinator)).games[0].candidates.find(row => row.id === 'route-0')?.availability,
       { kind: 'playable', proof: 'decoded', checkedAt: at + 300_000 });
   } finally { await run.stop(coordinator); }
 });
@@ -425,11 +458,11 @@ test('a full maintenance queue eventually checks both working and failed routes'
     assert.equal((await run.snapshot(coordinator)).games[0].workingChoiceCount, 135);
     run.hold();
     await run.refresh(coordinator, 300_000);
-    assert.equal(run.pending.size, 4);
+    assert.equal(run.pending.size, 2);
     const queued = (await run.snapshot(coordinator)).games[0].candidates;
-    assert.equal(queued.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'queued').length, 125);
-    assert.equal(queued.filter(row => row.availability.kind === 'unavailable').length, 10);
-    for (let round = 0; round < 76 && (run.calls.length < 540 || run.pending.size > 0); round++) {
+    assert.equal(queued.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'queued').length, 0);
+    assert.equal(queued.filter(row => row.availability.kind === 'unavailable').length, 135);
+    for (let round = 0; round < 280 && (run.calls.length < 540 || run.pending.size > 0); round++) {
       for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof: 'media' });
       await drain();
     }

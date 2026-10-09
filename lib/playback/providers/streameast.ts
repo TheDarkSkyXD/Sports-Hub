@@ -1,4 +1,5 @@
 import type { CandidateLocator } from '../../football/shared.ts';
+import {scopedFetch,timedFetch} from '../probe-capacity.ts';
 import { boundedText, type PlaybackProvider, type ProviderPlayback } from '../provider.ts';
 import { edgestreamResource, publishedManifest } from './edgestream.ts';
 
@@ -13,16 +14,15 @@ export function parseStreameastPlayer(html:string):{stream:string;url:string}|nu
   return /^[A-Za-z0-9]{1,40}$/.test(stream)?{stream,url:url.href}:null;
 }
 
-export function streameastProvider(fetcher:typeof fetch=fetch):PlaybackProvider<StreameastLocator> {
+export function streameastProvider(fetcher:typeof fetch=scopedFetch):PlaybackProvider<StreameastLocator> {
   return {provider:'streameast',async open(locator,signal):Promise<ProviderPlayback> {
-    const active=AbortSignal.any([signal,AbortSignal.timeout(10000)]);
     const player=`https://streame.center/stream-east/ch${locator.channelId}.php`;
-    const playerResponse=await fetcher(player,{cache:'no-store',redirect:'manual',signal:active,headers:{Accept:'text/html'}});
+    const playerResponse=await timedFetch(fetcher,player,{cache:'no-store',redirect:'manual',signal,headers:{Accept:'text/html'}},10000);
     const playerHtml=await boundedText(playerResponse);
     const published=parseStreameastPlayer(playerHtml);
     if(!published)throw new Error('StreamEast player did not publish supported HLS');
-    const hlsResponse=await fetcher(published.url,{cache:'no-store',redirect:'manual',signal:active,
-      headers:{Accept:'text/html',Referer:player}});
+    const hlsResponse=await timedFetch(fetcher,published.url,{cache:'no-store',redirect:'manual',signal,
+      headers:{Accept:'text/html',Referer:player}},10000);
     const hlsHtml=await boundedText(hlsResponse);
     const manifest=publishedManifest(hlsHtml);
     if(!manifest)throw new Error('StreamEast HLS source changed');

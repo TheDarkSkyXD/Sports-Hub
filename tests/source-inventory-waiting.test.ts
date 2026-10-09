@@ -12,11 +12,16 @@ const candidate:CandidateSummary={
 test('waiting time counts down to the real media retry deadline',()=>{
   assert.equal(candidateEvidence(candidate,at),'Source media unavailable · Waiting 5m 0s for next check');
   assert.equal(candidateEvidence(candidate,at+60_000),'Source media unavailable · Waiting 4m 0s for next check');
-  assert.equal(candidateEvidence(candidate,at+300_000),'Source media unavailable · Check due · Waiting for a checker slot');
+  assert.equal(candidateEvidence(candidate,at+300_000),'Source media unavailable · Check due');
 });
 
 test('an already queued check does not show an invented countdown',()=>{
   const queued:CandidateSummary={...candidate,availability:{kind:'checking',progress:{kind:'queued',since:at}}};
-  assert.equal(candidateEvidence(queued,at),'Queued for media check · Waiting for a checker slot');
-  assert.equal(candidateEvidence(queued,at+300_000),'Queued for media check · Waiting for a checker slot');
+  assert.equal(candidateEvidence(queued,at),'Media check scheduled');
+  assert.equal(candidateEvidence(queued,at+300_000),'Media check scheduled');
+});
+
+test('a candidate outside the admission frontier is not shown as queued',()=>{
+  const unknown:CandidateSummary={...candidate,availability:{kind:'unknown'}};
+  assert.equal(candidateEvidence(unknown,at),'Media not checked yet');
 });

@@ -431,7 +431,7 @@ test('availability gates open and switch while unchanged proof survives its old 
     const retained=await coordinator.command({kind:'sources'});
     assert.equal(retained.kind,'sources');
     if(retained.kind==='sources')assert.equal(retained.snapshot.games.find(row=>row.gameId===game.id)?.candidates.find(row=>row.id===playable.id)?.availability.kind,'playable');
-    assert.equal(calls,1,'unchanged playable route needs no second media check');
+    assert.equal(calls,3,'the playable route is rechecked at each five-minute deadline');
     assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false})).kind,'playback');
     assert.equal((await coordinator.command({kind:'authorize',sessionId:opened.playback.session.id,candidateId:playable.id,generation:0})).kind,'authorized');
   } finally {await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
