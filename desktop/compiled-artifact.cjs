@@ -44,14 +44,14 @@ async function inventory(root) {
 async function buildIds(root, distDir) {
   const source = (await readFile(path.join(root, distDir, 'BUILD_ID'), 'utf8')).trim();
   const served = (await readFile(path.join(root, distDir, 'standalone', distDir, 'BUILD_ID'), 'utf8')).trim();
-  if (source !== served) throw new Error('Standalone build ID differs from Next build ID');
-  return source;
+  return source === served ? source : null;
 }
 
 async function validateArtifact(root, distDir, sourceId) {
   const served = path.join(root, distDir, 'standalone');
   const manifest = JSON.parse(await readFile(path.join(served, completionFile), 'utf8'));
-  if (manifest.version !== 1 || manifest.sourceId !== sourceId || manifest.distDir !== distDir) return null;
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest) ||
+      manifest.version !== 1 || manifest.sourceId !== sourceId || manifest.distDir !== distDir) return null;
   if (await buildIds(root, distDir) !== sourceId) return null;
   await stat(path.join(served, 'server.cjs'));
   await stat(path.join(served, distDir, 'static'));

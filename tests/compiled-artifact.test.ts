@@ -53,6 +53,15 @@ test('a completed standalone is reused only while its payload and source match',
   assert.equal(await reusableArtifact(root, 'source-one'), null);
   await rm(path.join(served, distDir, 'static', 'app.js'));
   assert.equal(await reusableArtifact(root, 'source-one'), null);
-  const manifest = JSON.parse(await readFile(path.join(served, '.sunday-room-complete.json'), 'utf8'));
+  await file(root, `${distDir}/standalone/${distDir}/static/app.js`, 'asset');
+  const manifestPath = path.join(served, '.sunday-room-complete.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   assert.equal(manifest.sourceId, 'source-one');
+  await file(root, `${distDir}/standalone/${distDir}/BUILD_ID`, 'different-build');
+  assert.equal(await reusableArtifact(root, 'source-one'), null);
+  await file(root, `${distDir}/standalone/${distDir}/BUILD_ID`, 'source-one');
+  await writeFile(manifestPath, 'null');
+  assert.equal(await reusableArtifact(root, 'source-one'), null);
+  await writeFile(manifestPath, JSON.stringify({ version: 1, sourceId: 'source-one', distDir, files: null }));
+  assert.equal(await reusableArtifact(root, 'source-one'), null);
 });
