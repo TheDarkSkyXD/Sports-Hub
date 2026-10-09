@@ -4,8 +4,10 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prepareDevelopmentElectron } from './electron-runtime.mjs';
+import { ensureCollectorAddon } from './build-rust-collector.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const addon = await ensureCollectorAddon(root);
 const mode = process.argv[2];
 if (mode !== 'dev' && mode !== 'start') throw new Error('Expected dev or start');
 
@@ -36,7 +38,8 @@ try {
 const origin = `http://127.0.0.1:${port}`;
 const controlToken = randomUUID();
 const env = { ...process.env, NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA ?? '1', SUNDAY_ROOM_DESKTOP: '0', SUNDAY_ROOM_BROWSER_COLLECTORS: '0',
-  SUNDAY_ROOM_CONTROL_TOKEN: controlToken, SUNDAY_ROOM_DATA_DIR: process.env.SUNDAY_ROOM_DATA_DIR ?? join(root, '.desktop-runtime') };
+  SUNDAY_ROOM_CONTROL_TOKEN: controlToken, SUNDAY_ROOM_DATA_DIR: process.env.SUNDAY_ROOM_DATA_DIR ?? join(root, '.desktop-runtime'),
+  SUNDAY_ROOM_COLLECTOR_DIR: addon.directory };
 let next;
 let collector;
 let stopping = false;

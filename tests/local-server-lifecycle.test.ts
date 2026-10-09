@@ -8,6 +8,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { HEAD } from '../app/api/internal/ready/route.ts';
+import { stageNativeArtifact } from './native-artifact-fixture.ts';
 
 const require = createRequire(import.meta.url);
 const { sourceIdentity } = require('../desktop/source-identity.cjs');
@@ -15,6 +16,11 @@ const { buildDirectory, completeArtifact } = require('../desktop/compiled-artifa
 const root = path.resolve('.');
 const source = readFileSync(path.join(root, 'desktop/local-server.cjs'), 'utf8');
 const fastTimeout: typeof setTimeout = (callback, _delay, ...args) => setTimeout(callback, 10, ...args);
+function nativeRoot(prefix: string) {
+  const serverRoot = mkdtempSync(path.join(tmpdir(), prefix));
+  stageNativeArtifact(serverRoot);
+  return serverRoot;
+}
 
 class Child extends EventEmitter {
   pid = 830001;
@@ -55,13 +61,14 @@ function localServer(options: {
     root: options.serverRoot ?? root, origin: options.origin ?? 'http://127.0.0.1:49300', port: options.port ?? 49300,
     userData: logDir, controlToken: 'test-control-token', logDir,
     mode: options.mode ?? 'dev',
+    ensureCollector: async () => {},
     onReady: options.onReady ?? (() => {}),
   });
   return { service, dispose: () => rmSync(logDir, { recursive: true, force: true }) };
 }
 
 test('ordinary unpackaged desktop prepares compiled output instead of launching development', async () => {
-  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-source-test-'));
+  const serverRoot = nativeRoot('sunday-local-source-test-');
   mkdirSync(path.join(serverRoot, '.next'));
   mkdirSync(path.join(serverRoot, 'node_modules'));
   writeFileSync(path.join(serverRoot, '.next', 'BUILD_ID'), 'stale-build');
@@ -93,7 +100,7 @@ test('ordinary unpackaged desktop prepares compiled output instead of launching 
 });
 
 test('a failed compiled build fails startup without serving an older build', async () => {
-  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-failed-build-'));
+  const serverRoot = nativeRoot('sunday-local-failed-build-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   const child = new Child();
   const modes: string[] = [];
@@ -121,7 +128,7 @@ test('a failed compiled build fails startup without serving an older build', asy
 });
 
 test('stopping during a compiled build terminates its owned tree before serving', async () => {
-  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-cancel-build-'));
+  const serverRoot = nativeRoot('sunday-local-cancel-build-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   const child = new Child();
   let launched = () => {};
@@ -159,7 +166,7 @@ test('stopping during a compiled build terminates its owned tree before serving'
 });
 
 test('compiled startup reuses complete output and rebuilds after a source edit', async () => {
-  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-reuse-'));
+  const serverRoot = nativeRoot('sunday-local-reuse-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   mkdirSync(path.join(serverRoot, 'app'));
   writeFileSync(path.join(serverRoot, 'app', 'page.tsx'), 'before');
@@ -227,7 +234,7 @@ test('compiled startup reuses complete output and rebuilds after a source edit',
 });
 
 test('source changes during preparation prevent a compiled server from starting', async () => {
-  const serverRoot = mkdtempSync(path.join(tmpdir(), 'sunday-local-source-change-'));
+  const serverRoot = nativeRoot('sunday-local-source-change-');
   mkdirSync(path.join(serverRoot, 'node_modules'));
   mkdirSync(path.join(serverRoot, 'app'));
   writeFileSync(path.join(serverRoot, 'app', 'page.tsx'), 'before');

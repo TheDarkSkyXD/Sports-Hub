@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   output: "standalone",
   outputFileTracingIncludes: {
-    '/*': ['./lib/football/**/*.ts', './lib/football/source-registry.json', './lib/playback/**/*.ts', './lib/sunday.ts', './lib/game-timing.ts'],
+    '/*': ['./lib/football/**/*.ts', './lib/football/source-registry.json', './lib/playback/**/*.ts', './lib/sunday.ts', './lib/game-timing.ts', './native/collector/bridge.cjs'],
   },
   // Keep local build and verification scratch out of standalone output. Copying
   // prior packaged apps into the next build nests each install until paths

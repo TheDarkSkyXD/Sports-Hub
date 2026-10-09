@@ -8,6 +8,7 @@ import type { TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { Worker } from 'node:worker_threads';
+import { stageNativeArtifact } from './native-artifact-fixture.ts';
 
 const prepare = fileURLToPath(new URL('../scripts/prepare-desktop.mjs', import.meta.url));
 const run = promisify(execFile);
@@ -42,8 +43,6 @@ async function fixture(t: TestContext): Promise<string> {
     [`${nativePackage}/lib/libvips-cpp-8.18.6.dll`]: 'vips C++ runtime',
     [`.next/standalone/${nativePackage}/lib/sharp.node`]: 'traced addon',
   };
-  for (const name of ['streamed', 'sportsfeed24', 'crichd', 'sportsbite', 'player-id'])
-    files[`.next/standalone/lib/football/adapters/${name}.ts`] = '';
   for (const name of ['catalog-stream', 'catalog-stream-policy'])
     files[`.next/standalone/lib/playback/providers/${name}.ts`] = '';
   for (const [relative, contents] of Object.entries(files)) {
@@ -62,6 +61,7 @@ async function fixture(t: TestContext): Promise<string> {
     [nativePackage]: {},
     'node_modules/@img/sharp-linux-x64': {},
   } }));
+  stageNativeArtifact(root);
   return root;
 }
 
