@@ -125,7 +125,54 @@ try {
   assert.equal(countAfterFreshSchedule, countAfterStaleSchedule + 1);
   await advance(3000);
   assert.equal(await page.evaluate(() => window.sourceReads.length), countAfterFreshSchedule + 1);
-  console.log(JSON.stringify({ startupReads: countAfterStartup, unrelatedPendingDelayMs: 30_000, selectedPendingDelayMs: 3000, selectedFailedDelayMs: 30_000, selectedDeferredDelayMs: 30_000, missingRowDelayMs: 30_000, staleSchedulePendingLinkDelayMs: 30_000, freshSchedulePendingLinkDelayMs: 3000 }));
+  await page.close();
+
+  const finalBoard = structuredClone(board);
+  Object.assign(finalBoard.games[2], { lifecycle: 'final', status: 'post', detail: 'Final', graceEndsAt: now + 600_000 });
+  const finalSources = structuredClone(sources);
+  finalSources.games[2].candidates = [{ ...pending('3'), availability: { kind: 'unknown' } }];
+  finalSources.games[2].feeds = { kind: 'feeds', discovered: 0, mediaVerified: 0, decoded: 0, checking: 1 };
+  finalSources.games[2].sourceLinks = [];
+  const finalPage = await browser.newPage();
+  const advanceFinal = async milliseconds => {
+    await finalPage.clock.runFor(milliseconds);
+    await new Promise(resolve => setTimeout(resolve, 200));
+  };
+  await finalPage.clock.install({ time: now });
+  await finalPage.addInitScript(() => {
+    localStorage.setItem('sunday-room:v1', JSON.stringify({ slots: ['3', null, null, null], layout: 'duo' }));
+    window.sourceReads = [];
+    const original = window.fetch;
+    window.fetch = (input, init) => {
+      if (new URL(input instanceof Request ? input.url : input.toString(), location.href).pathname === '/api/sources' &&
+          (!init?.method || init.method === 'GET')) window.sourceReads.push(Date.now());
+      return original(input, init);
+    };
+  });
+  await finalPage.route('**/api/games', route => route.fulfill({ json: finalBoard }));
+  await finalPage.route('**/api/sources', route => route.fulfill({ json: finalSources }));
+  await finalPage.goto(process.env.PLAYER_BASE_URL || 'http://127.0.0.1:3000');
+  await advanceFinal(1000);
+  await finalPage.waitForFunction(() => window.sourceReads.length >= 1);
+  await finalPage.locator('.game-tile[data-game-id="3"]').waitFor();
+  await finalPage.clock.fastForward(91_000);
+  await advanceFinal(1000);
+  const countWhileFinal = await finalPage.evaluate(() => window.sourceReads.length);
+  await advanceFinal(3000);
+  assert.equal(await finalPage.evaluate(() => window.sourceReads.length), countWhileFinal);
+  await advanceFinal(27_000);
+  assert.equal(await finalPage.evaluate(() => window.sourceReads.length), countWhileFinal + 1);
+  Object.assign(finalBoard.games[2], { lifecycle: 'live', status: 'in', detail: 'Q1 10:00' });
+  await finalPage.getByRole('button', { name: 'Game schedule' }).click();
+  await finalPage.locator('.schedule-toolbar').getByRole('button', { name: 'Refresh' }).click();
+  await finalPage.getByText('Q1 10:00', { exact: true }).first().waitFor();
+  await finalPage.getByRole('button', { name: 'Watch room' }).click();
+  const countBeforeLive = await finalPage.evaluate(() => window.sourceReads.length);
+  await advanceFinal(30_000);
+  assert.equal(await finalPage.evaluate(() => window.sourceReads.length), countBeforeLive + 1);
+  await advanceFinal(3000);
+  assert.equal(await finalPage.evaluate(() => window.sourceReads.length), countBeforeLive + 2);
+  console.log(JSON.stringify({ startupReads: countAfterStartup, unrelatedPendingDelayMs: 30_000, selectedPendingDelayMs: 3000, selectedFailedDelayMs: 30_000, selectedDeferredDelayMs: 30_000, missingRowDelayMs: 30_000, staleSchedulePendingLinkDelayMs: 30_000, freshSchedulePendingLinkDelayMs: 3000, retainedFinalUnknownDelayMs: 30_000, returnedLiveUnknownDelayMs: 3000 }));
 } finally {
   await browser.close();
 }

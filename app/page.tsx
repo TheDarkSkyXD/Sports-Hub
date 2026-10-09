@@ -58,8 +58,9 @@ export default function Home() {
  const games=board?.games??EMPTY_GAMES;
  const scheduleLoading=board?.scheduleState!=='ready';
  const selected=useMemo(()=>selectedGames(slots),[slots]);
- const selectedRef=useRef(selected);
- useEffect(()=>{selectedRef.current=selected;},[selected]);
+ const selectedFeedGameIds=useMemo(()=>selected.filter(id=>games.some(game=>game.id===id&&game.lifecycle!=='final')),[selected,games]);
+ const selectedFeedGameIdsRef=useRef(selectedFeedGameIds);
+ useEffect(()=>{selectedFeedGameIdsRef.current=selectedFeedGameIds;},[selectedFeedGameIds]);
  const chosen=selected.map(id=>games.find(g=>g.id===id)).filter(Boolean) as Game[];
  const candidatesByGame=useMemo(()=>new Map(sources?.games.map(game=>[game.gameId,game.candidates])||[]),[sources]);
  const sourcesCollecting=sources?.sportsurgeV2.current?.state.kind==='collecting'||sources?.streameast.current?.state.kind==='collecting';
@@ -99,7 +100,7 @@ export default function Home() {
     const snapshot=SourcesSnapshotSchema.parse(await response.json());
     if(!controller.signal.aborted)setSources(snapshot);
     if(Date.now()-startupAt<90_000||snapshot.games.some(row=>
-      selectedRef.current.includes(row.gameId)&&
+      selectedFeedGameIdsRef.current.includes(row.gameId)&&
       !(row.feeds.kind==='incomplete'&&row.feeds.reason==='schedule')&&
       !row.candidates.some(candidate=>candidate.availability.kind==='playable')&&
       (row.candidates.some(candidate=>candidate.availability.kind==='unknown'||
