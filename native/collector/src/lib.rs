@@ -1,6 +1,7 @@
 pub mod error;
 pub mod event_policy;
 pub mod html;
+pub mod listing_html;
 pub mod registry;
 pub mod time;
 pub mod types;
