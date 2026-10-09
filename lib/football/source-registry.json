@@ -289,7 +289,8 @@
       "wnba",
       "nhl",
       "mlb",
-      "f1"
+      "f1",
+      "wwe"
     ]
   },
   {
@@ -606,7 +607,7 @@
     "family": "streamed",
     "kind": "catalog",
     "publicUrls": ["https://streamed.st/"],
-    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport", "wwe", "tna"]
   },
   {
     "id": "livesportpro",
@@ -615,7 +616,7 @@
     "family": "livesportpro",
     "kind": "catalog",
     "publicUrls": ["https://livesportpro.com/"],
-    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "ncaab", "nhl", "ncaah", "ncaawh", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport", "wwe", "tna"]
   },
   {
     "id": "sportsfeed24",

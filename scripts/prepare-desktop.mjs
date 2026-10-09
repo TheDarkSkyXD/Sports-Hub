@@ -19,14 +19,15 @@ await cp(addon.binary, path.join(collectorDirectory, addon.filename));
 await cp(addon.manifestFile, path.join(collectorDirectory, 'active.json'));
 await cp(addon.registry, path.join(collectorDirectory, 'source-registry.json'));
 await cp(path.resolve('native/collector/bridge.cjs'), path.join(collectorDirectory, 'bridge.cjs'));
-const oldBootstrap = `process.env.SUNDAY_ROOM_COLLECTOR_DIR ||= require('node:path').join(__dirname, 'native', 'collector');\n`;
-const bootstrap = `import { dirname as collectorDirname, join as collectorJoin } from 'node:path';\nimport { fileURLToPath as collectorFileURLToPath } from 'node:url';\nprocess.env.SUNDAY_ROOM_COLLECTOR_DIR ||= collectorJoin(collectorDirname(collectorFileURLToPath(import.meta.url)), 'native', 'collector');\n`;
+const bootstrap = `process.env.SUNDAY_ROOM_COLLECTOR_DIR ||= require('node:path').join(__dirname, 'native', 'collector');\n`;
+const launcher = `import './server.cjs';\n`;
 const originalServer = await readFile(server, 'utf8');
-const serverBody = originalServer.startsWith(oldBootstrap) ? originalServer.slice(oldBootstrap.length) : originalServer;
-if (!serverBody.startsWith(bootstrap)) await writeFile(server, bootstrap + serverBody);
+const commonJsServer = path.join(standalone, 'server.cjs');
+const serverBody = originalServer === launcher ? await readFile(commonJsServer, 'utf8') : originalServer;
+if (!serverBody.startsWith(bootstrap) || originalServer !== launcher)
+  await writeFile(commonJsServer, serverBody.startsWith(bootstrap) ? serverBody : bootstrap + serverBody);
+if (originalServer !== launcher) await writeFile(server, launcher);
 if (distDir !== '.next') {
-  await writeFile(path.join(standalone, 'server.cjs'),
-    `process.env.SUNDAY_ROOM_COLLECTOR_DIR ||= require('node:path').join(__dirname, 'native', 'collector');\nvoid import('./server.js');\n`);
   await cp(path.resolve('package.json'), path.join(standalone, 'package.json'));
 }
 await stat(staticFiles);

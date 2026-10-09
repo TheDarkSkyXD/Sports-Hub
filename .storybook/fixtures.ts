@@ -66,6 +66,8 @@ export const productBoard: Board = {
     'nascar-truck': { scoresAt: null, sourceAt: null, errors: [] },
     motogp: { scoresAt: null, sourceAt: null, errors: [] },
     motorsport: { scoresAt: null, sourceAt: null, errors: [] },
+    wwe: { scoresAt: null, sourceAt: null, errors: [] },
+    tna: { scoresAt: null, sourceAt: null, errors: [] },
   },
   games: [
     { id: '401', league: 'nfl', lifecycle: 'live', status: 'in', name: 'Green Bay Packers at Chicago Bears',

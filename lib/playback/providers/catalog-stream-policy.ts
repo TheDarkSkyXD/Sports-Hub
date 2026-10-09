@@ -20,6 +20,8 @@ export function validStreamTarget(catalog:CatalogSource,source:string,id:string,
   if(value!==url.href||url.protocol!=='https:'||url.username||url.password||url.port||url.search||url.hash)return false;
   if(url.hostname==='embed.st')return url.pathname===`/embed/${source.replace(/^sp:/,'')}/${id}/${number}`;
   if(url.hostname==='embedindia.st')return source==='ppv:s'&&url.pathname===`/embed/${id}`;
+  if(url.hostname==='taifood-blog.asia')return catalog==='livesportpro'&&source==='ppv:s'&&
+    /^wwe\/\d{4}-\d{2}-\d{2}$/.test(id)&&url.pathname===`/embed/${id}`;
   return catalog==='livesportpro'&&/^lb\d{1,3}\.strmd\.st$/.test(url.hostname)&&
     /^\/secure\/[A-Za-z0-9_-]{16,160}\/ingest\/stream\/[a-zA-Z0-9_-]{1,100}\/[1-9]\d{0,2}\/playlist\.m3u8$/.test(url.pathname);
 }

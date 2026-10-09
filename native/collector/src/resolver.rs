@@ -395,8 +395,11 @@ impl Resolver {
                 if row.stream_no == 0
                     || url::Url::parse(&row.embed_url).is_err()
                     || row.id != reference.id
-                    || self.observation.source_id == "streamed"
-                        && row.source.as_deref() != Some(&reference.source)
+                    || !valid_stream_source(
+                        &self.observation.source_id,
+                        reference,
+                        row.source.as_deref(),
+                    )
                 {
                     return Err(ResolveFailure::parser_changed());
                 }
@@ -405,6 +408,8 @@ impl Resolver {
                     reference,
                     row.stream_no,
                     &row.embed_url,
+                    self.observation.league,
+                    event.date,
                 ) {
                     continue;
                 }
@@ -474,6 +479,19 @@ pub fn valid_streamed_response(body: &str) -> bool {
             rows.iter()
                 .all(|row| row.stream_no > 0 && url::Url::parse(&row.embed_url).is_ok())
         })
+}
+
+fn valid_stream_source(variant: &str, reference: &StreamRef, actual: Option<&str>) -> bool {
+    let expected = if variant == "streamed" {
+        Some(reference.source.as_str())
+    } else if reference.source == "ppv:s" {
+        Some("ppv")
+    } else if reference.source.starts_with("sp:") {
+        Some("streamed")
+    } else {
+        None
+    };
+    expected.is_none_or(|expected| actual == Some(expected))
 }
 
 #[derive(Deserialize)]
@@ -631,7 +649,14 @@ fn stream_api_url(variant: &str, reference: &StreamRef) -> Option<String> {
     ))
 }
 
-fn valid_stream_target(variant: &str, reference: &StreamRef, number: u32, value: &str) -> bool {
+fn valid_stream_target(
+    variant: &str,
+    reference: &StreamRef,
+    number: u32,
+    value: &str,
+    league: Option<crate::types::League>,
+    kickoff: i64,
+) -> bool {
     let Ok(url) = url::Url::parse(value) else {
         return false;
     };
@@ -661,6 +686,13 @@ fn valid_stream_target(variant: &str, reference: &StreamRef, number: u32, value:
     if host == "embedindia.st" {
         return reference.source == "ppv:s" && url.path() == format!("/embed/{}", reference.id);
     }
+    if host == "taifood-blog.asia" {
+        return variant == "livesportpro"
+            && reference.source == "ppv:s"
+            && league == Some(crate::types::League::Wwe)
+            && crate::wrestling::wwe_ppv_route(&reference.id, kickoff)
+            && url.path() == format!("/embed/{}", reference.id);
+    }
     static HOST: OnceLock<Regex> = OnceLock::new();
     static PATH: OnceLock<Regex> = OnceLock::new();
     variant == "livesportpro" && HOST.get_or_init(|| Regex::new(r"^lb\d{1,3}\.strmd\.st$").unwrap()).is_match(host)
@@ -671,6 +703,137 @@ fn valid_stream_target(variant: &str, reference: &StreamRef, number: u32, value:
 mod tests {
     use super::*;
     use crate::detail_json::{compatible_json_players, missing_json_reason};
+
+    #[test]
+    fn lsp_wwe_detail_resolves_ppv_and_streamed_references_without_teams() {
+        let observation: Observation = serde_json::from_value(serde_json::json!({
+            "id":"livesportpro:ppv-wwe-friday-night-smackdown", "sourceId":"livesportpro",
+            "url":"https://api.kultsport.com/api/matches/all#ppv-wwe-friday-night-smackdown",
+            "title":"WWE Friday Night Smackdown", "league":"wwe", "teams":null,
+            "kickoff":1791590400000_i64, "rawTime":"2026-10-10T00:00:00.000Z",
+            "observedAt":1791590400000_i64, "parserVersion":1
+        }))
+        .unwrap();
+        let event = serde_json::json!({
+            "id":"ppv-wwe-friday-night-smackdown", "title":"WWE Friday Night Smackdown",
+            "category":"wrestling", "date":1791590400000_i64, "teams":null,
+            "sources":[
+                {"source":"ppv:s","id":"wwe/2026-10-09"},
+                {"source":"sp:admin","id":"ppv-wwe-friday-night-smackdown"}
+            ]
+        });
+        let (mut resolver, action) = Resolver::begin("wwe-1", &observation, &event.to_string());
+        let ResolveAction::ReadBatch { requests, .. } = action else {
+            panic!("expected detail reads")
+        };
+        assert_eq!(
+            requests
+                .iter()
+                .map(|request| request.url.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "https://api.kultsport.com/api/stream/ppv%3As/wwe%2F2026-10-09",
+                "https://api.kultsport.com/api/stream/sp%3Aadmin/ppv-wwe-friday-night-smackdown"
+            ]
+        );
+        let action = resolver.advance(vec![
+            Ok(serde_json::json!([{"id":"wwe/2026-10-09","source":"ppv","streamNo":1,
+                "embedUrl":"https://taifood-blog.asia/embed/wwe/2026-10-09"}]).to_string()),
+            Ok(serde_json::json!([{"id":"ppv-wwe-friday-night-smackdown","source":"streamed","streamNo":1,
+                "embedUrl":"https://embed.st/embed/admin/ppv-wwe-friday-night-smackdown/1"}]).to_string()),
+        ]);
+        let ResolveAction::Done { players } = action else {
+            panic!("expected resolved players")
+        };
+        assert_eq!(players.len(), 2);
+        assert!(players.iter().all(|player| matches!(
+            &player.locator,
+            CandidateLocator::CatalogStream { teams: None, .. }
+        )));
+        let mut wrong_category = event.clone();
+        wrong_category["category"] = "hockey".into();
+        let (_, action) = Resolver::begin("wwe-1", &observation, &wrong_category.to_string());
+        assert!(matches!(action, ResolveAction::Done { players } if players.is_empty()));
+    }
+
+    #[test]
+    fn taifood_is_lsp_wwe_ppv_only_and_must_match_the_event_date() {
+        let reference = StreamRef {
+            source: "ppv:s".into(),
+            id: "wwe/2026-10-09".into(),
+        };
+        let target = "https://taifood-blog.asia/embed/wwe/2026-10-09";
+        assert!(valid_stream_target(
+            "livesportpro",
+            &reference,
+            1,
+            target,
+            Some(crate::types::League::Wwe),
+            1_791_590_400_000
+        ));
+        assert!(!valid_stream_target(
+            "streamed",
+            &reference,
+            1,
+            target,
+            Some(crate::types::League::Wwe),
+            1_791_590_400_000
+        ));
+        assert!(!valid_stream_target(
+            "livesportpro",
+            &reference,
+            1,
+            target,
+            Some(crate::types::League::Tna),
+            1_791_590_400_000
+        ));
+        assert!(!valid_stream_target(
+            "livesportpro",
+            &reference,
+            1,
+            target,
+            Some(crate::types::League::Wwe),
+            1_791_676_800_000
+        ));
+        let admin = StreamRef {
+            source: "sp:admin".into(),
+            id: reference.id.clone(),
+        };
+        assert!(!valid_stream_target(
+            "livesportpro",
+            &admin,
+            1,
+            target,
+            Some(crate::types::League::Wwe),
+            1_791_590_400_000
+        ));
+        assert!(valid_stream_source("livesportpro", &reference, Some("ppv")));
+        assert!(!valid_stream_source(
+            "livesportpro",
+            &reference,
+            Some("streamed")
+        ));
+        assert!(valid_stream_source(
+            "livesportpro",
+            &admin,
+            Some("streamed")
+        ));
+        assert!(!valid_stream_source("livesportpro", &admin, Some("admin")));
+        let streamed_admin = StreamRef {
+            source: "admin".into(),
+            id: "event".into(),
+        };
+        assert!(valid_stream_source(
+            "streamed",
+            &streamed_admin,
+            Some("admin")
+        ));
+        assert!(!valid_stream_source(
+            "streamed",
+            &streamed_admin,
+            Some("streamed")
+        ));
+    }
 
     #[test]
     fn json_details_match_the_frozen_collector() {

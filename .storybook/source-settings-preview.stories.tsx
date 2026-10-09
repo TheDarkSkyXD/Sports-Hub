@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { SourcesSnapshotSchema, isRaceGame, type SourcesSnapshot } from '../lib/football/shared';
+import { SourcesSnapshotSchema, type SourcesSnapshot } from '../lib/football/shared';
 import { productBoard, sourcesSnapshot } from './fixtures';
 import { MockApi } from './story-runtime';
 import { SourceInventory } from '../components/source-inventory';
@@ -49,7 +49,7 @@ const rateLimitedSnapshot:SourcesSnapshot={...mixedSnapshot,streameast:{...mixed
     collectedDetails:1,pendingDetails:1,serverRows:1,freeRows:1}},
 };
 const fixtureGame=productBoard.games[0];
-if(!fixtureGame||isRaceGame(fixtureGame))throw new Error('Matchup fixture is missing');
+if(!fixtureGame||!('home' in fixtureGame))throw new Error('Matchup fixture is missing');
 const logoGame={id:fixtureGame.id,away:{...fixtureGame.away,logo:'/packers.png'},home:{...fixtureGame.home,logo:'/bears.png'}};
 const missingLogoGame={id:fixtureGame.id,away:{...fixtureGame.away,logo:'/missing-team-logo.png'},home:{...fixtureGame.home,logo:undefined}};
 

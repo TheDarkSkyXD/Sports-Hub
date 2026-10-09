@@ -1,4 +1,4 @@
-import { ScheduleGameSchema, isRaceGame } from './football/shared.ts';
+import { ScheduleGameSchema, isMatchupGame } from './football/shared.ts';
 import { gameTiming } from './game-timing.ts';
 import type { Team, League, Game, ScheduleGame } from './football/shared.ts';
 export type { Team, League, Game, LeagueFeedStatus, Board } from './football/shared.ts';
@@ -18,9 +18,11 @@ export const LEAGUES = {
   'nascar-truck':{label:'NASCAR Trucks'},
   motogp:{label:'MotoGP'},
   motorsport:{label:'Motorsport'},
+  wwe:{label:'WWE'},
+  tna:{label:'TNA'},
 } satisfies Record<League, { label: string }>;
 export function isBasketballLeague(league: League): boolean { return league === 'nba' || league === 'wnba' || league === 'ncaab'; }
-export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
+export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport|wwe|tna)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -106,7 +108,7 @@ function parseRaceScoreboard(events:unknown[],league:'f1'|'nascar-cup'|'nascar-t
 export function validFeedUrl(input: string): string | null {
   try { const url = new URL(input.trim()); return (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost','127.0.0.1','[::1]'].includes(url.hostname))) && !url.username && !url.password ? url.href : null; } catch { return null; }
 }
-export function priority(game: Game): number { return (game.status === 'in' ? 100 : game.status === 'pre' ? 30 : 0) + (isRaceGame(game)?0:(game.redzone ? 60 : 0) + (game.status === 'in' && Math.abs(Number(game.home.score) - Number(game.away.score)) <= 8 ? 15 : 0)); }
+export function priority(game: Game): number { return (game.status === 'in' ? 100 : game.status === 'pre' ? 30 : 0) + (isMatchupGame(game)?(game.redzone ? 60 : 0) + (game.status === 'in' && Math.abs(Number(game.home.score) - Number(game.away.score)) <= 8 ? 15 : 0):0); }
 
 export function sortGamesForDisplay<T extends Pick<Game, 'date' | 'status' | 'lifecycle'>>(games: readonly T[], now: number): T[] {
   const today = new Date(now).toDateString();

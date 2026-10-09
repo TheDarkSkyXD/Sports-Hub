@@ -1,14 +1,15 @@
 import { z } from 'zod';
 
-export const LeagueSchema = z.enum(['nfl', 'ncaaf', 'nba', 'wnba', 'ncaab', 'nhl', 'ncaah', 'ncaawh', 'mlb', 'f1', 'nascar-cup', 'nascar-truck', 'motogp', 'motorsport']);
-const MatchupLeagueSchema = LeagueSchema.exclude(['f1','nascar-cup','nascar-truck','motogp','motorsport']);
+export const LeagueSchema = z.enum(['nfl', 'ncaaf', 'nba', 'wnba', 'ncaab', 'nhl', 'ncaah', 'ncaawh', 'mlb', 'f1', 'nascar-cup', 'nascar-truck', 'motogp', 'motorsport', 'wwe', 'tna']);
+const MatchupLeagueSchema = LeagueSchema.exclude(['f1','nascar-cup','nascar-truck','motogp','motorsport','wwe','tna']);
 const RaceLeagueSchema=LeagueSchema.extract(['f1','nascar-cup','nascar-truck','motogp','motorsport']);
-const BrowserCatalogLeagueSchema = LeagueSchema;
-const BrowserEventIdSchema=z.string().regex(new RegExp('^(?:'+LeagueSchema.options.join('|')+'):\\d{1,12}$'));
-const BrowserGameIdSchema=z.string().regex(new RegExp('^(?:(?:'+LeagueSchema.options.filter(league=>league!=='nfl').join('|')+')-)?\\d{1,20}$'));
+const WrestlingLeagueSchema=LeagueSchema.extract(['wwe','tna']);
+const BrowserCatalogLeagueSchema = LeagueSchema.exclude(['wwe','tna']);
+const BrowserEventIdSchema=z.string().regex(new RegExp('^(?:'+BrowserCatalogLeagueSchema.options.join('|')+'):\\d{1,12}$'));
+const BrowserGameIdSchema=z.string().regex(new RegExp('^(?:(?:'+BrowserCatalogLeagueSchema.options.filter(league=>league!=='nfl').join('|')+')-)?\\d{1,20}$'));
 function browserCategories<T extends z.ZodTypeAny>(category:T) {
   return z.record(z.string(),category).refine(values=>values.nfl!==undefined&&values.ncaaf!==undefined&&
-    Object.keys(values).every(key=>LeagueSchema.safeParse(key).success),'Unknown or missing browser category');
+    Object.keys(values).every(key=>BrowserCatalogLeagueSchema.safeParse(key).success),'Unknown or missing browser category');
 }
 export const TeamSchema = z.object({
   id: z.string().optional(), name: z.string(), short: z.string(), abbreviation: z.string(),
@@ -43,12 +44,25 @@ const RaceLiveSchema=RaceFields.extend({...NonfinalFields,status:z.literal('in')
 const RaceUnknownSchema=RaceFields.extend({...NonfinalFields,status:z.enum(['pre','in','post','unknown']),lifecycle:z.literal('unknown')}).strict();
 const RaceRawFinalSchema=RaceFields.extend({...NonfinalFields,status:z.literal('post'),lifecycle:z.literal('final')}).strict();
 const RaceFinalSchema=RaceFields.extend({status:z.literal('post'),lifecycle:z.literal('final'),sourceUrls:z.tuple([]).optional(),finalObservedAt:z.number(),graceEndsAt:z.number()}).strict();
+const WrestlingFields=z.object({
+  id:z.string().regex(/^(?:wwe|tna)-\d{1,20}$/),league:WrestlingLeagueSchema,name:z.string().min(1),date:z.string(),
+  wrestling:z.object({eventId:z.string().regex(/^\d{1,20}$/)}).strict(),
+  partitions:z.array(z.string()).optional(),detail:z.string(),broadcast:z.string().optional(),
+  sourceUrl:z.string().optional(),sourceUrls:z.array(z.string()).optional(),
+});
+const WrestlingScheduledSchema=WrestlingFields.extend({...NonfinalFields,status:z.literal('pre'),lifecycle:z.literal('scheduled')}).strict();
+const WrestlingLiveSchema=WrestlingFields.extend({...NonfinalFields,status:z.literal('in'),lifecycle:z.literal('live')}).strict();
+const WrestlingUnknownSchema=WrestlingFields.extend({...NonfinalFields,status:z.enum(['pre','in','post','unknown']),lifecycle:z.literal('unknown')}).strict();
+const WrestlingRawFinalSchema=WrestlingFields.extend({...NonfinalFields,status:z.literal('post'),lifecycle:z.literal('final')}).strict();
+const WrestlingFinalSchema=WrestlingFields.extend({status:z.literal('post'),lifecycle:z.literal('final'),sourceUrls:z.tuple([]).optional(),finalObservedAt:z.number(),graceEndsAt:z.number()}).strict();
 export const MatchupScheduleGameSchema=z.discriminatedUnion('lifecycle',[ScheduledGameSchema,LiveGameSchema,UnknownGameSchema,RawFinalGameSchema]);
 export const MatchupGameSchema=z.discriminatedUnion('lifecycle',[ScheduledGameSchema,LiveGameSchema,UnknownGameSchema,FinalGameSchema]);
 export const RaceScheduleGameSchema=z.discriminatedUnion('lifecycle',[RaceScheduledSchema,RaceLiveSchema,RaceUnknownSchema,RaceRawFinalSchema]);
 export const RaceGameSchema=z.discriminatedUnion('lifecycle',[RaceScheduledSchema,RaceLiveSchema,RaceUnknownSchema,RaceFinalSchema]);
-export const ScheduleGameSchema=z.union([MatchupScheduleGameSchema,RaceScheduleGameSchema]);
-export const GameSchema=z.union([MatchupGameSchema,RaceGameSchema]);
+export const WrestlingScheduleGameSchema=z.discriminatedUnion('lifecycle',[WrestlingScheduledSchema,WrestlingLiveSchema,WrestlingUnknownSchema,WrestlingRawFinalSchema]);
+export const WrestlingGameSchema=z.discriminatedUnion('lifecycle',[WrestlingScheduledSchema,WrestlingLiveSchema,WrestlingUnknownSchema,WrestlingFinalSchema]);
+export const ScheduleGameSchema=z.union([MatchupScheduleGameSchema,RaceScheduleGameSchema,WrestlingScheduleGameSchema]);
+export const GameSchema=z.union([MatchupGameSchema,RaceGameSchema,WrestlingGameSchema]);
 export const LeagueFeedSchema = z.object({ week: z.number().optional(), scoresAt: z.string().nullable(), sourceAt: z.string().nullable(), errors: z.array(z.string()) });
 export const FinishedGameRetentionMinutesSchema = z.number().int().min(5).max(10080);
 export const DEFAULT_FINISHED_GAME_RETENTION_MINUTES = 1440;
@@ -59,17 +73,22 @@ export const BoardSchema = z.object({
   scheduleState: z.enum(['loading','ready']),
   finishedGameRetentionMinutes: FinishedGameRetentionMinutesSchema.default(DEFAULT_FINISHED_GAME_RETENTION_MINUTES),
   feedCheckIntervalMinutes: FeedCheckIntervalMinutesSchema.default(DEFAULT_FEED_CHECK_INTERVAL_MINUTES),
-  leagues: z.object({ nfl: LeagueFeedSchema, ncaaf: LeagueFeedSchema, nba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), wnba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaab: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), nhl: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaah: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaawh: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), mlb: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), f1:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), 'nascar-cup':LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), 'nascar-truck':LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), motogp:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), motorsport:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}) }), aliases: z.record(z.string()),
+  leagues: z.object({ nfl: LeagueFeedSchema, ncaaf: LeagueFeedSchema, nba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), wnba: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaab: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), nhl: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaah: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), ncaawh: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), mlb: LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), f1:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), 'nascar-cup':LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), 'nascar-truck':LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), motogp:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), motorsport:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), wwe:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}), tna:LeagueFeedSchema.default({scoresAt:null,sourceAt:null,errors:[]}) }), aliases: z.record(z.string()),
 });
 export type Team = z.infer<typeof TeamSchema>;
 export type Game = z.infer<typeof GameSchema>;
 export type MatchupGame=z.infer<typeof MatchupGameSchema>;
 export type RaceGame=z.infer<typeof RaceGameSchema>;
+export type WrestlingGame=z.infer<typeof WrestlingGameSchema>;
+export type WrestlingLeague=z.infer<typeof WrestlingLeagueSchema>;
 export function isMotorsportsLeague(league:League):league is RaceGame['league'] { return league==='f1'||league==='nascar-cup'||league==='nascar-truck'||league==='motogp'||league==='motorsport'; }
 export function isRaceGame(game:Game):game is RaceGame { return isMotorsportsLeague(game.league); }
+export function isWrestlingLeague(league:League):league is WrestlingLeague { return league==='wwe'||league==='tna'; }
+export function isWrestlingGame(game:Game):game is WrestlingGame { return isWrestlingLeague(game.league); }
+export function isMatchupGame(game:Game):game is MatchupGame { return !isRaceGame(game)&&!isWrestlingGame(game); }
 export type ScheduleGame = z.infer<typeof ScheduleGameSchema>;
-export type FinalGame = z.infer<typeof FinalGameSchema>|z.infer<typeof RaceFinalSchema>;
-export type RawFinalGame = z.infer<typeof RawFinalGameSchema>|z.infer<typeof RaceRawFinalSchema>;
+export type FinalGame = z.infer<typeof FinalGameSchema>|z.infer<typeof RaceFinalSchema>|z.infer<typeof WrestlingFinalSchema>;
+export type RawFinalGame = z.infer<typeof RawFinalGameSchema>|z.infer<typeof RaceRawFinalSchema>|z.infer<typeof WrestlingRawFinalSchema>;
 export type League = z.infer<typeof LeagueSchema>;
 export type LeagueFeedStatus = z.infer<typeof LeagueFeedSchema>;
 export type Board = z.infer<typeof BoardSchema>;
@@ -126,9 +145,9 @@ export type CandidateSummary = z.infer<typeof CandidateSummarySchema>;
 export const SwacLocatorSchema = z.object({provider:z.literal('swac'),eventId:z.string().regex(/^[a-f0-9]{32}$/)});
 export const GoozLocatorSchema = z.object({provider:z.literal('gooz'),playerId:z.string().regex(/^\d{1,20}$/)});
 export const StreamcenterLocatorSchema = z.object({provider:z.literal('streamcenter'),eventId:z.string().regex(/^\d{5,12}$/),linkId:z.string().uuid(),league:z.enum(['ncaaf','nba','wnba','nhl','mlb']).optional()});
-export const EventPageLocatorSchema = z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-)?\d{1,20}$/),
+export const EventPageLocatorSchema = z.object({provider:z.literal('event-page'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport|wwe|tna)-)?\d{1,20}$/),
   eventUrl:z.string().url().max(2000),serverUrl:z.string().url().max(2000)}).strict();
-export const CatalogStreamLocatorSchema = z.object({provider:z.literal('catalog-stream'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport)-)?\d{1,20}$/),
+export const CatalogStreamLocatorSchema = z.object({provider:z.literal('catalog-stream'),gameId:z.string().regex(/^(?:(?:ncaaf|ncaab|nba|wnba|nhl|ncaah|ncaawh|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport|wwe|tna)-)?\d{1,20}$/),
   source:z.enum(['streamed','livesportpro']),eventUrl:z.string().url().max(400),eventId:z.string().min(1).max(160),
   sourceName:z.string().min(1).max(40),sourceId:z.string().min(1).max(160),
   streamNo:z.number().int().min(1).max(100),kickoff:z.number().int(),

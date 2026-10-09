@@ -327,6 +327,12 @@ pub fn valid_event_page_pair(event_url: &str, server_url: &str) -> bool {
                 )
             })
         }
+        (Some("ppv.st"), Some("taifood-blog.asia")) => {
+            Regex::new(r"^/live/wwe/([0-9]{4}-[0-9]{2}-[0-9]{2})$")
+                .unwrap()
+                .captures(event.path())
+                .is_some_and(|capture| server.path() == format!("/embed/wwe/{}", &capture[1]))
+        }
         (Some("ppv.st"), Some("embedindia.st")) => {
             let path = event.path();
             if let Some(race) = Regex::new(r"^/live/f1/([0-9]{4})/([a-z0-9]+(?:-[a-z0-9]+)*)/(fp[123]|sprint-q|sprint|qualifying|race)$")
@@ -359,6 +365,25 @@ pub fn valid_event_page_pair(event_url: &str, server_url: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wwe_ppv_embed_requires_the_same_dated_route() {
+        assert!(valid_event_page_pair(
+            "https://ppv.st/live/wwe/2026-10-09",
+            "https://taifood-blog.asia/embed/wwe/2026-10-09"
+        ));
+        for server in [
+            "https://taifood-blog.asia/embed/wwe/2026-10-10",
+            "https://taifood-blog.asia/embed/aew/2026-10-09",
+            "https://taifood-blog.asia/embed/wwe/2026-10-09?next=other",
+            "https://embedindia.st/embed/wwe/2026-10-09",
+        ] {
+            assert!(
+                !valid_event_page_pair("https://ppv.st/live/wwe/2026-10-09", server),
+                "{server}"
+            );
+        }
+    }
 
     #[test]
     fn permits_a_published_buffstream_pair() {
