@@ -16,26 +16,20 @@ const scoreboard = (id: string, away: string, home: string, at = tipoff, awayId 
   ]}],
 }]});
 const wnba = parseScoreboard(scoreboard('401918298','Las Vegas Aces','Golden State Valkyries'),'wnba')[0];
-const ncaab = parseScoreboard(scoreboard('401920982','Notre Dame Fighting Irish','Villanova Wildcats',Date.parse('2026-11-01T14:30:00Z')),'ncaab')[0];
 
-test('WNBA and NCAA basketball use independent ESPN partitions, IDs, and team identities',async()=>{
-  for (const [league,game,path] of [['wnba',wnba,'wnba'],['ncaab',ncaab,'mens-college-basketball']] as const) {
-    assert.equal(game.league,league);
-    assert.equal(game.id,`${league}-${league==='wnba'?'401918298':'401920982'}`);
-    assert.equal(game.away.id,`espn:${league}:1`);
-    assert.equal(game.redzone,false);
-    assert.equal(game.down,undefined);
-    assert.equal(validGameId(game.id),true);
-    assert.equal(isBasketballLeague(league),true);
-    const partition=SCHEDULES.find(item=>item.id===league);
-    assert.ok(partition);
-    assert.equal(partition.sport,'basketball');
-    assert.equal(partition.path,path);
-    if (league==='ncaab') assert.equal(partition.group,'50');
-  }
+test('WNBA uses its ESPN partition, ID, and team identities',async()=>{
+  assert.equal(wnba.league,'wnba');
+  assert.equal(wnba.id,'wnba-401918298');
+  assert.equal(wnba.away.id,'espn:wnba:1');
+  assert.equal(wnba.redzone,false);
+  assert.equal(wnba.down,undefined);
+  assert.equal(validGameId(wnba.id),true);
+  assert.equal(isBasketballLeague('wnba'),true);
   assert.equal(isBasketballLeague('ncaaf'),false);
   const partition=SCHEDULES.find(item=>item.id==='wnba');
   assert.ok(partition);
+  assert.equal(partition.sport,'basketball');
+  assert.equal(partition.path,'wnba');
   const original=globalThis.fetch;
   const requested:string[]=[];
   globalThis.fetch=async input=>{
@@ -48,22 +42,6 @@ test('WNBA and NCAA basketball use independent ESPN partitions, IDs, and team id
     const result=await readSchedule(partition,tipoff+60_000,new AbortController().signal);
     assert.deepEqual(result.games.map(game=>game.id),['wnba-401918298']);
     assert.ok(requested.every(url=>new URL(url).pathname==='/apis/site/v2/sports/basketball/wnba/scoreboard'));
-  } finally {globalThis.fetch=original;}
-  const college=SCHEDULES.find(item=>item.id==='ncaab');
-  assert.ok(college);
-  const collegeRequests:string[]=[];
-  globalThis.fetch=async input=>{
-    collegeRequests.push(String(input));
-    return Response.json({events:[]});
-  };
-  try {
-    await readSchedule(college,Date.parse('2026-11-01T15:00:00Z'),new AbortController().signal);
-    assert.ok(collegeRequests.length>0);
-    assert.ok(collegeRequests.every(value=>{
-      const url=new URL(value);
-      return url.pathname==='/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard'&&
-        url.searchParams.get('groups')==='50'&&url.searchParams.get('limit')==='500';
-    }));
   } finally {globalThis.fetch=original;}
 });
 
@@ -80,7 +58,7 @@ test('WNBA PPV and Streamcenter listings bind only to the WNBA schedule game',()
   assert.equal(ppvResult.outcome,'parsed');
   assert.equal(ppvResult.observations.length,1);
   assert.equal(ppvResult.observations[0].league,'wnba');
-  assert.deepEqual(matchObservation(ppvResult.observations[0],[wnba,ncaab],tipoff),{kind:'matched',gameId:wnba.id});
+  assert.deepEqual(matchObservation(ppvResult.observations[0],[wnba],tipoff),{kind:'matched',gameId:wnba.id});
   const player='https://embedindia.st/embed/wnba/2026-10-07/lv-gs';
   assert.equal(validEventPagePair(url,player),true);
   assert.equal(validEventPagePair(url,player.replace('/wnba/','/nba/')),false);
@@ -95,14 +73,14 @@ test('WNBA PPV and Streamcenter listings bind only to the WNBA schedule game',()
   assert.equal(streamResult.outcome,'parsed');
   assert.equal(streamResult.observations.length,1);
   assert.equal(streamResult.observations[0].league,'wnba');
-  assert.deepEqual(matchObservation(streamResult.observations[0],[wnba,ncaab],tipoff),{kind:'matched',gameId:wnba.id});
+  assert.deepEqual(matchObservation(streamResult.observations[0],[wnba],tipoff),{kind:'matched',gameId:wnba.id});
   assert.equal(compatiblePlayers(wnba.id,streamResult.observations[0],'<html></html>').length,0);
 });
 
 test('TVApp football rows cannot attach to basketball games with the same teams and tipoff',()=>{
   const source=SOURCES.find(item=>item.id==='tvapp');
   assert.ok(source);
-  const basketball=parseScoreboard(scoreboard('401999900','Duke Blue Devils','North Carolina Tar Heels'),'ncaab')[0];
+  const basketball=parseScoreboard(scoreboard('401999900','Duke Blue Devils','North Carolina Tar Heels'),'nba')[0];
   const football=parseScoreboard(scoreboard('401999901','Duke Blue Devils','North Carolina Tar Heels',tipoff,'150','153'),'ncaaf')[0];
   const result=parseListings(source,JSON.stringify([{
     id:'duke-vs-north-carolina-12345',title:'Duke Blue Devils vs North Carolina Tar Heels',
@@ -122,6 +100,7 @@ test('TVApp football rows cannot attach to basketball games with the same teams 
 test('TVApp basketball rows cannot attach to college football games with the same team names',()=>{
   const source=SOURCES.find(item=>item.id==='tvapp-nba');
   assert.ok(source);
+  const basketball=parseScoreboard(scoreboard('401920982','Notre Dame Fighting Irish','Villanova Wildcats',Date.parse('2026-11-01T14:30:00Z')),'nba')[0];
   const collegeFootball=parseScoreboard(scoreboard('401920982','Notre Dame Fighting Irish','Villanova Wildcats',Date.parse('2026-11-01T14:30:00Z')),'ncaaf')[0];
   const result=parseListings(source,JSON.stringify([{
     id:'notre-dame-vs-villanova-2612957',title:'Notre Dame Fighting Irish vs Villanova Wildcats',category:'basketball',
@@ -129,5 +108,5 @@ test('TVApp basketball rows cannot attach to college football games with the sam
   }]),Date.parse('2026-11-01T14:30:00Z'));
   assert.equal(result.outcome,'parsed');
   assert.equal(result.observations[0].league,null);
-  assert.deepEqual(matchObservation(result.observations[0],[collegeFootball,ncaab],Date.parse('2026-11-01T14:30:00Z')),{kind:'matched',gameId:ncaab.id});
+  assert.deepEqual(matchObservation(result.observations[0],[collegeFootball,basketball],Date.parse('2026-11-01T14:30:00Z')),{kind:'matched',gameId:basketball.id});
 });

@@ -44,13 +44,11 @@ try {
     const response = await page.request.get(new URL('/api/games', page.url()).href);
     assert.equal(response.status(), 200);
     board = await response.json();
-    if (board.scheduleState === 'ready' && ['nhl', 'ncaah', 'ncaawh'].every(league => board.leagues[league]?.scoresAt && board.games.some(game => game.league === league))) break;
+    if (board.scheduleState === 'ready' && board.leagues.nhl?.scoresAt && board.games.some(game => game.league === 'nhl')) break;
     await new Promise(resolve => setTimeout(resolve, 500));
   } while (Date.now() < scheduleDeadline);
-  for (const league of ['nhl', 'ncaah', 'ncaawh']) {
-    assert.ok(board.leagues[league]?.scoresAt, `The real ESPN ${league} schedule must load`);
-    assert.ok(board.games.some(game => game.league === league), `The board must contain real ${league} games`);
-  }
+  assert.ok(board.leagues.nhl?.scoresAt, 'The real ESPN NHL schedule must load');
+  assert.ok(board.games.some(game => game.league === 'nhl'), 'The board must contain real NHL games');
   const hockeyGames = board.games.filter(game => game.league === 'nhl');
   assert.ok(hockeyGames.length > 0, 'The live board must contain real NHL games');
   assert.ok(hockeyGames.every(game => /^nhl-\d+$/.test(game.id) && !game.redzone && !game.down && !game.possession));
@@ -59,17 +57,15 @@ try {
   }
   await page.getByRole('button', { name: 'Hockey', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('.center-game').length > 0 &&
-    [...document.querySelectorAll('.center-game')].every(card => /^(?:nhl|ncaah|ncaawh)-/.test(card.dataset.gameId)));
-  for (const league of ['nhl', 'ncaah', 'ncaawh']) {
-    assert.ok(await page.locator(`.center-game[data-game-id^="${league}-"]`).count() > 0, `${league} games must appear under Hockey`);
-  }
+    [...document.querySelectorAll('.center-game')].every(card => /^nhl-/.test(card.dataset.gameId)));
+  assert.ok(await page.locator('.center-game[data-game-id^="nhl-"]').count() > 0, 'NHL games must appear under Hockey');
   assert.equal(await page.getByRole('tab', { name: 'Red zone games' }).count(), 0);
   assert.equal(await page.locator('#smart-focus').count(), 0);
   await page.getByRole('button', { name: 'Game schedule', exact: true }).click();
   await page.locator('.schedule-card').first().waitFor();
   const scheduleLabels = await page.locator('.schedule-card .league-tag').allTextContents();
-  assert.ok(scheduleLabels.every(label => ['NHL', 'NCAA Hockey', "NCAA Women's Hockey"].includes(label)));
-  for (const label of ['NHL', 'NCAA Hockey', "NCAA Women's Hockey"]) assert.ok(scheduleLabels.includes(label));
+  assert.ok(scheduleLabels.every(label => label === 'NHL'));
+  assert.ok(scheduleLabels.includes('NHL'));
   await page.getByRole('button', { name: 'Watch room', exact: true }).click();
   const game = hockeyGames.find(item => item.lifecycle === 'live') ?? hockeyGames.find(item => item.lifecycle === 'scheduled');
   assert.ok(game, 'The room card must correspond to a real scheduled NHL game');
@@ -85,14 +81,11 @@ try {
     const response = await page.request.get(new URL('/api/sources', page.url()).href);
     assert.equal(response.status(), 200);
     inventory = await response.json();
-    if (['nhl', 'ncaah', 'ncaawh'].every(league => inventory.games.some(row => row.gameId.startsWith(`${league}-`) && row.sourceLinks.length))) break;
+    if (inventory.games.some(row => row.gameId.startsWith('nhl-') && row.sourceLinks.length)) break;
     await new Promise(resolve => setTimeout(resolve, 500));
   } while (Date.now() < sourceDeadline);
   const nhlListings = inventory.games.filter(row => row.gameId.startsWith('nhl-') && row.sourceLinks.length);
   assert.ok(nhlListings.length > 0, 'Existing providers must publish links matched to real NHL games');
-  for (const league of ['ncaah', 'ncaawh']) {
-    assert.ok(inventory.games.some(row => row.gameId.startsWith(`${league}-`) && row.sourceLinks.length), `Existing providers must match real ${league} games`);
-  }
   for (const source of ['tvapp-nhl', 'streamcenter-nhl', 'buffstream-nhl', 'vipbox-nhl', 'strikeout-nhl', 'methstreams-nhl', 'crackstreams-nhl']) {
     assert.ok(inventory.sources.some(row => row.id === source), `${source} must be registered`);
   }
@@ -104,10 +97,6 @@ try {
   await page.getByRole('region', { name: 'NHL games with listed sources', exact: true }).waitFor();
   await page.screenshot({ path: path.join(output, 'electron-hockey-sources.png') });
   await page.getByRole('button', { name: 'Sources', exact: true }).click();
-  for (const label of ['NCAA Hockey', "NCAA Women's Hockey"]) {
-    await page.getByRole('tab', { name: label, exact: true }).click();
-    assert.ok(await page.getByText(new RegExp(`Showing \\d+ of \\d+ ${label} sources`)).isVisible());
-  }
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   const mediaPath = path.join(output, 'nhl-player-fixture.mp4');
   await promisify(execFile)(ffmpeg, ['-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
@@ -126,15 +115,11 @@ try {
   assert.deepEqual(failures, [], 'The Electron renderer must have no uncaught errors');
   const result = {
     nhlGames: hockeyGames.length,
-    ncaaHockeyGames: board.games.filter(game => game.league === 'ncaah').length,
-    ncaaWomensHockeyGames: board.games.filter(game => game.league === 'ncaawh').length,
     matchedNhlGames: nhlListings.length,
-    matchedNcaaHockeyGames: inventory.games.filter(row => row.gameId.startsWith('ncaah-') && row.sourceLinks.length).length,
-    matchedNcaaWomensHockeyGames: inventory.games.filter(row => row.gameId.startsWith('ncaawh-') && row.sourceLinks.length).length,
     nhlLinks: nhlListings.reduce((sum, row) => sum + row.sourceLinks.length, 0),
     nhlCandidates: nhlListings.reduce((sum, row) => sum + row.candidates.length, 0),
     selectedGame: { id: game.id, name: game.name }, scoresAt: board.leagues.nhl.scoresAt,
-    checks: ['real NHL and NCAA men and women schedules', 'Hockey filters room and schedule', 'football controls hidden',
+    checks: ['real NHL schedule', 'Hockey filters room and schedule', 'football controls hidden',
       'add NHL game', 'NHL source inventory', 'local video decodes through real NHL playback session', 'room persists after reload'],
   };
   await writeFile(path.join(output, 'electron-result.json'), JSON.stringify(result, null, 2));

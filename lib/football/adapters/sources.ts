@@ -231,6 +231,7 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
         match.id === 'nflstreams_live' && match.title === 'NFL Streams Schedule') && match.date === 0) continue;
       const category=source.id==='tvapp-nba'?'basketball':source.id==='tvapp-nhl'?'hockey':source.id==='tvapp-mlb'?'baseball':'american-football';
       if(match.category!==category)continue;
+      if(source.id==='tvapp-nhl'&&(match.id.startsWith('live_ncaa-women_')||match.id.startsWith('live_college_')))continue;
       if (match.date < Date.UTC(2000,0,1) || match.date >= Date.UTC(2100,0,1)) return invalid();
       if (match.date > now+7*86400000) continue;
       const title = match.title.replace(/\s+/g,' ').trim();
@@ -243,9 +244,7 @@ function parseCatalog(source: ListingSource, body: string, now: number): ReturnT
       if (!slug || !/^[a-zA-Z0-9-]{1,120}$/.test(slug)) return invalid();
       const url = `https://tvapp1.pk/watch/${slug}`;
       const rawTime = new Date(match.date).toISOString();
-      const league:League|null=source.id==='tvapp-mlb'?'mlb':source.id==='tvapp-nhl' ?
-        match.id.startsWith('live_ncaa-women_')?'ncaawh':match.id.startsWith('live_college_')?'ncaah':
-        null:null;
+      const league:League|null=source.id==='tvapp-mlb'?'mlb':null;
       if (!add({id:`${source.id}:${digest(match.id)}`,sourceId:source.id,url,title,teams,
         league,kickoff:match.date,rawTime,observedAt:now,parserVersion:3})) return invalid();
     }
@@ -349,8 +348,7 @@ export function parseListings(source: ListingSource, html: string, now: number):
     const section = source.family === 'event' ? anchor.closest('section.lg').attr('id') || '' : '';
     const hockeyEvent=source.id==='methstreams-nhl'||source.id==='crackstreams-nhl';
     const baseballEvent=source.id==='methstreams-mlb'||source.id==='crackstreams-mlb';
-    const hockeyLeague:League|null=/^g-lg-womens-college-hockey-\d{8}$/.test(section)?'ncaawh':
-      /^g-lg-mens-college-hockey-\d{8}$/.test(section)?'ncaah':/^g-lg-nhl-\d{8}$/.test(section)?'nhl':null;
+    const hockeyLeague:League|null=/^g-lg-nhl-\d{8}$/.test(section)?'nhl':null;
     if(hockeyEvent&&!hockeyLeague)return;
     if(baseballEvent&&!/^g-cat-mlb-\d{8}$/.test(section))return;
     const league = hockeyEvent?hockeyLeague:baseballEvent||source.id.endsWith('-mlb')?'mlb':source.id.endsWith('-nhl')?'nhl':/college-football/.test(section)?'ncaaf':source.family === 'event' ? null : inferredLeague;

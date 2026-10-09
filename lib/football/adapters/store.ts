@@ -122,7 +122,9 @@ export class FootballStore {
       const update=this.db.prepare('UPDATE partitions SET payload=? WHERE id=?');
       for(const row of this.db.prepare('SELECT id,payload FROM partitions').all()) {
         if(typeof row.id!=='string'||typeof row.payload!=='string')continue;
-        const partition=PartitionSchema.parse(JSON.parse(row.payload));
+        const parsed=PartitionSchema.safeParse(JSON.parse(row.payload));
+        if(!parsed.success)continue;
+        const partition=parsed.data;
         const games=partition.games.map(game=>finals.get(game.id)??game);
         update.run(JSON.stringify({...partition,games}),row.id);
       }
