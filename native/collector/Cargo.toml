@@ -12,16 +12,19 @@ crate-type = ["cdylib", "rlib"]
 chrono = "0.4"
 chrono-tz = "0.10"
 hex = "0.4"
+httpdate = "1"
+futures-util = "0.3"
 napi = { version = "=3.14.2", features = ["napi9", "serde-json"] }
 napi-derive = "3"
 parking_lot = "0.12"
 regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "stream"] }
 scraper = "0.24"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 tokio-util = "0.7"
-tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "macros"] }
 url = "2"
 
 [build-dependencies]

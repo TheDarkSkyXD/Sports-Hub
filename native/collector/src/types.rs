@@ -175,9 +175,11 @@ pub struct ResolvedPlayer {
     pub locator: CandidateLocator,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FetchFailure {
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_after_ms: Option<u64>,
 }
 

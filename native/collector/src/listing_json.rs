@@ -488,8 +488,12 @@ fn streamed_league(category: &str, title: &str) -> Option<League> {
     if category != "motor-sports" {
         return None;
     }
+    static F1: OnceLock<Regex> = OnceLock::new();
     let label = title.to_ascii_lowercase();
-    if label.starts_with("formula 1") || label.starts_with("f1 ") {
+    if F1
+        .get_or_init(|| Regex::new(r"^(?:formula 1|f1)\b").expect("fixed F1 title expression"))
+        .is_match(&label)
+    {
         Some(League::F1)
     } else if label.contains("motogp") {
         Some(League::Motogp)
@@ -612,17 +616,33 @@ fn sportsbite_league(event: &SportsbiteEvent) -> Option<League> {
         return None;
     }
     let title = event.title.to_ascii_lowercase();
-    if title.starts_with("f1 ")
-        || title.starts_with("formula 1")
-        || title.starts_with("singapore grand prix")
+    static F1: OnceLock<Regex> = OnceLock::new();
+    static NASCAR: OnceLock<Regex> = OnceLock::new();
+    static CUP: OnceLock<Regex> = OnceLock::new();
+    static TRUCK: OnceLock<Regex> = OnceLock::new();
+    if F1
+        .get_or_init(|| {
+            Regex::new(r"^(?:f1|formula 1|singapore grand prix)\b")
+                .expect("fixed F1 title expression")
+        })
+        .is_match(&title)
     {
         Some(League::F1)
     } else if title.contains("motogp") {
         Some(League::Motogp)
-    } else if title.starts_with("nascar") {
-        if title.contains(" cup ") {
+    } else if NASCAR
+        .get_or_init(|| Regex::new(r"^nascar\b").expect("fixed NASCAR title expression"))
+        .is_match(&title)
+    {
+        if CUP
+            .get_or_init(|| Regex::new(r"\bcup\b").expect("fixed Cup title expression"))
+            .is_match(&title)
+        {
             Some(League::NascarCup)
-        } else if title.contains(" truck ") {
+        } else if TRUCK
+            .get_or_init(|| Regex::new(r"\btruck\b").expect("fixed Truck title expression"))
+            .is_match(&title)
+        {
             Some(League::NascarTruck)
         } else {
             Some(League::Motorsport)
@@ -959,6 +979,10 @@ pub(crate) fn sportsfeed_kickoff(value: &str) -> Option<i64> {
 }
 
 fn sportsfeed_league(category: &str, team_a: &str) -> Option<League> {
+    static F1: OnceLock<Regex> = OnceLock::new();
+    static NASCAR: OnceLock<Regex> = OnceLock::new();
+    static CUP: OnceLock<Regex> = OnceLock::new();
+    static TRUCK: OnceLock<Regex> = OnceLock::new();
     let label = category.to_ascii_lowercase();
     match label.as_str() {
         "nfl" => Some(League::Nfl),
@@ -966,12 +990,26 @@ fn sportsfeed_league(category: &str, team_a: &str) -> Option<League> {
         "wnba" => Some(League::Wnba),
         "nhl" => Some(League::Nhl),
         "mlb" => Some(League::Mlb),
-        "f1" if team_a.to_ascii_lowercase().starts_with("f1 ") => Some(League::F1),
-        "f1" if team_a.to_ascii_lowercase().starts_with("nascar") => {
+        "f1" if F1
+            .get_or_init(|| Regex::new(r"(?i)^f1\b").expect("fixed F1 team expression"))
+            .is_match(team_a) =>
+        {
+            Some(League::F1)
+        }
+        "f1" if NASCAR
+            .get_or_init(|| Regex::new(r"(?i)^nascar\b").expect("fixed NASCAR team expression"))
+            .is_match(team_a) =>
+        {
             let name = team_a.to_ascii_lowercase();
-            if name.contains(" cup ") {
+            if CUP
+                .get_or_init(|| Regex::new(r"\bcup\b").expect("fixed Cup team expression"))
+                .is_match(&name)
+            {
                 Some(League::NascarCup)
-            } else if name.contains(" truck ") {
+            } else if TRUCK
+                .get_or_init(|| Regex::new(r"\btruck\b").expect("fixed Truck team expression"))
+                .is_match(&name)
+            {
                 Some(League::NascarTruck)
             } else {
                 Some(League::Motorsport)
