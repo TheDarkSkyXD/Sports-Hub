@@ -3,7 +3,7 @@ import { LeagueSchema, type League } from './shared.ts';
 import data from './source-registry.json' with { type: 'json' };
 
 const BrowserCategorySchema=z.object({
-  league:LeagueSchema,url:z.string().url(),pathCode:z.string().regex(/^[a-z0-9-]+$/).nullable(),
+  league:LeagueSchema.exclude(['wwe','tna']),url:z.string().url(),pathCode:z.string().regex(/^[a-z0-9-]+$/).nullable(),
   espnPath:z.string().optional(),emptyTitles:z.array(z.string()).optional(),
 }).strict();
 const SourceSchema=z.object({

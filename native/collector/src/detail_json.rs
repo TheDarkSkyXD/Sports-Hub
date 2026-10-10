@@ -164,9 +164,19 @@ fn ppv_players(game_id: &str, observation: &Observation, body: &str) -> Vec<Reso
         || event.starts_at <= 0
         || observation.url != format!("https://ppv.st/live/{}", root.uri_name)
         || observation.kickoff != event.starts_at.checked_mul(1000)
+        || observation.league == Some(crate::types::League::Wwe) && root.tag != "Wrestling"
+        || (root.tag == "Wrestling"
+            && (observation.league != Some(crate::types::League::Wwe)
+                || observation.teams.is_some()
+                || observation.id != format!("ppv:{}", root.id)
+                || observation.title != root.name.split_whitespace().collect::<Vec<_>>().join(" ")
+                || crate::wrestling::league(&root.name) != Some(crate::types::League::Wwe)
+                || !observation.kickoff.is_some_and(|kickoff| {
+                    crate::wrestling::wwe_ppv_route(&root.uri_name, kickoff)
+                })))
         || !matches!(
             root.tag.as_str(),
-            "College Football" | "NFL" | "NBA" | "WNBA" | "NHL" | "MLB" | "Formula 1"
+            "College Football" | "NFL" | "NBA" | "WNBA" | "NHL" | "MLB" | "Formula 1" | "Wrestling"
         )
     {
         return vec![];
@@ -179,7 +189,11 @@ fn ppv_players(game_id: &str, observation: &Observation, body: &str) -> Vec<Reso
         };
         if row.tag != root.tag
             || row.name != root.name
-            || iframe != format!("https://embedindia.st/embed/{}", row.uri_name)
+            || (root.tag == "Wrestling"
+                && (row.uri_name != root.uri_name
+                    || iframe != format!("https://taifood-blog.asia/embed/{}", root.uri_name)))
+            || (root.tag != "Wrestling"
+                && iframe != format!("https://embedindia.st/embed/{}", row.uri_name))
         {
             continue;
         }
@@ -406,6 +420,11 @@ pub(crate) fn streamed_identity(event: &StreamedEvent, observation: &Observation
         && observation.title == event.title
         && observation.kickoff == Some(event.date)
         && observation.teams == teams
+        && (!matches!(
+            observation.league,
+            Some(crate::types::League::Wwe | crate::types::League::Tna)
+        ) || matches!(event.category.as_str(), "fight" | "wrestling")
+            && crate::wrestling::league(&event.title) == observation.league)
 }
 
 fn streamed_missing(observation: &Observation, body: &str) -> MissingPlayerReason {
@@ -466,6 +485,49 @@ pub fn missing_json_reason(observation: &Observation, body: &str) -> Option<Miss
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wwe_ppv_detail_requires_the_listed_event_and_exact_dated_embed() {
+        let observation: Observation = serde_json::from_value(serde_json::json!({
+            "id":"ppv:29976", "sourceId":"ppv", "url":"https://ppv.st/live/wwe/2026-10-09",
+            "title":"WWE Friday Night Smackdown", "league":"wwe", "teams":null,
+            "kickoff":1791590400000_i64, "rawTime":"2026-10-10T00:00:00.000Z",
+            "observedAt":1791590400000_i64, "parserVersion":2
+        }))
+        .unwrap();
+        let detail = serde_json::json!({
+            "id":29976, "name":"WWE Friday Night Smackdown", "tag":"Wrestling",
+            "uri_name":"wwe/2026-10-09", "starts_at":1791590400,
+            "iframe":"https://taifood-blog.asia/embed/wwe/2026-10-09",
+            "source_tag":"Main"
+        });
+        let players = compatible_json_players("wwe-1", &observation, &detail.to_string()).unwrap();
+        assert_eq!(players.len(), 1);
+        assert!(matches!(
+            players[0].locator,
+            CandidateLocator::EventPage { .. }
+        ));
+        for (field, replacement) in [
+            ("id", serde_json::json!(29977)),
+            ("name", serde_json::json!("AEW Grand Slam: Collision")),
+            ("uri_name", serde_json::json!("wwe/2026-10-10")),
+            ("starts_at", serde_json::json!(1791595800)),
+            (
+                "iframe",
+                serde_json::json!("https://taifood-blog.asia/embed/wwe/2026-10-10"),
+            ),
+            ("tag", serde_json::json!("NHL")),
+        ] {
+            let mut changed = detail.clone();
+            changed[field] = replacement;
+            assert!(
+                compatible_json_players("wwe-1", &observation, &changed.to_string())
+                    .unwrap()
+                    .is_empty(),
+                "{field}"
+            );
+        }
+    }
 
     #[test]
     fn ppv_exposes_both_frozen_policy_approved_servers() {

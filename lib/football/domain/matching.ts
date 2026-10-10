@@ -1,4 +1,5 @@
-import { isRaceGame, isMotorsportsLeague, type Game, type Match, type MatchupGame, type Observation, type RaceGame, type SourceEventBinding } from '../shared.ts';
+import { isRaceGame, isWrestlingGame, isWrestlingLeague, isMatchupGame, isMotorsportsLeague, type Game, type Match, type MatchupGame, type Observation, type RaceGame, type WrestlingGame, type SourceEventBinding } from '../shared.ts';
+import { wrestlingEventKey, wrestlingShowKey } from './wrestling-events.ts';
 import { COLLEGE_TEAM_CATALOG } from './college-teams.generated.ts';
 import { feedEligible } from './feed-eligibility.ts';
 import { sourceCoverage } from '../source-registry.ts';
@@ -22,8 +23,9 @@ for (const team of COLLEGE_TEAM_CATALOG) {
 export function createObservationMatcher(games: readonly Game[], mode: 'current' | 'inventory-live' = 'current'): (observation: Observation, now: number) => Match {
   const identity = (game: MatchupGame, team: MatchupGame['home']) => `${game.league}:${team.id || normalizedName(team.name)}`;
   const aliases = (game: MatchupGame, team: MatchupGame['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || [])].map(normalizedName).filter(Boolean)]);
-  const matchups=games.filter((game):game is MatchupGame=>!isRaceGame(game));
+  const matchups=games.filter(isMatchupGame);
   const races=games.filter(isRaceGame);
+  const wrestling=games.filter(isWrestlingGame);
   const liveOwners = new Map<string,Set<string>>();
   const gameAliases = new Map<MatchupGame,[Set<string>,Set<string>]>();
   for (const game of matchups) {
@@ -62,6 +64,7 @@ export function createObservationMatcher(games: readonly Game[], mode: 'current'
   }
   return (observation,now) => {
     if(observation.league&&isMotorsportsLeague(observation.league))return matchRaceObservation(observation,races,now,mode);
+    if(observation.league&&isWrestlingLeague(observation.league))return matchWrestlingObservation(observation,wrestling,now,mode);
     if (!observation.teams) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
     const stale=now-observation.observedAt>30*60_000;
     if (observation.observedAt > now + 60_000 || stale && mode==='current')
@@ -99,6 +102,30 @@ export function createObservationMatcher(games: readonly Game[], mode: 'current'
     if (game.lifecycle==='final') return {kind:'unmatched',reason:'finished-game',possibleGameIds:[game.id]};
     return {kind:'matched',gameId:game.id};
   };
+}
+function matchWrestlingObservation(observation:Observation,games:WrestlingGame[],now:number,
+  mode:'current'|'inventory-live'):Match {
+  const stale=now-observation.observedAt>30*60_000;
+  if(observation.observedAt>now+60_000||stale&&mode==='current')
+    return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[]};
+  if(observation.teams||observation.kickoff===null||!observation.league||!isWrestlingLeague(observation.league))
+    return {kind:'unmatched',reason:'unverified-kickoff',possibleGameIds:[]};
+  const league=observation.league,kickoff=observation.kickoff,key=wrestlingEventKey(league,observation.title,kickoff);
+  const show=wrestlingShowKey(league,observation.title);
+  if(!key||!show)return {kind:'unmatched',reason:'unknown-teams',possibleGameIds:[]};
+  const sameTitle=games.filter(game=>game.league===league&&wrestlingShowKey(game.league,game.name)===show);
+  const dated=sameTitle.filter(game=>wrestlingEventKey(game.league,game.name,Date.parse(game.date))===key&&
+    Math.abs(Date.parse(game.date)-kickoff)<=90*60_000);
+  if(dated.length!==1){
+    const conflicts=sameTitle.filter(game=>wrestlingEventKey(game.league,game.name,Date.parse(game.date))===key||
+      Math.abs(Date.parse(game.date)-kickoff)<=90*60_000);
+    return {kind:'unmatched',reason:dated.length?'ambiguous-matchup':conflicts.length?'conflicting-date':'unknown-teams',
+      possibleGameIds:(dated.length?dated:conflicts).map(game=>game.id)};
+  }
+  const game=dated[0];
+  if(stale&&game.lifecycle!=='live')return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[game.id]};
+  if(game.lifecycle==='final')return {kind:'unmatched',reason:'finished-game',possibleGameIds:[game.id]};
+  return {kind:'matched',gameId:game.id};
 }
 function raceSessionInTitle(title:string,session:RaceGame['race']['session'],league:RaceGame['league']):boolean {
   const value=title.toLowerCase();
@@ -227,7 +254,8 @@ export function mergeSchedulePartitions(partitions: Game[][]): Game[] {
       isRaceGame(previous)&&isRaceGame(game)&&(
         previous.race.eventId!==game.race.eventId||previous.race.sessionId!==game.race.sessionId||
         previous.race.session!==game.race.session||previous.race.round!==game.race.round) ||
-      !isRaceGame(previous)&&!isRaceGame(game)&&(
+      isWrestlingGame(previous)&&isWrestlingGame(game)&&previous.wrestling.eventId!==game.wrestling.eventId ||
+      isMatchupGame(previous)&&isMatchupGame(game)&&(
         (previous.home.id || normalizedName(previous.home.name)) !== (game.home.id || normalizedName(game.home.name)) ||
         (previous.away.id || normalizedName(previous.away.name)) !== (game.away.id || normalizedName(game.away.name))) ||
       previous.date&&game.date&&Math.abs(Date.parse(previous.date)-Date.parse(game.date))>3*60*60_000);

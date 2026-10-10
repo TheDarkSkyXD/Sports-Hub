@@ -329,10 +329,16 @@ fn parse_ppv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
     for group in catalog.streams {
         if !matches!(
             group.category.as_str(),
-            "American Football" | "Basketball" | "Ice Hockey" | "Baseball" | "Motorsports"
+            "American Football"
+                | "Basketball"
+                | "Ice Hockey"
+                | "Baseball"
+                | "Motorsports"
+                | "Wrestling"
         ) {
             continue;
         }
+        let wrestling_group = group.category == "Wrestling";
         if !categories.insert(group.category) {
             return invalid();
         }
@@ -351,6 +357,12 @@ fn parse_ppv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
                 "NHL" => League::Nhl,
                 "MLB" => League::Mlb,
                 "Formula 1" => League::F1,
+                "Wrestling"
+                    if wrestling_group
+                        && crate::wrestling::league(&event.name) == Some(League::Wwe) =>
+                {
+                    League::Wwe
+                }
                 _ => continue,
             };
             let prefix = match league {
@@ -361,6 +373,7 @@ fn parse_ppv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
                 League::Nhl => "nhl",
                 League::Mlb => "mlb",
                 League::F1 => "f1",
+                League::Wwe => "wwe",
                 _ => unreachable!(),
             };
             if !event.uri_name.starts_with(&format!("{prefix}/")) {
@@ -378,11 +391,14 @@ fn parse_ppv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
             if !(FIRST_DATE..LAST_DATE).contains(&kickoff) {
                 return invalid();
             }
+            if league == League::Wwe && !crate::wrestling::wwe_ppv_route(&event.uri_name, kickoff) {
+                return invalid();
+            }
             if kickoff > now + WEEK {
                 continue;
             }
             let title = normalized(&event.name);
-            let teams = if league == League::F1 {
+            let teams = if matches!(league, League::F1 | League::Wwe) {
                 None
             } else {
                 catalog_teams(&title).map(|pair| {
@@ -434,6 +450,10 @@ fn valid_ppv_path(path: &str, league: League) -> bool {
     });
     if league == League::F1 {
         f1.is_match(path)
+    } else if league == League::Wwe {
+        static WWE: OnceLock<Regex> = OnceLock::new();
+        WWE.get_or_init(|| Regex::new(r"^wwe/\d{4}-\d{2}-\d{2}$").unwrap())
+            .is_match(path)
     } else {
         normal.is_match(path)
     }
@@ -488,6 +508,11 @@ pub(crate) fn streamed_event_url(source_id: &str, id: &str) -> String {
 }
 
 fn streamed_league(category: &str, title: &str) -> Option<League> {
+    if matches!(category, "fight" | "wrestling")
+        && let Some(league) = crate::wrestling::league(title)
+    {
+        return Some(league);
+    }
     if category != "motor-sports" {
         return None;
     }
@@ -537,7 +562,9 @@ fn parse_streamed(source: &ListingSource, body: &str, now: i64) -> ListingResult
         seen.insert(event.id.clone(), key);
         let title = event.title.trim().to_string();
         let league = streamed_league(&event.category, &title);
-        if teams.is_none() && league.is_none() {
+        if teams.is_none() && league.is_none()
+            || matches!(event.category.as_str(), "fight" | "wrestling") && league.is_none()
+        {
             continue;
         }
         let Some(raw_time) = iso(event.date) else {
@@ -1196,6 +1223,120 @@ pub fn parse_json(source: &ListingSource, body: &str, now: i64) -> Option<Listin
 mod tests {
     use super::*;
     use crate::registry::SourceRegistry;
+
+    fn wrestling_source(id: &str, family: &str) -> ListingSource {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "url": "https://example.test/catalog",
+            "family": family,
+            "leagues": ["wwe", "tna"]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn streamed_and_livesportpro_accept_dated_teamless_wrestling() {
+        let at = 1_791_590_400_000;
+        let body = serde_json::json!([{
+            "id":"ppv-wwe-friday-night-smackdown",
+            "title":"WWE Friday Night Smackdown",
+            "category":"fight",
+            "date":at,
+            "sources":[{"source":"admin","id":"ppv-wwe-friday-night-smackdown"}]
+        }]);
+        let streamed = parse_json(
+            &wrestling_source("streamed", "streamed"),
+            &body.to_string(),
+            at,
+        )
+        .unwrap();
+        assert_eq!(streamed.outcome, ListingOutcome::Parsed);
+        assert_eq!(streamed.observations.len(), 1);
+        let row = &streamed.observations[0];
+        assert_eq!(row.league, Some(League::Wwe));
+        assert_eq!(row.teams, None);
+        assert_eq!(
+            row.url,
+            "https://streamed.st/watch/ppv-wwe-friday-night-smackdown"
+        );
+
+        let lsp_body = serde_json::json!([{
+            "id":"ppv-wwe-friday-night-smackdown",
+            "title":"WWE Friday Night Smackdown",
+            "category":"wrestling", "date":at, "teams":null,
+            "sources":[
+                {"source":"ppv:s","id":"wwe/2026-10-09"},
+                {"source":"sp:admin","id":"ppv-wwe-friday-night-smackdown"}
+            ]
+        }]);
+        let lsp = parse_json(
+            &wrestling_source("livesportpro", "livesportpro"),
+            &lsp_body.to_string(),
+            at,
+        )
+        .unwrap();
+        assert_eq!(lsp.observations.len(), 1);
+        assert_eq!(lsp.observations[0].league, Some(League::Wwe));
+        assert_eq!(lsp.observations[0].teams, None);
+        assert_eq!(
+            lsp.observations[0].url,
+            "https://api.kultsport.com/api/matches/all#ppv-wwe-friday-night-smackdown"
+        );
+    }
+
+    #[test]
+    fn wrestling_listing_excludes_other_promotions_and_undated_channels() {
+        let at = 1_791_590_400_000;
+        let events = serde_json::json!([
+            {"id":"raw","title":"WWE Monday Night Raw","category":"fight","date":at,"sources":[]},
+            {"id":"nxt","title":"NXT No Mercy","category":"wrestling","date":at,"teams":null,"sources":[]},
+            {"id":"tna","title":"TNA Impact","category":"wrestling","date":at,"sources":[]},
+            {"id":"aew","title":"AEW Grand Slam: Collision","category":"wrestling","date":at,"teams":{"home":{"name":"A"},"away":{"name":"B"}},"sources":[]},
+            {"id":"undated","title":"WWE NXT","category":"wrestling","date":0,"sources":[]}
+        ]);
+        let result = parse_json(
+            &wrestling_source("streamed", "streamed"),
+            &events.to_string(),
+            at,
+        )
+        .unwrap();
+        let leagues = result
+            .observations
+            .iter()
+            .map(|row| row.league)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            leagues,
+            [Some(League::Wwe), Some(League::Wwe), Some(League::Tna)]
+        );
+        assert!(result.observations.iter().all(|row| row.teams.is_none()));
+    }
+
+    #[test]
+    fn ppv_accepts_only_dated_wwe_rows_in_wrestling_group() {
+        let at = 1_791_590_400_000;
+        let catalog = serde_json::json!({"success":true,"streams":[{"category":"Wrestling","streams":[
+            {"id":29976,"name":"WWE Friday Night Smackdown","tag":"Wrestling","uri_name":"wwe/2026-10-09","starts_at":1791590400},
+            {"id":29977,"name":"AEW Grand Slam: Collision","tag":"Wrestling","uri_name":"aew/2026-10-09","starts_at":1791590400},
+            {"id":29978,"name":"TNA Impact","tag":"Wrestling","uri_name":"tna/2026-10-09","starts_at":1791590400},
+            {"id":29979,"name":"WWE NXT","tag":"Wrestling","uri_name":"wwe/2026-10-09","starts_at":0}
+        ]}]});
+        let result = parse_json(&wrestling_source("ppv", "ppv"), &catalog.to_string(), at).unwrap();
+        assert_eq!(result.outcome, ListingOutcome::Parsed);
+        assert_eq!(result.observations.len(), 1);
+        let row = &result.observations[0];
+        assert_eq!(row.id, "ppv:29976");
+        assert_eq!(row.url, "https://ppv.st/live/wwe/2026-10-09");
+        assert_eq!(row.league, Some(League::Wwe));
+        assert_eq!(row.teams, None);
+
+        for route in ["wwe/2026-10-10", "wwe/2026-10-09/extra", "aew/2026-10-09"] {
+            let mut bad = catalog.clone();
+            bad["streams"][0]["streams"][0]["uri_name"] = route.into();
+            let result = parse_json(&wrestling_source("ppv", "ppv"), &bad.to_string(), at).unwrap();
+            assert_ne!(result.outcome, ListingOutcome::Parsed, "{route}");
+        }
+    }
 
     #[test]
     fn json_listings_match_the_frozen_collector() {

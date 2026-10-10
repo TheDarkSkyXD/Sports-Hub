@@ -91,6 +91,21 @@ test('desktop preparation rejects a standalone worker without its source registr
   await assert.rejects(run(process.execPath,[prepare],{cwd:root,windowsHide:true}),/ENOENT.*source-registry\.json/s);
 });
 
+test('packaged standalone preserves the generated ES module server across preparation', async t => {
+  const root = await fixture(t);
+  const standalone = path.join(root, '.next/standalone');
+  await writeFile(path.join(standalone, 'package.json'), JSON.stringify({ type: 'module' }));
+  await writeFile(path.join(standalone, 'server.js'),
+    'import path from "node:path"; console.log(process.env.SUNDAY_ROOM_COLLECTOR_DIR, path.basename(import.meta.dirname));');
+  const env = { ...process.env };
+  delete env.SUNDAY_ROOM_COLLECTOR_DIR;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await run(process.execPath, [prepare], { cwd: root, windowsHide: true });
+    const launched = await run(process.execPath, [path.join(standalone, 'server.js')], { cwd: tmpdir(), env, windowsHide: true });
+    assert.equal(launched.stdout.trim(), `${path.join(standalone, 'native', 'collector')} standalone`);
+  }
+});
+
 test('custom standalone materializes traced aliases and runs ESM workers', async t => {
   const root = await fixture(t);
   const distDir = '.desktop-runtime/local-builds/1234abcd';
@@ -101,8 +116,7 @@ test('custom standalone materializes traced aliases and runs ESM workers', async
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }));
   await writeFile(path.join(output, 'package.json'), JSON.stringify({ type: 'commonjs' }));
   const standalone = path.join(output, 'standalone');
-  await writeFile(path.join(standalone, 'server.js'),
-    'const path = require("node:path"); console.log(process.env.SUNDAY_ROOM_COLLECTOR_DIR, path.basename(__dirname));');
+  await writeFile(path.join(standalone, 'server.js'), 'const path = require("node:path"); console.log(process.env.SUNDAY_ROOM_COLLECTOR_DIR, path.basename(__dirname));');
   const workerFile = path.join(standalone, 'lib/football/runtime/worker.ts');
   await writeFile(workerFile, 'import { parentPort } from "node:worker_threads"; parentPort?.postMessage("standalone ready");');
   await mkdir(path.join(standalone, 'node_modules/sharp'), { recursive: true });
@@ -117,6 +131,11 @@ test('custom standalone materializes traced aliases and runs ESM workers', async
   delete env.SUNDAY_ROOM_COLLECTOR_DIR;
   const launched = await run(process.execPath, [path.join(standalone, 'server.cjs')], { cwd: tmpdir(), env, windowsHide: true });
   assert.equal(launched.stdout.trim(), `${path.join(standalone, 'native', 'collector')} standalone`);
+  const packaged = await run(process.execPath, [path.join(standalone, 'server.js')], { cwd: tmpdir(), env, windowsHide: true });
+  assert.equal(packaged.stdout.trim(), launched.stdout.trim());
+  await run(process.execPath, [prepare, distDir], { cwd: root, windowsHide: true });
+  const repeated = await run(process.execPath, [path.join(standalone, 'server.cjs')], { cwd: tmpdir(), env, windowsHide: true });
+  assert.equal(repeated.stdout.trim(), launched.stdout.trim());
 
   assert.equal((await lstat(alias)).isSymbolicLink(), false);
   assert.equal(await readFile(path.join(root, 'node_modules/sharp/index.js'), 'utf8'), 'source sharp');

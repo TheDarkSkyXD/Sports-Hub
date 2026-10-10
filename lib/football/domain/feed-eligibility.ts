@@ -39,9 +39,13 @@ export function feedDateEligible(kickoff: number, now: number): boolean {
   return difference === 0 || difference === 1;
 }
 
-export function feedEligible(game: Pick<Game, 'lifecycle' | 'date' | 'finalObservedAt'>, now: number): boolean {
+export function feedEligible(game: Pick<Game, 'lifecycle' | 'date' | 'finalObservedAt'> & {league?:Game['league']}, now: number): boolean {
   if (game.finalObservedAt !== undefined || game.lifecycle === 'final') return false;
   if (game.lifecycle === 'live') return true;
+  if ((game.league==='wwe'||game.league==='tna')&&game.lifecycle==='unknown'&&game.date!==undefined) {
+    const start=Date.parse(game.date);
+    return Number.isFinite(start)&&now>=start&&now-start<=6*60*60_000;
+  }
   return game.lifecycle === 'scheduled' && game.date !== undefined && feedDateEligible(Date.parse(game.date), now);
 }
 

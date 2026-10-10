@@ -1,5 +1,6 @@
 import { parseScoreboard, scoreboardFeedData, scoreboardWeek } from '../../sunday.ts';
-import { GameSchema, isRaceGame } from '../shared.ts';
+import { GameSchema, isRaceGame, isWrestlingGame, isWrestlingLeague } from '../shared.ts';
+import { wrestlingEventKey } from '../domain/wrestling-events.ts';
 import type { Game, MatchupGame, Observation, SeasonMembership } from '../shared.ts';
 import type { ScheduleResult, ScheduleSource } from '../domain/ports.ts';
 import { recordFinal } from '../domain/lifecycle.ts';
@@ -18,6 +19,8 @@ export const SCHEDULES = [
   {id:'nascar-truck',league:'nascar-truck',sport:'racing',path:'nascar-truck',group:null},
   {id:'motogp',league:'motogp',sport:'racing',path:'source-motogp',group:null},
   {id:'motorsport',league:'motorsport',sport:'racing',path:'source-motorsport',group:null},
+  {id:'wwe',league:'wwe',path:'source-wwe',group:null},
+  {id:'tna',league:'tna',path:'source-tna',group:null},
 ] as const;
 
 type FutureDay = { date: string; games: Game[]; expiresAt: number };
@@ -82,7 +85,8 @@ export async function readSeasonMembership(season: number, signal: AbortSignal):
 export async function readSchedule(partition: ScheduleSource, now: number, signal: AbortSignal, onCurrent?: (result: ScheduleResult) => void,
   permit:SchedulePermit=directPermit,sharedCache?:ScheduleDayCache,listingCache?:ScheduleListingCache,
   listingReader:ScheduleListingReader=readHtml): Promise<ScheduleResult> {
-  if(partition.league==='motogp'||partition.league==='motorsport')return readListingSchedule(partition,now,signal,onCurrent,permit,listingCache,listingReader);
+  if(partition.league==='motogp'||partition.league==='motorsport'||isWrestlingLeague(partition.league))
+    return readListingSchedule(partition,now,signal,onCurrent,permit,listingCache,listingReader);
   const date = (time: number) => new Date(time).toISOString().slice(0,10).replaceAll('-','');
   const today = date(now);
   const lastFutureDate = date(now + 7*24*3600000);
@@ -130,7 +134,7 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
       if (previous) {
         if (previous.league!==game.league || isRaceGame(previous)&&isRaceGame(game)&&
           (previous.race.eventId!==game.race.eventId||previous.race.session!==game.race.session||previous.date!==game.date) ||
-          !isRaceGame(previous)&&!isRaceGame(game)&&
+          !isRaceGame(previous)&&!isRaceGame(game)&&!isWrestlingGame(previous)&&!isWrestlingGame(game)&&
           (previous.home.id!==game.home.id||previous.away.id!==game.away.id)) {
           if (futureDate) horizonErrors.push(`${futureDate}:schedule-conflicting-event`);
           else throw new Error('schedule-conflicting-event');
@@ -152,7 +156,7 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
       });
       for (const extra of supplemental) {
         const game = games.get(extra.id);
-        if (game && !isRaceGame(game) && 'home' in extra && !validKickoff(game.date) && validKickoff(extra.date) && sameTeams(game,extra)) games.set(game.id,GameSchema.parse({...game,date:extra.date}));
+        if (game && 'home' in game && 'home' in extra && !validKickoff(game.date) && validKickoff(extra.date) && sameTeams(game,extra)) games.set(game.id,GameSchema.parse({...game,date:extra.date}));
       }
     } catch (error) {
       if (signal.aborted) throw error;
@@ -224,7 +228,11 @@ async function readListingSchedule(partition:ScheduleSource,now:number,signal:Ab
   onCurrent?: (result:ScheduleResult)=>void,permit:SchedulePermit=directPermit,cache?:ScheduleListingCache,
   listingReader:ScheduleListingReader=readHtml):Promise<ScheduleResult> {
   if(signal.aborted)throw signal.reason;
+  const read=(active:AbortSignal)=>isWrestlingLeague(partition.league)
+    ?readWrestlingListings(now,active,partition.league==='wwe',permit,listingReader)
+    :readMotorsportsListings(now,active,permit,listingReader);
   if(!cache) {
+    if(isWrestlingLeague(partition.league))return listingScheduleFromObservations(partition,now,await read(signal),onCurrent);
     let direct=directListingReads.get(signal);
     if(!direct||direct.at!==now){direct={at:now,promise:readMotorsportsListings(now,signal,permit,listingReader)};directListingReads.set(signal,direct);}
     return listingScheduleFromObservations(partition,now,await direct.promise,onCurrent);
@@ -234,7 +242,7 @@ async function readListingSchedule(partition:ScheduleSource,now:number,signal:Ab
     if(!cache.read||cache.read.at!==now) {
       const controller=new AbortController();
       const consumers=new Set<AbortSignal>();
-      const promise=readMotorsportsListings(now,controller.signal,permit,listingReader).then(value=>{
+      const promise=read(controller.signal).then(value=>{
         cache.snapshot={at:Date.now(),observations:value};
         return value;
       }).finally(()=>{if(cache.read?.promise===promise)cache.read=undefined;});
@@ -258,6 +266,21 @@ function listingScheduleFromObservations(partition:ScheduleSource,now:number,obs
     if(observation.league!==partition.league||observation.kickoff===null||
       observation.kickoff<now-24*3600_000||observation.kickoff>now+7*24*3600_000)continue;
     const title=observation.title;
+    if(isWrestlingLeague(partition.league)){
+      const key=wrestlingEventKey(partition.league,title,observation.kickoff);
+      if(!key)continue;
+      const eventId=numericIdentity(key);
+      const status=observation.kickoff>now?'pre':'unknown';
+      const game=GameSchema.parse({id:`${partition.league}-${eventId}`,league:partition.league,name:title,
+        date:new Date(observation.kickoff).toISOString(),wrestling:{eventId},status,
+        lifecycle:status==='pre'?'scheduled':'unknown',detail:status==='pre'?'Scheduled':'Status unavailable',
+        partitions:[partition.id]});
+      const previous=unique.get(game.id);
+      if(previous&&Math.abs(Date.parse(previous.date||'')-Date.parse(game.date||''))>90*60_000)
+        throw new Error('source-schedule-conflicting-event');
+      unique.set(game.id,game);
+      continue;
+    }
     const practice=/\b(?:free\s+)?practice\s*([1-4])\b|\bfp([1-4])\b/i.exec(title);
     const practiceNumber=practice?.[1]||practice?.[2];
     const session=/sprint[\s-]*(?:qualifying|quali|shootout)/i.test(title)?'sprint-qualifying':
@@ -277,6 +300,25 @@ function listingScheduleFromObservations(partition:ScheduleSource,now:number,obs
   const result={games:[...unique.values()],at:Date.now(),league:partition.league};
   onCurrent?.(result);
   return result;
+}
+async function readWrestlingListings(now:number,signal:AbortSignal,includePpv:boolean,permit:SchedulePermit,
+  listingReader:ScheduleListingReader):Promise<Observation[]> {
+  const sources=SOURCES.filter(source=>source.id==='streamed'||source.id==='livesportpro'||includePpv&&source.id==='ppv');
+  const settled=await Promise.allSettled(sources.map(async source=>{
+    let html:string;
+    try{html=await permit(source.url,'current',signal,()=>listingReader(source.url,signal));}
+    catch(error){
+      if(signal.aborted||!(error instanceof DOMException&&error.name==='TimeoutError'))throw error;
+      html=await permit(source.url,'retry',signal,()=>listingReader(source.url,signal));
+    }
+    const result=parseListings(source,html,now);
+    if(result.outcome==='parser-changed'||result.outcome==='unsupported')throw new Error('source-schedule-unavailable');
+    return result.observations.filter(row=>row.league==='wwe'||row.league==='tna');
+  }));
+  if(signal.aborted)throw signal.reason;
+  const results=settled.flatMap(result=>result.status==='fulfilled'?[result.value]:[]);
+  if(!results.length)throw new Error('source-schedule-unavailable');
+  return results.flat();
 }
 async function readMotorsportsListings(now:number,signal:AbortSignal,permit:SchedulePermit,
   listingReader:ScheduleListingReader):Promise<Observation[]> {

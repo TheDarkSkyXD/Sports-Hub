@@ -27,6 +27,7 @@ pub mod resolver;
 pub mod sweep;
 pub mod time;
 pub mod types;
+pub mod wrestling;
 
 use napi_derive::napi;
 use parking_lot::Mutex;

@@ -14,6 +14,8 @@ pub enum League {
     NascarTruck,
     Motogp,
     Motorsport,
+    Wwe,
+    Tna,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]

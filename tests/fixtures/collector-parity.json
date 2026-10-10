@@ -481,7 +481,8 @@
           "wnba",
           "nhl",
           "mlb",
-          "f1"
+          "f1",
+          "wwe"
         ]
       },
       {
@@ -798,7 +799,9 @@
           "nascar-cup",
           "nascar-truck",
           "motogp",
-          "motorsport"
+          "motorsport",
+          "wwe",
+          "tna"
         ]
       },
       {
@@ -821,7 +824,9 @@
           "nascar-cup",
           "nascar-truck",
           "motogp",
-          "motorsport"
+          "motorsport",
+          "wwe",
+          "tna"
         ]
       },
       {

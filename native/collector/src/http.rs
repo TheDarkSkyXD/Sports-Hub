@@ -153,13 +153,15 @@ pub fn allowed_discovery_url(value: &str, registry: &SourceRegistry) -> bool {
                     && match host {
                         "tvapp1.pk" => matches(r"^/watch/[a-zA-Z0-9-]{1,120}$", url.path()),
                         "ppv.st" => {
-                            matches(
-                                r"^/live/(?:cfb|nfl|nba|wnba|nhl|mlb)/[0-9]{4}-[0-9]{2}-[0-9]{2}/[a-z0-9-]+$",
-                                url.path(),
-                            ) || matches(
-                                r"^/live/f1/[0-9]{4}/[a-z0-9-]+/(?:fp[123]|sprint-q|sprint|qualifying|race)$",
-                                url.path(),
-                            )
+                            matches(r"^/live/wwe/[0-9]{4}-[0-9]{2}-[0-9]{2}$", url.path())
+                                || matches(
+                                    r"^/live/(?:cfb|nfl|nba|wnba|nhl|mlb)/[0-9]{4}-[0-9]{2}-[0-9]{2}/[a-z0-9-]+$",
+                                    url.path(),
+                                )
+                                || matches(
+                                    r"^/live/f1/[0-9]{4}/[a-z0-9-]+/(?:fp[123]|sprint-q|sprint|qualifying|race)$",
+                                    url.path(),
+                                )
                         }
                         _ => false,
                     }
@@ -626,6 +628,7 @@ pub(crate) async fn read_html_with<R: PageReader>(
             "Ice Hockey",
             "Baseball",
             "Motorsports",
+            "Wrestling",
         ];
         let events: Vec<&Value> = groups
             .iter()

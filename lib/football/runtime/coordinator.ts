@@ -337,7 +337,7 @@ export class FootballCoordinator {
       if (this.stopped) return;
       this.flushSchedulePublication();
       this.scheduleState='ready';
-      const seasons = [...new Set(this.schedules.filter(source => source.league==='ncaaf').flatMap(source => this.store.partition(source.id)?.games.map(game => game.season).filter((year):year is number => year !== undefined) || []))];
+      const seasons = [...new Set(this.schedules.filter(source => source.league==='ncaaf').flatMap(source => this.store.partition(source.id)?.games.flatMap(game => 'season' in game&&typeof game.season==='number'?[game.season]:[]) || []))];
       let membershipChanged=false;
       await Promise.all(seasons.map(async season => {
         const cached = this.store.membership(season);
@@ -1219,7 +1219,7 @@ export class FootballCoordinator {
       for(const [gameId,requestedAt] of this.checkTargets)if(this.now()-requestedAt<=90_000)viewed.add(gameId);
       const match=currentMatch();
       return this.store.observations().flatMap(observation=>{
-        if(visited.has(observation.id)||catalogIds.has(observation.sourceId)||!observation.teams&&observation.league!=='f1'&&observation.league!=='nascar-cup'&&observation.league!=='nascar-truck'&&observation.league!=='motogp'&&observation.league!=='motorsport'||
+        if(visited.has(observation.id)||catalogIds.has(observation.sourceId)||!observation.teams&&observation.league!=='f1'&&observation.league!=='nascar-cup'&&observation.league!=='nascar-truck'&&observation.league!=='motogp'&&observation.league!=='motorsport'&&observation.league!=='wwe'&&observation.league!=='tna'||
           this.hostRetryAt(observation.url)>this.now()||this.listingPending(observation.url))return [];
         const result=match(observation,listingEventEvidence(observation.sourceId),this.now()).match;
         const rolloverGame=result.kind==='unmatched'&&result.reason==='stale-observation'?liveRolloverGame(observation):undefined;
@@ -1366,7 +1366,7 @@ export class FootballCoordinator {
       ]).concat(this.errors.has('working-feed-cache')?['Working feeds could not be saved for the next restart.']:[])};
     };
     const now = this.now();
-    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),feedCheckIntervalMinutes:this.store.feedCheckIntervalMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs']),nba:feed(['nba']),wnba:feed(['wnba']),nhl:feed(['nhl']),mlb:feed(['mlb']),f1:feed(['f1']),'nascar-cup':feed(['nascar-cup']),'nascar-truck':feed(['nascar-truck']),motogp:feed(['motogp']),motorsport:feed(['motorsport'])},games:this.games.filter(game => {
+    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),feedCheckIntervalMinutes:this.store.feedCheckIntervalMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs']),nba:feed(['nba']),wnba:feed(['wnba']),nhl:feed(['nhl']),mlb:feed(['mlb']),f1:feed(['f1']),'nascar-cup':feed(['nascar-cup']),'nascar-truck':feed(['nascar-truck']),motogp:feed(['motogp']),motorsport:feed(['motorsport']),wwe:feed(['wwe']),tna:feed(['tna'])},games:this.games.filter(game => {
       if(game.lifecycle==='final')return now<game.graceEndsAt;
       return (game.partitions || []).some(key => now-(this.store.partition(key)?.at || 0)<24*3600000) ||
         game.finalObservedAt !== undefined || (this.candidates.get(game.id)||[]).some(candidate=>this.selectable(candidate)) ||

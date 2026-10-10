@@ -133,5 +133,9 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
     const path=`/embed/${match[1]}/${match[2]}/${match[3]}`;
     return server.pathname===path || server.pathname===`${path}/skycast`;
   }
+  if(event.hostname==='ppv.st'&&server.hostname==='taifood-blog.asia'){
+    const match=/^\/live\/wwe\/(\d{4}-\d{2}-\d{2})$/.exec(event.pathname);
+    return !!match&&server.pathname===`/embed/wwe/${match[1]}`;
+  }
   return false;
 }
