@@ -4,7 +4,7 @@ import { createFinishedGameMatcher, createSourceEventMatcher, detailCandidateGam
 import { listingEventEvidence } from '../source-registry.ts';
 import { SESSION_LEASE_MS, compareCandidates, failedCandidate, nextCandidate, reconcileSession } from '../domain/lifecycle.ts';
 import { sourceInventory } from '../domain/source-inventory.ts';
-import { feedCalendarDay, feedEligible, feedInventoryEligible, feedWindow } from '../domain/feed-eligibility.ts';
+import { combatListingFeedEligible, feedCalendarDay, feedEligible, feedInventoryEligible, feedWindow } from '../domain/feed-eligibility.ts';
 import { cachedFeedEligible, workingFeedMatches, workingFeedOwner, type WorkingFeed } from '../domain/working-feed.ts';
 import { persistableLocator } from '../../playback/persistent-locator.ts';
 import { SOURCE_REFRESH_MS, detailIdentity, retryDeadline, sourceFailure } from '../domain/source-policy.ts';
@@ -30,7 +30,7 @@ const PROBE_PRIORITY={forced:0,recheck:1,unknown:2,retry:3};
 const DECODED_STARTUP_WINDOW_MS=10*60_000;
 const LISTING_PARSER_VERSION=3;
 function detailGeneration(observation:Observation):string {
-  return JSON.stringify([observation.sourceId,observation.url,observation.teams,observation.kickoff,observation.observedAt,observation.parserVersion]);
+  return JSON.stringify([observation.sourceId,observation.url,...(observation.teams&&observation.league!=='ufc'&&observation.league!=='boxing'&&observation.league!=='wwe'&&observation.league!=='tna'?[]:[observation.title,observation.league]),observation.teams,observation.kickoff,observation.observedAt,observation.parserVersion]);
 }
 function matchesDetail(detail:DetailEvidence,observation:Observation):boolean {
   return detail.outcome==='resolved'&&detail.identity!==undefined?
@@ -366,7 +366,7 @@ export class FootballCoordinator {
     return key;
   }
   private feedGame(game:Game|undefined):game is Game {
-    return !!game&&this.scheduleFresh(game)&&feedEligible(game,this.now());
+    return !!game&&this.scheduleFresh(game)&&(feedEligible(game,this.now())||combatListingFeedEligible(game,this.now()));
   }
   private observationFeedEligible(observation:Observation):boolean {
     const result=this.inventoryMatch(observation,listingEventEvidence(observation.sourceId),this.now()).match;
@@ -1219,7 +1219,7 @@ export class FootballCoordinator {
       for(const [gameId,requestedAt] of this.checkTargets)if(this.now()-requestedAt<=90_000)viewed.add(gameId);
       const match=currentMatch();
       return this.store.observations().flatMap(observation=>{
-        if(visited.has(observation.id)||catalogIds.has(observation.sourceId)||!observation.teams&&observation.league!=='f1'&&observation.league!=='nascar-cup'&&observation.league!=='nascar-truck'&&observation.league!=='motogp'&&observation.league!=='motorsport'&&observation.league!=='wwe'&&observation.league!=='tna'||
+        if(visited.has(observation.id)||catalogIds.has(observation.sourceId)||!observation.teams&&observation.league!=='f1'&&observation.league!=='nascar-cup'&&observation.league!=='nascar-truck'&&observation.league!=='motogp'&&observation.league!=='motorsport'&&observation.league!=='ufc'&&observation.league!=='boxing'&&observation.league!=='wwe'&&observation.league!=='tna'||
           this.hostRetryAt(observation.url)>this.now()||this.listingPending(observation.url))return [];
         const result=match(observation,listingEventEvidence(observation.sourceId),this.now()).match;
         const rolloverGame=result.kind==='unmatched'&&result.reason==='stale-observation'?liveRolloverGame(observation):undefined;
@@ -1366,7 +1366,7 @@ export class FootballCoordinator {
       ]).concat(this.errors.has('working-feed-cache')?['Working feeds could not be saved for the next restart.']:[])};
     };
     const now = this.now();
-    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),feedCheckIntervalMinutes:this.store.feedCheckIntervalMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs']),nba:feed(['nba']),wnba:feed(['wnba']),nhl:feed(['nhl']),mlb:feed(['mlb']),f1:feed(['f1']),'nascar-cup':feed(['nascar-cup']),'nascar-truck':feed(['nascar-truck']),motogp:feed(['motogp']),motorsport:feed(['motorsport']),wwe:feed(['wwe']),tna:feed(['tna'])},games:this.games.filter(game => {
+    return {schemaVersion:2,revision:this.revision,scheduleState:this.scheduleState,finishedGameRetentionMinutes:this.store.finishedGameRetentionMinutes(),feedCheckIntervalMinutes:this.store.feedCheckIntervalMinutes(),updatedAt:new Date(now).toISOString(),aliases:this.store.aliases(),leagues:{nfl:feed(['nfl']),ncaaf:feed(['fbs','fcs']),nba:feed(['nba']),wnba:feed(['wnba']),nhl:feed(['nhl']),mlb:feed(['mlb']),f1:feed(['f1']),'nascar-cup':feed(['nascar-cup']),'nascar-truck':feed(['nascar-truck']),motogp:feed(['motogp']),motorsport:feed(['motorsport']),ufc:feed(['ufc']),boxing:feed(['boxing']),wwe:feed(['wwe']),tna:feed(['tna'])},games:this.games.filter(game => {
       if(game.lifecycle==='final')return now<game.graceEndsAt;
       return (game.partitions || []).some(key => now-(this.store.partition(key)?.at || 0)<24*3600000) ||
         game.finalObservedAt !== undefined || (this.candidates.get(game.id)||[]).some(candidate=>this.selectable(candidate)) ||
@@ -1743,7 +1743,7 @@ export class FootballCoordinator {
       const game = this.games.find(game=>game.id===gameId);
       const retainedFinal=game?.lifecycle==='final'&&this.now()<game.graceEndsAt&&
         (this.candidates.get(gameId)||[]).some(candidate=>this.selectable(candidate));
-      if(!command.manual&&game&&!feedEligible(game,this.now())&&!retainedFinal)return {kind:'error',status:409,
+      if(!command.manual&&game&&!feedEligible(game,this.now())&&!combatListingFeedEligible(game,this.now())&&!retainedFinal)return {kind:'error',status:409,
         message:'Listed feeds are available for live games and games scheduled today or tomorrow in America/Chicago.'};
       const prior = command.requestId ? [...this.sessions.values()].find(owned => owned.requestId===command.requestId && owned.value.gameId===gameId && (owned.value.candidateId==='manual')===command.manual) : undefined;
       if (prior) {

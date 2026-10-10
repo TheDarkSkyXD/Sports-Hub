@@ -513,6 +513,15 @@ fn streamed_league(category: &str, title: &str) -> Option<League> {
     {
         return Some(league);
     }
+    if crate::combat::is_ufc_card_title(title) && matches!(category, "fight" | "ufc") {
+        return Some(League::Ufc);
+    }
+    if !crate::combat::is_ufc_card_title(title)
+        && (category == "boxing"
+            || matches!(category, "fight" | "ufc") && crate::combat::is_boxing_card_title(title))
+    {
+        return Some(League::Boxing);
+    }
     if category != "motor-sports" {
         return None;
     }
@@ -563,7 +572,10 @@ fn parse_streamed(source: &ListingSource, body: &str, now: i64) -> ListingResult
         let title = event.title.trim().to_string();
         let league = streamed_league(&event.category, &title);
         if teams.is_none() && league.is_none()
-            || matches!(event.category.as_str(), "fight" | "wrestling") && league.is_none()
+            || matches!(
+                event.category.as_str(),
+                "fight" | "ufc" | "boxing" | "wrestling"
+            ) && league.is_none()
         {
             continue;
         }

@@ -64,7 +64,7 @@ function sameMatchup(left:Observation,right:Observation):boolean {
 }
 
 function detailGeneration(observation:Observation):string {
-  return JSON.stringify([observation.sourceId,observation.url,observation.teams,observation.kickoff,
+  return JSON.stringify([observation.sourceId,observation.url,...(observation.teams&&observation.league!=='ufc'&&observation.league!=='boxing'&&observation.league!=='wwe'&&observation.league!=='tna'?[]:[observation.title,observation.league]),observation.teams,observation.kickoff,
     observation.observedAt,observation.parserVersion]);
 }
 

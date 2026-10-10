@@ -1,4 +1,4 @@
-import type { Game } from '../shared.ts';
+import { isCombatGame, isWrestlingGame, type Game } from '../shared.ts';
 
 const calendar = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric',
@@ -47,6 +47,13 @@ export function feedEligible(game: Pick<Game, 'lifecycle' | 'date' | 'finalObser
     return Number.isFinite(start)&&now>=start&&now-start<=6*60*60_000;
   }
   return game.lifecycle === 'scheduled' && game.date !== undefined && feedDateEligible(Date.parse(game.date), now);
+}
+export function combatListingFeedEligible(game: Game, now:number):boolean {
+  if(!(isCombatGame(game)||isWrestlingGame(game))||!['boxing','wwe','tna'].includes(game.league)||game.lifecycle!=='unknown'||game.finalObservedAt!==undefined)return false;
+  const kickoff=Date.parse(game.date);
+  const showDay=feedCalendarDay(kickoff),today=feedCalendarDay(now);
+  return Number.isFinite(kickoff)&&kickoff<=now&&now-kickoff<=6*60*60_000&&
+    showDay!==null&&today!==null&&today-showDay>=0&&today-showDay<=1;
 }
 
 export function feedInventoryEligible(game: Pick<Game, 'lifecycle' | 'date' | 'finalObservedAt'>, now:number):boolean {

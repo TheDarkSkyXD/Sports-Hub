@@ -1064,7 +1064,7 @@ mod tests {
                                 BrowserRole::Category if league == League::Ncaaf => east_category.clone(),
                                 BrowserRole::Category => {
                                     let league = serde_json::to_string(&league).unwrap().trim_matches('"').to_uppercase();
-                                    format!("<div id=\"m-schedule-empty\" class=\"m-empty\"><h2 class=\"m-empty__title\">No {} available</h2></div>", if league == "F1" { "F1 races".to_owned() } else { format!("{league} games") })
+                                    format!("<div id=\"m-schedule-empty\" class=\"m-empty\"><h2 class=\"m-empty__title\">No {} available</h2></div>", if league == "F1" { "F1 races".to_owned() } else if league == "UFC" || league == "BOXING" { format!("{league} events") } else { format!("{league} games") })
                                 }
                                 BrowserRole::Detail => east_detail.clone(),
                                 BrowserRole::Server => "<iframe src=\"https://streame.center/stream-east/ch33.php\"></iframe>".to_owned(),

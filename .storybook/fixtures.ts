@@ -63,6 +63,8 @@ export const productBoard: Board = {
     'nascar-truck': { scoresAt: null, sourceAt: null, errors: [] },
     motogp: { scoresAt: null, sourceAt: null, errors: [] },
     motorsport: { scoresAt: null, sourceAt: null, errors: [] },
+    ufc: { scoresAt: null, sourceAt: null, errors: [] },
+    boxing: { scoresAt: null, sourceAt: null, errors: [] },
     wwe: { scoresAt: null, sourceAt: null, errors: [] },
     tna: { scoresAt: null, sourceAt: null, errors: [] },
   },

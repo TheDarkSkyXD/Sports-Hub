@@ -14,6 +14,7 @@ macro_rules! cached_regex {
 }
 
 pub mod browser;
+mod combat;
 pub mod detail_html;
 pub mod detail_json;
 pub mod error;

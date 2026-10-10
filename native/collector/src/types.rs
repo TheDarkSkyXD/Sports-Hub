@@ -14,6 +14,8 @@ pub enum League {
     NascarTruck,
     Motogp,
     Motorsport,
+    Ufc,
+    Boxing,
     Wwe,
     Tna,
 }

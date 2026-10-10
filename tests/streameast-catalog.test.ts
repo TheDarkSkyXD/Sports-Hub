@@ -31,7 +31,7 @@ test('the sweep visits and retains every free server and skips paid and unclassi
   const result:StreameastCatalog=await runStreameastSweep({
     read:async(url:string,page:string,league:string)=>{
       visited.push(url);
-      if(page==='category')return url.includes('/cfb-streams/')?category:empty.replace('NFL games',league==='f1'?'F1 races':`${league.toUpperCase()} games`);
+      if(page==='category')return url.includes('/cfb-streams/')?category:empty.replace('NFL games',league==='f1'?'F1 races':league==='ufc'?'UFC events':league==='boxing'?'BOXING events':`${league.toUpperCase()} games`);
       if(page==='detail')return detailHtml;
       if(url===freeOne)return '<iframe src="https://streame.center/stream-east/ch33.php"></iframe>';
       if(url===freeTwo)return '<iframe src="https://streame.center/stream-east/ch34.php"></iframe>';

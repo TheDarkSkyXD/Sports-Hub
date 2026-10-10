@@ -800,6 +800,12 @@ pub fn streameast_category(
         } else {
             "Unknown matchup".to_owned()
         };
+        if league == League::Ufc && !crate::combat::is_ufc_card_title(&title) {
+            continue;
+        }
+        if league == League::Boxing && crate::combat::is_ufc_card_title(&title) {
+            continue;
+        }
         result.events.push(StreameastEvent {
             id: format!("{}:{source_id}", league_name(league)),
             url,

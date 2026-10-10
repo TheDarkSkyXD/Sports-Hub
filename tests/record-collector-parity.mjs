@@ -170,7 +170,7 @@ async function capture(data) {
   const eastCategory = `<article class="m-card" data-match-id="12345" data-team-names="Montana State Bobcats|Idaho Vandals" data-time="1790994600"><a class="m-card__link" aria-label="Montana State Bobcats vs Idaho Vandals" href="${eastUrl}"></a></article>`;
   const eastCheckpoints = [];
   const eastRead = async (_url,page,league) => {
-    if (page === 'category') return league === 'ncaaf' ? eastCategory : `<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">No ${league === 'f1' ? 'F1 races' : `${league.toUpperCase()} games`} available</h2></div>`;
+    if (page === 'category') return league === 'ncaaf' ? eastCategory : `<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">No ${league === 'f1' ? 'F1 races' : league === 'ufc' ? 'UFC events' : league === 'boxing' ? 'BOXING events' : `${league.toUpperCase()} games`} available</h2></div>`;
     if (page === 'detail') return eastDetail;
     return '<iframe src="https://streame.center/stream-east/ch33.php"></iframe>';
   };

@@ -15,11 +15,13 @@ export const LEAGUES = {
   'nascar-truck':{label:'NASCAR Trucks'},
   motogp:{label:'MotoGP'},
   motorsport:{label:'Motorsport'},
+  ufc:{label:'UFC'},
+  boxing:{label:'Boxing'},
   wwe:{label:'WWE'},
   tna:{label:'TNA'},
 } satisfies Record<League, { label: string }>;
 export function isBasketballLeague(league: League): boolean { return league === 'nba' || league === 'wnba'; }
-export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|nba|wnba|nhl|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport|wwe|tna)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
+export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|nba|wnba|nhl|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport|ufc|boxing|wwe|tna)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -35,10 +37,14 @@ export function scoreboardFeedData(data: unknown, format: 'site' | 'cdn'): unkno
   if (!object(payload)) throw new Error('Scoreboard format changed');
   return payload;
 }
+export function isUfcCardName(value:string):boolean {
+  return /^(?:UFC(?:\s+Fight\s+Night|\s+on\s+ESPN|\s+on\s+ABC|\s+\d+)|Dana White's Contender Series)\b/i.test(value.trim());
+}
 export function parseScoreboard(data: unknown, league: League = 'nfl'): ScheduleGame[] {
   const events = object(data)?.events;
   if (!Array.isArray(events)) throw new Error('Scoreboard format changed');
   if (league === 'f1'||league==='nascar-cup'||league==='nascar-truck') return parseRaceScoreboard(events,league);
+  if (league === 'ufc') return parseUfcScoreboard(events);
   return events.flatMap((raw): ScheduleGame[] => {
     const event = object(raw);
     const competition = object(items(event?.competitions)[0]);
@@ -69,6 +75,23 @@ export function parseScoreboard(data: unknown, league: League = 'nfl'): Schedule
     const season = object(event?.season)?.year;
     const noFootballSituation = league === 'nba' || league === 'wnba' || league === 'nhl' || league === 'mlb';
     return [ScheduleGameSchema.parse({ id: league === 'nfl' ? id : `${league}-${id}`, league, lifecycle, season: typeof season === 'number' ? season : undefined, name: text(event?.name) || `${awayTeam.displayName} at ${homeTeam.displayName}`, date: text(event?.date), home: team(home, homeTeam), away: team(away, awayTeam), status: gameStatus, detail, redzone: !noFootballSituation && situation?.isRedZone === true && gameStatus === 'in', down: noFootballSituation ? undefined : text(situation?.downDistanceText), possession: noFootballSituation ? undefined : situation?.possession === home.id ? text(homeTeam.abbreviation) : situation?.possession === away.id ? text(awayTeam.abbreviation) : undefined, lastPlay: text(object(situation?.lastPlay)?.text), venue: text(object(competition?.venue)?.fullName), broadcast: names.length ? names.join(' / ') : undefined })];
+  });
+}
+function parseUfcScoreboard(events:unknown[]):ScheduleGame[] {
+  return events.flatMap(raw=>{
+    const event=object(raw),eventId=text(event?.id),name=text(event?.name)?.trim(),date=text(event?.date);
+    if(!eventId||!/^\d{1,20}$/.test(eventId)||!name||!date||!Number.isFinite(Date.parse(date))||
+      !isUfcCardName(name))return [];
+    const competition=object(items(event?.competitions)[0]);
+    const statusType=object(object(event?.status)?.type);
+    const state=statusType?.state;
+    const final=statusType?.name==='STATUS_FINAL'&&statusType.completed===true&&state==='post';
+    const lifecycle=final?'final':state==='in'&&statusType?.completed!==true?'live':statusType?.name==='STATUS_SCHEDULED'&&state==='pre'?'scheduled':'unknown';
+    const status=final?'post':state==='pre'||state==='in'?state:'unknown';
+    const broadcast=items(object(items(competition?.broadcasts)[0])?.names).filter((value):value is string=>typeof value==='string');
+    return [ScheduleGameSchema.parse({id:`ufc-${eventId}`,league:'ufc',name,date,combat:{eventId},status,lifecycle,
+      detail:final?'Final':lifecycle==='scheduled'?'Scheduled':text(statusType?.shortDetail)||'Status unavailable',
+      broadcast:broadcast.length?broadcast.join(' / '):undefined})];
   });
 }
 const sessions:Record<string,{session:'practice-1'|'practice-2'|'practice-3'|'sprint-qualifying'|'sprint'|'qualifying'|'race';label:string}> = {

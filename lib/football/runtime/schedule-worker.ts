@@ -9,6 +9,7 @@ const queue=new ScheduleQueue();
 const requests=new Map<number,AbortController>();
 const futureCache:ScheduleDayCache=new Map();
 const listingCache:ScheduleListingCache={};
+const boxingListingCache:ScheduleListingCache={};
 const wrestlingListingCaches={wwe:{} as ScheduleListingCache,tna:{} as ScheduleListingCache};
 type ReadMessage={kind:'read';id:number;partitionId:string;now:number};
 type CancelMessage={kind:'cancel';id:number};
@@ -38,7 +39,7 @@ port.on('message',(input:ReadMessage|CancelMessage)=>{
   void readSchedule(source,input.now,controller.signal,result=>{
     if(requests.has(input.id))port.postMessage({kind:'current',id:input.id,result});
   },queue.run,futureCache,source.league==='wwe'?wrestlingListingCaches.wwe:
-    source.league==='tna'?wrestlingListingCaches.tna:listingCache).then(result=>{
+    source.league==='tna'?wrestlingListingCaches.tna:source.league==='boxing'?boxingListingCache:listingCache).then(result=>{
     if(requests.has(input.id))port.postMessage({kind:'complete',id:input.id,result});
   },error=>{
     if(requests.has(input.id))port.postMessage({kind:'failed',id:input.id,failure:failure(error)});

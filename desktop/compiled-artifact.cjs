@@ -51,7 +51,7 @@ async function validateArtifact(root, distDir, sourceId) {
   const served = path.join(root, distDir, 'standalone');
   const manifest = JSON.parse(await readFile(path.join(served, completionFile), 'utf8'));
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest) ||
-      manifest.version !== 1 || manifest.sourceId !== sourceId || manifest.distDir !== distDir) return null;
+      manifest.version !== 2 || manifest.sourceId !== sourceId || manifest.distDir !== distDir) return null;
   if (await buildIds(root, distDir) !== sourceId) return null;
   await stat(path.join(served, 'server.cjs'));
   await stat(path.join(served, distDir, 'static'));
@@ -83,7 +83,7 @@ async function completeArtifact(root, distDir, sourceId) {
   await stat(path.join(served, distDir, 'static'));
   await stat(path.join(served, 'public'));
   const files = await inventory(served);
-  const manifest = { version: 1, sourceId, distDir, files };
+  const manifest = { version: 2, sourceId, distDir, files };
   const complete = path.join(served, completionFile);
   await writeFile(complete, JSON.stringify(manifest));
   const target = path.join(root, buildsPath, pointerFile);

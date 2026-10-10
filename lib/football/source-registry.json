@@ -102,7 +102,9 @@
       "https://v2.streameast.ga/nhl-streams/",
       "https://v2.streameast.ga/mlb-streams/",
       "https://v2.streameast.ga/wnba-streams/",
-      "https://v2.streameast.ga/f1-streams/"
+      "https://v2.streameast.ga/f1-streams/",
+      "https://v2.streameast.ga/ufc-streams/",
+      "https://v2.streameast.ga/boxing-streams/"
     ],
     "leagues": [
       "ncaaf",
@@ -111,7 +113,9 @@
       "nhl",
       "mlb",
       "wnba",
-      "f1"
+      "f1",
+      "ufc",
+      "boxing"
     ],
     "browserCategories": [
       {
@@ -175,6 +179,18 @@
         "emptyTitles": [
           "No F1 races available"
         ]
+      },
+      {
+        "league": "ufc",
+        "url": "https://v2.streameast.ga/ufc-streams/",
+        "pathCode": "ufc",
+        "emptyTitles": ["No UFC events available"]
+      },
+      {
+        "league": "boxing",
+        "url": "https://v2.streameast.ga/boxing-streams/",
+        "pathCode": "boxing",
+        "emptyTitles": ["No BOXING events available"]
       }
     ]
   },
@@ -581,7 +597,7 @@
     "family": "streamed",
     "kind": "catalog",
     "publicUrls": ["https://streamed.st/"],
-    "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport", "wwe", "tna"]
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport", "ufc", "boxing", "wwe", "tna"]
   },
   {
     "id": "livesportpro",
@@ -590,7 +606,7 @@
     "family": "livesportpro",
     "kind": "catalog",
     "publicUrls": ["https://livesportpro.com/"],
-    "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport", "wwe", "tna"]
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport", "ufc", "boxing", "wwe", "tna"]
   },
   {
     "id": "sportsfeed24",
