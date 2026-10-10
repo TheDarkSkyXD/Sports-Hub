@@ -57,7 +57,7 @@ I wanted to share some of my preferences here so we can be more aligned as we wo
 
 ## Performance without compromise
 
-Lots of apps have gotten bogged down with bad tech decisions and "slop". We have not, and we're proud of the performance of T3 Code. We regularly audit for performance regressions, often caused by sending too much data over websockets, css animations causing gpu spikes, lists being hard to render, and more. Make sure all changes are considerate of performance impact.
+Lots of apps have gotten bogged down with bad tech decisions and "slop". We have not, and we're proud of the performance. We regularly audit for performance regressions, often caused by sending too much data over websockets, css animations causing gpu spikes, lists being hard to render, and more. Make sure all changes are considerate of performance impact.
 
 ## Coding preferences (Typescript focused)
 - `any` is the enemy. Inferred types are our friend. Our systems adapt to changes, instead of requiring changes everywhere.
