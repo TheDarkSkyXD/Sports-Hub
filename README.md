@@ -13,19 +13,19 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#the-viewing-experience">Features</a> ·
-  <a href="#desktop-and-browser-playback">Playback modes</a> ·
+  <a href="#electron-playback">Playback</a> ·
   <a href="#development">Development</a> ·
   <a href="#troubleshooting">Troubleshooting</a>
 </p>
 
-> **Browser and desktop use the same HLS player.** Focus a game to reveal its custom playback controls.
+> **Sunday Room runs in Electron.** Focus a game to reveal its custom playback controls.
 
 ## The viewing experience
 
 | Feature | What it does |
 | --- | --- |
 | **Flexible multiview** | Choose four games, two games, a single game, or a larger focus view. Expand into theater mode or fullscreen. |
-| **Automatic live playback** | Live games with listed sources start when added or restored in browser and desktop rooms. |
+| **Automatic live playback** | Live games with listed sources start when added or restored in the room. |
 | **Backup servers** | Retry temporary lookup failures and try other listed servers when initial playback fails. Switch servers manually from the tile. |
 | **One game on audio** | Focus a game to hear it, then use its custom volume, mute, and play/pause controls. |
 | **Focused stream controls** | The focused stream has play/pause, volume, mute, fullscreen, quality selection, a seekable timeline, and picture-in-picture where supported. Other streams keep playing without control overlays. |
@@ -60,14 +60,14 @@ This repository is **Sports-Hub**; **Sunday Room** is the application. It runs l
 git clone https://github.com/markybuilds/Sports-Hub.git
 cd Sports-Hub
 npm ci
-npm run desktop
+npm start
 ```
 
 After installing dependencies, Windows users can double-click **[Start Sunday Room.cmd](Start%20Sunday%20Room.cmd)** in the project folder.
 
 The launcher starts Electron and its own local Next.js server on `127.0.0.1`. It uses port `51931` when available and selects another local port when that port is occupied or reserved. Keep the project folder and dependencies in place; this is a source-based launcher, not a packaged installer.
 
-The first launch compiles the local server. Later launches reuse the compiled output while the source, assets, dependencies, and build settings are unchanged. Relaunch after a source edit to compile it. Use `npm run desktop:dev` when you want live updates while editing.
+The first launch compiles the local server. Later launches reuse the compiled output while the source, assets, dependencies, and build settings are unchanged. Relaunch after a source edit to compile it. Use `npm run dev` when you want live updates while editing. `npm run desktop` and `npm run desktop:dev` remain aliases for these commands.
 
 Development, build, and test commands prepare the Rust collector automatically. Unchanged launches reuse the native artifact without invoking Cargo or rustc. Run `node scripts/build-rust-collector.mjs --force` after upgrading the Rust compiler. The collector runs in process and adds no background executable.
 
@@ -85,23 +85,13 @@ Run `npm run desktop:branding` on Windows to check the running executable, nativ
 
 If a provider cannot start, allow its startup retries to finish or choose **Switch server**. A game without a listed stream stays in the room with a clear availability message. You can still add a direct feed through the tile's feed settings.
 
-## Desktop and browser playback
+## Electron playback
 
-Both modes use the same room interface and HLS player.
-
-| Capability | Desktop viewer | Browser app |
-| --- | --- | --- |
-| Scores, schedule, favorites, layouts | Yes | Yes |
-| Listed provider game | Supported HLS stream plays inside its tile | Supported HLS stream plays inside its tile |
-| Multiple listed provider players inside the room | Up to four | Up to four |
-| Compatible direct HLS/video feeds inside the room | Yes | Yes |
-| Room audio and pause controls | Integrated video controls | Integrated video controls |
-| Focused playback, volume, quality, and fullscreen | Yes | Yes |
-| Provider startup failover | Automatic backups and manual switching | Automatic backup attempt and manual switching |
+The Electron app shows scores, schedules, favorites, and up to four streams in the room. Supported HLS streams play inside their tiles. The room also accepts compatible direct HLS or video feeds. Focus a stream for volume, quality, fullscreen, and pause controls. Provider startup can try backup servers, and you can switch servers manually.
 
 ### Provider playback
 
-Both apps play supported HLS streams through local routes that validate player, playlist, and media addresses. They do not embed the provider page.
+The app plays supported HLS streams through local routes that validate player, playlist, and media addresses. It does not embed the provider page.
 
 The desktop shell runs the room in a sandboxed Electron window with its own local Next.js server. Focus changes reveal controls on the selected video without replacing the media element.
 
@@ -149,7 +139,7 @@ flowchart TD
     Resolve --> Session["Independent playback session"]
     Session --> Pipeline
     Session --> Links["Matched compatible stream candidates"]
-    Links --> Player["Browser and desktop: validated HLS relay and in-tile video"]
+    Links --> Player["Validated HLS relay and in-tile video"]
     UI --> Direct["Direct feeds: video / hls.js"]
 ```
 
@@ -164,28 +154,19 @@ flowchart TD
 
 ### Desktop isolation
 
-The room renderer uses sandboxing, context isolation, and browser security with no Node.js access. HLS playback uses the same validated local stream routes as the browser app. The desktop process supervises the local server, and a worker owns the pipeline database and collection jobs.
+The room renderer uses sandboxing, context isolation, and browser security with no Node.js access. HLS playback uses validated local stream routes. Electron supervises the local server, and a worker owns the pipeline database and collection jobs.
 
 ### Storage and network behavior
 
-Preferences and manually entered feed URLs use local browser storage under `sunday-room:v1`. Browser and desktop sessions have separate storage. Selected live games reconnect when the room opens or a compatible source becomes available. Legacy source IDs migrate only after a confident match. Saved feed URLs remain preferences when their active playback ends.
+Preferences and manually entered feed URLs use local storage in Electron's profile under `sunday-room:v1`. Selected live games reconnect when the room opens or a compatible source becomes available. Legacy source IDs migrate only after a confident match. Saved feed URLs remain preferences when their active playback ends.
 
 When ESPN confirms a final, the game leaves live discovery immediately. Existing playback has five minutes to finish. The persisted deadline does not reset on another poll or restart. The same rule applies to manual game feeds.
 
-The pipeline stores bounded observations, diagnostics, identity mappings, and final deadlines in local SQLite. Desktop data lives in Electron's user-data directory. Browser development defaults to `.desktop-runtime/`. Collection runs while the desktop app is open, including when minimized, and stops with its owned server. There is no cloud collector or preference sync. Local servers bind to `127.0.0.1`; provider requests still use the internet. Saved feed URLs are not encrypted.
+The pipeline stores bounded observations, diagnostics, identity mappings, and final deadlines in local SQLite. App data lives in Electron's user-data directory. Collection runs while the app is open, including when minimized, and stops with its owned server. There is no cloud collector or preference sync. The managed local server binds to `127.0.0.1`; provider requests still use the internet. Saved feed URLs are not encrypted.
 
-`npm run dev` and `npm run start` use `.desktop-runtime/` when `SUNDAY_ROOM_DATA_DIR` is unset. Set `SUNDAY_ROOM_DATA_DIR` to a writable directory when starting Next.js directly, including `.next/standalone/server.js`.
+The Electron app manages its own local Next.js server and data directory. Use `SUNDAY_ROOM_DATA_DIR` only when inspecting a separate database.
 
 ## Development
-
-### Browser development
-
-```sh
-npm ci
-npm run dev -- --port 3001
-```
-
-Open [http://127.0.0.1:3001](http://127.0.0.1:3001). Interface changes update through Next.js development mode.
 
 ### Component stories
 
@@ -197,13 +178,13 @@ Open [http://localhost:6006](http://localhost:6006) to browse the components use
 
 Run `npm run storybook:check` after adding a component. It follows static imports from the app and its stories, then checks that every component used by the app appears in a story. Run `npm run build-storybook` to verify the full catalog builds. The generated `storybook-static/` directory is ignored.
 
-### Desktop development
+### App development
 
 ```sh
-npm run desktop:dev
+npm run dev
 ```
 
-This command starts the desktop development server with live updates. `npm run desktop` starts the compiled local server and builds it when the source has changed. Neither command needs `dist-electron`. A browser dev server on port 3001 can run independently of the desktop server, which prefers port 51931.
+This command opens Electron with live source updates. `npm start` opens Electron with the compiled local server and builds it when the source has changed. Neither command needs `dist-electron`. Electron prefers local port 51931.
 
 Run `npm run desktop:smoke` to check the source Electron window and game-data API with a separate profile.
 
@@ -219,11 +200,11 @@ The `Electron release` workflow builds and tests the Windows installer on pull r
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Start the local Next.js development server |
+| `npm run dev` | Open Electron with live source updates |
 | `npm run build` | Compile and type-check the production app |
-| `npm run start` | Serve the production browser build |
-| `npm run desktop` | Open Electron with a reusable compiled local server |
-| `npm run desktop:dev` | Open Electron with live source updates |
+| `npm start` | Open Electron with a reusable compiled local server |
+| `npm run desktop` | Alias for `npm start` |
+| `npm run desktop:dev` | Alias for `npm run dev` |
 | `npm run desktop:package` | Build the Windows x64 NSIS installer from the compiled app |
 | `npm run desktop:smoke` | Check the source Electron window and game-data API |
 | `npm run desktop:smoke:packaged` | Verify an isolated release package in CI |
@@ -235,7 +216,7 @@ The `Electron release` workflow builds and tests the Windows installer on pull r
 | `npm run lint` | Check code and module boundaries |
 | `npm run diagnostics:football` | Print bounded local source and matching diagnostics |
 
-No API key is required. Set `SUNDAY_ROOM_DATA_DIR` when inspecting a database outside the browser development directory. Run `npm run diagnostics:football -- --listings` to include up to 25 parsed listings and their matching reasons. Internal diagnostics do not appear in the viewing UI.
+No API key is required. Set `SUNDAY_ROOM_DATA_DIR` when inspecting a database outside Electron's user-data directory. Run `npm run diagnostics:football -- --listings` to include up to 25 parsed listings and their matching reasons. Internal diagnostics do not appear in the viewing UI.
 
 ### Project structure
 
@@ -280,25 +261,13 @@ npm run storybook:check
 
 The automated tests cover source extraction, dated matching, ambiguous listings, overlapping college schedules, season membership, persisted final deadlines, session isolation, relay restrictions, and worker ownership.
 
-To verify the custom browser player, start the app in one terminal and run the browser checks in another:
-
-```sh
-npm run dev -- --port 3100
-```
+To verify the player in Electron, run:
 
 ```sh
 npm run test:player
 ```
 
-The browser check generates a local HLS fixture with two resolutions and plays four real video elements. It checks focused and room playback, audio focus, volume, quality changes, fullscreen, and mobile layout. Screenshots and results are saved in `work/player-verification/`. Windows uses installed Microsoft Edge. On other systems, run `npx playwright install chromium` first. Set `PLAYER_BASE_URL` to test another local port or `PLAYER_BROWSER_CHANNEL` to select another installed browser.
-
-To run the same checks in the source Electron app:
-
-```sh
-npm run test:player:desktop
-```
-
-This opens a test window with a separate profile and closes it afterward. Electron screenshots and results are saved in `work/player-verification-electron/`. The tests also check live seeking, PiP state changes, and provider switches with generated media; they do not depend on live broadcasts.
+This launches a test Electron window with a separate profile and closes it afterward. The check generates a local HLS fixture with two resolutions and plays four real video elements. It covers focused and room playback, audio focus, volume, quality changes, fullscreen, mobile layout, live seeking, picture-in-picture state changes, and provider switches. Screenshots and results are saved in `work/player-verification-electron/`. `npm run test:player:desktop` remains an alias. The tests do not depend on live broadcasts.
 
 Play and pause affect only the focused game. Quality options come from the source's HLS renditions; native HLS quality stays browser-managed.
 
@@ -322,7 +291,7 @@ Use `developer` for ongoing work and `main` for the published baseline. Keep cha
 | **Scores differ from the video clock** | Data and broadcasts have different delays. Use spoiler-free mode; direct feeds can be delayed within their buffer. |
 | **Electron cannot be found** | Run `npm ci`. If the binary download was skipped, run `node node_modules/electron/install.js`. |
 | **The desktop window will not start** | Check `.desktop-runtime/server.log` and, if present, `.desktop-runtime/startup.log` for a source checkout. For an installed app, check `logs/server.log` and `logs/startup.log` under the Electron user data directory. The viewer tries another local port when 51931 is occupied or reserved. |
-| **The viewer shows older code** | Check out the intended source branch and relaunch with `npm run desktop`, or use `npm run desktop:dev` while editing. |
+| **The viewer shows older code** | Check out the intended source branch and relaunch with `npm start`, or use `npm run dev` while editing. |
 | **Room preferences are unexpected** | Open **Room settings** → **Reset room and remove saved feeds** to clear saved choices and feed links. |
 
 ## Scope and availability
