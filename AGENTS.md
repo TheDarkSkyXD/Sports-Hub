@@ -9,6 +9,7 @@ I wanted to share some of my preferences here so we can be more aligned as we wo
 - Be careful with destructive actions that are not explicitly requested by the user.
 - Tests are good! Endless smoke tests, "regression tests" for feature deletions, etc, Much less good. Tests should be focused, not slop.
 - When making technical decisions, do not give much weight to development cost. Instead, prefer quality, simplicity, robustness, scalability, and long term maintainability.
+
 ## Before you write any code
 
 1. **Reproduce first.** Run the app. Find the exact bug and the exact
@@ -123,8 +124,6 @@ On a scheduled check where there is genuinely nothing to report, stay silent.
 
 I like ambitious ideas, simple systems, and software that feels obvious. Do not preserve complexity just because it already exists. Do not introduce machinery because it looks architecturally impressive. Understand the real constraint, then fight for the smallest model that makes the correct behavior unsurprising.
 Channel both "measure twice, cut once" and "yagni". Fight scope creep. Try to honor the dev's intent in both a minimal and realistic fashion.
-The rest of this document is meant to help you navigate the codebase and make changes effectively. Think of these instructions less as "hard rules", more as "good defaults". The developer's preferences should be able to override anything here.
-
 
 ## Questions are ready-only
 
