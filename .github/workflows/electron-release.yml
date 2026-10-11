@@ -40,7 +40,7 @@ jobs:
       - run: npm run desktop:icons:check
       - run: npm run desktop:branding
       - run: npm run desktop:package
-      - run: node --experimental-strip-types --test tests/updater-feed.test.ts
+      - run: node tests/updater-release-artifacts.mjs
         env:
           SUNDAY_ROOM_RELEASE_DIR: dist-electron
       - name: Report the signing state of the installer
