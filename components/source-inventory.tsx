@@ -11,14 +11,15 @@ const sourceOrder=new Map([['sportsurge',0],['sportsurge-v2',1],['streameast',2]
 type Source = SourcesSnapshot['sources'][number];
 const listingHref=(source:Source|undefined,url:string)=>source?.id==='livesportpro'?source.publicUrls[0]??url:url;
 type InventoryLeague=Game['league'];
+type InventoryScope=InventoryLeague|'all';
 type SourceStatus = 'integration-pending'|'waiting'|'collector-unavailable'|'collecting'|'complete'|'partial'|'interrupted'|'unrecorded'|'league-collected'|'league-failed'|NonNullable<Source['lastAttempt']>['outcome'];
 type SourceFilter = 'all'|'attention'|'checked'|'listings';
 type BadgeTone = 'neutral'|'warning'|'fetched'|'complete'|'progress';
 type ScopeFilters={sourceQuery:string;sourceFilter:SourceFilter;gameQuery:string;gameLimit:number};
 const GAME_PAGE_SIZE=20;
 const defaultScopeFilters=():ScopeFilters=>({sourceQuery:'',sourceFilter:'all',gameQuery:'',gameLimit:GAME_PAGE_SIZE});
-const leagueName:Record<InventoryLeague,string>={nfl:'NFL',ncaaf:'NCAA CFB',nba:'NBA',wnba:'WNBA',nhl:'NHL',mlb:'MLB',f1:'F1','nascar-cup':'NASCAR Cup','nascar-truck':'NASCAR Trucks',motogp:'MotoGP',motorsport:'Motorsport',ufc:'UFC',boxing:'Boxing',wwe:'WWE',tna:'TNA'};
-function isInventoryLeague(value:string):value is InventoryLeague{return value in leagueName;}
+const leagueName:Record<InventoryScope,string>={all:'All',nfl:'NFL',ncaaf:'NCAA CFB',nba:'NBA',wnba:'WNBA',nhl:'NHL',mlb:'MLB',f1:'F1','nascar-cup':'NASCAR Cup','nascar-truck':'NASCAR Trucks',motogp:'MotoGP',motorsport:'Motorsport',ufc:'UFC',boxing:'Boxing',wwe:'WWE',tna:'TNA'};
+function isInventoryScope(value:string):value is InventoryScope{return Object.hasOwn(leagueName,value);}
 const statusMeta:Record<SourceStatus,{label:string;attention:boolean}>={
   'integration-pending':{label:'Integration pending',attention:false},
   waiting:{label:'Waiting for collection',attention:false},
@@ -36,12 +37,22 @@ const statusMeta:Record<SourceStatus,{label:string;attention:boolean}>={
   'parser-changed':{label:'Parser changed',attention:true},
   failed:{label:'Fetch failed',attention:true},
 };
-function sourceStatus(source:Source,snapshot:SourcesSnapshot,league:InventoryLeague):SourceStatus {
+function sourceStatus(source:Source,snapshot:SourcesSnapshot,league:InventoryScope):SourceStatus {
   if(source.pending)return 'integration-pending';
   const run=source.id==='sportsurge-v2'?snapshot.sportsurgeV2.current:source.id==='streameast'?snapshot.streameast.current:null;
   if(source.id==='sportsurge-v2'||source.id==='streameast') {
     if(!snapshot.browserCollectorsAvailable)return 'collector-unavailable';
     if(!run)return 'waiting';
+    if(league==='all'){
+      if(run.interrupted)return 'interrupted';
+      const categories=Object.values(run.categories);
+      if(run.state.kind==='partial'||categories.some(category=>category.kind==='failed')||
+        run.games.some(game=>game.detail.kind==='failed')||run.rejectedGames.length>0||
+        (source.id==='sportsurge-v2'&&(snapshot.sportsurgeV2.current?.catalogIssues.length??0)>0))return 'partial';
+      if(run.state.kind==='collecting')return 'collecting';
+      if(categories.some(category=>category.kind==='pending')||run.games.some(game=>game.detail.kind==='pending'))return 'partial';
+      return 'complete';
+    }
     const category=Object.entries(run.categories).find(([key])=>key===league)?.[1];
     if(!category)return 'waiting';
     if(category.kind==='failed')return 'league-failed';
@@ -97,24 +108,26 @@ const publicLinkLabel=(value:string)=>{const url=new URL(value);return `${url.ho
 type BrandedGame={id:string;league?:Game['league'];home?:MatchupGame['home'];away?:MatchupGame['away']};
 type ScopedSource={source:Source;matchedGames:number;workingChoices:number;
   links:Source['links'];unclassifiedLinks:Source['links'];incomplete:boolean};
-function scopeInventory(snapshot:SourcesSnapshot,branding:readonly BrandedGame[],league:InventoryLeague){
+function scopeInventory(snapshot:SourcesSnapshot,branding:readonly BrandedGame[],league:InventoryScope){
   const knownLeague=new Map([...branding.map(game=>[game.id,game.league] as const),...snapshot.games.filter(game=>game.league).map(game=>[game.gameId,game.league] as const)]);
-  const games=snapshot.games.filter(game=>knownLeague.get(game.gameId)===league);
+  const games=league==='all'?snapshot.games:snapshot.games.filter(game=>knownLeague.get(game.gameId)===league);
   const unclassifiedGames=snapshot.games.filter(game=>knownLeague.get(game.gameId)===undefined);
-  const sources:ScopedSource[]=snapshot.sources.filter(source=>source.leagues.includes(league)).map(source=>{
+  const sources:ScopedSource[]=snapshot.sources.filter(source=>league==='all'||source.leagues.includes(league)).map(source=>{
     const linkedGames=games.filter(game=>game.sourceLinks.some(link=>link.sourceId===source.id));
     const candidates=games.flatMap(game=>game.candidates.filter(candidate=>candidate.sourceIds.includes(source.id)));
     return {source,matchedGames:linkedGames.length,
       workingChoices:candidates.filter(candidate=>candidate.availability.kind==='playable').length,
-      links:source.links.filter(link=>link.gameId!==null&&knownLeague.get(link.gameId)===league),
-      unclassifiedLinks:source.links.filter(link=>(link.gameId===null||knownLeague.get(link.gameId)===undefined)&&(link.league===null||link.league===league)),
-      incomplete:unclassifiedGames.some(game=>game.sourceLinks.some(link=>link.sourceId===source.id)||
+      links:source.links.filter(link=>link.gameId!==null&&(league==='all'||knownLeague.get(link.gameId)===league)),
+      unclassifiedLinks:source.links.filter(link=>(link.gameId===null||knownLeague.get(link.gameId)===undefined)&&(league==='all'||link.league===null||link.league===league)),
+      incomplete:league!=='all'&&unclassifiedGames.some(game=>game.sourceLinks.some(link=>link.sourceId===source.id)||
         game.candidates.some(candidate=>candidate.sourceIds.includes(source.id)))};
   });
   return {games,unclassifiedGames,sources,
     workingChoices:games.reduce((total,game)=>total+game.workingChoiceCount,0)};
 }
-function sourceScopeMessage(source:Source,league:InventoryLeague):string {
+function sourceScopeMessage(source:Source,league:InventoryScope):string {
+  if(league==='all')return source.scopes.map(scope=>`${leagueName[scope.league]}: ${sourceScopeMessage(source,scope.league)}`).join(' ')||
+    'Waiting for collection today and tomorrow.';
   const scope=source.scopes.find(scope=>scope.league===league);
   if(!scope)return 'Waiting for collection today and tomorrow.';
   if(scope.read.kind==='incomplete')return {
@@ -245,9 +258,9 @@ function SourceLinks({source,links,snapshot,now}:{source:Source;links:Source['li
 }
 
 function RetainedCatalogLinks({source,links,snapshot,league,now}:{source:Source;links:Source['links'];
-  snapshot:SourcesSnapshot;league:InventoryLeague;now:number}) {
+  snapshot:SourcesSnapshot;league:InventoryScope;now:number}) {
   const runs=source.id==='sportsurge-v2'?snapshot.sportsurgeV2:snapshot.streameast;
-  const currentKeys=new Set(runs.current?.games.filter(game=>game.league===league).map(catalogGameKey)??[]);
+  const currentKeys=new Set(runs.current?.games.filter(game=>league==='all'||game.league===league).map(catalogGameKey)??[]);
   const retained=links.filter(link=>!currentKeys.has(link.gameId??link.url));
   if(!retained.length)return null;
   return <div className="source-inventory-catalog"><p>Retained {leagueName[league]} game links</p>
@@ -284,12 +297,12 @@ function catalogGameGroups<T extends {gameId:string|null;url:string}>(games:T[])
   return groups;
 }
 
-function SportsurgeRun({run,league,snapshot,now,isCurrent,links}:{run:SportsurgeCatalogView;league:InventoryLeague;
+function SportsurgeRun({run,league,snapshot,now,isCurrent,links}:{run:SportsurgeCatalogView;league:InventoryScope;
   snapshot:SourcesSnapshot;now:number;isCurrent:boolean;links:Source['links']}) {
-  const games=run.games.filter(game=>game.league===league);
+  const games=run.games.filter(game=>league==='all'||game.league===league);
   const groupedGames=catalogGameGroups(games);
-  const rejectedGames=run.rejectedGames.filter(game=>game.league===league);
-  const catalogIssues=run.catalogIssues.filter(issue=>issue.league===league);
+  const rejectedGames=run.rejectedGames.filter(game=>league==='all'||game.league===league);
+  const catalogIssues=run.catalogIssues.filter(issue=>league==='all'||issue.league===league);
   return <div className="source-inventory-catalog">
     {rejectedGames.length>0&&<details className="source-inventory-diagnostics"><summary>Rejected game links</summary><ul>
       {rejectedGames.map((game,index)=><li key={`${game.league}:${index}`}>{game.title || `${game.league.toUpperCase()} listing`}: {game.reason}</li>)}
@@ -318,12 +331,12 @@ function SportsurgeRun({run,league,snapshot,now,isCurrent,links}:{run:Sportsurge
   </div>;
 }
 
-function StreameastRun({run,league,snapshot,now,isCurrent,links}:{run:StreameastCatalogView;league:InventoryLeague;
+function StreameastRun({run,league,snapshot,now,isCurrent,links}:{run:StreameastCatalogView;league:InventoryScope;
   snapshot:SourcesSnapshot;now:number;isCurrent:boolean;links:Source['links']}) {
-  const games=run.games.filter(game=>game.league===league);
+  const games=run.games.filter(game=>league==='all'||game.league===league);
   const groupedGames=catalogGameGroups(games);
   const savedGames=isCurrent?[...(snapshot.streameast.previous?.games??[]),...(snapshot.streameast.lastComplete?.games??[])]:[];
-  const rejectedGames=run.rejectedGames.filter(game=>game.league===league);
+  const rejectedGames=run.rejectedGames.filter(game=>league==='all'||game.league===league);
   return <div className="source-inventory-catalog">
     {rejectedGames.length>0&&<details className="source-inventory-diagnostics"><summary>Rejected game links · {rejectedGames.length}</summary><ul>
       {rejectedGames.map((game,index)=><li key={`${game.league}:${index}`}>{game.title}: {game.reason}</li>)}
@@ -358,7 +371,7 @@ function StreameastRun({run,league,snapshot,now,isCurrent,links}:{run:Streameast
   </div>;
 }
 
-function CollectorHistory({source,snapshot,league,now}:{source:Source;snapshot:SourcesSnapshot;league:InventoryLeague;now:number}) {
+function CollectorHistory({source,snapshot,league,now}:{source:Source;snapshot:SourcesSnapshot;league:InventoryScope;now:number}) {
   const isSportsurge=source.id==='sportsurge-v2';
   const runs=isSportsurge?snapshot.sportsurgeV2:snapshot.streameast;
   const current=runs.current;
@@ -384,9 +397,9 @@ function CollectorHistory({source,snapshot,league,now}:{source:Source;snapshot:S
 export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{games:readonly BrandedGame[]}}) {
   const [snapshot,setSnapshot]=useState<SourcesSnapshot|null>(null);
   const [view,setView]=useState<'sources'|'games'>('sources');
-  const [selectedLeague,setSelectedLeague]=useState<InventoryLeague|null>(null);
+  const [selectedLeague,setSelectedLeague]=useState<InventoryScope|null>(null);
   const league=selectedLeague??branding?.games.find(game=>gameIds.includes(game.id))?.league??'nfl';
-  const [filters,setFilters]=useState<Record<InventoryLeague,ScopeFilters>>(()=>({nfl:defaultScopeFilters(),ncaaf:defaultScopeFilters(),nba:defaultScopeFilters(),wnba:defaultScopeFilters(),nhl:defaultScopeFilters(),mlb:defaultScopeFilters(),f1:defaultScopeFilters(),'nascar-cup':defaultScopeFilters(),'nascar-truck':defaultScopeFilters(),motogp:defaultScopeFilters(),motorsport:defaultScopeFilters(),ufc:defaultScopeFilters(),boxing:defaultScopeFilters(),wwe:defaultScopeFilters(),tna:defaultScopeFilters()}));
+  const [filters,setFilters]=useState<Record<InventoryScope,ScopeFilters>>(()=>({all:defaultScopeFilters(),nfl:defaultScopeFilters(),ncaaf:defaultScopeFilters(),nba:defaultScopeFilters(),wnba:defaultScopeFilters(),nhl:defaultScopeFilters(),mlb:defaultScopeFilters(),f1:defaultScopeFilters(),'nascar-cup':defaultScopeFilters(),'nascar-truck':defaultScopeFilters(),motogp:defaultScopeFilters(),motorsport:defaultScopeFilters(),ufc:defaultScopeFilters(),boxing:defaultScopeFilters(),wwe:defaultScopeFilters(),tna:defaultScopeFilters()}));
   const {sourceQuery,sourceFilter,gameQuery,gameLimit}=filters[league];
   const updateFilters=(change:Partial<ScopeFilters>)=>setFilters(current=>({...current,[league]:{...current[league],...change}}));
   const [error,setError]=useState('');
@@ -415,7 +428,9 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
   const query=gameQuery.trim().toLowerCase();
   const listedGames=scoped?.games.filter(game=>game.name.toLowerCase().includes(query))||[];
   const visibleGames=listedGames.slice(0,gameLimit);
-  const scheduleScope=snapshot?.scheduleScopes.find(scope=>scope.league===league);
+  const scheduleComplete=league==='all'?Object.keys(leagueName).filter(name=>name!=='all').every(name=>
+    snapshot?.scheduleScopes.some(scope=>scope.league===name&&scope.read.kind==='complete')):
+    snapshot?.scheduleScopes.find(scope=>scope.league===league)?.read.kind==='complete';
   const gameList=useRef<HTMLDivElement|null>(null);
   const resetGameSearch=(value:string)=>{
     updateFilters({gameQuery:value,gameLimit:GAME_PAGE_SIZE});
@@ -466,10 +481,10 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
       <p className="source-inventory-scope-note">Feed discovery covers all supported sports today and tomorrow in America/Chicago, including live games. These filters only change the displayed results.</p>
       <div className="source-inventory-overview" aria-label={`${leagueName[league]} inventory totals`}>
         <div><strong>{sources.length}</strong><span>Sources</span></div>
-        <div><strong>{countLabel(scoped?.games.length??0,!!scoped?.unclassifiedGames.length)}</strong><span>Scheduled and live events</span></div>
-        <div><strong>{countLabel(scoped?.workingChoices??0,!!scoped?.unclassifiedGames.length)}</strong><span>Playback confirmed feeds</span></div>
+        <div><strong>{countLabel(scoped?.games.length??0,league!=='all'&&!!scoped?.unclassifiedGames.length)}</strong><span>Scheduled and live events</span></div>
+        <div><strong>{countLabel(scoped?.workingChoices??0,league!=='all'&&!!scoped?.unclassifiedGames.length)}</strong><span>Playback confirmed feeds</span></div>
       </div>
-      {(scoped?.unclassifiedGames.length??0)>0&&<p className="source-inventory-scope-note" role="note">{scoped?.unclassifiedGames.length} {scoped?.unclassifiedGames.length===1?'game could':'games could'} not be assigned to a league from the current board. Counts may be incomplete; open Games for unclassified details.</p>}
+      {(scoped?.unclassifiedGames.length??0)>0&&<p className="source-inventory-scope-note" role="note">{scoped?.unclassifiedGames.length} {scoped?.unclassifiedGames.length===1?'game could':'games could'} not be assigned to a league from the current board. {league==='all'?'These games are included in All results.':'Counts may be incomplete; open Games for unclassified details.'}</p>}
       <details className="source-inventory-explainer"><summary>How these counts work</summary><p>Working feeds played advancing video through the app within the last five minutes. Each game shows pending and failed checks. An incomplete or failed collection does not mean there are no events or feeds. Multiple feed entries can reach the same server.</p></details>
       <div className="source-inventory-views" role="group" aria-label="Inventory view">
         <button type="button" aria-pressed={view==='sources'} onClick={()=>setView('sources')}>Sources</button>
@@ -508,7 +523,8 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
         <div><input id={`listed-game-search-${league}`} type="search" aria-label="Find a listed game" value={gameQuery} onChange={event=>resetGameSearch(event.target.value)} placeholder="Team or game"/>
           <button type="button" onClick={()=>resetGameSearch('')} disabled={!gameQuery}>Clear</button></div>
         <p aria-live="polite">Showing {visibleGames.length} of {listedGames.length} {query?`matching games (${scoped?.games.length??0} listed total)`:'games'}{listedGames.length>0?` · Page ${Math.ceil(visibleGames.length/GAME_PAGE_SIZE)} of ${Math.ceil(listedGames.length/GAME_PAGE_SIZE)}`:''}</p></div>
-      {scoped?.games.length===0?<p className="source-inventory-state">{scheduleScope?.read.kind==='complete'?`No ${leagueName[league]} games or events today or tomorrow.`:`The ${leagueName[league]} schedule is incomplete. No empty schedule has been confirmed.`}</p>:
+      {scoped?.games.length===0?<p className="source-inventory-state">{scheduleComplete?league==='all'?'No games or events today or tomorrow.':`No ${leagueName[league]} games or events today or tomorrow.`:
+        `The ${league==='all'?'combined':leagueName[league]} schedule is incomplete. No empty schedule has been confirmed.`}</p>:
         listedGames.length===0?<p className="source-inventory-state">No listed games match your search.</p>:
         <div ref={gameList} className="source-inventory-list source-inventory-game-list" role="region" aria-label={`${leagueName[league]} games with listed sources`} tabIndex={0}
           onScroll={event=>{
@@ -536,8 +552,9 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
     <p className="source-inventory-feedback" role="status" aria-live="polite">{retryState==='submitting'?'Retry request in progress.':retryState==='success'?'Checks requested for selected games.':retryState==='error'?'Source checks could not restart. Try again.':selectedGameIds.length===0?'Add a game to your room to enable retries.':''}</p>
     {loading&&!snapshot&&<p className="source-inventory-state">Loading source inventory…</p>}
     {error&&<p className="source-inventory-error" role="alert">{error}</p>}
-    {snapshot&&<Tabs value={league} onValueChange={value=>{if(isInventoryLeague(value))setSelectedLeague(value);}} className="source-inventory-leagues">
-      <TabsList aria-label="League"><TabsTrigger value="nfl">NFL</TabsTrigger><TabsTrigger value="ncaaf">NCAA CFB</TabsTrigger><TabsTrigger value="nba">NBA</TabsTrigger><TabsTrigger value="wnba">WNBA</TabsTrigger><TabsTrigger value="nhl">NHL</TabsTrigger><TabsTrigger value="mlb">MLB</TabsTrigger><TabsTrigger value="f1">F1</TabsTrigger><TabsTrigger value="nascar-cup">NASCAR Cup</TabsTrigger><TabsTrigger value="nascar-truck">NASCAR Trucks</TabsTrigger><TabsTrigger value="motogp">MotoGP</TabsTrigger><TabsTrigger value="motorsport">Motorsport</TabsTrigger><TabsTrigger value="ufc">UFC</TabsTrigger><TabsTrigger value="boxing">Boxing</TabsTrigger><TabsTrigger value="wwe">WWE</TabsTrigger><TabsTrigger value="tna">TNA</TabsTrigger></TabsList>
+    {snapshot&&<Tabs value={league} onValueChange={value=>{if(isInventoryScope(value))setSelectedLeague(value);}} className="source-inventory-leagues">
+      <TabsList aria-label="League"><TabsTrigger value="all">All</TabsTrigger><TabsTrigger value="nfl">NFL</TabsTrigger><TabsTrigger value="ncaaf">NCAA CFB</TabsTrigger><TabsTrigger value="nba">NBA</TabsTrigger><TabsTrigger value="wnba">WNBA</TabsTrigger><TabsTrigger value="nhl">NHL</TabsTrigger><TabsTrigger value="mlb">MLB</TabsTrigger><TabsTrigger value="f1">F1</TabsTrigger><TabsTrigger value="nascar-cup">NASCAR Cup</TabsTrigger><TabsTrigger value="nascar-truck">NASCAR Trucks</TabsTrigger><TabsTrigger value="motogp">MotoGP</TabsTrigger><TabsTrigger value="motorsport">Motorsport</TabsTrigger><TabsTrigger value="ufc">UFC</TabsTrigger><TabsTrigger value="boxing">Boxing</TabsTrigger><TabsTrigger value="wwe">WWE</TabsTrigger><TabsTrigger value="tna">TNA</TabsTrigger></TabsList>
+      <TabsContent value="all" forceMount hidden={league!=="all"}>{league==="all"&&content}</TabsContent>
       <TabsContent value="nfl" forceMount hidden={league!=="nfl"}>{league==="nfl"&&content}</TabsContent>
       <TabsContent value="ncaaf" forceMount hidden={league!=="ncaaf"}>{league==="ncaaf"&&content}</TabsContent>
       <TabsContent value="nba" forceMount hidden={league!=="nba"}>{league==="nba"&&content}</TabsContent>
