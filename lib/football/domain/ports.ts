@@ -9,7 +9,7 @@ export type CandidateProbeResult =
 export type ProbeProgress={kind:'waiting'|'active';since:number};
 
 export type ScheduleSource = { id: string; league: League; sport?: 'football' | 'basketball' | 'hockey' | 'baseball' | 'racing' | 'mma'; path: string; group: string | null };
-export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[]; parserVersion?: number; leagues?: readonly League[] };
+export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[]; publicCategories?: readonly {league:League;url:string}[]; parserVersion?: number; leagues?: readonly League[] };
 export type SchedulePartition = { games: Game[]; at: number; week?: number };
 export type ScheduleResult = SchedulePartition & { league: League; horizonErrors?: string[]; historyErrors?: string[] };
 export type ListingResult = { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' };

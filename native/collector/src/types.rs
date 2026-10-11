@@ -42,6 +42,13 @@ pub struct BrowserCategory {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PublicCategory {
+    pub league: League,
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ListingSource {
     pub id: String,
     pub url: String,
@@ -52,6 +59,8 @@ pub struct ListingSource {
     pub kind: Option<SourceKind>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub public_urls: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_categories: Option<Vec<PublicCategory>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parser_version: Option<u32>,
     #[serde(default)]

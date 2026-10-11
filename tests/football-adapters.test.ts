@@ -397,14 +397,14 @@ test('SportsFeed24 all-failed catalog keeps the first category error and no synt
   const collector=createFixtureCollector();
   const source=SOURCES.find(item=>item.id==='sportsfeed24');
   assert.ok(source);
-  for(const [index,name] of ['', 'NFL','NBA','NHL','MLB','F1','motogp'].entries())collector.enqueueFixture({
+  for(const [index,name] of ['', 'NFL','NBA','NHL','MLB','F1','motogp','UFC','Boxing'].entries())collector.enqueueFixture({
     url:'https://bestfreestreaming.app/api/xhr',method:'POST',
     requestBody:name?JSON.stringify({categoryName:name}):'{}',status:index===1?429:503,
     ...(index===1?{headers:{'retry-after':'9'}}:{}),
   });
   await assert.rejects(collector.readHtml(source.url,new AbortController().signal),error=>
     error instanceof SourceFetchError&&error.message==='http-503'&&error.retryAfterMs===undefined);
-  assert.equal(collector.fixtureRequests().length,7);
+  assert.equal(collector.fixtureRequests().length,9);
 });
 
 test('Sportsurge partial category failure carries healthy listings and retry delay',async()=>{

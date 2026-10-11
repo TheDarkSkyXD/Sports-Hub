@@ -1,4 +1,11 @@
-import type {CandidateSummary,StreameastCatalogView} from '../lib/football/shared.ts';
+import type {CandidateSummary,League,SourcesSnapshot,StreameastCatalogView} from '../lib/football/shared.ts';
+
+export function sourceListingUrls(source:Pick<SourcesSnapshot['sources'][number],'publicUrls'|'scopes'>,league:League|'all'):string[] {
+  const scoped=source.scopes.find(scope=>scope.league===league)?.publicUrls;
+  const urls=league==='all'?[...source.publicUrls,...source.scopes.flatMap(scope=>scope.publicUrls)]:
+    scoped?.length?scoped:source.publicUrls;
+  return [...new Set(urls)];
+}
 
 const duration=(milliseconds:number)=>{
   const seconds=Math.max(0,Math.floor(milliseconds/1000));

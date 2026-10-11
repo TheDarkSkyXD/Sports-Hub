@@ -4,6 +4,13 @@
     "url": "https://isportsurge.ws/index6",
     "family": "sportsurge",
     "undatedListingEvidence": "published-listing",
+    "publicCategories": [
+      {"league":"nfl","url":"https://isportsurge.ws/nfl/livestreams3"},
+      {"league":"ncaaf","url":"https://isportsurge.ws/cfb/livestreams2"},
+      {"league":"nba","url":"https://isportsurge.ws/nba/livestreams3"},
+      {"league":"nhl","url":"https://isportsurge.ws/nhl/livestreams3"},
+      {"league":"mlb","url":"https://isportsurge.ws/mlb/livestreams2"}
+    ],
     "leagues": [
       "nfl",
       "ncaaf",
@@ -95,17 +102,7 @@
     "url": "https://v2.streameast.ga/cfb-streams/",
     "family": "streameast",
     "kind": "browser-catalog",
-    "publicUrls": [
-      "https://v2.streameast.ga/cfb-streams/",
-      "https://v2.streameast.ga/nfl-streams/",
-      "https://v2.streameast.ga/nba-streams/",
-      "https://v2.streameast.ga/nhl-streams/",
-      "https://v2.streameast.ga/mlb-streams/",
-      "https://v2.streameast.ga/wnba-streams/",
-      "https://v2.streameast.ga/f1-streams/",
-      "https://v2.streameast.ga/ufc-streams/",
-      "https://v2.streameast.ga/boxing-streams/"
-    ],
+    "publicUrls": ["https://v2.streameast.ga/"],
     "leagues": [
       "ncaaf",
       "nfl",
@@ -206,6 +203,11 @@
     "id": "methstreams",
     "url": "https://methstreams.st/NFL",
     "family": "event",
+    "publicUrls": ["https://methstreams.st/"],
+    "publicCategories": [
+      {"league":"nfl","url":"https://methstreams.st/NFL"},
+      {"league":"ncaaf","url":"https://methstreams.st/NFL"}
+    ],
     "leagues": [
       "nfl",
       "ncaaf"
@@ -216,6 +218,11 @@
     "name": "Crackstreams NFL",
     "url": "https://crackstreams.st/NFL",
     "family": "event",
+    "publicUrls": ["https://crackstreams.st/"],
+    "publicCategories": [
+      {"league":"nfl","url":"https://crackstreams.st/NFL"},
+      {"league":"ncaaf","url":"https://crackstreams.st/NFL"}
+    ],
     "leagues": [
       "nfl",
       "ncaaf"
@@ -228,11 +235,12 @@
     "family": "tvapp",
     "kind": "catalog",
     "parserVersion": 4,
-    "publicUrls": [
-      "https://tvapp1.pk/cfb-streams",
-      "https://tvapp1.pk/nfl-streams",
-      "https://thetvapp67.st/cfb-streams",
-      "https://thetvapp67.st/nfl-streams"
+    "publicUrls": ["https://tvapp1.pk/","https://thetvapp.st/"],
+    "publicCategories": [
+      {"league":"nfl","url":"https://tvapp1.pk/nfl-streams"},
+      {"league":"nfl","url":"https://thetvapp.st/nfl-streams"},
+      {"league":"ncaaf","url":"https://tvapp1.pk/cfb-streams"},
+      {"league":"ncaaf","url":"https://thetvapp.st/cfb-streams"}
     ],
     "leagues": [
       "nfl",
@@ -246,7 +254,11 @@
     "family": "tvapp",
     "kind": "catalog",
     "parserVersion": 4,
-    "publicUrls": [],
+    "publicUrls": ["https://tvapp1.pk/","https://thetvapp.st/"],
+    "publicCategories": [
+      {"league":"nba","url":"https://tvapp1.pk/nba-streams"},
+      {"league":"nba","url":"https://thetvapp.st/nba-streams"}
+    ],
     "leagues": [
       "nba",
       "wnba"
@@ -259,7 +271,11 @@
     "family": "tvapp",
     "kind": "catalog",
     "parserVersion": 4,
-    "publicUrls": [],
+    "publicUrls": ["https://tvapp1.pk/","https://thetvapp.st/"],
+    "publicCategories": [
+      {"league":"nhl","url":"https://tvapp1.pk/nhl-streams"},
+      {"league":"nhl","url":"https://thetvapp.st/nhl-streams"}
+    ],
     "leagues": [
       "nhl"
     ]
@@ -271,7 +287,11 @@
     "family": "tvapp",
     "kind": "catalog",
     "parserVersion": 4,
-    "publicUrls": [],
+    "publicUrls": ["https://tvapp1.pk/","https://thetvapp.st/"],
+    "publicCategories": [
+      {"league":"mlb","url":"https://tvapp1.pk/mlb-streams"},
+      {"league":"mlb","url":"https://thetvapp.st/mlb-streams"}
+    ],
     "leagues": [
       "mlb"
     ]
@@ -282,8 +302,14 @@
     "url": "https://api.ppv.st/api/streams",
     "family": "ppv",
     "kind": "catalog",
-    "publicUrls": [
-      "https://ppv.st/#26"
+    "publicUrls": ["https://ppv.st/"],
+    "publicCategories": [
+      {"league":"nfl","url":"https://ppv.st/#26"},
+      {"league":"ncaaf","url":"https://ppv.st/#26"},
+      {"league":"nba","url":"https://ppv.st/#37"},
+      {"league":"wnba","url":"https://ppv.st/#37"},
+      {"league":"nhl","url":"https://ppv.st/#39"},
+      {"league":"mlb","url":"https://ppv.st/#36"}
     ],
     "leagues": [
       "nfl",
@@ -301,6 +327,14 @@
     "name": "Methstreams Motorsports",
     "url": "https://methstreams.st/F1",
     "family": "motorsports",
+    "publicUrls": ["https://methstreams.st/"],
+    "publicCategories": [
+      {"league":"f1","url":"https://methstreams.st/F1"},
+      {"league":"nascar-cup","url":"https://methstreams.st/F1"},
+      {"league":"nascar-truck","url":"https://methstreams.st/F1"},
+      {"league":"motogp","url":"https://methstreams.st/F1"},
+      {"league":"motorsport","url":"https://methstreams.st/F1"}
+    ],
     "leagues": [
       "f1",
       "nascar-cup",
@@ -314,6 +348,14 @@
     "name": "Crackstreams Motorsports",
     "url": "https://crackstreams.st/F1",
     "family": "motorsports",
+    "publicUrls": ["https://crackstreams.st/"],
+    "publicCategories": [
+      {"league":"f1","url":"https://crackstreams.st/F1"},
+      {"league":"nascar-cup","url":"https://crackstreams.st/F1"},
+      {"league":"nascar-truck","url":"https://crackstreams.st/F1"},
+      {"league":"motogp","url":"https://crackstreams.st/F1"},
+      {"league":"motorsport","url":"https://crackstreams.st/F1"}
+    ],
     "leagues": [
       "f1",
       "nascar-cup",
@@ -378,17 +420,7 @@
     "family": "sportsurge",
     "kind": "browser-catalog",
     "undatedListingEvidence": "published-listing",
-    "publicUrls": [
-      "https://v2.sportsurge.net/watch-cfb-streams/",
-      "https://v2.sportsurge.net/watch-nfl-streams/",
-      "https://v2.sportsurge.net/watch-basketball-streams/",
-      "https://v2.sportsurge.net/watch-hockey-streams/",
-      "https://v2.sportsurge.net/watch-baseball-streams/",
-      "https://v2.sportsurge.net/watch-f1-streams/",
-      "https://v2.sportsurge.net/watch-wnba-streams/",
-      "https://v2.sportsurge.net/watch-motogp-streams/",
-      "https://v2.sportsurge.net/watch-nascar-streams/"
-    ],
+    "publicUrls": ["https://v2.sportsurge.net/"],
     "leagues": [
       "ncaaf",
       "nfl",
@@ -474,6 +506,11 @@
     "id": "methstreams-nba",
     "url": "https://methstreams.st/NBA",
     "family": "event",
+    "publicUrls": ["https://methstreams.st/"],
+    "publicCategories": [
+      {"league":"nba","url":"https://methstreams.st/NBA"},
+      {"league":"wnba","url":"https://methstreams.st/NBA"}
+    ],
     "leagues": [
       "nba",
       "wnba"
@@ -483,6 +520,11 @@
     "id": "crackstreams-nba",
     "url": "https://crackstreams.st/NBA",
     "family": "event",
+    "publicUrls": ["https://crackstreams.st/"],
+    "publicCategories": [
+      {"league":"nba","url":"https://crackstreams.st/NBA"},
+      {"league":"wnba","url":"https://crackstreams.st/NBA"}
+    ],
     "leagues": [
       "nba",
       "wnba"
@@ -584,6 +626,21 @@
     "family": "streamed",
     "kind": "catalog",
     "publicUrls": ["https://streamed.st/"],
+    "publicCategories": [
+      {"league":"nfl","url":"https://streamed.st/category/american-football"},
+      {"league":"ncaaf","url":"https://streamed.st/category/american-football"},
+      {"league":"nba","url":"https://streamed.st/category/basketball"},
+      {"league":"wnba","url":"https://streamed.st/category/basketball"},
+      {"league":"nhl","url":"https://streamed.st/category/hockey"},
+      {"league":"mlb","url":"https://streamed.st/category/baseball"},
+      {"league":"f1","url":"https://streamed.st/category/motor-sports"},
+      {"league":"nascar-cup","url":"https://streamed.st/category/motor-sports"},
+      {"league":"nascar-truck","url":"https://streamed.st/category/motor-sports"},
+      {"league":"motogp","url":"https://streamed.st/category/motor-sports"},
+      {"league":"motorsport","url":"https://streamed.st/category/motor-sports"},
+      {"league":"ufc","url":"https://streamed.st/category/fight"},
+      {"league":"boxing","url":"https://streamed.st/category/fight"}
+    ],
     "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport", "ufc", "boxing", "wwe", "tna"]
   },
   {
@@ -593,6 +650,23 @@
     "family": "livesportpro",
     "kind": "catalog",
     "publicUrls": ["https://livesportpro.com/"],
+    "publicCategories": [
+      {"league":"nfl","url":"https://livesportpro.com/#american-football"},
+      {"league":"ncaaf","url":"https://livesportpro.com/#american-football"},
+      {"league":"nba","url":"https://livesportpro.com/#basketball"},
+      {"league":"wnba","url":"https://livesportpro.com/#basketball"},
+      {"league":"nhl","url":"https://livesportpro.com/#hockey"},
+      {"league":"mlb","url":"https://livesportpro.com/#baseball"},
+      {"league":"f1","url":"https://livesportpro.com/#motor-sports"},
+      {"league":"nascar-cup","url":"https://livesportpro.com/#motor-sports"},
+      {"league":"nascar-truck","url":"https://livesportpro.com/#motor-sports"},
+      {"league":"motogp","url":"https://livesportpro.com/#motor-sports"},
+      {"league":"motorsport","url":"https://livesportpro.com/#motor-sports"},
+      {"league":"ufc","url":"https://livesportpro.com/#ufc"},
+      {"league":"boxing","url":"https://livesportpro.com/#boxing"},
+      {"league":"wwe","url":"https://livesportpro.com/#wrestling"},
+      {"league":"tna","url":"https://livesportpro.com/#wrestling"}
+    ],
     "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport", "ufc", "boxing", "wwe", "tna"]
   },
   {
@@ -602,7 +676,20 @@
     "family": "sportsfeed24",
     "kind": "catalog",
     "publicUrls": ["https://sportsfeed24.st/"],
-    "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
+    "publicCategories": [
+      {"league":"nfl","url":"https://sportsfeed24.st/streams/nfl"},
+      {"league":"nba","url":"https://sportsfeed24.st/streams/nba"},
+      {"league":"nhl","url":"https://sportsfeed24.st/streams/nhl"},
+      {"league":"mlb","url":"https://sportsfeed24.st/streams/mlb"},
+      {"league":"f1","url":"https://sportsfeed24.st/streams/F1"},
+      {"league":"nascar-cup","url":"https://sportsfeed24.st/streams/F1"},
+      {"league":"nascar-truck","url":"https://sportsfeed24.st/streams/F1"},
+      {"league":"motorsport","url":"https://sportsfeed24.st/streams/F1"},
+      {"league":"motogp","url":"https://sportsfeed24.st/streams/MOTOGP"},
+      {"league":"ufc","url":"https://sportsfeed24.st/streams/mma"},
+      {"league":"boxing","url":"https://sportsfeed24.st/streams/Boxing"}
+    ],
+    "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport", "ufc", "boxing"]
   },
   {
     "id": "crichd",
@@ -610,6 +697,13 @@
     "url": "https://crichd.pk/",
     "family": "crichd",
     "publicUrls": ["https://m.crichd.pk/"],
+    "publicCategories": [
+      {"league":"nfl","url":"https://crichd.pk/leagues/nfl-streams"},
+      {"league":"ncaaf","url":"https://crichd.pk/sports/american-football"},
+      {"league":"nba","url":"https://crichd.pk/sports/nba-streams"},
+      {"league":"f1","url":"https://crichd.pk/sports/f1-streams"},
+      {"league":"motogp","url":"https://crichd.pk/sports/motogp-streams"}
+    ],
     "leagues": ["ncaaf", "nfl", "nba", "wnba", "nhl", "mlb", "f1", "nascar-cup", "nascar-truck", "motogp", "motorsport"]
   },
   {

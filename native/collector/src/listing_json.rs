@@ -507,6 +507,29 @@ pub(crate) fn streamed_event_url(source_id: &str, id: &str) -> String {
     }
 }
 
+enum CatalogCategory {
+    League(League),
+    Matchup,
+    Unsupported,
+}
+
+fn catalog_category(category: &str) -> CatalogCategory {
+    let label = category.to_ascii_lowercase().replace(['-', '_'], " ");
+    let label = label.split_whitespace().collect::<Vec<_>>().join(" ");
+    match label.as_str() {
+        "nfl" => CatalogCategory::League(League::Nfl),
+        "ncaaf" | "ncaa football" | "college football" => CatalogCategory::League(League::Ncaaf),
+        "nba" => CatalogCategory::League(League::Nba),
+        "wnba" => CatalogCategory::League(League::Wnba),
+        "nhl" => CatalogCategory::League(League::Nhl),
+        "mlb" => CatalogCategory::League(League::Mlb),
+        "american football" | "basketball" | "hockey" | "ice hockey" | "baseball"
+        | "main events" | "streams today" | "motor sports" | "motorsports" | "f1" | "motogp"
+        | "fight" | "ufc" | "mma" | "boxing" | "wrestling" => CatalogCategory::Matchup,
+        _ => CatalogCategory::Unsupported,
+    }
+}
+
 fn streamed_league(category: &str, title: &str) -> Option<League> {
     if matches!(category, "fight" | "wrestling")
         && let Some(league) = crate::wrestling::league(title)
@@ -570,7 +593,11 @@ fn parse_streamed(source: &ListingSource, body: &str, now: i64) -> ListingResult
         }
         seen.insert(event.id.clone(), key);
         let title = event.title.trim().to_string();
-        let league = streamed_league(&event.category, &title);
+        let league = match catalog_category(&event.category) {
+            CatalogCategory::Unsupported => continue,
+            CatalogCategory::League(league) => Some(league),
+            CatalogCategory::Matchup => streamed_league(&event.category, &title),
+        };
         if teams.is_none() && league.is_none()
             || matches!(
                 event.category.as_str(),
@@ -747,7 +774,11 @@ fn parse_sportsbite(body: &str, now: i64) -> ListingResult {
                 .teams
                 .as_ref()
                 .map(|teams| [teams.home.name.clone(), teams.away.name.clone()]);
-            let league = sportsbite_league(&event);
+            let league = match catalog_category(&event.category) {
+                CatalogCategory::Unsupported => continue,
+                CatalogCategory::League(league) => Some(league),
+                CatalogCategory::Matchup => sportsbite_league(&event),
+            };
             if teams.is_none() && league.is_none() {
                 continue;
             }
@@ -1027,11 +1058,8 @@ fn sportsfeed_league(category: &str, team_a: &str) -> Option<League> {
     static TRUCK: OnceLock<Regex> = OnceLock::new();
     let label = category.to_ascii_lowercase();
     match label.as_str() {
-        "nfl" => Some(League::Nfl),
-        "nba" => Some(League::Nba),
-        "wnba" => Some(League::Wnba),
-        "nhl" => Some(League::Nhl),
-        "mlb" => Some(League::Mlb),
+        "ufc" | "mma" => Some(League::Ufc),
+        "boxing" => Some(League::Boxing),
         "f1" if F1
             .get_or_init(|| Regex::new(r"(?i)^f1\b").expect("fixed F1 team expression"))
             .is_match(team_a) =>
@@ -1058,7 +1086,10 @@ fn sportsfeed_league(category: &str, team_a: &str) -> Option<League> {
             }
         }
         "motogp" if team_a.to_ascii_lowercase().contains("motogp") => Some(League::Motogp),
-        _ => None,
+        _ => match catalog_category(category) {
+            CatalogCategory::League(league) => Some(league),
+            CatalogCategory::Matchup | CatalogCategory::Unsupported => None,
+        },
     }
 }
 
@@ -1077,41 +1108,46 @@ fn parse_sportsfeed(body: &str, now: i64) -> ListingResult {
         }
     };
     let mut observations = Vec::<Observation>::new();
-    let mut indices = HashMap::<String, usize>::new();
-    for category in categories {
-        for group in category.groups {
-            for game in group.games {
-                if game.team_a.is_empty()
-                    || game.team_b.is_empty()
-                    || url::Url::parse(&game.source_link).is_err()
-                {
-                    return invalid();
-                }
-                let Some(kickoff) = sportsfeed_kickoff(&game.match_date) else {
-                    continue;
-                };
-                let league = sportsfeed_league(&group.name, &game.team_a);
-                let Some(link_id) = sportsfeed_link_id(&game.source_link) else {
-                    continue;
-                };
-                if kickoff > now + WEEK
-                    || matches!(
-                        game.team_b.to_ascii_lowercase().as_str(),
-                        "live" | "network" | "redzone"
-                    ) && !matches!(
-                        league,
-                        Some(
-                            League::F1
-                                | League::NascarCup
-                                | League::NascarTruck
-                                | League::Motogp
-                                | League::Motorsport
-                        )
-                    )
-                {
-                    continue;
-                }
-                let teams = if matches!(
+    let mut indices = HashMap::<String, (usize, bool)>::new();
+    let mut groups = categories
+        .iter()
+        .flat_map(|category| {
+            category
+                .groups
+                .iter()
+                .map(move |group| (&category.name, group))
+        })
+        .collect::<Vec<_>>();
+    groups.sort_by_key(|(category, group)| !group.name.eq_ignore_ascii_case(category));
+    for (category, group) in groups {
+        for game in &group.games {
+            if game.team_a.is_empty()
+                || game.team_b.is_empty()
+                || url::Url::parse(&game.source_link).is_err()
+            {
+                return invalid();
+            }
+            let Some(kickoff) = sportsfeed_kickoff(&game.match_date) else {
+                continue;
+            };
+            let league = match catalog_category(&group.name) {
+                CatalogCategory::Unsupported => continue,
+                CatalogCategory::League(league) => Some(league),
+                CatalogCategory::Matchup => match catalog_category(category) {
+                    CatalogCategory::Unsupported => continue,
+                    CatalogCategory::League(league) => Some(league),
+                    CatalogCategory::Matchup => sportsfeed_league(&group.name, &game.team_a)
+                        .or_else(|| sportsfeed_league(category, &game.team_a)),
+                },
+            };
+            let Some(link_id) = sportsfeed_link_id(&game.source_link) else {
+                continue;
+            };
+            if kickoff > now + WEEK
+                || matches!(
+                    game.team_b.to_ascii_lowercase().as_str(),
+                    "live" | "network" | "redzone"
+                ) && !matches!(
                     league,
                     Some(
                         League::F1
@@ -1119,43 +1155,65 @@ fn parse_sportsfeed(body: &str, now: i64) -> ListingResult {
                             | League::NascarTruck
                             | League::Motogp
                             | League::Motorsport
+                            | League::Ufc
+                            | League::Boxing
                     )
-                ) {
-                    None
-                } else {
-                    Some([game.team_a.clone(), game.team_b.clone()])
-                };
-                let row = Observation {
-                    id: format!("sportsfeed24:{link_id}"),
-                    source_id: "sportsfeed24".to_string(),
-                    url: sportsfeed_event_url(&game.team_a, &game.team_b),
-                    title: format!("{} vs {}", game.team_a, game.team_b),
-                    teams,
-                    league,
-                    kickoff: Some(kickoff),
-                    raw_time: game.match_date,
-                    observed_at: now,
-                    parser_version: 1,
-                    legacy_id: None,
-                    kickoff_lineage: None,
-                };
-                if let Some(index) = indices.get(&row.id) {
-                    let previous = &observations[*index];
-                    if previous.title != row.title
-                        || previous.url != row.url
-                        || previous
+                )
+            {
+                continue;
+            }
+            let teams = if matches!(
+                league,
+                Some(
+                    League::F1
+                        | League::NascarCup
+                        | League::NascarTruck
+                        | League::Motogp
+                        | League::Motorsport
+                        | League::Ufc
+                        | League::Boxing
+                )
+            ) {
+                None
+            } else {
+                Some([game.team_a.clone(), game.team_b.clone()])
+            };
+            let row = Observation {
+                id: format!("sportsfeed24:{link_id}"),
+                source_id: "sportsfeed24".to_string(),
+                url: sportsfeed_event_url(&game.team_a, &game.team_b),
+                title: format!("{} vs {}", game.team_a, game.team_b),
+                teams,
+                league,
+                kickoff: Some(kickoff),
+                raw_time: game.match_date.clone(),
+                observed_at: now,
+                parser_version: 1,
+                legacy_id: None,
+                kickoff_lineage: None,
+            };
+            let dedicated = group.name.eq_ignore_ascii_case(category);
+            if let Some((index, previous_dedicated)) = indices.get_mut(&row.id) {
+                let previous = &observations[*index];
+                if previous.title != row.title
+                    || previous.url != row.url
+                    || previous.league.is_some()
+                        && row.league.is_some()
+                        && previous.league != row.league
+                    || *previous_dedicated == dedicated
+                        && previous
                             .kickoff
                             .is_none_or(|date| (date - kickoff).abs() > 3_600_000)
-                    {
-                        return invalid();
-                    }
-                    if group.name.eq_ignore_ascii_case(&category.name) {
-                        observations[*index] = row;
-                    }
-                } else {
-                    indices.insert(row.id.clone(), observations.len());
-                    observations.push(row);
+                {
+                    return invalid();
                 }
+                if dedicated {
+                    observations[*index] = row;
+                    *previous_dedicated = true;
+                }
+            } else {
+                indices.insert(row.id.clone(), (observations.len(), dedicated));
+                observations.push(row);
             }
         }
     }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, CircleHelp, Clock3, LoaderCircle, RefreshCw } from 'lucide-react';
 import Image from 'next/image';
 import { SourcesSnapshotSchema, isMotorsportsLeague, type CandidateSummary, type Game, type MatchupGame, type LinkEvidence, type MissingPlayerReason, type SourcesSnapshot, type SportsurgeCatalogView, type StreameastCatalogView } from '@/lib/football/shared';
-import { candidateEvidence, retainedStreameastDetail } from './source-inventory-view';
+import { candidateEvidence, retainedStreameastDetail, sourceListingUrls } from './source-inventory-view';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const sourceOrder=new Map([['sportsurge',0],['sportsurge-v2',1],['streameast',2]]);
@@ -493,8 +493,7 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
           <p role="status">{sourceScopeMessage(source,league)}</p>
           <p>{source.collectionMode==='listings-only'?'Listings only':'Compatible feed discovery'}{source.pending?' · Integration pending':''}</p>
           {source.id!=='sportsurge-v2'&&source.id!=='streameast'&&<CollectionHealth source={source}/>}
-          <div className="source-inventory-public-links"><a href={source.catalogUrl} target="_blank" rel="noopener noreferrer">Listing endpoint ↗</a>
-            {source.publicUrls.filter(url=>url!==source.catalogUrl).map(url=><a key={url} href={url} target="_blank" rel="noopener noreferrer">{publicLinkLabel(url)} ↗</a>)}</div>
+          <div className="source-inventory-public-links">{sourceListingUrls(source,league).map((url,index)=><a key={url} href={url} target="_blank" rel="noopener noreferrer">{index===0?'Listing page':publicLinkLabel(url)} ↗</a>)}</div>
           {(source.id==='sportsurge-v2'||source.id==='streameast')&&<CollectorHistory source={source} snapshot={snapshot} league={league} now={renderNow}/>}
           {(source.id==='sportsurge-v2'||source.id==='streameast')&&<RetainedCatalogLinks source={source} links={links}
             snapshot={snapshot} league={league} now={renderNow}/>}

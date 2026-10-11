@@ -130,11 +130,11 @@ function matchWrestlingObservation(observation:Observation,games:WrestlingGame[]
   return {kind:'matched',gameId:game.id};
 }
 function combatTitle(value:string):string {
-  return normalizedName(value.replace(/\s+(?:watch\s+)?(?:live\s+stream|live)$/i,''));
+  return normalizedName(value.replace(/\s+vs\s+live$/i,'').replace(/\s+(?:watch\s+)?(?:live\s+stream|live)$/i,''));
 }
 function combatTitlesMatch(observed:string,scheduled:string):boolean {
   if(combatTitle(observed)===combatTitle(scheduled))return true;
-  const abbreviation=/^ufc\s+(\d{1,4})(?:\s+(?:watch\s+)?(?:live\s+stream|live))?$/i.exec(observed.trim());
+  const abbreviation=/^ufc\s+(\d{1,4})(?:\s+(?:watch\s+)?(?:live\s+stream|live))?$/i.exec(observed.trim().replace(/\s+vs\s+live$/i,''));
   const scheduledNumber=/^ufc\s+(\d{1,4})\b/i.exec(scheduled.trim());
   return !!abbreviation&&!!scheduledNumber&&abbreviation[1]===scheduledNumber[1];
 }
