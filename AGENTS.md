@@ -81,7 +81,7 @@ failing test first.
 ## Verify before claiming "done"
 
 Never report something as working without running it. "Done" means: relevant tests green,
-typecheck clean, and for user-facing flows exercised end to end (e.g. Playwright for web
+typecheck clean, and for user-facing flows exercised end to end (e.g. Electron app
 flows). If tests fail or a step was skipped, say so plainly with the output.
 
 ## When you are corrected
