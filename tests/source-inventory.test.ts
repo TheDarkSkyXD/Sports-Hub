@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sourceInventory } from '../lib/football/domain/source-inventory.ts';
 import { SourcesSnapshotSchema, type Candidate, type Game, type Observation } from '../lib/football/shared.ts';
+import { SOURCE_REGISTRY } from '../lib/football/source-registry.ts';
 
 const at=Date.parse('2026-09-26T21:30:00Z');
 const team=(name:string,id:string)=>({id,name,short:name,abbreviation:name.slice(0,3),color:'112233',score:'0'});
@@ -20,6 +21,56 @@ const observed=(id:string,sourceId:string,url:string,teams:[string,string],obser
 });
 const candidate=(id:string,sourceIds:string[],observedAt=at):Candidate=>({
   id,gameId:florida.id,label:'Primary',sourceIds,observedAt,locator:{provider:'gooz',playerId:'57069'},
+});
+
+test('source league scopes open their public category while retaining collector endpoints',()=>{
+  const snapshot=sourceInventory({at,revision:1,lastDiscoveryAt:null,browserCollectorsAvailable:true,
+    sources:SOURCE_REGISTRY,observations:[],games:[],candidates:new Map(),attempts:{},
+    sportsurgeCatalog:{current:null,lastComplete:null,previous:null},
+    streameastCatalog:{current:null,lastComplete:null,previous:null}});
+  const expected=[
+    ['sportsfeed24','nfl',['https://sportsfeed24.st/streams/nfl']],
+    ['sportsfeed24','ncaaf',['https://sportsfeed24.st/']],
+    ['sportsfeed24','nascar-cup',['https://sportsfeed24.st/streams/F1']],
+    ['sportsfeed24','ufc',['https://sportsfeed24.st/streams/mma']],
+    ['sportsfeed24','boxing',['https://sportsfeed24.st/streams/Boxing']],
+    ['tvapp','nfl',['https://tvapp1.pk/nfl-streams','https://thetvapp.st/nfl-streams']],
+    ['tvapp','ncaaf',['https://tvapp1.pk/cfb-streams','https://thetvapp.st/cfb-streams']],
+    ['tvapp-nba','nba',['https://tvapp1.pk/nba-streams','https://thetvapp.st/nba-streams']],
+    ['tvapp-nba','wnba',['https://tvapp1.pk/','https://thetvapp.st/']],
+    ['ppv','nba',['https://ppv.st/#37']],
+    ['ppv','nhl',['https://ppv.st/#39']],
+    ['streameast','nfl',['https://v2.streameast.ga/nfl-streams/']],
+    ['sportsurge-v2','nba',['https://v2.sportsurge.net/watch-basketball-streams/']],
+    ['streamed','ufc',['https://streamed.st/category/fight']],
+    ['livesportpro','nfl',['https://livesportpro.com/#american-football']],
+    ['crichd','motogp',['https://crichd.pk/sports/motogp-streams']],
+    ['streamcenter-nba','nba',['https://streame.center/']],
+  ] as const;
+  for(const [id,league,urls] of expected) {
+    const source=snapshot.sources.find(source=>source.id===id);
+    assert.ok(source,id);
+    assert.deepEqual(source.scopes.find(scope=>scope.league===league)?.publicUrls,[...urls],`${id}/${league}`);
+  }
+  const sportsfeed=snapshot.sources.find(source=>source.id==='sportsfeed24');
+  assert.equal(sportsfeed?.catalogUrl,'https://bestfreestreaming.app/api/xhr');
+  assert.deepEqual(sportsfeed?.publicUrls,['https://sportsfeed24.st/']);
+  assert.equal(SourcesSnapshotSchema.safeParse(snapshot).success,true);
+  for(const source of snapshot.sources) {
+    assert.deepEqual(source.scopes.map(scope=>scope.league),source.leagues);
+    for(const scope of source.scopes)assert.ok(scope.publicUrls.length>0,`${source.id}/${scope.league}`);
+  }
+});
+
+test('source scopes preserve an explicit absence of public links',()=>{
+  const snapshot=sourceInventory({at,revision:1,lastDiscoveryAt:null,browserCollectorsAvailable:false,
+    sources:[{id:'private-catalog',family:'catalog',url:'https://api.example/events',publicUrls:[],leagues:['nfl']}],
+    observations:[],games:[],candidates:new Map(),attempts:{},
+    sportsurgeCatalog:{current:null,lastComplete:null,previous:null},
+    streameastCatalog:{current:null,lastComplete:null,previous:null}});
+  assert.equal(snapshot.sources[0].catalogUrl,'https://api.example/events');
+  assert.deepEqual(snapshot.sources[0].publicUrls,[]);
+  assert.deepEqual(snapshot.sources[0].scopes[0].publicUrls,[]);
 });
 
 test('source snapshot retains stale live listings without counting them as compatible feeds',()=>{

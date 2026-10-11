@@ -202,7 +202,7 @@ async function capture(data) {
     try {await readHtml('https://crichd.pk/',new AbortController().signal);}
     catch (error) {results.http.crossHostRedirect = error.message;}
     const today = JSON.parse(data.cases.find(item=>item.id==='sportsfeed24').body)[0];
-    const categories = ['', 'NFL', 'NBA', 'NHL', 'MLB', 'F1', 'motogp'];
+    const categories = ['', 'NFL', 'NBA', 'NHL', 'MLB', 'F1', 'motogp', 'UFC', 'Boxing'];
     responses(async (_url,init) => {
       const category = JSON.parse(init.body).categoryName;
       if (category === 'F1') return new Response('Unavailable',{status:503});

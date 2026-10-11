@@ -1862,21 +1862,6 @@
         "parsed": {
           "observations": [
             {
-              "id": "sportsfeed24:67739",
-              "sourceId": "sportsfeed24",
-              "url": "https://sportsfeed24.st/fixture/Baycurrent%20Classic-vs-Golf",
-              "title": "Baycurrent Classic vs Golf",
-              "league": null,
-              "teams": [
-                "Baycurrent Classic",
-                "Golf"
-              ],
-              "kickoff": 1791442999000,
-              "rawTime": "Thu, 08 Oct 2026 07:03:19 GMT",
-              "observedAt": 1791493800000,
-              "parserVersion": 1
-            },
-            {
               "id": "sportsfeed24:69318",
               "sourceId": "sportsfeed24",
               "url": "https://sportsfeed24.st/fixture/Dallas%20Cowboys-vs-Tampa%20Bay%20Buccaneers",
@@ -6395,24 +6380,8 @@
         "message": "http-503",
         "retryAfterMs": null,
         "listing": {
-          "observations": [
-            {
-              "id": "sportsfeed24:67739",
-              "sourceId": "sportsfeed24",
-              "url": "https://sportsfeed24.st/fixture/Baycurrent%20Classic-vs-Golf",
-              "title": "Baycurrent Classic vs Golf",
-              "league": null,
-              "teams": [
-                "Baycurrent Classic",
-                "Golf"
-              ],
-              "kickoff": 1791442999000,
-              "rawTime": "Thu, 08 Oct 2026 07:03:19 GMT",
-              "observedAt": 1791493800000,
-              "parserVersion": 1
-            }
-          ],
-          "outcome": "parsed"
+          "observations": [],
+          "outcome": "empty"
         }
       }
     },

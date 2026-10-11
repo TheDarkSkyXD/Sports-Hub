@@ -387,7 +387,7 @@ export const SourcesSnapshotSchema = z.object({
   sources:z.array(z.object({
     id:z.string(),name:z.string(),catalogUrl:z.string().url(),publicUrls:z.array(z.string().url()),pending:z.boolean(),
     leagues:z.array(LeagueSchema).default([]),
-    scopes:z.array(z.object({league:LeagueSchema,read:InventoryReadStateSchema,eventCount:z.number().int().nonnegative(),feeds:InventoryFeedStateSchema})).default([]),
+    scopes:z.array(z.object({league:LeagueSchema,publicUrls:z.array(z.string().url()).default([]),read:InventoryReadStateSchema,eventCount:z.number().int().nonnegative(),feeds:InventoryFeedStateSchema})).default([]),
     collectionMode:z.enum(['listings-only','compatible-feed-discovery']),
     lastAttempt:SourceAttemptSchema.nullable(),listingCount:z.number().int().nonnegative(),
     matchedGameCount:z.number().int().nonnegative(),staleListingCount:z.number().int().nonnegative(),

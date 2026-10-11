@@ -31,7 +31,7 @@ test('inventory retains scheduled events without source links and distinguishes 
   assert.equal(SourcesSnapshotSchema.safeParse(complete).success,true);
   assert.deepEqual(complete.games.map(row=>({id:row.gameId,league:row.league,feeds:row.feeds.kind})),[
     {id:'100',league:'nfl',feeds:'no-feeds'},{id:'101',league:'nfl',feeds:'no-feeds'}]);
-  assert.deepEqual(complete.sources[0].scopes[0],{league:'nfl',read:{kind:'complete',checkedAt:at},eventCount:0,
+  assert.deepEqual(complete.sources[0].scopes[0],{league:'nfl',publicUrls:['https://fixture.example/schedule'],read:{kind:'complete',checkedAt:at},eventCount:0,
     feeds:{kind:'incomplete',reason:'listings'}});
   const failed=sourceInventory({...base,attempts:{fixture:{at,outcome:'failed',failure:'blocked'}}});
   assert.deepEqual(failed.sources[0].scopes[0].read,{kind:'incomplete',reason:'failed',checkedAt:at});

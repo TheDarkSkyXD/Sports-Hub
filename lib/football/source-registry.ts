@@ -10,9 +10,20 @@ const SourceSchema=z.object({
   id:z.string(),url:z.string().url(),family:z.string(),name:z.string().optional(),
   kind:z.enum(['catalog','pending','browser-catalog']).optional(),
   publicUrls:z.array(z.string().url()).optional(),parserVersion:z.number().int().positive().optional(),
+  publicCategories:z.array(z.object({league:LeagueSchema,url:z.string().url()}).strict()).optional(),
   leagues:z.array(LeagueSchema).nonempty(),browserCategories:z.array(BrowserCategorySchema).optional(),
   undatedListingEvidence:z.literal('published-listing').optional(),
-}).strict();
+}).strict().superRefine((source,context)=>{
+  const seen=new Set<string>();
+  for(const [index,category] of (source.publicCategories??[]).entries()) {
+    if(!source.leagues.includes(category.league))context.addIssue({code:z.ZodIssueCode.custom,
+      path:['publicCategories',index,'league'],message:'Public category must belong to a supported league'});
+    const key=`${category.league}:${category.url}`;
+    if(seen.has(key))context.addIssue({code:z.ZodIssueCode.custom,
+      path:['publicCategories',index],message:'Public category must be unique for its league and URL'});
+    seen.add(key);
+  }
+});
 
 export const SOURCE_REGISTRY=z.array(SourceSchema).parse(data);
 const sourcesById=new Map(SOURCE_REGISTRY.map(source=>[source.id,source]));

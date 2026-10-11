@@ -296,9 +296,12 @@ test('SportsBite uses exact event key and ignores upstream online metadata',asyn
 test('SportsFeed24 detail with only fixture mirrors has no compatible player',async()=>{
   const listing=JSON.stringify([JSON.parse(fixture('sportsfeed24-today.json'))]);
   const observation=parseListings(source('sportsfeed24'),listing,at).observations.find(row=>
-    row.title==='Baycurrent Classic vs Golf')!;
+    row.title==='Dallas Cowboys vs Tampa Bay Buccaneers')!;
   assert.ok(observation);
   const detail=JSON.parse(fixture('sportsfeed24-golf-detail.json'));
+  const listed=JSON.parse(fixture('sportsfeed24-today.json')).subCategories[0].games[0];
+  Object.assign(detail.game,listed);
+  detail.game.streamerLinks=JSON.parse(fixture('sportsfeed24-golf-detail.json')).game.streamerLinks;
   assert.ok(detail.game.streamerLinks.length>0);
   assert.deepEqual(await resolvePlayers('motorsport-123',observation,JSON.stringify(detail),new AbortController().signal),[]);
   assert.equal(missingPlayerReason(observation,JSON.stringify(detail)),'unsupported-player');
@@ -369,20 +372,20 @@ test('SportsFeed24 partial category failure retains complete event routing',asyn
   const today=JSON.parse(fixture('sportsfeed24-today.json'));
   const full=JSON.stringify({categories:[today],complete:true});
   const listing=collector.parseListings(source('sportsfeed24'),full,at);
-  const golf=listing.observations.find(row=>row.title==='Baycurrent Classic vs Golf')!;
-  assert.ok(golf);
+  const retained=listing.observations.find(row=>row.title==='Dallas Cowboys vs Tampa Bay Buccaneers')!;
+  assert.ok(retained);
   const added=structuredClone(today.subCategories[0].games[0]);
   added.sourceLink='https://links.totalsportek1.is/new-york-jets-vs-miami-dolphins/99991/';
   added.teamA='New York Jets';
   added.teamB='Miami Dolphins';
   today.subCategories[0].games.push(added);
   const catalogUrl='https://bestfreestreaming.app/api/xhr';
-  for(const name of ['', 'NFL','NBA','NHL','MLB','F1','motogp'])collector.enqueueFixture({url:catalogUrl,method:'POST',
+  for(const name of ['', 'NFL','NBA','NHL','MLB','F1','motogp','UFC','Boxing'])collector.enqueueFixture({url:catalogUrl,method:'POST',
     requestBody:name?JSON.stringify({categoryName:name}):'{}',status:name==='F1'?503:200,
     body:JSON.stringify(name?{categoryName:name,subCategories:[]}:today)});
   const detailUrl='https://bestfreestreaming.app/api/xrhs';
-  collector.enqueueFixture({url:detailUrl,method:'POST',requestBody:JSON.stringify({teamA:'Baycurrent Classic',teamB:'Golf'}),
-    body:fixture('sportsfeed24-golf-detail.json')});
+  collector.enqueueFixture({url:detailUrl,method:'POST',requestBody:JSON.stringify({teamA:'Dallas Cowboys',teamB:'Tampa Bay Buccaneers'}),
+    body:JSON.stringify({game:today.subCategories[0].games[0]})});
   collector.enqueueFixture({url:detailUrl,method:'POST',requestBody:JSON.stringify({teamA:'New York Jets',teamB:'Miami Dolphins'}),
     body:fixture('sportsfeed24-golf-detail.json')});
   await assert.rejects(collector.readHtml(source('sportsfeed24').url,new AbortController().signal),(error:unknown)=>{
@@ -393,11 +396,11 @@ test('SportsFeed24 partial category failure retains complete event routing',asyn
     assert.ok(newlyListed);
     return true;
   });
-  const detail=await collector.readHtml(golf.url,new AbortController().signal);
+  const detail=await collector.readHtml(retained.url,new AbortController().signal);
   const newlyListedUrl='https://sportsfeed24.st/fixture/New%20York%20Jets-vs-Miami%20Dolphins';
   await collector.readHtml(newlyListedUrl,new AbortController().signal);
-  assert.ok(detail.includes('Baycurrent Classic'));
-  assert.equal(collector.fixtureRequests().filter(request=>request.url===catalogUrl).length,7);
+  assert.ok(detail.includes('Dallas Cowboys'));
+  assert.equal(collector.fixtureRequests().filter(request=>request.url===catalogUrl).length,9);
   assert.equal(collector.fixtureRequests().filter(request=>request.url===detailUrl).length,2);
 });
 
@@ -405,16 +408,16 @@ test('SportsFeed24 malformed categories retain other complete categories',async(
   const today=JSON.parse(fixture('sportsfeed24-today.json'));
   for(const invalid of ['invalid-json','{}']){
     const collector=createFixtureCollector();
-    for(const name of ['', 'NFL','NBA','NHL','MLB','F1','motogp'])collector.enqueueFixture({
+    for(const name of ['', 'NFL','NBA','NHL','MLB','F1','motogp','UFC','Boxing'])collector.enqueueFixture({
       url:'https://bestfreestreaming.app/api/xhr',method:'POST',requestBody:name?JSON.stringify({categoryName:name}):'{}',
       body:name==='F1'?invalid:JSON.stringify(name?{categoryName:name,subCategories:[]}:today)});
     await assert.rejects(collector.readHtml(source('sportsfeed24').url,new AbortController().signal),(error:unknown)=>{
       assert.ok(error instanceof PartialListingReadError);
       assert.equal(JSON.parse(error.html).complete,false);
-      assert.equal(JSON.parse(error.html).categories.length,6);
+      assert.equal(JSON.parse(error.html).categories.length,8);
       const result=collector.parseListings(source('sportsfeed24'),error.html,at);
       assert.equal(result.outcome,'parsed');
-      assert.equal(result.observations.some(row=>row.title==='Baycurrent Classic vs Golf'),true);
+      assert.equal(result.observations.some(row=>row.title==='Dallas Cowboys vs Tampa Bay Buccaneers'),true);
       return true;
     });
   }

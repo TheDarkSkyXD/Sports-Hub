@@ -460,7 +460,9 @@ pub(crate) async fn read_html_with<R: PageReader>(
     }
     let registry = { state.lock().registry.clone() };
     if url == "https://bestfreestreaming.app/api/xhr" {
-        let names = ["", "NFL", "NBA", "NHL", "MLB", "F1", "motogp"];
+        let names = [
+            "", "NFL", "NBA", "NHL", "MLB", "F1", "motogp", "UFC", "Boxing",
+        ];
         let futures = names.iter().map(|name| {
             let registry = registry.clone();
             async move {

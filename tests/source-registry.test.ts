@@ -23,3 +23,16 @@ test('browser categories use observed provider URLs and preserve unknown detail 
   assert.equal(browserCategory('streameast','f1')?.pathCode,null);
   assert.equal(browserCategory('sportsurge-v2','unlisted'),undefined);
 });
+
+test('public categories belong to supported leagues and share their source public hosts',()=>{
+  for(const source of SOURCE_REGISTRY) {
+    const categories=source.publicCategories??[];
+    const publicHosts=new Set([source.url,...(source.publicUrls??[])].map(url=>new URL(url).hostname));
+    assert.equal(new Set(categories.map(category=>`${category.league}:${category.url}`)).size,categories.length,source.id);
+    for(const category of categories) {
+      assert.ok(source.leagues.includes(category.league),`${source.id}/${category.league}`);
+      assert.ok(publicHosts.has(new URL(category.url).hostname),category.url);
+    }
+    if(source.kind==='browser-catalog')assert.equal(categories.length,0,source.id);
+  }
+});

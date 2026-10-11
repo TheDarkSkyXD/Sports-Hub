@@ -4,7 +4,7 @@ import { compareCandidates } from './lifecycle.ts';
 import { detailIdentity } from './source-policy.ts';
 import { resolvedLiveChannelMatch } from './live-channel.ts';
 import { feedDateEligible, feedInventoryEligible, feedWindow } from './feed-eligibility.ts';
-import { sourceCoverage } from '../source-registry.ts';
+import { browserCategory, sourceCoverage } from '../source-registry.ts';
 import type { ListingSource } from './ports.ts';
 import { createFinishedGameMatcher, createSourceEventMatcher, normalizedName, type SourceEventEvidence } from './matching.ts';
 import { sportsurgeCatalogView, sportsurgeEvidence, sportsurgeObservation } from './sportsurge-catalog.ts';
@@ -316,7 +316,11 @@ export function sourceInventory(input:Input):SourcesSnapshot {
         candidate.sourceIds.includes(source.id)&&availability(candidate).kind==='playable')
       .map(candidate=>`${gameId}:${candidate.id}`))).size;
     const leagues=[...(source.leagues??sourceCoverage(source.id))];
+    const publicUrls=[...new Set(source.publicUrls??[source.url])];
     const scopes=leagues.map(league=>{
+      const categories=source.publicCategories?.filter(category=>category.league===league).map(category=>category.url)??[];
+      const browserUrl=source.kind==='browser-catalog'?browserCategory(source.id,league)?.url:undefined;
+      const scopeUrls=[...new Set(categories.length?categories:browserUrl?[browserUrl]:publicUrls)];
       const scopeLinks=links.filter(link=>link.freshness==='fresh'&&(link.league===league||link.league===null));
       const run=source.id==='sportsurge-v2'?input.sportsurgeCatalog.current:source.id==='streameast'?input.streameastCatalog.current:null;
       let read:ReadState;
@@ -346,12 +350,12 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       const feeds:FeedState=rows.length?feedCounts(rows,availability):
         read.kind==='complete'&&scopeLinks.length>0&&scopeLinks.every(link=>link.gameId!==null&&noPublishedFeed(link.evidence))?
           {kind:'no-feeds',checkedAt:read.checkedAt}:{kind:'incomplete',reason:scopeLinks.length?'details':'listings'};
-      return {league,read,eventCount:scopeLinks.length,feeds};
+      return {league,publicUrls:scopeUrls,read,eventCount:scopeLinks.length,feeds};
     });
     return {
       id:source.id,name:source.name || source.id.replace(/-/g,' '),catalogUrl:source.url,
       leagues,scopes,
-      publicUrls:[...new Set(source.publicUrls || [source.url])],pending:source.kind==='pending',
+      publicUrls,pending:source.kind==='pending',
       collectionMode:'compatible-feed-discovery' as const,
       lastAttempt:input.attempts[source.id] || null,listingCount:links.length,matchedGameCount:matched.size,
       staleListingCount:links.filter(link=>link.freshness==='stale-live').length,compatibleFeedCount,
