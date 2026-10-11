@@ -1356,9 +1356,7 @@ mod tests {
             "../../../tests/fixtures/collector-parity.json"
         ))
         .unwrap();
-        let registry =
-            SourceRegistry::parse(include_str!("../../../lib/football/source-registry.json"))
-                .unwrap();
+        let registry = SourceRegistry::parse(&golden["expected"]["registry"].to_string()).unwrap();
         for case in [
             "tvapp",
             "tvapp-empty",

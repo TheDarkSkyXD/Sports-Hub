@@ -78,7 +78,7 @@ mod tests {
         let registry =
             SourceRegistry::parse(include_str!("../../../lib/football/source-registry.json"))
                 .unwrap();
-        assert_eq!(registry.sources().len(), 47);
+        assert_eq!(registry.sources().len(), 46);
         assert_eq!(registry.get("sportsurge").unwrap().family, "sportsurge");
         assert!(
             registry

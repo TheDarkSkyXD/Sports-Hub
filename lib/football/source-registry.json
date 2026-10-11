@@ -455,19 +455,6 @@
     ]
   },
   {
-    "id": "swac",
-    "name": "SWAC TV",
-    "url": "https://ott.gideo.video/api/legacy?cmd=getCategoryChildren&AccountID=Southwestern-Athletic-Conference&CategoryID=e1dbe7ec9a7e686b42b53ab33c3e30e4",
-    "family": "swac",
-    "kind": "catalog",
-    "publicUrls": [
-      "https://tv.swac.org/"
-    ],
-    "leagues": [
-      "ncaaf"
-    ]
-  },
-  {
     "id": "vipbox-nba",
     "url": "https://vipbox.fm/basketball-schedule",
     "family": "vipbox",
