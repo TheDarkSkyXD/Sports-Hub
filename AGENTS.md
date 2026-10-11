@@ -28,6 +28,10 @@ I wanted to share some of my preferences here so we can be more aligned as we wo
    
 ## While you work
 
+- Run only one local Electron app instance at a time during development. Before launching, check for an existing instance. Close the existing instance before launching a replacement.
+- Restart the Electron app as you make code changes so you can see and verify the changes while you work. Rebuild first when needed, then check the updated app before continuing.
+- Always use the Electron app when testing or verifying app behavior.
+- Before reporting work complete, ensure exactly one instance of the updated local Electron app is running and ready for the user to use. Launch it if it is closed, and leave it running so the user does not have to reopen it. Brief downtime for restarts or rebuilds while working is expected. Only leave the app closed if the user explicitly asks you to.
 - **Small changes.** One scoped concern per change. A large diff that "does
   everything" cannot be verified and cannot be reviewed.
 - **Run the thing.** Not the type checker the actual application. Click
