@@ -449,7 +449,7 @@ test('a full maintenance queue eventually checks both working and failed routes'
     for(let round=0;run.pending.size<2&&round<20;round++)await drain();
     assert.equal(run.pending.size, 2);
     const queued = (await run.snapshot(coordinator)).games[0].candidates;
-    assert.equal(queued.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'queued').length, 0);
+    assert.equal(queued.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'queued').length, 133);
     assert.equal(queued.filter(row => row.availability.kind === 'unavailable').length, 135);
     for (let round = 0; round < 280 && (run.calls.length < 540 || run.pending.size > 0); round++) {
       for (const id of [...run.pending.keys()]) run.release(id, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });

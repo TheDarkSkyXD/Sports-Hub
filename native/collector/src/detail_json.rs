@@ -193,7 +193,9 @@ fn ppv_players(game_id: &str, observation: &Observation, body: &str) -> Vec<Reso
                 && (row.uri_name != root.uri_name
                     || iframe != format!("https://taifood-blog.asia/embed/{}", root.uri_name)))
             || (root.tag != "Wrestling"
-                && iframe != format!("https://embedindia.st/embed/{}", row.uri_name))
+                && !["embedindia.st", "taifood-blog.asia"]
+                    .iter()
+                    .any(|host| iframe == format!("https://{host}/embed/{}", row.uri_name)))
         {
             continue;
         }
@@ -485,6 +487,87 @@ pub fn missing_json_reason(observation: &Observation, body: &str) -> Option<Miss
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ppv_migrated_api_iframes_preserve_published_urls_and_substream_identity() {
+        let observation: Observation = serde_json::from_value(serde_json::json!({
+            "id":"ppv:29844", "sourceId":"ppv", "url":"https://ppv.st/live/cfb/2026-10-09/isu-byu",
+            "title":"Iowa State Cyclones at BYU Cougars", "league":"ncaaf",
+            "teams":["Iowa State Cyclones", "BYU Cougars"], "kickoff":1791598500000_i64,
+            "rawTime":"2026-10-10T02:15:00.000Z", "observedAt":1791598500000_i64, "parserVersion":2
+        }))
+        .unwrap();
+        for host in ["taifood-blog.asia", "embedindia.st"] {
+            let main_url = format!("https://{host}/embed/cfb/2026-10-09/isu-byu");
+            let skycast_url = format!("{main_url}/skycast");
+            let skycast = serde_json::json!({
+                "id":29845, "name":"Iowa State Cyclones at BYU Cougars", "tag":"College Football",
+                "uri_name":"cfb/2026-10-09/isu-byu/skycast", "iframe":skycast_url, "source_tag":"Skycast"
+            });
+            let detail = serde_json::json!({
+                "id":29844, "name":"Iowa State Cyclones at BYU Cougars", "tag":"College Football",
+                "uri_name":"cfb/2026-10-09/isu-byu", "starts_at":1791598500,
+                "iframe":main_url, "source_tag":"ESPN", "substreams":[skycast]
+            });
+            let players =
+                compatible_json_players("ncaaf-1", &observation, &detail.to_string()).unwrap();
+            assert_eq!(players.len(), 2, "{host}");
+            for (player, expected) in players.iter().zip([&main_url, &skycast_url]) {
+                assert!(
+                    matches!(&player.locator, CandidateLocator::EventPage { event_url, server_url, .. }
+                    if event_url == &observation.url && server_url == expected)
+                );
+            }
+            for (field, replacement) in [
+                ("name", serde_json::json!("Other game")),
+                ("tag", serde_json::json!("NFL")),
+                (
+                    "uri_name",
+                    serde_json::json!("cfb/2026-10-09/other-game/skycast"),
+                ),
+                (
+                    "iframe",
+                    serde_json::json!(skycast_url.replace("isu-byu", "other-game")),
+                ),
+                (
+                    "iframe",
+                    serde_json::json!(skycast_url.replace("/cfb/", "/nfl/")),
+                ),
+                (
+                    "iframe",
+                    serde_json::json!(skycast_url.replace("2026-10-09", "2026-10-10")),
+                ),
+                (
+                    "iframe",
+                    serde_json::json!(skycast_url.replace(host, "other.example")),
+                ),
+            ] {
+                let mut changed = detail.clone();
+                changed["substreams"][0][field] = replacement;
+                assert_eq!(
+                    compatible_json_players("ncaaf-1", &observation, &changed.to_string())
+                        .unwrap()
+                        .len(),
+                    1,
+                    "{field}"
+                );
+            }
+            for (field, replacement) in [
+                ("uri_name", serde_json::json!("cfb/2026-10-09/other-game")),
+                ("iframe", serde_json::json!(skycast_url)),
+            ] {
+                let mut changed = detail.clone();
+                changed[field] = replacement;
+                changed["substreams"] = serde_json::json!([]);
+                assert!(
+                    compatible_json_players("ncaaf-1", &observation, &changed.to_string())
+                        .unwrap()
+                        .is_empty(),
+                    "{field}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn wwe_ppv_detail_requires_the_listed_event_and_exact_dated_embed() {

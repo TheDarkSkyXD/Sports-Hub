@@ -120,7 +120,9 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
     const match = /^\/(college-football|nfl|nba|nhl|mlb)\/stream-([a-z0-9]+(?:-[a-z0-9]+)*)-live$/.exec(event.pathname);
     return !!match && new RegExp(`^/${match[1]}/[1-9]\\d{0,3}/${match[2]}-stream$`).test(server.pathname);
   }
-  if (event.hostname === 'ppv.st' && server.hostname === 'embedindia.st') {
+  if (event.hostname === 'ppv.st' && ['embedindia.st', 'taifood-blog.asia'].includes(server.hostname)) {
+    const wrestling=/^\/live\/wwe\/(\d{4}-\d{2}-\d{2})$/.exec(event.pathname);
+    if(wrestling)return server.hostname==='taifood-blog.asia'&&server.pathname===`/embed/wwe/${wrestling[1]}`;
     const race=/^\/live\/f1\/(\d{4})\/([a-z0-9]+(?:-[a-z0-9]+)*)\/(fp[123]|sprint-q|sprint|qualifying|race)$/.exec(event.pathname);
     if(race){
       const path=`/embed/f1/${race[1]}/${race[2]}/${race[3]}`;
@@ -132,10 +134,6 @@ export function validEventPagePair(eventUrl: string, serverUrl: string): boolean
     if (!match) return false;
     const path=`/embed/${match[1]}/${match[2]}/${match[3]}`;
     return server.pathname===path || server.pathname===`${path}/skycast`;
-  }
-  if(event.hostname==='ppv.st'&&server.hostname==='taifood-blog.asia'){
-    const match=/^\/live\/wwe\/(\d{4}-\d{2}-\d{2})$/.exec(event.pathname);
-    return !!match&&server.pathname===`/embed/wwe/${match[1]}`;
   }
   return false;
 }

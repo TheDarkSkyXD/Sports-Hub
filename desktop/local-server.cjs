@@ -221,7 +221,10 @@ function createLocalServer({ root, origin, port, userData, controlToken, observe
   }
 
   function commandEnvironment(instanceId, extra = {}) {
-    return { ...process.env, ...extra, NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA ?? '1',
+    return { ...process.env,
+      ...(mode === 'dev' ? { SUNDAY_ROOM_COLLECTOR_DIR: process.env.SUNDAY_ROOM_COLLECTOR_DIR ||
+        path.resolve(root, '.desktop-runtime', 'rust-collector-addon') } : {}),
+      ...extra, NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA ?? '1',
       ELECTRON_RUN_AS_NODE: '1', SUNDAY_ROOM_DESKTOP: '1', SUNDAY_ROOM_BROWSER_COLLECTORS: '1',
       SUNDAY_ROOM_DATA_DIR: userData, SUNDAY_ROOM_CONTROL_TOKEN: controlToken,
       SUNDAY_ROOM_SERVER_INSTANCE_ID: instanceId, SUNDAY_ROOM_APP_ORIGIN: origin,

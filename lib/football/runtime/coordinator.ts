@@ -297,7 +297,8 @@ export class FootballCoordinator {
             const wasFresh = previous && !this.errors.has(source.id) && acceptedAt-previous.at<=90000;
             const historyDay=new Date(now-24*3600_000).toISOString().slice(0,10);
             const games=result.historyErrors?.length&&previous?
-              [...new Map([...previous.games.filter(game=>game.date?.slice(0,10)===historyDay),...result.games]
+              [...new Map([...previous.games.filter(game=>game.date?.slice(0,10)===historyDay||
+                game.lifecycle==='live'&&feedEligible(game,acceptedAt)),...result.games]
                 .map(game=>[game.id,game] as const)).values()]:result.games;
             this.store.savePartition(source.id,{...result,games,at:acceptedAt});
             const accepted = this.store.partition(source.id);
@@ -634,6 +635,8 @@ export class FootballCoordinator {
     const deferred=this.deferredProbes.get(key);
     if(deferred&&deferred.until>this.now())return {kind:'checking',progress:{kind:'deferred',since:deferred.since,retryAt:deferred.until,...(deferred.phase?{phase:deferred.phase}:{})}};
     if(health?.kind==='unavailable')return health;
+    if(health?.kind==='playable'&&this.retainedPlayable(candidate)&&this.feedGame(this.games.find(game=>game.id===candidate.gameId)))
+      return {kind:'checking',progress:{kind:'queued',since:health.checkedAt+MEDIA_RECHECK_MS}};
     return {kind:'unknown'};
   }
   private selectable(candidate:Candidate):boolean {
@@ -742,10 +745,37 @@ export class FootballCoordinator {
     const admittedByGame=new Map<string,number>();
     for(const job of [...this.activeProbes.values(),...this.probeQueue])
       admittedByGame.set(job.candidate.gameId,(admittedByGame.get(job.candidate.gameId)||0)+1);
-    const eligible=this.games.filter(game=>this.feedGame(game)).map(game=>({
-      gameId:game.id,urgency:this.gameUrgency(game),kickoff:game.date?Date.parse(game.date):Infinity,
-      candidates:(this.candidates.get(game.id)||[]).filter(candidate=>this.currentCandidate(candidate)).sort((a,b)=>this.rankCandidates(a,b))
-    })).filter(game=>game.candidates.length);
+    const firstCheckKeys=new Set<string>();
+    const eligible=this.games.filter(game=>this.feedGame(game)).map(game=>{
+      const candidates=(this.candidates.get(game.id)||[]).filter(candidate=>this.currentCandidate(candidate)).sort((a,b)=>this.rankCandidates(a,b));
+      const sourcesByKey=new Map<string,Set<string>>();
+      for(const candidate of candidates){
+        const key=this.probeKey(candidate),sources=sourcesByKey.get(key)||new Set<string>();
+        for(const sourceId of candidate.sourceIds)sources.add(sourceId);
+        sourcesByKey.set(key,sources);
+      }
+      const seenSources=new Set<string>();
+      const seenKeys=new Set<string>();
+      for(const candidate of candidates){
+        const key=this.probeKey(candidate);
+        if(this.terminal(candidate)||this.activeProbes.has(key)||this.deferredProbes.has(key)){
+          seenKeys.add(key);
+          for(const sourceId of sourcesByKey.get(key)||[])seenSources.add(sourceId);
+        }
+      }
+      const firstChecks:Candidate[]=[],siblings:Candidate[]=[];
+      for(const candidate of candidates){
+        const key=this.probeKey(candidate),sources=sourcesByKey.get(key)||new Set<string>();
+        if(!seenKeys.has(key)&&[...sources].some(sourceId=>!seenSources.has(sourceId))){
+          firstChecks.push(candidate);
+          firstCheckKeys.add(key);
+          seenKeys.add(key);
+          for(const sourceId of sources)seenSources.add(sourceId);
+        }else siblings.push(candidate);
+      }
+      return {gameId:game.id,urgency:this.gameUrgency(game),kickoff:game.date?Date.parse(game.date):Infinity,
+        candidates:[...firstChecks,...siblings]};
+    }).filter(game=>game.candidates.length);
     eligible.sort((left,right)=>left.urgency-right.urgency||
       Number(left.candidates.some(hasPlayable))-Number(right.candidates.some(hasPlayable))||left.kickoff-right.kickoff);
     const nearKickoff=new Set(eligible.filter(game=>game.urgency===1).map(game=>game.gameId));
@@ -798,7 +828,15 @@ export class FootballCoordinator {
       if(promoted<Infinity){this.promotedProbes.set(job.key,promoted);job.controller.abort();}
     }
     const recheckGames=new Set(rechecks.map(work=>work.candidate.gameId));
-    const sameGamePriority=new Set([...forced.map(candidate=>candidate.gameId),...recheckGames]);
+    const forcedGames=new Set(forced.map(candidate=>candidate.gameId));
+    const sameGamePriority=new Set([...forcedGames,...recheckGames]);
+    const fairCheck=this.urgentAdmissions>=3&&!this.protectedBackgroundKey?ordered.find(candidate=>{
+      const key=this.probeKey(candidate);
+      return firstCheckKeys.has(key)&&!this.activeProbes.has(key)&&!this.deferredProbes.has(key)&&
+        !this.terminal(candidate)&&((admittedByGame.get(candidate.gameId)||0)<(demand.has(candidate.gameId)?2:1)||
+          this.probeQueue.some(job=>job.candidate.gameId===candidate.gameId&&job.priority==='recheck'));
+    }):undefined;
+    const fairKey=fairCheck?this.probeKey(fairCheck):undefined;
     const priorityUnknown=unknown.filter(candidate=>
       (admittedByGame.get(candidate.gameId)||0)<(demand.has(candidate.gameId)?2:1));
     const queuedPriority=this.probeQueue.map(job=>job.priority==='forced'?0:job.priority==='recheck'?1:
@@ -812,7 +850,7 @@ export class FootballCoordinator {
       const level=job.priority==='forced'?0:job.priority==='recheck'?1:
         firstFeedDemand.has(job.candidate.gameId)?2:nearKickoff.has(job.candidate.gameId)?3:
           job.priority==='retry'?5:4;
-      if(job.key===this.protectedBackgroundKey&&!sameGamePriority.has(job.candidate.gameId))continue;
+      if(job.key===this.protectedBackgroundKey&&!forcedGames.has(job.candidate.gameId))continue;
       if(sameGamePriority.has(job.candidate.gameId)&&job.priority==='unknown'||
         level>priorityLevel){
         if(job.key===this.protectedBackgroundKey)this.protectedBackgroundKey=undefined;
@@ -822,14 +860,24 @@ export class FootballCoordinator {
     }
     for(let index=this.probeQueue.length-1;index>=0;index--){
       const job=this.probeQueue[index];
-      if(job.priority!=='unknown'||!recheckGames.has(job.candidate.gameId))continue;
+      if(job.priority!=='unknown'||job.key===fairKey||!recheckGames.has(job.candidate.gameId))continue;
       this.probeQueue.splice(index,1);
       admittedByGame.set(job.candidate.gameId,(admittedByGame.get(job.candidate.gameId)||1)-1);
       this.revision++;
     }
+    if(fairCheck&&fairKey&&!queued.has(fairKey)){
+      const admitted=admittedByGame.get(fairCheck.gameId)||0;
+      const replacement=this.probeQueue.findLastIndex(job=>job.candidate.gameId===fairCheck.gameId&&job.priority==='recheck');
+      if(admitted>=(demand.has(fairCheck.gameId)?2:1)&&replacement>=0){
+        this.probeQueue.splice(replacement,1);
+        admittedByGame.set(fairCheck.gameId,admitted-1);
+        this.revision++;
+      }
+    }
     const additions:Array<ProbeWork & {candidate:Candidate}>=[...forced.map(candidate=>({candidate,priority:'forced'} as const)),
+      ...unknown.filter(candidate=>this.probeKey(candidate)===fairKey).map(candidate=>({candidate,priority:'unknown'} as const)),
       ...maintenance.filter(work=>work.priority==='recheck'),
-      ...unknown.map(candidate=>({candidate,priority:'unknown'} as const)),
+      ...unknown.filter(candidate=>this.probeKey(candidate)!==fairKey).map(candidate=>({candidate,priority:'unknown'} as const)),
       ...maintenance.filter(work=>work.priority==='retry')];
     for(const work of additions) {
       const {candidate,priority}=work;
@@ -942,7 +990,8 @@ export class FootballCoordinator {
         if(terminal)this.terminalByGame.get(job.candidate.gameId)?.delete(job.key);
       }
       this.activeProbes.set(job.key,job);
-      if(urgent&&lowerTurn)this.protectedBackgroundKey=job.key;
+      if((job.priority==='unknown'||job.priority==='retry')&&this.urgentAdmissions>=3&&!this.protectedBackgroundKey)
+        this.protectedBackgroundKey=job.key;
       if(job.priority==='forced'||job.priority==='recheck')this.urgentAdmissions++;
       else {
         this.urgentAdmissions=0;

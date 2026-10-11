@@ -327,14 +327,15 @@ pub fn valid_event_page_pair(event_url: &str, server_url: &str) -> bool {
                 )
             })
         }
-        (Some("ppv.st"), Some("taifood-blog.asia")) => {
-            Regex::new(r"^/live/wwe/([0-9]{4}-[0-9]{2}-[0-9]{2})$")
-                .unwrap()
-                .captures(event.path())
-                .is_some_and(|capture| server.path() == format!("/embed/wwe/{}", &capture[1]))
-        }
-        (Some("ppv.st"), Some("embedindia.st")) => {
+        (Some("ppv.st"), Some("embedindia.st" | "taifood-blog.asia")) => {
             let path = event.path();
+            if let Some(wrestling) = Regex::new(r"^/live/wwe/([0-9]{4}-[0-9]{2}-[0-9]{2})$")
+                .unwrap()
+                .captures(path)
+            {
+                return server.host_str() == Some("taifood-blog.asia")
+                    && server.path() == format!("/embed/wwe/{}", &wrestling[1]);
+            }
             if let Some(race) = Regex::new(r"^/live/f1/([0-9]{4})/([a-z0-9]+(?:-[a-z0-9]+)*)/(fp[123]|sprint-q|sprint|qualifying|race)$")
                 .unwrap()
                 .captures(path)
@@ -365,6 +366,50 @@ pub fn valid_event_page_pair(event_url: &str, server_url: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ppv_migrated_hosts_preserve_exact_sports_and_race_routes() {
+        for host in ["embedindia.st", "taifood-blog.asia"] {
+            for league in ["cfb", "nfl", "nba", "wnba", "nhl", "mlb"] {
+                let event = format!("https://ppv.st/live/{league}/2026-10-09/isu-byu");
+                let server = format!("https://{host}/embed/{league}/2026-10-09/isu-byu");
+                assert!(valid_event_page_pair(&event, &server), "{server}");
+                assert!(valid_event_page_pair(&event, &format!("{server}/skycast")));
+                for invalid in [
+                    server.replace("isu-byu", "other-game"),
+                    server.replace(league, "cfl"),
+                    server.replace("2026-10-09", "2026-10-10"),
+                    server.replace(host, "other.example"),
+                    format!("{server}?next=other"),
+                    format!("{server}#player"),
+                ] {
+                    assert!(!valid_event_page_pair(&event, &invalid), "{invalid}");
+                }
+            }
+            for (session, alternate) in [
+                ("fp1", "practice-1"),
+                ("sprint-q", "sprint-qualifying"),
+                ("race", "race"),
+            ] {
+                let event = format!("https://ppv.st/live/f1/2026/japan/{session}");
+                assert!(valid_event_page_pair(
+                    &event,
+                    &format!("https://{host}/embed/f1/2026/japan/{session}")
+                ));
+                assert!(valid_event_page_pair(
+                    &event,
+                    &format!("https://{host}/embed/japan-grand-prix---{alternate}-1")
+                ));
+                for invalid in [
+                    format!("https://{host}/embed/f1/2026/china/{session}"),
+                    format!("https://{host}/embed/f1/2025/japan/{session}"),
+                    format!("https://{host}/embed/japan-grand-prix---qualifying-1"),
+                ] {
+                    assert!(!valid_event_page_pair(&event, &invalid), "{invalid}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn wwe_ppv_embed_requires_the_same_dated_route() {
