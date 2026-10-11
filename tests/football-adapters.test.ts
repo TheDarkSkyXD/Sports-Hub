@@ -175,6 +175,33 @@ test('PPV retains all exact routes while rejecting wrong-game records', () => {
   assert.deepEqual(compatiblePlayers('ncaaf-1',observed,JSON.stringify({...parent,iframe:undefined})),[]);
 });
 
+test('PPV migrated API iframes preserve published URLs and exact substream identity', () => {
+  const parent = {id:29844,name:'Iowa State Cyclones at BYU Cougars',tag:'College Football',
+    uri_name:'cfb/2026-10-09/isu-byu',starts_at:1791598500,source_tag:'ESPN',
+    iframe:'https://taifood-blog.asia/embed/cfb/2026-10-09/isu-byu'};
+  const observed = {...observation(['Iowa State Cyclones','BYU Cougars'],parent.starts_at*1000),sourceId:'ppv',
+    url:`https://ppv.st/live/${parent.uri_name}`};
+  for (const host of ['taifood-blog.asia', 'embedindia.st']) {
+    const main = {...parent,iframe:parent.iframe.replace('taifood-blog.asia',host)};
+    const skycast = {...main,id:29845,source_tag:'Skycast',uri_name:`${main.uri_name}/skycast`,iframe:`${main.iframe}/skycast`};
+    const players = compatiblePlayers('ncaaf-1',observed,JSON.stringify({...main,substreams:[skycast]}));
+    assert.deepEqual(players.map(player=>player.locator),[
+      {provider:'event-page',gameId:'ncaaf-1',eventUrl:observed.url,serverUrl:main.iframe},
+      {provider:'event-page',gameId:'ncaaf-1',eventUrl:observed.url,serverUrl:skycast.iframe},
+    ]);
+    for (const invalid of [{...skycast,name:'Other game'},{...skycast,tag:'NFL'},
+      {...skycast,uri_name:skycast.uri_name.replace('isu-byu','other-game')},
+      {...skycast,iframe:skycast.iframe.replace('isu-byu','other-game')},
+      {...skycast,iframe:skycast.iframe.replace('/cfb/','/nfl/')},
+      {...skycast,iframe:skycast.iframe.replace('2026-10-09','2026-10-10')},
+      {...skycast,iframe:skycast.iframe.replace(host,'other.example')}]) {
+      assert.deepEqual(compatiblePlayers('ncaaf-1',observed,JSON.stringify({...main,substreams:[invalid]})),players.slice(0,1));
+    }
+    assert.deepEqual(compatiblePlayers('ncaaf-1',observed,JSON.stringify({...main,uri_name:'cfb/2026-10-09/other-game'})),[]);
+    assert.deepEqual(compatiblePlayers('ncaaf-1',observed,JSON.stringify({...main,iframe:skycast.iframe})),[]);
+  }
+});
+
 test('catalog detail collection selects the exact PPV parent and preserves API game dates', async () => {
   const collector=createFixtureCollector();
   const parent = {id:29554,name:'Notre Dame at North Carolina',tag:'College Football',uri_name:'cfb/2026-10-03/nd-unc',starts_at:now/1000};

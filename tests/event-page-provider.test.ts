@@ -13,6 +13,35 @@ const routes = [
   ['https://ppv.st/live/cfb/2026-10-03/nd-unc', 'https://embedindia.st/embed/cfb/2026-10-03/nd-unc/skycast'],
 ] as const;
 
+test('PPV migrated hosts preserve exact sports, race sessions, and WWE routes', () => {
+  for (const host of ['embedindia.st', 'taifood-blog.asia']) {
+    for (const league of ['cfb', 'nfl', 'nba', 'wnba', 'nhl', 'mlb']) {
+      const event = `https://ppv.st/live/${league}/2026-10-09/isu-byu`;
+      const server = `https://${host}/embed/${league}/2026-10-09/isu-byu`;
+      assert.equal(validEventPagePair(event, server), true, server);
+      assert.equal(validEventPagePair(event, `${server}/skycast`), true);
+      for (const invalid of [server.replace('isu-byu', 'other-game'), server.replace(league, 'cfl'),
+        server.replace('2026-10-09', '2026-10-10'), server.replace(host, 'other.example'),
+        `${server}?next=other`, `${server}#player`]) {
+        assert.equal(validEventPagePair(event, invalid), false, invalid);
+      }
+    }
+    for (const [session, alternate] of [['fp1', 'practice-1'], ['sprint-q', 'sprint-qualifying'], ['race', 'race']]) {
+      const event = `https://ppv.st/live/f1/2026/japan/${session}`;
+      assert.equal(validEventPagePair(event, `https://${host}/embed/f1/2026/japan/${session}`), true);
+      assert.equal(validEventPagePair(event, `https://${host}/embed/japan-grand-prix---${alternate}-1`), true);
+      assert.equal(validEventPagePair(event, `https://${host}/embed/f1/2026/china/${session}`), false);
+      assert.equal(validEventPagePair(event, `https://${host}/embed/f1/2025/japan/${session}`), false);
+      assert.equal(validEventPagePair(event, `https://${host}/embed/japan-grand-prix---qualifying-1`), false);
+    }
+  }
+  const wwe = 'https://ppv.st/live/wwe/2026-10-09';
+  assert.equal(validEventPagePair(wwe, 'https://taifood-blog.asia/embed/wwe/2026-10-09'), true);
+  for (const invalid of ['https://embedindia.st/embed/wwe/2026-10-09',
+    'https://taifood-blog.asia/embed/wwe/2026-10-10', 'https://taifood-blog.asia/embed/wwe/2026-10-09/skycast',
+    'https://taifood-blog.asia/embed/aew/2026-10-09']) assert.equal(validEventPagePair(wwe, invalid), false);
+});
+
 test('event page policy binds published server routes to their exact event', () => {
   for (const [event, server] of routes) assert.equal(validEventPagePair(event, server), true);
   for (const [event, server] of routes.slice(0,3)) {

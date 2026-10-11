@@ -46,6 +46,7 @@ function localServer(options: {
   timers?: TimerPolicy;
   serverRoot?: string;
   mode?: 'compiled' | 'dev' | 'packaged';
+  env?: NodeJS.ProcessEnv;
 }) {
   const logDir = mkdtempSync(path.join(tmpdir(), 'sunday-local-server-test-'));
   const wrapper = runInNewContext(`(function(require, __dirname, process, fetch, AbortSignal) { const module = { exports: {} }; ${source}\nreturn module.exports.createLocalServer; })`, {
@@ -56,7 +57,7 @@ function localServer(options: {
   const createLocalServer = wrapper((name: string) => name === 'node:child_process' ? { spawn: options.spawn } :
     name.startsWith('./') ? require(path.join(root, 'desktop', name)) : require(name),
     path.join(root, 'desktop'), {
-      platform: 'win32', execPath: 'node.exe', env: {},
+      platform: 'win32', execPath: 'node.exe', env: options.env ?? {},
     }, options.fetch ?? (() => new Promise(() => {})), AbortSignal);
   const service = createLocalServer({
     root: options.serverRoot ?? root, origin: options.origin ?? 'http://127.0.0.1:49300', port: options.port ?? 49300,
@@ -66,6 +67,43 @@ function localServer(options: {
     onReady: options.onReady ?? (() => {}),
   });
   return { service, dispose: () => rmSync(logDir, { recursive: true, force: true }) };
+}
+
+for (const scenario of [
+  { name: 'development startup passes the absolute staged collector directory', mode: 'dev', env: {},
+    expected: path.join(root, '.desktop-runtime', 'rust-collector-addon') },
+  { name: 'development startup preserves an explicit collector directory', mode: 'dev',
+    env: { SUNDAY_ROOM_COLLECTOR_DIR: path.join(tmpdir(), 'custom-collector') },
+    expected: path.join(tmpdir(), 'custom-collector') },
+  { name: 'packaged startup leaves collector discovery to its server bootstrap', mode: 'packaged', env: {},
+    expected: undefined },
+] satisfies { name: string; mode: 'dev' | 'packaged'; env: NodeJS.ProcessEnv; expected: string | undefined }[]) {
+  test(scenario.name, async () => {
+    const child = new Child();
+    let instanceId = '';
+    let collectorDirectory: string | undefined;
+    const room = localServer({
+      mode: scenario.mode, env: scenario.env,
+      fetch: async () => new Response(null, { status: 204, headers: { 'x-sunday-server-instance-id': instanceId } }),
+      spawn(command, _args, options) {
+        if (command === 'taskkill.exe') {
+          const killer = new EventEmitter();
+          setImmediate(() => { killer.emit('exit', 0); child.exit(0); });
+          return killer;
+        }
+        collectorDirectory = options.env.SUNDAY_ROOM_COLLECTOR_DIR;
+        instanceId = options.env.SUNDAY_ROOM_SERVER_INSTANCE_ID ?? '';
+        return child;
+      },
+    });
+    try {
+      await room.service.start();
+      assert.equal(collectorDirectory, scenario.expected);
+    } finally {
+      await within(room.service.stop(), 1000);
+      room.dispose();
+    }
+  });
 }
 
 test('ordinary unpackaged desktop prepares compiled output instead of launching development',
