@@ -11,6 +11,8 @@ import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BrowserProviderPlayer } from '@/components/browser-provider-player';
 import { GameTiming } from '@/components/game-timing';
+import { motorsportsTiming } from '@/lib/game-timing';
+import { useGameClock } from '@/hooks/use-game-clock';
 import { SourceInventory } from '@/components/source-inventory';
 import { FinishedGameRetentionSetting } from '@/components/finished-game-retention-setting';
 import { FeedCheckIntervalSetting } from '@/components/feed-check-interval-setting';
@@ -30,7 +32,11 @@ const EMPTY_GAMES: Game[] = [];
 const GAME_PAGE_SIZE = 40;
 const layouts: { id: Layout; label: string; icon: typeof Grid2X2 }[] = [{ id:'quad', label:'Four games', icon:Grid2X2 }, { id:'focus', label:'Focus view', icon:LayoutPanelLeft }, { id:'duo', label:'Two games', icon:Columns2 }, { id:'single', label:'Single game', icon:Monitor }];
 function Badge({ team, large = false }: { team: Team; large?: boolean }) { const [failed,setFailed]=useState(false); return <span className={`team-badge ${large?'large':''}`} style={{'--team':`#${team.color}`} as React.CSSProperties}>{team.logo&&!failed ? <Image src={team.logo} alt="" width={large?56:32} height={large?56:32} unoptimized onError={()=>setFailed(true)}/> : team.abbreviation}</span>; }
-function GameStatus({ game }: { game: Game }) { return game.detail==='Scheduled' ? null : <span className={`game-status ${game.status}`}><i/>{game.detail}</span>; }
+function GameStatus({ game }: { game: Game }) {
+ const unavailable=game.detail==='Status unavailable';
+ const now=useGameClock(unavailable&&isMotorsportsLeague(game.league));
+ return game.detail==='Scheduled'||(unavailable&&motorsportsTiming(game,now)!==null) ? null : <span className={`game-status ${game.status}`}><i/>{game.detail}</span>;
+}
 function score(team: Team, game: Game, hide: boolean) { return hide ? '—' : game.status==='pre' ? '—' : team.score ?? '—'; }
 
 const raceLogos:Record<RaceGame['league'],string>={f1:'/series-logos/f1.png','nascar-cup':'/series-logos/nascar-cup.png',

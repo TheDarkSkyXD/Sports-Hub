@@ -1,4 +1,5 @@
 import type { Game } from './sunday';
+import { isMotorsportsLeague } from './football/shared.ts';
 
 export type GameTimingState =
   | { kind: 'unavailable' }
@@ -16,6 +17,19 @@ export function gameTiming(game: Pick<Game, 'date' | 'status'>, now: number | nu
   if (game.status !== 'pre' || now === null) return { kind: 'scheduled', start };
   const remainingSeconds = Math.ceil((start - now) / 1000);
   return remainingSeconds > 0 ? { kind: 'counting', start, remainingSeconds } : { kind: 'awaiting', start };
+}
+
+export type MotorsportsTiming =
+  | { kind: 'counting'; remainingSeconds: number }
+  | { kind: 'in-progress' }
+  | null;
+
+export function motorsportsTiming(game: Pick<Game, 'date' | 'status'> & Partial<Pick<Game, 'league'>>, now: number | null): MotorsportsTiming {
+  if (now === null || game.league === undefined || !isMotorsportsLeague(game.league) || (game.status !== 'pre' && game.status !== 'unknown')) return null;
+  const timing = gameTiming(game, null);
+  if (timing.kind === 'unavailable' || relativeStartDay({ start: timing.start, now }) === null) return null;
+  const remainingSeconds = Math.ceil((timing.start - now) / 1000);
+  return remainingSeconds > 0 ? { kind: 'counting', remainingSeconds } : { kind: 'in-progress' };
 }
 
 export function countdown(remainingSeconds: number): string {
