@@ -130,7 +130,7 @@ test('a tomorrow matchup automatically discovers newly published servers after t
     await coordinator.refresh(); await drain();
     assert.equal(detailReads, 1);
     published = true;
-    clock += 299_999;
+    clock += 30*60_000-1;
     await coordinator.command({ kind: 'sources' });
     assert.equal(detailReads, 1);
     clock += 2;

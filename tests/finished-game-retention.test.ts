@@ -117,7 +117,7 @@ test('finished games and saved servers survive missing schedules and cold restor
     const counts = run.counts();
     run.clock(at + 10 * 60_000); run.finish();
     await coordinator.refresh(true); await drain();
-    assert.deepEqual(run.counts(), { ...counts, listingReads: counts.listingReads + 1 });
+    assert.deepEqual(run.counts(), counts);
     run.disappear(); await coordinator.refresh(true); await drain();
     await coordinator.stop(); run.clock(at + 10 * 60_000 + day - 1); coordinator = run.start();
     const restored = (await sources(coordinator)).games[0].candidates;
@@ -132,7 +132,7 @@ test('finished games and saved servers survive missing schedules and cold restor
     }
     assert.equal((await coordinator.command({ kind: 'open', gameId: live.id, manual: false })).kind, 'error');
     assert.equal((await coordinator.command({ kind: 'check-sources', gameIds: [live.id], retry: true })).kind, 'error');
-    assert.deepEqual(run.counts(), { ...counts, listingReads: counts.listingReads + 1 });
+    assert.deepEqual(run.counts(), counts);
     run.clock(at + 10 * 60_000 + day);
     assert.deepEqual((await sources(coordinator)).games, []);
     assert.equal((await coordinator.command({ kind: 'open', gameId: live.id, manual: false })).kind, 'error');
@@ -142,7 +142,7 @@ test('finished games and saved servers survive missing schedules and cold restor
     if (expired.kind === 'board') assert.deepEqual(expired.board.games, []);
     await coordinator.stop(); coordinator = run.start();
     assert.deepEqual((await sources(coordinator)).games, []);
-    assert.deepEqual(run.counts(), { ...counts, listingReads: counts.listingReads + 1 });
+    assert.deepEqual(run.counts(), counts);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 

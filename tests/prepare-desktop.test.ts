@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { cp, lstat, mkdir, mkdtemp, readFile, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -31,9 +32,11 @@ async function fixture(t: TestContext): Promise<string> {
     '.next/standalone/lib/football/runtime/composition.ts': '',
     '.next/standalone/lib/football/source-registry.json': '[]',
     '.next/standalone/lib/playback/probe.ts': '',
+    '.next/standalone/lib/playback/verification-policy.json': '{"concurrency":4}',
     '.next/standalone/lib/sunday.ts': '',
     '.next/standalone/lib/game-timing.ts': '',
     'public/favicon.svg': 'icon',
+    'node_modules/hls.js/dist/hls.worker.js': 'self.onmessage = () => postMessage("matched worker");',
     'node_modules/cheerio/index.js': '',
     'node_modules/zod/index.js': '',
     'node_modules/sharp/index.js': '',
@@ -76,6 +79,70 @@ test('desktop preparation includes Sharp native DLLs and skips uninstalled platf
     'required runtime');
 });
 
+test('desktop preparation generates and packages the installed HLS worker bytes', async t => {
+  const root = await fixture(t);
+  await run(process.execPath, [prepare], { cwd: root, windowsHide: true });
+  const installed = await readFile(path.join(root, 'node_modules/hls.js/dist/hls.worker.js'));
+  assert.deepEqual(await readFile(path.join(root, 'public/generated/hls.worker.js')), installed);
+  assert.deepEqual(await readFile(path.join(root, '.next/standalone/public/generated/hls.worker.js')), installed);
+});
+
+test('desktop preparation removes traced collector history while preserving the active standalone collector', async t => {
+  const root = await fixture(t);
+  const distDir = '.desktop-runtime/local-builds/abcd';
+  const output = path.join(root, distDir);
+  await mkdir(path.dirname(output), { recursive: true });
+  await cp(path.join(root, '.next'), output, { recursive: true });
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }));
+  const sourceCache = path.join(root, '.desktop-runtime/rust-collector-addon');
+  await writeFile(path.join(sourceCache, 'collector-old.node'), 'historical collector');
+  const originalFiles = (await readdir(sourceCache)).sort();
+  const originalBytes = await Promise.all(originalFiles.map(name => readFile(path.join(sourceCache, name))));
+  const standalone = path.join(output, 'standalone');
+  const tracedCache = path.join(standalone, '.desktop-runtime/rust-collector-addon');
+  await cp(sourceCache, tracedCache, { recursive: true });
+  const chunk = path.join(standalone, distDir, 'chunks/current.js');
+  await mkdir(path.dirname(chunk), { recursive: true });
+  await writeFile(chunk, 'current server chunk');
+
+  await run(process.execPath, [prepare, distDir], { cwd: root, windowsHide: true });
+
+  const collector = path.join(standalone, 'native/collector');
+  const manifest = JSON.parse(await readFile(path.join(sourceCache, 'active.json'), 'utf8'));
+  const historicalBinary = Buffer.concat([await readFile(path.join(collector, manifest.filename)), Buffer.from('historical build')]);
+  const historicalName = `collector-${createHash('sha256').update(historicalBinary).digest('hex')}.node`;
+  await writeFile(path.join(collector, historicalName), historicalBinary);
+  await run(process.execPath, [prepare, distDir], { cwd: root, windowsHide: true });
+
+  await assert.rejects(lstat(tracedCache), { code: 'ENOENT' });
+  assert.deepEqual((await readdir(sourceCache)).sort(), originalFiles);
+  assert.deepEqual(await Promise.all(originalFiles.map(name => readFile(path.join(sourceCache, name)))), originalBytes);
+  assert.equal(await readFile(chunk, 'utf8'), 'current server chunk');
+  assert.deepEqual((await readdir(collector)).sort(), ['active.json', 'bridge.cjs', manifest.filename, 'source-registry.json'].sort());
+  for (const name of ['active.json', manifest.filename, 'source-registry.json'])
+    assert.deepEqual(await readFile(path.join(collector, name)), await readFile(path.join(sourceCache, name)));
+  const loaded = await run(process.execPath, ['--input-type=module', '-e', `
+    import {createRequire} from 'node:module';
+    const {createNativeCollector}=createRequire(import.meta.url)(${JSON.stringify(path.join(collector, 'bridge.cjs'))});
+    console.log(createNativeCollector(true).digest('abc'));
+  `], { cwd: tmpdir(), windowsHide: true, env: { ...process.env, SUNDAY_ROOM_COLLECTOR_DIR: collector } });
+  assert.equal(loaded.stdout.trim(), 'ba7816bf8f01cfea414140de');
+});
+
+for (const relative of ['.desktop-runtime/rust-collector-addon', 'native/collector'])
+test(`desktop preparation refuses to prune ${relative} redirected into the source checkout`, async t => {
+  const root = await fixture(t);
+  const sourceCache = path.join(root, '.desktop-runtime/rust-collector-addon');
+  const names = (await readdir(sourceCache)).sort();
+  const original = await Promise.all(names.map(name => readFile(path.join(sourceCache, name))));
+  const traced = path.join(root, '.next/standalone', relative);
+  await mkdir(path.dirname(traced), { recursive: true });
+  await symlink(sourceCache, traced, 'junction');
+  await assert.rejects(run(process.execPath, [prepare], { cwd: root, windowsHide: true }),
+    /Collector staging directory leaves its standalone output/);
+  assert.deepEqual(await Promise.all(names.map(name => readFile(path.join(sourceCache, name)))), original);
+});
+
 test('desktop preparation fails when a required Sharp dependency is absent', async t => {
   const root = await fixture(t);
   const missing = path.join(root, 'node_modules/detect-libc/index.js');
@@ -89,6 +156,12 @@ test('desktop preparation rejects a standalone worker without its source registr
   const root=await fixture(t);
   await rm(path.join(root,'.next/standalone/lib/football/source-registry.json'));
   await assert.rejects(run(process.execPath,[prepare],{cwd:root,windowsHide:true}),/ENOENT.*source-registry\.json/s);
+});
+
+test('desktop preparation rejects a playback worker without its verification policy',async t=>{
+  const root=await fixture(t);
+  await rm(path.join(root,'.next/standalone/lib/playback/verification-policy.json'));
+  await assert.rejects(run(process.execPath,[prepare],{cwd:root,windowsHide:true}),/ENOENT.*verification-policy\.json/s);
 });
 
 test('packaged standalone preserves the generated ES module server across preparation', async t => {
@@ -106,7 +179,7 @@ test('packaged standalone preserves the generated ES module server across prepar
   }
 });
 
-test('custom standalone materializes traced aliases and runs ESM workers', async t => {
+for(const aliasTarget of ['source','owned','outside'])test(`custom standalone checks ${aliasTarget} traced aliases before running ESM workers`, async t => {
   const root = await fixture(t);
   const distDir = '.desktop-runtime/local-builds/1234abcd';
   const source = path.join(root, '.next');
@@ -124,7 +197,14 @@ test('custom standalone materializes traced aliases and runs ESM workers', async
   await writeFile(path.join(root, 'node_modules/sharp/index.js'), 'source sharp');
   const alias = path.join(standalone, distDir, 'node_modules/sharp-20c6a5da84e2135f');
   await mkdir(path.dirname(alias), { recursive: true });
-  await symlink(path.join(root, 'node_modules/sharp'), alias, 'junction');
+  const target=aliasTarget==='source'?path.join(root,'node_modules/sharp'):
+    aliasTarget==='owned'?path.join(standalone,'node_modules/sharp'):path.join(root,'public');
+  await symlink(target,alias,'junction');
+
+  if(aliasTarget==='outside'){
+    await assert.rejects(run(process.execPath,[prepare,distDir],{cwd:root,windowsHide:true}),/Unowned standalone package alias/);
+    return;
+  }
 
   await run(process.execPath, [prepare, distDir], { cwd: root, windowsHide: true });
   const env = { ...process.env };

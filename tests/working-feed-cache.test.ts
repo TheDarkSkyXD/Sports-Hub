@@ -247,6 +247,9 @@ test('normalized aliases persist together, trim removed sources, and invalidate 
     await coordinator.command({ kind: 'session', sessionId: opened.playback.session.id, generation: 0, failure: true, retry: false });
     assert.equal(run.readRows().length, 0);
     await coordinator.stop(); coordinator = run.start(); await coordinator.refresh(true); await drain();
+    assert.equal(run.probes.length, 1,'Restart preserves the playback failure instead of immediately repeating it');
+    assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind,'unavailable');
+    await coordinator.command({kind:'check-sources',gameIds:[game.id],retry:true});await drain();
     assert.equal(run.probes.length, 2);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
@@ -315,7 +318,9 @@ test('absence cleanup waits for every league partition and final cleanup needs n
         coordinator = run.start(); const refresh = coordinator.refresh(true); await drain();
         try {
           assert.equal(run.readRows().length, 1);
-          assert.equal((await snapshot(coordinator)).games[0].candidates[0].availability.kind, 'unknown');
+          assert.deepEqual((await snapshot(coordinator)).games[0].candidates[0].availability,
+            {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at+31*60_000});
+          assert.equal(run.probes.length,2);
         } finally { release([]); } await refresh; await drain();
         assert.equal(run.readRows().length, 0);
         continue;
@@ -375,7 +380,7 @@ test('an unchanged fresh schedule restores saved feeds when Chicago midnight ope
     await coordinator.refresh(true);await drain();
     const candidates=(await snapshot(coordinator)).games.find(row=>row.gameId===game.id)?.candidates;
     assert.equal(candidates?.length,1);
-    assert.deepEqual(candidates[0].availability,{kind:'checking',progress:{kind:'deferred',since:Date.parse('2026-10-09T05:00:01Z'),retryAt:Date.parse('2026-10-09T05:05:01Z')}});
+    assert.deepEqual(candidates[0].availability,{kind:'checking',progress:{kind:'deferred',since:Date.parse('2026-10-09T05:00:01Z'),retryAt:Date.parse('2026-10-09T05:01:01Z'),retryAfterMs:60_000}});
   }finally{await coordinator.stop();run.cleanup();}
 });
 
@@ -407,7 +412,7 @@ test('an aged scheduled working route and its changed-locator alias both survive
   let coordinator = run.start();
   try {
     await coordinator.refresh(true); await drain();
-    run.setClock(at + 301_000); run.setListingVersion(2); run.setLocators([{ provider: 'gooz', playerId: '200' }]);
+    run.setClock(at + 30*60_000); run.setListingVersion(2); run.setLocators([{ provider: 'gooz', playerId: '200' }]);
     await coordinator.refresh(true); await drain();
     const before = (await snapshot(coordinator)).games[0].candidates;
     assert.equal(before.length, 2);
@@ -418,8 +423,8 @@ test('an aged scheduled working route and its changed-locator alias both survive
     const after = (await snapshot(coordinator)).games[0].candidates;
     assert.deepEqual(after.map(row => row.id), before.map(row => row.id));
     assert.deepEqual(after.map(row => row.availability),
-      Array.from({ length: 2 }, () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 40 * 60_000 })));
-    assert.equal(run.probes.length, 5);
+      Array.from({ length: 2 }, () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 30 * 60_000 })));
+    assert.equal(run.probes.length, 3);
   } finally { await coordinator.stop(); run.cleanup(); }
 });
 

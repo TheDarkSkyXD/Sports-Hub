@@ -33,3 +33,10 @@ export async function POST(request:Request) {
   if(reply.kind==='catalog-ack')return Response.json(reply,{headers:{'Cache-Control':'no-store'}});
   return new Response(null,{status:reply.kind==='ok'?204:reply.kind==='error'?reply.status:502,headers:{'Cache-Control':'no-store'}});
 }
+
+export async function GET(request:Request) {
+  const secret=process.env.SUNDAY_ROOM_CONTROL_TOKEN;
+  if(process.env.SUNDAY_ROOM_BROWSER_COLLECTORS!=='1'||!secret||request.headers.get('x-sunday-control-token')!==secret)return new Response(null,{status:404});
+  const reply=await command({kind:'collector-polling',source:'sportsurge-v2'});
+  return reply.kind==='collector-polling'?Response.json(reply,{headers:{'Cache-Control':'no-store'}}):new Response(null,{status:503});
+}

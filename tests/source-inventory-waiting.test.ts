@@ -23,5 +23,5 @@ test('an already queued check does not show an invented countdown',()=>{
 
 test('a candidate outside the admission frontier is not shown as queued',()=>{
   const unknown:CandidateSummary={...candidate,availability:{kind:'unknown'}};
-  assert.equal(candidateEvidence(unknown,at),'Playback not checked yet');
+  assert.equal(candidateEvidence(unknown,at),'Waiting for first playback check');
 });

@@ -1,17 +1,17 @@
-import type { AdvancingVideo, CandidateLocator, CollectionAttempt, DetailEvidence, Game, League, Match, MediaPhase, MissingPlayerReason, Observation, ResolvedPlayer, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog, VerificationTarget } from '../shared.ts';
+import type { CandidateLocator, CollectionAttempt, DetailEvidence, Game, League, Match, MissingPlayerReason, Observation, ResolvedPlayer, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog, VerificationTarget } from '../shared.ts';
 import type { WorkingFeed } from './working-feed.ts';
+import type {FeedCheck} from './feed-check.ts';
 
-export type CandidateProbeResult =
-  | {kind:'playable';proof:AdvancingVideo}
-  | {kind:'unavailable';reason:'upstream'|'unsupported'|'invalid-media'|'timeout'|'no-feed'|'playback';phase?:MediaPhase}
-  | {kind:'deferred';retryAfterMs:number;phase?:MediaPhase};
+export type CandidateProbeResult=import('../shared.ts').MediaCheckResult;
 
 export type ProbeProgress={kind:'waiting'|'active';since:number};
 
 export type ScheduleSource = { id: string; league: League; sport?: 'football' | 'basketball' | 'hockey' | 'baseball' | 'racing' | 'mma'; path: string; group: string | null };
 export type ListingSource = { id: string; url: string; family: string; kind?: 'catalog' | 'pending' | 'browser-catalog'; name?: string; publicUrls?: readonly string[]; publicCategories?: readonly {league:League;url:string}[]; parserVersion?: number; leagues?: readonly League[] };
 export type SchedulePartition = { games: Game[]; at: number; week?: number };
-export type ScheduleResult = SchedulePartition & { league: League; horizonErrors?: string[]; historyErrors?: string[] };
+export type ScheduleHistoryIssue={kind:'loading';day:string}|{kind:'failed';day:string;reason:string};
+export type ScheduleProgress=SchedulePartition&{league:League;horizonErrors?:string[];history?:ScheduleHistoryIssue};
+export type ScheduleResult=Omit<ScheduleProgress,'history'>&{history?:Extract<ScheduleHistoryIssue,{kind:'failed'}>};
 export type ListingResult = { observations: Observation[]; outcome: 'parsed' | 'empty' | 'unsupported' | 'parser-changed' };
 
 export class PartialListingReadError extends Error {
@@ -28,11 +28,12 @@ export class PartialListingReadError extends Error {
 export interface FootballRepository {
   finishedGameRetentionMinutes(): number;
   setFinishedGameRetentionMinutes(minutes:number):void;
-  feedCheckIntervalMinutes():number;
-  setFeedCheckIntervalMinutes(minutes:number):void;
   workingFeeds(): WorkingFeed[];
   replaceWorkingIdentity(gameId:string,identityHash:string,feeds:readonly WorkingFeed[]):void;
   removeWorkingGames(gameIds:readonly string[]):void;
+  feedChecks(now:number):FeedCheck[];
+  saveFeedCheck(check:FeedCheck):void;
+  removeFeedCheck(gameId:string,identityHash:string):void;
   partition(id: string): SchedulePartition | undefined;
   savePartition(id: string, value: SchedulePartition): void;
   finals(): Game[];
@@ -63,7 +64,7 @@ export type FootballDependencies = {
   store: FootballRepository;
   schedules: readonly ScheduleSource[];
   sources: readonly ListingSource[];
-  readSchedule: (source: ScheduleSource, now: number, signal: AbortSignal, onCurrent?: (result: ScheduleResult) => void) => Promise<ScheduleResult>;
+  readSchedule: (source: ScheduleSource, now: number, signal: AbortSignal, onCurrent?: (result: ScheduleProgress) => void) => Promise<ScheduleResult>;
   closeSchedule?: () => Promise<void>;
   readSeasonMembership: (season: number, signal: AbortSignal) => Promise<SeasonMembership>;
   readHtml: (url: string, signal: AbortSignal) => Promise<string>;
@@ -73,7 +74,7 @@ export type FootballDependencies = {
   tvappPlayers?: (gameId:string,observation:Observation,html:string,signal:AbortSignal)=>Promise<ResolvedPlayer[]>;
   resolvePlayers?: (gameId:string,observation:Observation,html:string,signal:AbortSignal)=>Promise<ResolvedPlayer[]>;
   missingPlayerReason: (observation: Observation, html: string) => MissingPlayerReason;
-  probeCandidate: (locator: CandidateLocator, signal: AbortSignal, onProgress:(progress:ProbeProgress)=>void,target:VerificationTarget) => Promise<CandidateProbeResult>;
+  probeCandidate: ((locator: CandidateLocator, signal: AbortSignal, onProgress:(progress:ProbeProgress)=>void,target:VerificationTarget) => Promise<CandidateProbeResult>) & {readonly concurrency?:number};
   probeIdentity?: (locator: CandidateLocator) => string;
   persistableLocator?: (locator: CandidateLocator) => boolean;
   retryAfterMs: (error: unknown) => number;

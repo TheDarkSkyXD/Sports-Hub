@@ -29,28 +29,29 @@ test('resolver preserves the original rate-limit error and retry interval', asyn
   );
 });
 
-test('malformed streamed responses abort three pending sibling reads and settle promptly', async () => {
-  for (const invalid of ['{broken-json', JSON.stringify([{ id: '1', source: 'golf', streamNo: 0,
-    embedUrl: 'https://embed.st/embed/golf/1/1' }])]) {
-    const { collector, observation, event } = streamedCase(4);
-    let started = 0;
-    let canceled = 0;
-    const startedAt = Date.now();
-    await assert.rejects(
-      collector.resolvePlayers('401892458', observation, JSON.stringify(event), AbortSignal.timeout(2_000),
-        async (_url, signal) => {
-          const index = started++;
-          if (index === 0) return invalid;
-          return new Promise<string>((_resolve, reject) => {
-            const cancel = () => { canceled++; reject(signal.reason); };
-            if (signal.aborted) cancel();
-            else signal.addEventListener('abort', cancel, { once: true });
-          });
-        }),
-      error => error instanceof Error && error.message === 'parser-changed',
-    );
-    assert.equal(started, 4);
-    assert.equal(canceled, 3);
-    assert.ok(Date.now() - startedAt < 2_000);
-  }
+test('malformed streamed JSON aborts three pending sibling reads and settles promptly', async () => {
+  const { collector, observation, event } = streamedCase(4);
+  let started = 0,canceled = 0;
+  const startedAt = Date.now();
+  await assert.rejects(collector.resolvePlayers('401892458', observation, JSON.stringify(event), AbortSignal.timeout(2_000),
+    async (_url, signal) => {
+      if (started++ === 0) return '{broken-json';
+      return new Promise<string>((_resolve, reject) => {
+        const cancel = () => { canceled++; reject(signal.reason); };
+        if (signal.aborted) cancel();else signal.addEventListener('abort', cancel, { once: true });
+      });
+    }),error => error instanceof Error && error.message === 'parser-changed');
+  assert.equal(started,4);assert.equal(canceled,3);assert.ok(Date.now()-startedAt<2_000);
+});
+
+test('an invalid streamed row keeps valid source siblings instead of canceling their reads',async()=>{
+  const {collector,observation,event}=streamedCase(4);
+  let started=0;
+  const players=await collector.resolvePlayers('401892458',observation,JSON.stringify(event),AbortSignal.timeout(2_000),async()=>{
+    const id=String(++started);
+    return JSON.stringify([{id,source:'golf',streamNo:id==='1'?0:100,embedUrl:'https://embed.st/embed/golf/'+id+'/'+(id==='1'?1:100)}]);
+  });
+  assert.equal(started,4);assert.equal(players.length,3);
+  assert.deepEqual(players.map(player=>player.locator.provider==='catalog-stream'?player.locator.sourceId:null),['2','3','4']);
+  assert.ok(players.every(player=>player.locator.provider==='catalog-stream'&&player.locator.streamNo===100));
 });

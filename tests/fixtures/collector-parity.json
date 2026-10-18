@@ -4852,7 +4852,7 @@
       "streameast": {
         "final": {
           "runId": "11111111-1111-4111-8111-111111111111",
-          "sequence": 14,
+          "sequence": 15,
           "startedAt": 1791493800000,
           "state": {
             "kind": "complete",
@@ -4892,6 +4892,10 @@
               "at": 1791493800000
             },
             "boxing": {
+              "kind": "collected",
+              "at": 1791493800000
+            },
+            "motorsport": {
               "kind": "collected",
               "at": 1791493800000
             }
@@ -4964,6 +4968,9 @@
               },
               "boxing": {
                 "kind": "pending"
+              },
+              "motorsport": {
+                "kind": "pending"
               }
             },
             "eventIds": [],
@@ -5002,6 +5009,9 @@
                 "kind": "pending"
               },
               "boxing": {
+                "kind": "pending"
+              },
+              "motorsport": {
                 "kind": "pending"
               }
             },
@@ -5046,6 +5056,9 @@
                 "kind": "pending"
               },
               "boxing": {
+                "kind": "pending"
+              },
+              "motorsport": {
                 "kind": "pending"
               }
             },
@@ -5092,6 +5105,9 @@
               },
               "boxing": {
                 "kind": "pending"
+              },
+              "motorsport": {
+                "kind": "pending"
               }
             },
             "eventIds": [
@@ -5137,6 +5153,9 @@
                 "kind": "pending"
               },
               "boxing": {
+                "kind": "pending"
+              },
+              "motorsport": {
                 "kind": "pending"
               }
             },
@@ -5185,6 +5204,9 @@
               },
               "boxing": {
                 "kind": "pending"
+              },
+              "motorsport": {
+                "kind": "pending"
               }
             },
             "eventIds": [
@@ -5232,6 +5254,9 @@
                 "kind": "pending"
               },
               "boxing": {
+                "kind": "pending"
+              },
+              "motorsport": {
                 "kind": "pending"
               }
             },
@@ -5282,6 +5307,9 @@
               },
               "boxing": {
                 "kind": "pending"
+              },
+              "motorsport": {
+                "kind": "pending"
               }
             },
             "eventIds": [
@@ -5331,6 +5359,9 @@
                 "at": 1791493800000
               },
               "boxing": {
+                "kind": "pending"
+              },
+              "motorsport": {
                 "kind": "pending"
               }
             },
@@ -5383,6 +5414,9 @@
               "boxing": {
                 "kind": "collected",
                 "at": 1791493800000
+              },
+              "motorsport": {
+                "kind": "pending"
               }
             },
             "eventIds": [
@@ -5432,6 +5466,10 @@
                 "at": 1791493800000
               },
               "boxing": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "motorsport": {
                 "kind": "collected",
                 "at": 1791493800000
               }
@@ -5485,6 +5523,10 @@
               "boxing": {
                 "kind": "collected",
                 "at": 1791493800000
+              },
+              "motorsport": {
+                "kind": "collected",
+                "at": 1791493800000
               }
             },
             "eventIds": [
@@ -5536,6 +5578,65 @@
               "boxing": {
                 "kind": "collected",
                 "at": 1791493800000
+              },
+              "motorsport": {
+                "kind": "collected",
+                "at": 1791493800000
+              }
+            },
+            "eventIds": [
+              "ncaaf:12345"
+            ],
+            "detailKinds": [
+              "pending"
+            ],
+            "rejectedGames": 0
+          },
+          {
+            "sequence": 13,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "nfl": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "nba": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "nhl": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "mlb": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "wnba": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "f1": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "ufc": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "boxing": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "motorsport": {
+                "kind": "collected",
+                "at": 1791493800000
               }
             },
             "eventIds": [
@@ -5547,7 +5648,7 @@
             "rejectedGames": 0
           },
           {
-            "sequence": 13,
+            "sequence": 14,
             "state": {
               "kind": "complete",
               "at": 1791493800000
@@ -5588,6 +5689,10 @@
               "boxing": {
                 "kind": "collected",
                 "at": 1791493800000
+              },
+              "motorsport": {
+                "kind": "collected",
+                "at": 1791493800000
               }
             },
             "eventIds": [
@@ -5603,7 +5708,7 @@
       "streameast-partial": {
         "final": {
           "runId": "11111111-1111-4111-8111-111111111111",
-          "sequence": 14,
+          "sequence": 15,
           "startedAt": 1791493800000,
           "state": {
             "kind": "partial",
@@ -5647,6 +5752,10 @@
             "boxing": {
               "kind": "collected",
               "at": 1791493800000
+            },
+            "motorsport": {
+              "kind": "collected",
+              "at": 1791493800000
             }
           },
           "events": [
@@ -5717,6 +5826,9 @@
               },
               "boxing": {
                 "kind": "pending"
+              },
+              "motorsport": {
+                "kind": "pending"
               }
             },
             "eventIds": [],
@@ -5755,6 +5867,9 @@
                 "kind": "pending"
               },
               "boxing": {
+                "kind": "pending"
+              },
+              "motorsport": {
                 "kind": "pending"
               }
             },
@@ -5800,6 +5915,9 @@
                 "kind": "pending"
               },
               "boxing": {
+                "kind": "pending"
+              },
+              "motorsport": {
                 "kind": "pending"
               }
             },
@@ -5847,6 +5965,9 @@
               },
               "boxing": {
                 "kind": "pending"
+              },
+              "motorsport": {
+                "kind": "pending"
               }
             },
             "eventIds": [
@@ -5893,6 +6014,9 @@
                 "kind": "pending"
               },
               "boxing": {
+                "kind": "pending"
+              },
+              "motorsport": {
                 "kind": "pending"
               }
             },
@@ -5942,6 +6066,9 @@
               },
               "boxing": {
                 "kind": "pending"
+              },
+              "motorsport": {
+                "kind": "pending"
               }
             },
             "eventIds": [
@@ -5990,6 +6117,9 @@
                 "kind": "pending"
               },
               "boxing": {
+                "kind": "pending"
+              },
+              "motorsport": {
                 "kind": "pending"
               }
             },
@@ -6041,6 +6171,9 @@
               },
               "boxing": {
                 "kind": "pending"
+              },
+              "motorsport": {
+                "kind": "pending"
               }
             },
             "eventIds": [
@@ -6091,6 +6224,9 @@
                 "at": 1791493800000
               },
               "boxing": {
+                "kind": "pending"
+              },
+              "motorsport": {
                 "kind": "pending"
               }
             },
@@ -6144,6 +6280,9 @@
               "boxing": {
                 "kind": "collected",
                 "at": 1791493800000
+              },
+              "motorsport": {
+                "kind": "pending"
               }
             },
             "eventIds": [
@@ -6194,6 +6333,10 @@
                 "at": 1791493800000
               },
               "boxing": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "motorsport": {
                 "kind": "collected",
                 "at": 1791493800000
               }
@@ -6248,6 +6391,10 @@
               "boxing": {
                 "kind": "collected",
                 "at": 1791493800000
+              },
+              "motorsport": {
+                "kind": "collected",
+                "at": 1791493800000
               }
             },
             "eventIds": [
@@ -6300,6 +6447,66 @@
               "boxing": {
                 "kind": "collected",
                 "at": 1791493800000
+              },
+              "motorsport": {
+                "kind": "collected",
+                "at": 1791493800000
+              }
+            },
+            "eventIds": [
+              "ncaaf:12345"
+            ],
+            "detailKinds": [
+              "pending"
+            ],
+            "rejectedGames": 0
+          },
+          {
+            "sequence": 13,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "nfl": {
+                "kind": "failed",
+                "at": 1791493800000,
+                "reason": "timeout"
+              },
+              "nba": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "nhl": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "mlb": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "wnba": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "f1": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "ufc": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "boxing": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "motorsport": {
+                "kind": "collected",
+                "at": 1791493800000
               }
             },
             "eventIds": [
@@ -6311,7 +6518,7 @@
             "rejectedGames": 0
           },
           {
-            "sequence": 13,
+            "sequence": 14,
             "state": {
               "kind": "partial",
               "at": 1791493800000,
@@ -6352,6 +6559,10 @@
                 "at": 1791493800000
               },
               "boxing": {
+                "kind": "collected",
+                "at": 1791493800000
+              },
+              "motorsport": {
                 "kind": "collected",
                 "at": 1791493800000
               }

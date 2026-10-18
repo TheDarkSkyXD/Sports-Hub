@@ -1,6 +1,8 @@
 # Refresh the college team catalog
 
-Run `npm run catalog:college` to fetch the ESPN team directory and every 2026 FBS and FCS member from ESPN Core. The generator writes `lib/football/domain/college-teams.generated.ts` and `lib/football/domain/college-teams.coverage.json` only after it validates both membership groups, all member records, and the directory count. Run `npm run catalog:college:check` to compare the checked-in files with a fresh fetch.
+Run `npm run catalog:college` to fetch the ESPN team directory and every 2026 FBS, FCS, DII, and DIII member from ESPN Core. The generator uses groups 80, 81, and the combined DII/III group 35. It checks complete membership responses, rejects overlapping IDs, and fetches each member's team record before writing the catalog and coverage report. The current report has 148 FBS, 130 FCS, and 407 DII/III members, for 685 members total.
+
+The generator writes `lib/football/domain/college-teams.generated.ts` and `lib/football/domain/college-teams.coverage.json`. Run `npm run catalog:college:check` to compare them with a fresh fetch.
 
 The 2026 directory has 762 records. The generator expects that count to catch partial responses. When the directory changes, inspect the returned IDs and pass `--bulk-count=N` directly to `node scripts/generate-college-team-catalog.mjs`. A new season also needs `--season=YYYY` and an explicit directory count. Review the generated coverage file before checking in the result.
 

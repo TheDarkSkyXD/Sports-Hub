@@ -80,7 +80,7 @@ test('each failed schedule reports once and clears after recovery', async () => 
     if (failed.kind === 'board') {
       assert.deepEqual(failed.board.leagues.nfl.errors, ['NFL schedule is unavailable or stale.']);
       assert.deepEqual(failed.board.leagues.ncaaf.errors, [
-        'FBS schedule is unavailable or stale.', 'FCS schedule is unavailable or stale.',
+        'FBS schedule is unavailable or stale.', 'FCS schedule is unavailable or stale.', 'D2-D3 schedule is unavailable or stale.',
       ]);
     }
     fail = false;

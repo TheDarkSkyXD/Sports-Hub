@@ -9,10 +9,12 @@ build = "build.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+base64 = "0.22"
 chrono = "0.4"
 chrono-tz = "0.10"
 hex = "0.4"
 httpdate = "1"
+iprfc = "=1.0.0"
 futures-util = "0.3"
 napi = { version = "=3.14.2", features = ["napi9", "serde-json"] }
 napi-derive = "3"
@@ -24,7 +26,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 tokio-util = "0.7"
-tokio = { version = "1", features = ["rt-multi-thread", "time", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "macros", "net"] }
 url = "2"
 
 [build-dependencies]

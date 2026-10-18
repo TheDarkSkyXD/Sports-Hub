@@ -1,5 +1,5 @@
 import { parentPort } from 'node:worker_threads';
-import { SCHEDULES, readSchedule, type ScheduleDayCache, type ScheduleListingCache } from '../adapters/schedule.ts';
+import { SCHEDULES, listingScheduleGroup, readSchedule, type ScheduleDayCache, type ScheduleListingCache } from '../adapters/schedule.ts';
 import { ScheduleQueue } from './schedule-queue.ts';
 
 if (!parentPort) throw new Error('Schedule worker requires a parent port.');
@@ -8,9 +8,9 @@ const queue=new ScheduleQueue();
 
 const requests=new Map<number,AbortController>();
 const futureCache:ScheduleDayCache=new Map();
-const listingCache:ScheduleListingCache={};
-const boxingListingCache:ScheduleListingCache={};
-const wrestlingListingCaches={wwe:{} as ScheduleListingCache,tna:{} as ScheduleListingCache};
+const listingCaches:Record<ReturnType<typeof listingScheduleGroup>,ScheduleListingCache>={
+  motorsports:{},boxing:{},wrestling:{},
+};
 type ReadMessage={kind:'read';id:number;partitionId:string;now:number};
 type CancelMessage={kind:'cancel';id:number};
 function failure(error:unknown):{code:string;message:string} {
@@ -38,8 +38,7 @@ port.on('message',(input:ReadMessage|CancelMessage)=>{
   requests.set(input.id,controller);
   void readSchedule(source,input.now,controller.signal,result=>{
     if(requests.has(input.id))port.postMessage({kind:'current',id:input.id,result});
-  },queue.run,futureCache,source.league==='wwe'?wrestlingListingCaches.wwe:
-    source.league==='tna'?wrestlingListingCaches.tna:source.league==='boxing'?boxingListingCache:listingCache).then(result=>{
+  },queue.run,futureCache,listingCaches[listingScheduleGroup(source)]).then(result=>{
     if(requests.has(input.id))port.postMessage({kind:'complete',id:input.id,result});
   },error=>{
     if(requests.has(input.id))port.postMessage({kind:'failed',id:input.id,failure:failure(error)});

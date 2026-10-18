@@ -1,124 +1,48 @@
 import { lookup } from 'node:dns/promises';
-import { request } from 'node:https';
-import { isIP } from 'node:net';
 import { load } from 'cheerio';
-import { boundedText, ProviderDeferredError, ProviderNoFeedError, sanitizedRead, type ProviderPlayback, type ProviderResource, type ResourceKind } from '../provider.ts';
+import { boundedText, ProviderCapacityError, ProviderDeferredError, ProviderNoFeedError, sanitizedRead, type PlayerDocument,type ProviderPlayback, type ProviderResource, type ResourceKind } from '../provider.ts';
 import type { MediaPhase } from '../../football/shared.ts';
 import { wrapDlivePixelResource } from './streameast-pixel.ts';
 import {probeFetch,probeHttpResponse,probeObserverLease,releaseObserverAfterClose} from '../probe-capacity.ts';
 
-export type Requester = (url: URL, signal: AbortSignal, headers: Headers, timeoutMs?: number) => Promise<Response>;
+import {directPublicHttpsRequest,publicHttpsUrl as sportsurgeUrl,type ContinuousRead} from '../public-http.ts';
+export {isPublicAddress,publicHttpsUrl as sportsurgeUrl} from '../public-http.ts';
+export type Requester = (url: URL, signal: AbortSignal, headers: Headers, timeoutMs?: number,continuous?:ContinuousRead) => Promise<Response>;
 
 const MAX_PAGE_BYTES = 1024 * 1024;
-const MAX_MEDIA_BYTES = 64 * 1024 * 1024;
 const HEADER_WAIT_MS = 10000;
 const RESOURCE_READ_MS = 30000;
 const MAX_REDIRECTS = 3;
-const blockedV4: ReadonlyArray<readonly [number, number]> = [
-  [0x00000000, 8], [0x0a000000, 8], [0x64400000, 10], [0x7f000000, 8],
-  [0xa9fe0000, 16], [0xac100000, 12], [0xc0000000, 24], [0xc0000200, 24],
-  [0xc0586300, 24], [0xc0a80000, 16], [0xc6120000, 15], [0xc6336400, 24],
-  [0xcb007100, 24], [0xe0000000, 4], [0xf0000000, 4],
-];
 
-export function isPublicAddress(address: string): boolean {
-  const family = isIP(address);
-  if (family === 4) {
-    const parts = address.split('.').map(Number);
-    const number = ((parts[0] * 0x1000000) + (parts[1] << 16) + (parts[2] << 8) + parts[3]) >>> 0;
-    return !blockedV4.some(([base, bits]) => (number >>> (32 - bits)) === (base >>> (32 - bits)));
-  }
-  if (family === 6) {
-    const value = address.toLowerCase();
-    return /^[23][0-9a-f]{0,3}:/.test(value) && !/^2001:db8:/i.test(value) &&
-      !/^2001:0:/i.test(value) && !/^2002:/i.test(value);
-  }
-  return false;
+function continuousRead():ContinuousRead{
+  const buckets=Array<number>(60).fill(0);
+  let second=Math.floor(Date.now()/1000),bytes=0,active=0;
+  return {
+    received(amount){
+      const current=Math.floor(Date.now()/1000);
+      for(let elapsed=second+1;elapsed<=Math.min(current,second+60);elapsed++){
+        const index=elapsed%60;bytes-=buckets[index];buckets[index]=0;
+      }
+      second=current;bytes+=amount;buckets[current%60]+=amount;
+      return bytes<=128*1024*1024;
+    },
+    acquire(){
+      if(active>=4)throw new ProviderCapacityError();
+      active++;let released=false;
+      return ()=>{if(!released){released=true;active--;}};
+    },
+  };
 }
 
-export function sportsurgeUrl(value: string): URL | null {
-  try {
-    const authority = /^https:\/\/([^/?#]+)/.exec(value)?.[1];
-    const url = new URL(value);
-    if (!authority || authority.toLowerCase() !== url.host || url.href.length > 2048 ||
-      url.protocol !== 'https:' || url.username || url.password || url.port && url.port !== '8443' || url.hash ||
-      url.hostname.endsWith('.') || isIP(url.hostname) || url.hostname.startsWith('[') ||
-      !url.hostname.includes('.') || /(?:^|\.)(?:localhost|local|internal)$/.test(url.hostname)) return null;
-    return url;
-  } catch { return null; }
-}
-
-async function directPublicHttpsRequest(url: URL, signal: AbortSignal, headers: Headers,
-  resolveAddresses: (host: string) => Promise<ReadonlyArray<{ address: string; family: number }>> = host => lookup(host, { all: true }),
-  timeoutMs = 10000): Promise<Response> {
-  if (!sportsurgeUrl(url.href)) throw new Error('Unsupported provider URL');
-  const dnsSignal = AbortSignal.any([signal, AbortSignal.timeout(HEADER_WAIT_MS)]);
-  const addresses = await new Promise<ReadonlyArray<{ address: string; family: number }>>((resolve, reject) => {
-    if (dnsSignal.aborted) { reject(dnsSignal.reason); return; }
-    const onAbort = () => reject(dnsSignal.reason);
-    dnsSignal.addEventListener('abort', onAbort, { once: true });
-    resolveAddresses(url.hostname).then(resolve, reject).finally(() => dnsSignal.removeEventListener('abort', onAbort));
-  });
-  if (!addresses.length || addresses.some(item => item.family !== isIP(item.address) || !isPublicAddress(item.address)))
-    throw new Error('Provider resolved to a private address');
-  const address = addresses.find(item => item.family === 4) || addresses[0];
-  return new Promise<Response>((resolve, reject) => {
-    const outgoing = request(url, {
-      method: 'GET', headers: Object.fromEntries(headers), signal,
-      lookup(_hostname, options, callback) {
-        if (options.all) callback(null, [address]);
-        else callback(null, address.address, address.family);
-      },
-    }, incoming => {
-      clearTimeout(headerTimer);
-      incoming.on('error', reject);
-      try {
-        const responseHeaders = new Headers();
-        for (const [key, value] of Object.entries(incoming.headers)) {
-          if (typeof value === 'string') responseHeaders.set(key, value);
-          else if (Array.isArray(value)) responseHeaders.set(key, value.join(', '));
-        }
-        const length = Number(responseHeaders.get('content-length'));
-        if (Number.isFinite(length) && length > MAX_MEDIA_BYTES) throw new Error('Provider response is too large');
-        const status = incoming.statusCode || 502;
-        if (status === 204 || status === 205 || status === 304) {
-          incoming.destroy();
-          resolve(new Response(null, { status, headers: responseHeaders }));
-          return;
-        }
-        const bodyTimer = setTimeout(() => outgoing.destroy(new Error('Provider response timed out')), timeoutMs);
-        incoming.once('close', () => clearTimeout(bodyTimer));
-        const iterator = incoming[Symbol.asyncIterator]();
-        let received = 0;
-        const body = new ReadableStream<Uint8Array>({
-          async pull(controller) {
-            try {
-              const next = await iterator.next();
-              if (next.done) { controller.close(); return; }
-              received += next.value.byteLength;
-              if (received > MAX_MEDIA_BYTES) throw new Error('Provider response is too large');
-              controller.enqueue(new Uint8Array(next.value));
-            } catch (error) { incoming.destroy(); controller.error(error); }
-          },
-          cancel() { incoming.destroy(); },
-        });
-        resolve(new Response(body, { status, headers: responseHeaders }));
-      } catch (error) { incoming.destroy(); reject(error); }
-    });
-    const headerTimer = setTimeout(() => outgoing.destroy(new Error('Provider response timed out')), HEADER_WAIT_MS);
-    outgoing.on('error', error => { clearTimeout(headerTimer); reject(error); });
-    outgoing.end();
-  });
-}
 
 export function publicHttpsRequest(url:URL,signal:AbortSignal,headers:Headers,
   resolveAddresses:(host:string)=>Promise<ReadonlyArray<{address:string;family:number}>>=host=>lookup(host,{all:true}),
-  timeoutMs=10000):Promise<Response> {
-  return probeHttpResponse(signal,active=>directPublicHttpsRequest(url,active,headers,resolveAddresses,timeoutMs),timeoutMs);
+  timeoutMs=10000,continuous?:ContinuousRead):Promise<Response> {
+  return probeHttpResponse(signal,active=>directPublicHttpsRequest(url,active,headers,resolveAddresses,timeoutMs,continuous),continuous?undefined:timeoutMs);
 }
 
 export async function get(value: string, signal: AbortSignal, requester: Requester, referer?: URL, range?: string,
-  timeoutMs?: number, userAgent='Mozilla/5.0'): Promise<{ url: URL; response: Response }> {
+  timeoutMs?: number, userAgent='Mozilla/5.0',continuous?:ContinuousRead): Promise<{ url: URL; response: Response }> {
   let url = sportsurgeUrl(value);
   if (!url) throw new Error('Unsupported provider URL');
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
@@ -128,7 +52,7 @@ export async function get(value: string, signal: AbortSignal, requester: Request
       headers.set('Origin', referer.origin);
     }
     if (range) headers.set('Range', range);
-    const response = await requester(url, signal, headers, timeoutMs);
+    const response = await requester(url, signal, headers, timeoutMs,continuous);
     if (response.status < 300 || response.status > 399) return { url, response };
     const location = response.headers.get('location');
     await response.body?.cancel();
@@ -145,8 +69,9 @@ export function hlsUrl(url: URL, response: Response): boolean {
     (!/text\/html/i.test(type) && /\.m3u8$/i.test(url.pathname));
 }
 
-export function resource(value: URL, referer: URL, kind: ResourceKind, requester: Requester, userAgent='Mozilla/5.0'): ProviderResource {
+export function resource(value: URL, referer: URL, kind: ResourceKind, requester: Requester, userAgent='Mozilla/5.0',mode:'finite'|'progressive'='finite'): ProviderResource {
   let current = value;
+  const continuous=mode==='progressive'?continuousRead():undefined;
   const hockeySegment=/^\/([a-z]+-[a-z]+)\/[a-z0-9]{32}\/[1-9]\d*\.ts$/i.exec(value.pathname);
   const hockeyCredentials=/^\?(?:e=\d{10}&st=[A-Za-z0-9_-]{22}|st=[A-Za-z0-9_-]{22}&e=\d{10})$/.test(value.search);
   const identity=kind==='media'&&value.origin==='https://hls.hockey.do'&&!value.username&&!value.password&&
@@ -156,7 +81,7 @@ export function resource(value: URL, referer: URL, kind: ResourceKind, requester
     kind, identity,
     async read({ signal, range }) {
       const result = await get(current.href, signal, requester, referer, range,
-        kind === 'media' ? RESOURCE_READ_MS : HEADER_WAIT_MS, userAgent);
+        kind === 'media' ? RESOURCE_READ_MS : HEADER_WAIT_MS, userAgent,continuous);
       current = result.url;
       if (kind === 'playlist' && !hlsUrl(current, result.response)) {
         await result.response.body?.cancel();
@@ -181,7 +106,7 @@ function observerPhase(value:unknown):MediaPhase|null {
 }
 
 function observerOutcome(value:unknown):{kind:'no-feed';phase:MediaPhase}|
-  {kind:'incomplete';phase:MediaPhase;retryAfterMs:number}|null {
+  {kind:'incomplete';phase:MediaPhase;retryAfterMs:number;reason:'upstream'|'unverified'}|null {
   if (!value || typeof value!=='object' || !('kind' in value) || !('phase' in value)) return null;
   const phase=observerPhase(value.phase);
   if (!phase) return null;
@@ -189,8 +114,17 @@ function observerOutcome(value:unknown):{kind:'no-feed';phase:MediaPhase}|
     return {kind:'no-feed',phase};
   if (value.kind==='incomplete' && 'retryAfterMs' in value &&
     typeof value.retryAfterMs==='number' && Number.isInteger(value.retryAfterMs) &&
-    value.retryAfterMs>=30000 && value.retryAfterMs<=120000) return {kind:'incomplete',phase,retryAfterMs:value.retryAfterMs};
+    value.retryAfterMs>=30000 && value.retryAfterMs<=120000) return {kind:'incomplete',phase,retryAfterMs:value.retryAfterMs,
+      reason:'reason'in value&&value.reason==='upstream-http'?'upstream':'unverified'};
   return null;
+}
+
+function observedPlayer(value:unknown):PlayerDocument|undefined{
+  if(!value||typeof value!=='object'||!('player'in value)||!value.player||typeof value.player!=='object'||
+    !('url'in value.player)||typeof value.player.url!=='string'||!('referer'in value.player)||typeof value.player.referer!=='string'||
+    !(sportsurgeUrl(value.player.url)||/^https:\/\/embed\.st\/embed\/ingest\/[a-zA-Z0-9_-]{1,120}\/[1-9][0-9]{0,2}\/#player=clappr&autoplay=true$/.test(value.player.url))||
+    !sportsurgeUrl(value.player.referer))return;
+  return {url:value.player.url,referer:value.player.referer};
 }
 
 async function observedPublicRequest(request:PublicObservation, signal: AbortSignal,
@@ -204,6 +138,7 @@ async function observedPublicRequest(request:PublicObservation, signal: AbortSig
   }
   const release=purpose==='probe'?await probeObserverLease(signal):()=>{};
   let transferred=false;
+  const captureStarted=Date.now();
   try {
   const response = await fetch(`${origin}/observe`, {
     method: 'POST', cache: 'no-store', redirect: 'manual',
@@ -220,14 +155,16 @@ async function observedPublicRequest(request:PublicObservation, signal: AbortSig
     if(body)try{value=JSON.parse(body);}catch{}
     const outcome=observerOutcome(value);
     if (response.status===404 && outcome?.kind==='no-feed') throw new ProviderNoFeedError(outcome.phase);
+    const player=observedPlayer(value);
+    if(response.status===503&&outcome?.kind==='incomplete'&&player)return {root:null,player,timings:{captureMs:Math.min(300000,Date.now()-captureStarted)},close(){}};
     if (response.status===503 && outcome?.kind==='incomplete')
-      throw new ProviderDeferredError(outcome.retryAfterMs,outcome.phase);
+      throw new ProviderDeferredError(outcome.retryAfterMs,outcome.phase,outcome.reason);
     if (response.status===404) return null;
-    throw new ProviderDeferredError(2000);
+    throw new ProviderCapacityError();
   }
   if (!response.ok) {
     await response.body?.cancel();
-    if (response.status === 429) throw new ProviderDeferredError(2000);
+    if (response.status === 429) throw new ProviderCapacityError();
     throw new Error('Browser observer failed');
   }
   const value: unknown = JSON.parse(await boundedText(response, 8192));
@@ -242,18 +179,22 @@ async function observedPublicRequest(request:PublicObservation, signal: AbortSig
   if (transport !== undefined && (request.kind !== 'streameast-server' || transport !== 'dlive-pixel-gzip-ts'))
     throw new Error('Browser observation transport was invalid');
   const capability = value.capability;
+  const progressive='kind'in value&&value.kind==='progressive';
+  if('kind'in value&&!progressive)throw new Error('Browser observation media kind was invalid');
   let closed = false;
-  const requester:Requester = async (url, active, headers, timeoutMs) => {
+  const requester:Requester = async (url, active, headers, timeoutMs,continuous) => {
     if (closed) throw new Error('Observed media session is closed');
     return probeFetch(fetch,`${origin}/media`, {
       method:'POST',cache:'no-store',redirect:'manual',signal:active,
       headers:{'Content-Type':'application/json','x-sunday-control-token':token},
       body:JSON.stringify({capability,url:url.href,range:headers.get('range') ?? undefined}),
-    },timeoutMs);
+    },continuous?undefined:timeoutMs);
   };
-  const root = resource(media,referer,'playlist',requester,value.userAgent);
+  const root = resource(media,referer,progressive?'media':'playlist',requester,value.userAgent,progressive?'progressive':'finite');
   transferred=true;
-  return {root:transport === 'dlive-pixel-gzip-ts' ? wrapDlivePixelResource(root) : root,close(){
+  return {root:transport === 'dlive-pixel-gzip-ts' ? wrapDlivePixelResource(root) : root,
+    timings:{captureMs:Math.min(300000,Date.now()-captureStarted)},
+    ...(observedPlayer(value)?{player:observedPlayer(value)}:{}),close(){
     if (closed) return;
     closed = true;
     releaseObserverAfterClose(async()=>{

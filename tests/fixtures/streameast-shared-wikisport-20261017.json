@@ -1,0 +1,189 @@
+{
+  "capturedAt": "2026-10-17T23:05:48.186Z",
+  "now": 1792278347330,
+  "games": [
+    {
+      "id": "ncaaf-401856828",
+      "league": "ncaaf",
+      "name": "Arizona State Sun Devils at Texas Tech Red Raiders",
+      "date": "2026-10-17T19:30Z",
+      "home": {
+        "id": "espn:ncaaf:2641",
+        "name": "Texas Tech Red Raiders",
+        "short": "Texas Tech",
+        "abbreviation": "TTU",
+        "color": "da291c",
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2641.png",
+        "score": "53",
+        "record": "5-0",
+        "aliases": [
+          "Texas Tech Red Raiders",
+          "Texas Tech",
+          "Texas Tech",
+          "TTU"
+        ],
+        "membership": {
+          "subdivision": "fbs",
+          "season": 2026,
+          "observedAt": 1792276265535,
+          "source": "espn-core"
+        }
+      },
+      "away": {
+        "id": "espn:ncaaf:9",
+        "name": "Arizona State Sun Devils",
+        "short": "Arizona St",
+        "abbreviation": "ASU",
+        "color": "ffc627",
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/9.png",
+        "score": "25",
+        "record": "3-2",
+        "aliases": [
+          "Arizona State Sun Devils",
+          "Arizona State",
+          "Arizona St",
+          "ASU"
+        ],
+        "membership": {
+          "subdivision": "fbs",
+          "season": 2026,
+          "observedAt": 1792276265535,
+          "source": "espn-core"
+        }
+      },
+      "season": 2026,
+      "partitions": [
+        "fbs"
+      ],
+      "detail": "3:25 - 4th",
+      "redzone": true,
+      "possession": "TTU",
+      "down": "1st & 10 at ASU 12",
+      "lastPlay": "(04:08) No Huddle-Shotgun #4 T.Castellanos rush right for 17 yards gain to the ASU12 fumbled by #4 T.Castellanos at ASU32 recovered by TTU #4 T.Castellanos at (#23 J.McGrew), 1ST DOWN",
+      "venue": "Galaxy Stadium",
+      "broadcast": "Fox",
+      "sourceUrl": "/play/ncaaf-401856828",
+      "status": "in",
+      "lifecycle": "live"
+    },
+    {
+      "id": "ncaaf-401856831",
+      "league": "ncaaf",
+      "name": "Oklahoma State Cowboys at Houston Cougars",
+      "date": "2026-10-17T23:30Z",
+      "home": {
+        "id": "espn:ncaaf:248",
+        "name": "Houston Cougars",
+        "short": "Houston",
+        "abbreviation": "HOU",
+        "color": "c8102e",
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
+        "score": "0",
+        "record": "5-1",
+        "aliases": [
+          "Houston Cougars",
+          "Houston",
+          "Houston",
+          "HOU"
+        ],
+        "membership": {
+          "subdivision": "fbs",
+          "season": 2026,
+          "observedAt": 1792276265535,
+          "source": "espn-core"
+        }
+      },
+      "away": {
+        "id": "espn:ncaaf:197",
+        "name": "Oklahoma State Cowboys",
+        "short": "Oklahoma St",
+        "abbreviation": "OKST",
+        "color": "fe5c00",
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/197.png",
+        "score": "0",
+        "record": "4-1",
+        "aliases": [
+          "Oklahoma State Cowboys",
+          "Oklahoma State",
+          "Oklahoma St",
+          "OKST"
+        ],
+        "membership": {
+          "subdivision": "fbs",
+          "season": 2026,
+          "observedAt": 1792276265535,
+          "source": "espn-core"
+        }
+      },
+      "season": 2026,
+      "partitions": [
+        "fbs"
+      ],
+      "detail": "Scheduled",
+      "redzone": false,
+      "venue": "TDECU Stadium",
+      "broadcast": "Fox",
+      "sourceUrl": "/play/ncaaf-401856831",
+      "status": "pre",
+      "lifecycle": "scheduled"
+    }
+  ],
+  "events": [
+    {
+      "id": "ncaaf:46996",
+      "league": "ncaaf",
+      "url": "https://v2.streameast.ga/cfb/arizona-state-sun-devils-vs-texas-tech-red-raiders/",
+      "title": "Arizona State Sun Devils vs Texas Tech Red Raiders",
+      "teams": [
+        "Arizona State Sun Devils",
+        "Texas Tech Red Raiders"
+      ],
+      "kickoff": 1792265400000,
+      "espnEventId": "401856828",
+      "detail": {
+        "kind": "collected",
+        "at": 1792276724005,
+        "servers": [
+          {
+            "id": "2",
+            "label": "Server 2",
+            "url": "https://v2.streameast.ga/cfb/arizona-state-sun-devils-vs-texas-tech-red-raiders/2",
+            "availability": {
+              "kind": "free-wikisport",
+              "section": "strm",
+              "playerId": "24"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ncaaf:47016",
+      "league": "ncaaf",
+      "url": "https://v2.streameast.ga/cfb/oklahoma-state-cowboys-vs-houston-cougars/",
+      "title": "Oklahoma State Cowboys vs Houston Cougars",
+      "teams": [
+        "Oklahoma State Cowboys",
+        "Houston Cougars"
+      ],
+      "kickoff": 1792279800000,
+      "espnEventId": "401856831",
+      "detail": {
+        "kind": "collected",
+        "at": 1792277160828,
+        "servers": [
+          {
+            "id": "1",
+            "label": "Server 1",
+            "url": "https://v2.streameast.ga/cfb/oklahoma-state-cowboys-vs-houston-cougars/1",
+            "availability": {
+              "kind": "free-wikisport",
+              "section": "strm",
+              "playerId": "24"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

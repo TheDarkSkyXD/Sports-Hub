@@ -19,6 +19,7 @@ for (const provider of providers) {
     const windows: Array<{ destroyed: boolean; destroyCalls: number; partition: string;
       webContents: EventEmitter; destroy: () => void }> = [];
     let reads = 0;
+    let beforeRequest:((details:unknown,callback:(result:unknown)=>void)=>void)|null=null;
     let sweeps = 0;
     let lateRead: ((signal: AbortSignal) => Promise<string>) | undefined;
     let releaseRead: (() => void) | undefined;
@@ -26,12 +27,14 @@ for (const provider of providers) {
     let readEntered: (() => void) | undefined;
     const entered = new Promise<void>(resolve => { readEntered = resolve; });
     let overlapOnDestroy: Promise<unknown> | undefined;
-    const session = { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} };
-    function BrowserWindow(optionsForWindow: { webPreferences: { partition: string } }) {
+    const session = { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {},setProxy:async()=>{},
+      webRequest:{onBeforeRequest(callback:typeof beforeRequest){beforeRequest=callback;}} };
+    function BrowserWindow(optionsForWindow: { webPreferences: { partition: string;disableDialogs:boolean } }) {
+      assert.equal(optionsForWindow.webPreferences.disableDialogs,true);
       const contents = new EventEmitter();
       let url = '';
       Object.assign(contents, {
-        setAudioMuted() {}, setWindowOpenHandler() {}, getURL() { return url; }, getTitle() { return ''; }, stop() {},
+        setWebRTCIPHandlingPolicy() {}, setAudioMuted() {}, setWindowOpenHandler() {}, getURL() { return url; }, getTitle() { return ''; }, stop() {},
         executeJavaScript(script: string) {
           if (options.pendingScript) {
             options.pendingScript = false;
@@ -104,10 +107,20 @@ for (const provider of providers) {
     });
     const create = Reflect.get(exported.exports, createName);
     const collector = create({ origin: 'http://127.0.0.1:1', controlToken: 'unused' });
-    return { collector, windows, entered, release: () => { releaseRead?.(); releaseScript?.(); },
+    return { collector, windows, entered,request(details:unknown){let result:unknown=null;beforeRequest?.(details,value=>{result=value;});return result;}, release: () => { releaseRead?.(); releaseScript?.(); },
       get reads() { return reads; }, get sweeps() { return sweeps; },
       get overlapOnDestroy() { return overlapOnDestroy; }, lateRead: () => lateRead?.(new AbortController().signal) };
   }
+
+  test(provider.name+' catalog acquisition blocks ads and private requests inside its active read',async()=>{
+    const run=fixture({pendingScript:true});
+    const reading=run.collector.requestSweep();await run.entered;
+    try{
+      assert.deepEqual(run.request({url:'https://googleads.g.doubleclick.net/pagead/ads',resourceType:'script',referrer:provider.url}),{cancel:true});
+      assert.deepEqual(run.request({url:new URL('/assets/catalog.js',provider.url).href,resourceType:'script',referrer:provider.url}),{cancel:false});
+      assert.deepEqual(run.request({url:'https://127.0.0.1/admin',resourceType:'script'}),{cancel:true});
+    }finally{run.release();await reading;run.collector.stop();}
+  });
 
   test(`${provider.name} releases one window after all reads and uses its partition again`, async () => {
     const run = fixture();

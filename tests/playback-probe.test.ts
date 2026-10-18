@@ -169,6 +169,8 @@ test('observer saturation and cancellation defer a probe without condemning the 
   assert.deepEqual(await probeCandidate(locator,signal(),async()=>{throw new ProviderDeferredError(2000);}),{kind:'deferred',retryAfterMs:2000});
   assert.deepEqual(await probeCandidate(locator,signal(),async()=>{throw new ProviderDeferredError(30000,'capture');}),
     {kind:'deferred',retryAfterMs:30000,phase:'capture'});
+  assert.deepEqual(await probeCandidate(locator,signal(),async()=>{throw new ProviderDeferredError(30000,'capture','upstream');}),
+    {kind:'deferred',retryAfterMs:30000,phase:'capture',reason:'upstream'});
   assert.deepEqual(await probeCandidate(locator,signal(),async()=>{throw new ProviderNoFeedError('activation');}),
     {kind:'unavailable',reason:'no-feed',phase:'activation'});
   const controller=new AbortController();controller.abort();

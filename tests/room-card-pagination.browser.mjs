@@ -11,7 +11,7 @@ const game = index => ({
 });
 const board = {
   schemaVersion: 2, revision: 1, updatedAt: new Date(now).toISOString(), scheduleState: 'ready',
-  aliases: {}, finishedGameRetentionMinutes: 120, feedCheckIntervalMinutes: 5,
+  aliases: {}, finishedGameRetentionMinutes: 120,
   leagues: { nfl: { week: 4, scoresAt: new Date(now).toISOString(), sourceAt: null, errors: [] } },
   games: Array.from({ length: 407 }, (_, index) => game(index + 1)),
 };

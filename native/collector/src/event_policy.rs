@@ -1,4 +1,5 @@
 use regex::Regex;
+use std::{collections::HashMap, sync::OnceLock};
 use url::Url;
 
 fn matches(pattern: &str, value: &str) -> bool {
@@ -51,7 +52,180 @@ fn slug_pair(value: &str) -> Option<[String; 2]> {
     Some(pair)
 }
 
+fn sportsfeed_pair(event_url: &str, server_url: &str) -> bool {
+    let (Some(event), Some(server)) = (open_url(event_url), open_url(server_url)) else {
+        return false;
+    };
+    if event.host_str() != Some("sportsfeed24.st")
+        || event.query().is_some()
+        || event.fragment().is_some()
+        || event_url.len() > 2000
+        || server.fragment().is_some()
+        || server_url.len() > 2048
+    {
+        return false;
+    }
+    let Some(fixture) = event.path().strip_prefix("/fixture/") else {
+        return false;
+    };
+    let names = fixture.split("-vs-").collect::<Vec<_>>();
+    if names.len() != 2 {
+        return false;
+    }
+    let mut teams = Vec::new();
+    for name in names {
+        let encoded = format!("name={name}");
+        let Some((_, decoded)) = url::form_urlencoded::parse(encoded.as_bytes()).next() else {
+            return false;
+        };
+        if decoded.is_empty()
+            || crate::listing_json::component(&decoded) != name
+            || !decoded
+                .chars()
+                .all(|c| c.is_alphanumeric() || " -_.!'~()&".contains(c))
+        {
+            return false;
+        }
+        let slug = decoded
+            .to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("-");
+        if slug.is_empty() {
+            return false;
+        }
+        teams.push(slug);
+    }
+    let host=server.host_str().unwrap_or_default();
+    if host=="domainx.rest" {
+        return server.path()=="/file/" && server.query().is_some_and(|query|matches(r"^[1-9][0-9]{0,12}$",query));
+    }
+    if matches!(host,"trend48.st"|"embed.st") {
+        if server.query().is_some(){return false;}
+        let pattern=if host=="trend48.st" {r"^/event/ppv-([a-z0-9-]+-vs-[a-z0-9-]+)$"}
+            else {r"^/embed/admin/ppv-([a-z0-9-]+-vs-[a-z0-9-]+)/[1-9][0-9]{0,2}$"};
+        let Some(found)=Regex::new(pattern).unwrap().captures(server.path()) else {return false;};
+        return published_matchup(&teams,&found[1]);
+    }
+    published_provider_pair(&teams,&server)
+}
+
+
+fn sportsurge_player_paths() -> &'static HashMap<&'static str, Regex> {
+    static PATHS:OnceLock<HashMap<&'static str,Regex>>=OnceLock::new();
+    PATHS.get_or_init(||[
+            ("alphastreams.mom", r"^/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("goalstream.cfd", r"^/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("apexztreams.xyz", r"^/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("smlbn.cyou", r"^/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("bizzstreamz.online", r"^/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("sportsworld.best", r"^/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("sportzworld.ru", r"^/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("ripplestream.cyou", r"^/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("footyicon.online", r"^/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)-live-stream-\d{4}-\d{2}-\d{2}/$"),
+            ("opturspapa.xyz", r"^/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)$"),
+            ("hadcrak.cyou", r"^/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)-live-stream-\d{4}-\d{2}-\d{2}/$"),
+            ("wildgames.bz", r"^/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-v-[a-z0-9-]+)/$"),
+            ("techydeals.store", r"^/totalsportek[1-9]\d{0,11}/(?:nhl|nba|nfl|mlb|cfb)/[1-9]\d{0,2}\.php$"),
+            ("techydeals.best", r"^/totalsportek[1-9]\d{0,11}/extraplayer/[1-9]\d{0,2}\.php$"),
+            ("sports247.ru", r"^/watch/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)-\d{4}-\d{2}-\d{2}$"),
+            ("mjumbo.icu", r"^/\d{6}-[1-9]\d{0,2}/ch-[1-9]\d{0,2}\.html$"),
+            ("topstreams.click", r"^/index\.php/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("playnex.online", r"^/index\.php/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("liveverse.online", r"^/index\.php/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("sportsstreams.online", r"^/index\.php/\d{4}/\d{2}/\d{2}/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)/$"),
+            ("iohit.st", r"^/watch/(?P<matchup>[a-z0-9-]+-vs-[a-z0-9-]+)-[1-9]\d{0,11}$"),
+        ].into_iter().map(|(host,pattern)|(host,Regex::new(pattern).expect("fixed published provider route"))).collect())
+}
+
+fn sportsurge_published_pair(event:&Url,server:&Url) -> bool {
+    let event_path=Regex::new(r"^/([A-Za-z0-9-]+)/[1-9][0-9]{0,11}$").unwrap();
+    let Some(event_slug)=event_path.captures(event.path()).map(|found|found[1].to_lowercase()) else {return false;};
+    let Some(event_teams)=slug_pair(&event_slug) else {return false;};
+    published_provider_pair(&event_teams,server)
+}
+
+fn published_provider_pair(event_teams:&[String],server:&Url) -> bool {
+    let host=server.host_str().unwrap_or_default();
+    let query=match host {"goomdstea.click"=>Some("ch"),"poscihub.ru"=>Some("post"),"topstream.help"|"1ststreams.xyz"=>Some("p"),_=>None};
+    if let Some(key)=query {
+        let Some(value)=server.query().and_then(|query|query.strip_prefix(&format!("{key}="))) else {return false;};
+        return server.path()==(if key=="ch" {"/stream.php"} else {"/"}) && !value.is_empty() && value.len()<=13
+            && !value.starts_with('0') && value.bytes().all(|byte|byte.is_ascii_digit());
+    }
+    if server.query().is_some(){return false;}
+    let Some(found)=sportsurge_player_paths().get(host).and_then(|path|path.captures(server.path())) else {return false;};
+    let Some(matchup)=found.name("matchup").map(|group|group.as_str().replace("-v-","-vs-")) else {return true;};
+    published_matchup(event_teams,&matchup)
+}
+
+fn published_matchup(event_teams:&[String],matchup:&str) -> bool {
+    let Some(server_teams)=slug_pair(&matchup) else {return false;};
+    let contains=|side:&str,team:&str|format!("-{side}-").contains(&format!("-{team}-"));
+    contains(&server_teams[0],&event_teams[0]) && contains(&server_teams[1],&event_teams[1])
+        || contains(&server_teams[0],&event_teams[1]) && contains(&server_teams[1],&event_teams[0])
+}
+
+fn published_pair(event_url:&str,server_url:&str)->Option<bool> {
+    let (Some(event),Some(server))=(open_url(event_url),open_url(server_url)) else {return None;};
+    let host=event.host_str()?;
+    if !matches!(host,"iohit.st"|"trend48.st"|"foxiy.st"|"buffstreams.ch"|"sportsurgei.is"|"nbabitez.com"|"dudestream1.com"|"mlbbite.org"|"ihdstreams.top") {return None;}
+    if event.query().is_some() || event.fragment().is_some()
+        || server.fragment().is_some_and(|fragment|!matches!(fragment,"player=clappr"|"player=clappr&autoplay=true")) {return Some(false);}
+    let server_host=server.host_str()?;
+    if host=="sportsurgei.is" && server_host=="live3.totalsportek.vg" {
+        return Some(server.query().is_none() && server.fragment().is_none() && event.path()==server.path()
+            && matches(r"^/[A-Za-z0-9-]+/[1-9][0-9]{0,11}$",event.path()));
+    }
+    if host=="sportsurgei.is" && !matches!(server_host,"live.totalsportek.vg"|"live4.totalsportek.vg") {
+        return Some(sportsurge_published_pair(&event,&server));
+    }
+    if server.query().is_some() {return Some(false);}
+    if host=="ihdstreams.top" {
+        return Some(matches(r"^/watch/[a-z0-9]+(?:-[a-z0-9]+)*$",event.path()) && server_host==host
+            && matches(r"^/embed/(?:nba|nfl|nhl|mlb|cfb|wnba|ufc|boxing|wwe|f1)/ch[1-9][0-9]{0,2}\.php$",server.path()));
+    }
+    if host=="trend48.st" && server_host=="trendy48.site" {
+        return Some(matches(r"^/event/m-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4}$",event.path())
+            && matches(r"^/embed/[a-z0-9]{1,64}-[1-9][0-9]{0,11}$",server.path()));
+    }
+    if host=="trend48.st" && server_host=="embed.st" {
+        let Some(slug)=Regex::new(r"^/event/(ppv-[a-z0-9]+(?:-[a-z0-9]+)*)$").unwrap().captures(event.path()).map(|found|found[1].to_string()) else {return Some(false);};
+        return Some(matches(&format!(r"^/embed-noads/admin/{}/[1-9][0-9]{{0,2}}$",regex::escape(&slug)),server.path()));
+    }
+    if matches!(host,"sportsurgei.is"|"nbabitez.com") && matches!(server_host,"live.totalsportek.vg"|"live4.totalsportek.vg") {
+        return Some(event.path()==server.path() && matches(r"^/[A-Za-z0-9-]+/[1-9][0-9]{0,11}$",event.path()));
+    }
+    if matches!(server_host,"foxiy.st"|"fxtrend.st") && matches!(host,"foxiy.st"|"trend48.st"|"buffstreams.ch"|"mlbbite.org") {
+        let event_path=event.path();
+        let path=if host=="mlbbite.org" {format!("/event{}",event_path)} else {event_path.to_string()};
+        if matches(r"^/event/(?:m-|ppv-)[a-z0-9]+(?:-[a-z0-9]+)*$",&path) {
+            return Some(server.path()==path || matches(&format!(r"^{}/(?:hotel|core|vector|vertex|foxtrot)/[1-9][0-9]{{0,2}}$",regex::escape(&path)),server.path()));
+        }
+    }
+    if host=="dudestream1.com" && server_host=="embedsports.me" {
+        return Some(matches(r"^/[a-z0-9]+(?:-[a-z0-9]+)*/$",event.path()) && matches(r"^/(?:basketball|american-football|ice-hockey|baseball)/[a-z0-9]+(?:-[a-z0-9]+)*-vs-[a-z0-9]+(?:-[a-z0-9]+)*-stream-[12]$",server.path()));
+    }
+    if host=="iohit.st" && server_host=="embed.st" {
+        let event_slug=event.path().strip_prefix("/event/")?;
+        let event_slug=Regex::new(r"-[0-9]+$").unwrap().replace(event_slug,"");
+        let Some(event_pair)=slug_pair(&event_slug) else {return Some(false);};
+        if matches(r"^/embed-noads/golf/[1-9][0-9]{0,11}/[1-9][0-9]{0,2}$",server.path()) {return Some(true);}
+        let hotel=Regex::new(r"^/embed-noads/hotel/([a-z0-9]+(?:-[a-z0-9]+)*)-(?:nba|wnba|nfl|cfb|nhl|mlb)-[0-9]{10}/[1-9][0-9]{0,2}$").unwrap();
+        let admin=Regex::new(r"^/embed-noads/admin/ppv-([a-z0-9]+(?:-[a-z0-9]+)*)/[1-9][0-9]{0,2}$").unwrap();
+        let Some(found)=hotel.captures(server.path()).or_else(||admin.captures(server.path())) else {return Some(false);};
+        return Some(slug_pair(&found[1]).as_ref()==Some(&event_pair));
+    }
+    if matches!(host,"buffstreams.ch"|"foxiy.st") {return None;}
+    Some(false)
+}
+
 pub fn valid_event_page_pair(event_url: &str, server_url: &str) -> bool {
+    if let Some(valid)=published_pair(event_url,server_url) {return valid;}
+    if event_url.starts_with("https://sportsfeed24.st/fixture/") {
+        return sportsfeed_pair(event_url, server_url);
+    }
     if event_url.starts_with("https://streamed.st/watch/")
         || event_url.starts_with("https://api.kultsport.com/api/matches/all#")
     {
@@ -213,7 +387,20 @@ pub fn valid_event_page_pair(event_url: &str, server_url: &str) -> bool {
         return false;
     };
     match (event.host_str(), server.host_str()) {
-        (Some("ms.buffstream.io"), Some("embedsports.me")) => {
+        (Some("ms.buffstream.io" | "streameasthd.app"), Some("embedsports.me")) => {
+            if let Some(event)=Regex::new(r"^/(mma|boxing|wwe|f1|motor)-streams/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$").unwrap().captures(event.path()) {
+                let Some(player)=Regex::new(r"^/(boxing|motorsports)/([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$").unwrap().captures(server.path()) else {return false;};
+                let event_slug=event[2].replace('-',"");
+                let player_slug=player[2].replace('-',"");
+                return match &event[1] {
+                    "mma"|"wwe" => player[1]==*"boxing" && event_slug==player_slug,
+                    "boxing" => player[1]==*"boxing" && slug_pair(&player[2]).is_some_and(|names|names.iter().any(|name|name.replace('-',"")==event_slug)),
+                    "f1"|"motor" => player[1]==*"motorsports" && (event_slug==player_slug
+                        || (event[2].starts_with("f1-")||event[2].starts_with("formula-1-")) && player[2]==*"sky-sports-f1-sky-f1"
+                        || event[2].starts_with("motogp-") && player[2]==*"motogp-qualifying-motogp-main-race"),
+                    _ => false,
+                };
+            }
             let team = Regex::new(
                 r"^/(nfl|cfb|nba|nhl|mlb)-streams/([a-z0-9]+(?:-[a-z0-9]+)*)-live-stream$",
             )
@@ -248,9 +435,31 @@ pub fn valid_event_page_pair(event_url: &str, server_url: &str) -> bool {
         (Some("tvapp1.pk"), _) => {
             event_url == server_url && matches(r"^/watch/[a-zA-Z0-9-]{1,120}$", event.path())
         }
-        (Some("methstreams.st" | "crackstreams.st"), Some("fxtrend.st")) => {
+        (Some("buffstreams.ch" | "methstreams.vg"), Some("foxiy.st")) => {
+            matches(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", event.path())
+                && matches(
+                    &format!(
+                        r"^{}-nascar-cup-series-[0-9]{{10}}/hotel/[1-9][0-9]{{0,2}}$",
+                        regex::escape(event.path())
+                    ),
+                    server.path(),
+                )
+        }
+        (Some("methstreams.st" | "crackstreams.st"), Some("fxtrend.st" | "foxiy.st")) => {
             let path = event.path();
             let server_path = server.path();
+            if server.host_str() == Some("foxiy.st")
+                && matches(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", path)
+                && matches(
+                    &format!(
+                        r"^{}-nascar-cup-series-[0-9]{{10}}/hotel/[1-9][0-9]{{0,2}}$",
+                        regex::escape(path)
+                    ),
+                    server_path,
+                )
+            {
+                return true;
+            }
             if matches(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", path) && path == server_path {
                 return true;
             }
@@ -287,7 +496,8 @@ pub fn valid_event_page_pair(event_url: &str, server_url: &str) -> bool {
                         server_path,
                     );
             }
-            matches(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", path)
+            server.host_str() == Some("fxtrend.st")
+                && matches(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", path)
                 && matches(
                     r"^/event/live_(?:cfb|nfl)_[a-z0-9]+(?:-[a-z0-9]+)*-live-streaming-[0-9]{1,20}/(?:vector|vertex|foxtrot)/[1-9][0-9]{0,2}$",
                     server_path,
@@ -329,12 +539,12 @@ pub fn valid_event_page_pair(event_url: &str, server_url: &str) -> bool {
         }
         (Some("ppv.st"), Some("embedindia.st" | "taifood-blog.asia")) => {
             let path = event.path();
-            if let Some(wrestling) = Regex::new(r"^/live/wwe/([0-9]{4}-[0-9]{2}-[0-9]{2})$")
+            if let Some(wrestling) = Regex::new(r"^/live/((?:wwe|tna|aew)/[0-9]{4}-[0-9]{2}-[0-9]{2}|[a-z0-9]+(?:-[a-z0-9]+)*-[1-9][0-9]{0,18})$")
                 .unwrap()
                 .captures(path)
             {
                 return server.host_str() == Some("taifood-blog.asia")
-                    && server.path() == format!("/embed/wwe/{}", &wrestling[1]);
+                    && server.path() == format!("/embed/{}", &wrestling[1]);
             }
             if let Some(race) = Regex::new(r"^/live/f1/([0-9]{4})/([a-z0-9]+(?:-[a-z0-9]+)*)/(fp[123]|sprint-q|sprint|qualifying|race)$")
                 .unwrap()
@@ -366,6 +576,24 @@ pub fn valid_event_page_pair(event_url: &str, server_url: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sportsurgei_bkfc_live3_requires_the_exact_published_route() {
+        let event = "https://sportsurgei.is/Jamel-Herring-vs-John-Dodson/79537";
+        let server = "https://live3.totalsportek.vg/Jamel-Herring-vs-John-Dodson/79537";
+        assert!(valid_event_page_pair(event, server));
+        for invalid in [
+            server.replace("live3.totalsportek.vg", "live3.totalsportek.vg.evil.test"),
+            server.replace("/79537", "/79538"),
+            server.replace("Jamel-Herring-vs-John-Dodson", "Dmitry-Bivol-vs-Michael-Eifert"),
+            format!("{server}?next=1"), format!("{server}#player"), format!("{server}#player=clappr"),
+            server.replace("live3.", "live2."), server.replace("live3.", "live5."),
+            server.replace("https:", "http:"),
+        ] {
+            assert!(!valid_event_page_pair(event, &invalid), "{invalid}");
+        }
+        assert!(!valid_event_page_pair(&event.replace("sportsurgei.is", "nbabitez.com"), server));
+    }
 
     #[test]
     fn ppv_migrated_hosts_preserve_exact_sports_and_race_routes() {

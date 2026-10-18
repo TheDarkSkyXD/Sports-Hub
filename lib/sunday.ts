@@ -19,9 +19,11 @@ export const LEAGUES = {
   boxing:{label:'Boxing'},
   wwe:{label:'WWE'},
   tna:{label:'TNA'},
+  aew:{label:'AEW'},
+  wrestling:{label:'Other wrestling'},
 } satisfies Record<League, { label: string }>;
 export function isBasketballLeague(league: League): boolean { return league === 'nba' || league === 'wnba'; }
-export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|nba|wnba|nhl|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport|ufc|boxing|wwe|tna)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
+export function validGameId(value: unknown): value is string { return typeof value === 'string' && /^(?:\d{1,20}|source-\d{1,20}|redzone|(?:ncaaf|nba|wnba|nhl|mlb|f1|nascar-cup|nascar-truck|motogp|motorsport|ufc|boxing|wwe|tna|aew|wrestling)-\d{1,20}|ncaaf-source-\d{1,20})$/.test(value); }
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -38,7 +40,7 @@ export function scoreboardFeedData(data: unknown, format: 'site' | 'cdn'): unkno
   return payload;
 }
 export function isUfcCardName(value:string):boolean {
-  return /^(?:UFC(?:\s+Fight\s+Night|\s+on\s+ESPN|\s+on\s+ABC|\s+\d+)|Dana White's Contender Series)\b/i.test(value.trim());
+  return /^(?:UFC(?:\s+Fight\s+Night|\s+on\s+ESPN|\s+on\s+ABC|\s+\d+)|Dana White['’]?s Contender Series)\b/i.test(value.trim());
 }
 export function parseScoreboard(data: unknown, league: League = 'nfl'): ScheduleGame[] {
   const events = object(data)?.events;
@@ -58,9 +60,11 @@ export function parseScoreboard(data: unknown, league: League = 'nfl'): Schedule
       const name = text(info.displayName) || '';
       const rawId = text(info.id);
       const id = rawId ? `espn:${league}:${rawId}` : undefined;
+      const historicalAliases = id === 'espn:nfl:28' ? ['Washington Redskins'] : [];
+      const aliases = [name, text(info.location), text(info.shortDisplayName), text(info.abbreviation), ...historicalAliases].filter((value): value is string => !!value);
       const color = text(info.color), logo = text(info.logo);
       const record = items(item.records).map(object).find(entry => entry?.type === 'total');
-      return { id, aliases: [name, text(info.location), text(info.shortDisplayName), text(info.abbreviation)].filter((value): value is string => !!value), name, short: text(info.shortDisplayName) || (league === 'ncaaf' ? name : text(info.name)) || name, abbreviation: text(info.abbreviation) || name.slice(0, 3), color: color && /^[a-f0-9]{6}$/i.test(color) ? color : '566775', logo: logo?.startsWith('https://') ? logo : undefined, score: typeof item.score === 'string' || typeof item.score === 'number' ? String(item.score) : null, record: text(record?.summary) };
+      return { id, aliases, name, short: text(info.shortDisplayName) || (league === 'ncaaf' ? name : text(info.name)) || name, abbreviation: text(info.abbreviation) || name.slice(0, 3), color: color && /^[a-f0-9]{6}$/i.test(color) ? color : '566775', logo: logo?.startsWith('https://') ? logo : undefined, score: typeof item.score === 'string' || typeof item.score === 'number' ? String(item.score) : null, record: text(record?.summary) };
     };
     const status = object(event?.status) || object(competition?.status);
     const statusType = object(status?.type);

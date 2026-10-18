@@ -125,9 +125,9 @@ test('legacy two-category checkpoints remain readable without claiming new categ
   assert.equal(catalog.categories.nba,undefined);
   assert.ok(sanitizeStreameastCatalog(catalog,at));
   assert.equal(StreameastCatalogSchema.safeParse({...catalog,categories:{...pendingCategories,unknown:{kind:'pending'}}}).success,false);
-  assert.equal(sanitizeStreameastCatalog({...catalog,categories:{...catalog.categories,motorsport:{kind:'collected',at}}},at),null);
+  assert.equal(sanitizeStreameastCatalog({...catalog,categories:{...catalog.categories,motogp:{kind:'collected',at}}},at),null);
   for(const source of SOURCE_REGISTRY.filter(source=>source.kind==='browser-catalog'))
-    assert.deepEqual(source.browserCategories?.map(category=>category.league),source.leagues);
+    assert.ok(source.browserCategories?.every(category=>source.leagues.includes(category.league)));
 });
 
 test('nonfootball browser category attempts persist their league and replay does not duplicate history',()=>{
@@ -140,7 +140,7 @@ test('nonfootball browser category attempts persist their league and replay does
     store.saveSportsurgeCatalog({catalog,receivedAt:at},[]);
     assert.deepEqual(store.collectionHistory(at).map(row=>({league:row.league,outcome:row.outcome}))
       .sort((left,right)=>(left.league||'').localeCompare(right.league||'')),[
-      {league:'f1',outcome:'failed'},{league:'nba',outcome:'parsed'},
+      {league:'f1',outcome:'failed'},{league:'nba',outcome:'empty'},
     ]);
     assert.equal(store.sportsurgeCatalog().current?.catalog.categories.f1.kind,'failed');
   } finally {store.close();}

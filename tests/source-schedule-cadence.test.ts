@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readSchedule, SCHEDULES } from '../lib/football/adapters/schedule.ts';
-import type { ScheduleResult } from '../lib/football/domain/ports.ts';
+import type { ScheduleProgress } from '../lib/football/domain/ports.ts';
 
 const at = Date.parse('2026-10-02T18:00:00Z');
 const event = {
@@ -19,7 +19,7 @@ test('current games publish before future dates finish and future dates use a sl
   const requests: string[] = [];
   let release!: () => void;
   const future = new Promise<void>(resolve => { release = resolve; });
-  let current: ScheduleResult | undefined;
+  let current: ScheduleProgress | undefined;
   globalThis.fetch = async input => {
     const date = new URL(String(input)).searchParams.get('dates') || '';
     requests.push(date);
@@ -49,24 +49,84 @@ test('current games publish before future dates finish and future dates use a sl
 
 test('today publishes while yesterday is still pending, then complete history clears the partial warning',async()=>{
   const original=globalThis.fetch;
-  let release!:()=>void;
-  const history=new Promise<void>(resolve=>{release=resolve;});
-  let current:ScheduleResult|undefined;
+  const history=Promise.withResolvers<void>();
+  const future=Promise.withResolvers<void>();
+  const yesterday={...event,id:'99',date:'2026-10-01T18:00:00.000Z'};
+  const progress:ScheduleProgress[]=[];
   globalThis.fetch=async input=>{
     const day=new URL(String(input)).searchParams.get('dates');
-    if(day==='20261001')await history;
+    if(day==='20261001')await history.promise;
+    if(day!==null&&day>'20261002')await future.promise;
+    return Response.json({events:day==='20261001'?[yesterday]:day==='20261002'?[event]:[]});
+  };
+  const pending=readSchedule(SCHEDULES[0],at,new AbortController().signal,result=>{progress.push(result);});
+  try {
+    for(let i=0;i<20&&!progress.length;i++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.deepEqual(progress[0]?.games.map(game=>game.id),['100']);
+    assert.deepEqual(progress[0]?.history,{kind:'loading',day:'20261001'});
+    history.resolve();
+    for(let i=0;i<20&&progress.length<2;i++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(progress.length,2,'settled history must publish before the future horizon');
+    assert.deepEqual(progress[1]?.games.map(game=>game.id),['99','100']);
+    assert.equal(progress[1]?.history,undefined);
+    assert.equal(await Promise.race([pending.then(()=>true),new Promise<false>(resolve=>setImmediate(()=>resolve(false)))]),false);
+    future.resolve();
+    const complete=await pending;
+    assert.equal(complete.history,undefined);
+    assert.deepEqual(complete.games.map(game=>game.id),['99','100']);
+  } finally {history.resolve();future.resolve();await pending;globalThis.fetch=original;}
+});
+
+for(const failure of ['http-503','timeout'] as const)test(`settled history ${failure} publishes before the future horizon`,async()=>{
+  const original=globalThis.fetch;
+  const history=Promise.withResolvers<void>();
+  const future=Promise.withResolvers<void>();
+  const progress:ScheduleProgress[]=[];
+  globalThis.fetch=async input=>{
+    const day=new URL(String(input)).searchParams.get('dates');
+    if(day==='20261001'){
+      await history.promise;
+      if(failure==='timeout')throw new DOMException('Timed out','TimeoutError');
+      return new Response('',{status:503});
+    }
+    if(day!==null&&day>'20261002')await future.promise;
     return Response.json({events:day==='20261002'?[event]:[]});
   };
-  const pending=readSchedule(SCHEDULES[0],at,new AbortController().signal,result=>{current=result;});
+  const pending=readSchedule(SCHEDULES[0],at,new AbortController().signal,result=>{progress.push(result);});
   try {
-    for(let i=0;i<20&&!current;i++)await new Promise<void>(resolve=>setImmediate(resolve));
-    assert.deepEqual(current?.games.map(game=>game.id),['100']);
-    assert.deepEqual(current?.historyErrors,['20261001:pending']);
-    release();
-    const complete=await pending;
-    assert.equal(complete.historyErrors,undefined);
-    assert.deepEqual(complete.games.map(game=>game.id),['100']);
-  } finally {release();await pending;globalThis.fetch=original;}
+    for(let i=0;i<20&&!progress.length;i++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.deepEqual(progress[0]?.history,{kind:'loading',day:'20261001'});
+    history.resolve();
+    for(let i=0;i<20&&progress.length<2;i++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.deepEqual(progress[1]?.history,{kind:'failed',day:'20261001',reason:failure});
+    assert.equal(await Promise.race([pending.then(()=>true),new Promise<false>(resolve=>setImmediate(()=>resolve(false)))]),false);
+    future.resolve();
+    assert.deepEqual((await pending).history,{kind:'failed',day:'20261001',reason:failure});
+  } finally {history.resolve();future.resolve();await pending;globalThis.fetch=original;}
+});
+
+test('history that settles before current publishes one settled snapshot',async()=>{
+  const original=globalThis.fetch;
+  const current=Promise.withResolvers<void>();
+  const future=Promise.withResolvers<void>();
+  const progress:ScheduleProgress[]=[];
+  globalThis.fetch=async input=>{
+    const day=new URL(String(input)).searchParams.get('dates');
+    if(day==='20261002')await current.promise;
+    if(day!==null&&day>'20261002')await future.promise;
+    return Response.json({events:day==='20261002'?[event]:[]});
+  };
+  const pending=readSchedule(SCHEDULES[0],at,new AbortController().signal,result=>{progress.push(result);});
+  try {
+    for(let i=0;i<5;i++)await new Promise<void>(resolve=>setImmediate(resolve));
+    current.resolve();
+    for(let i=0;i<20&&!progress.length;i++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(progress.length,1);
+    assert.equal(progress[0]?.history,undefined);
+    future.resolve();
+    await pending;
+    assert.equal(progress.length,1);
+  } finally {current.resolve();future.resolve();await pending;globalThis.fetch=original;}
 });
 
 test('expired future rows remain visible during refresh and failed dates report their errors', async () => {
@@ -84,12 +144,12 @@ test('expired future rows remain visible during refresh and failed dates report 
   try {
     const initial = await readSchedule(SCHEDULES[0],at,signal);
     assert.deepEqual(initial.games.map(game => game.id),['100','101']);
-    let fresh: ScheduleResult | undefined;
+    let fresh: ScheduleProgress | undefined;
     await readSchedule(SCHEDULES[0],at+30000,signal,result => { fresh = result; });
     assert.deepEqual(fresh?.games.map(game => game.id),['100','101']);
     assert.equal(fresh?.horizonErrors,undefined);
     phase = 1;
-    let pending: ScheduleResult | undefined;
+    let pending: ScheduleProgress | undefined;
     const updated = await readSchedule(SCHEDULES[0],at+300001,signal,result => { pending = result; });
     assert.deepEqual(pending?.games.map(game => game.id),['100','101']);
     assert.equal(pending?.horizonErrors,undefined);
@@ -100,6 +160,38 @@ test('expired future rows remain visible during refresh and failed dates report 
     assert.deepEqual(failed.games.map(game => game.id),['100','102']);
     assert.deepEqual(failed.horizonErrors,['20261003:http-503','20261004:schedule-incomplete-or-duplicate']);
   } finally { globalThis.fetch = original; }
+});
+
+test('a conflict from an expired future row clears when its fresh replacement is valid',async()=>{
+  const original=globalThis.fetch;
+  const signal=new AbortController().signal;
+  const conflict={...event,date:'2026-10-03T18:00:00Z',competitions:[{competitors:[
+    {...event.competitions[0].competitors[0],team:{id:'9',displayName:'Other'}},
+    event.competitions[0].competitors[1],
+  ]}]};
+  const history=Promise.withResolvers<void>();
+  const future=Promise.withResolvers<void>();
+  let refreshing=false;
+  globalThis.fetch=async input=>{
+    const day=new URL(String(input)).searchParams.get('dates');
+    if(refreshing&&day==='20261001')await history.promise;
+    if(refreshing&&day!==null&&day>'20261002')await future.promise;
+    return Response.json({events:day==='20261002'?[event]:!refreshing&&day==='20261003'?[conflict]:[]});
+  };
+  try {
+    assert.deepEqual((await readSchedule(SCHEDULES[0],at,signal)).horizonErrors,
+      ['20261003:schedule-conflicting-event']);
+    refreshing=true;
+    const progress:ScheduleProgress[]=[];
+    const pending=readSchedule(SCHEDULES[0],at+300_001,signal,result=>{progress.push(result);});
+    for(let index=0;index<20&&!progress.length;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(progress[0]?.horizonErrors,undefined);
+    history.resolve();
+    for(let index=0;index<20&&progress.length<2;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.deepEqual(progress[1]?.horizonErrors,['20261003:schedule-conflicting-event']);
+    future.resolve();
+    assert.equal((await pending).horizonErrors,undefined);
+  } finally {history.resolve();future.resolve();globalThis.fetch=original;}
 });
 
 test('today wins when an event repeats across current and future dates', async () => {
@@ -141,12 +233,16 @@ test('current-day failures still reject and future requests stop on abort', asyn
       }
       return Response.json({events:[]});
     };
-    const pending = readSchedule(SCHEDULES[0],at,controller.signal);
+    const progress:ScheduleProgress[]=[];
+    const pending = readSchedule(SCHEDULES[0],at,controller.signal,result=>{progress.push(result);});
     await threeStarted;
     assert.equal(peak,3);
+    const published=progress.length;
     controller.abort();
     await assert.rejects(pending,/aborted/);
     assert.equal(active,0);
+    assert.equal(progress.length,published);
+    assert.equal(progress.some(result=>result.history?.kind==='failed'),false);
   } finally { globalThis.fetch = original; }
 });
 

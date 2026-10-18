@@ -171,14 +171,14 @@ test('a known finished listing cannot lose its cleanup identity on an undated re
       await coordinator.refresh(true);
       await until(()=>listingReads===1,'the dated listing should be stored');
       finished=true;
-      now+=300_001;
+      now+=1_800_001;
       await coordinator.refresh(true);
       await until(()=>listingReads===2,'the shared listing should refresh while another game is live');
       if(scenario==='first-undated-after-grace'){
         now+=5*60_000+1;
         await coordinator.command({kind:'sources'});
         lateRefresh=true;
-        now+=300_001;
+        now+=1_800_001;
         await coordinator.refresh(true);
         await until(()=>listingReads===3,'the first undated listing should arrive after physical cleanup');
       }
@@ -193,7 +193,7 @@ test('a known finished listing cannot lose its cleanup identity on an undated re
         boundFinal?0:1,`${scenario} before another listing can reinsert the row`);}
       finally{afterGrace.close();}
       const beforeRepeat=listingReads;
-      now+=300_001;
+      now+=1_800_001;
       await coordinator.refresh(true);
       await until(()=>listingReads===beforeRepeat+1,'another listing refresh should not recreate a finished source');
       const db=new DatabaseSync(path);
@@ -261,7 +261,7 @@ test('a final current result owns a detail that completes before optional histor
     sources:[{id:observation.sourceId,url:'https://vipbox.fm/ncaaf-schedule',family:'vipbox'}],
     readSchedule:async (_source,_at,_signal,onCurrent)=>{
       if(++reads===1)return {games:[live],league:'ncaaf' as const,at:now};
-      onCurrent?.({games:[final],league:'ncaaf',at:now,historyErrors:['20261002:pending']});
+      onCurrent?.({games:[final],league:'ncaaf',at:now,history:{kind:'loading',day:'20261002'}});
       await historyHeld;
       return {games:[final],league:'ncaaf' as const,at:now};
     },
@@ -307,7 +307,7 @@ test('a playable probe completing after a final current result cannot persist it
     sources:[{id:observation.sourceId,url:'https://vipbox.fm/ncaaf-schedule',family:'vipbox'}],
     readSchedule:async (_source,_at,_signal,onCurrent)=>{
       if(++reads===1)return {games:[live],league:'ncaaf' as const,at:now};
-      onCurrent?.({games:[final],league:'ncaaf',at:now,historyErrors:['20261002:pending']});
+      onCurrent?.({games:[final],league:'ncaaf',at:now,history:{kind:'loading',day:'20261002'}});
       await historyHeld;
       return {games:[final],league:'ncaaf' as const,at:now};
     },
@@ -351,7 +351,7 @@ test('a late probe cannot store proof while a date-only schedule move excludes i
     readSchedule:async (_source,_at,_signal,onCurrent)=>{
       if(++reads===1)return {games:[scheduled],league:'ncaaf' as const,at:kickoff};
       if(reads===2){
-        onCurrent?.({games:[outside],league:'ncaaf',at:kickoff,historyErrors:['20261002:pending']});
+        onCurrent?.({games:[outside],league:'ncaaf',at:kickoff,history:{kind:'loading',day:'20261002'}});
         await historyHeld;
         return {games:[outside],league:'ncaaf' as const,at:kickoff};
       }

@@ -98,7 +98,7 @@ try {
   await page.getByRole('button', { name: 'Wrestling', exact: true }).click();
   await page.waitForFunction(id => [...document.querySelectorAll('.center-game')].some(card => card.dataset.gameId === id), smackdown.id);
   assert.ok((await page.locator('.center-game').evaluateAll(cards => cards.map(card => card.dataset.gameId)))
-    .every(id => /^(wwe|tna)-/.test(id)));
+    .every(id => /^(wwe|tna|aew|wrestling)-/.test(id)));
   assert.equal(await page.getByRole('tab', { name: 'Red zone games' }).count(), 0);
   assert.equal(await page.locator('#smart-focus').count(), 0);
   await page.locator('#game-search').fill(smackdown.name);
@@ -129,7 +129,7 @@ try {
   await page.locator('.schedule-card').first().waitFor();
   const scheduleLabels = await page.locator('.schedule-card .league-tag').allTextContents();
   assert.ok(scheduleLabels.includes('WWE'));
-  assert.ok(scheduleLabels.every(label => label === 'WWE' || label === 'TNA'));
+  assert.ok(scheduleLabels.every(label => ['WWE', 'TNA', 'AEW', 'Other wrestling'].includes(label)));
   assert.equal(await page.locator('.schedule-matchup').count(), 0);
   assert.ok(await page.locator('.schedule-card').filter({ hasText: smackdown.name }).isVisible());
   await page.screenshot({ path: path.join(output, 'electron-wrestling-schedule.png') });
@@ -137,7 +137,7 @@ try {
   await page.locator('.schedule-card').first().waitFor();
   const motorsportLabels = await page.locator('.schedule-card .league-tag').allTextContents();
   assert.ok(motorsportLabels.length > 0);
-  assert.ok(motorsportLabels.every(label => !['WWE', 'TNA'].includes(label)));
+  assert.ok(motorsportLabels.every(label => !['WWE', 'TNA', 'AEW', 'Other wrestling'].includes(label)));
   checked('Wrestling and Motorsports schedule isolation');
 
   await page.getByRole('button', { name: 'Watch room', exact: true }).click();
@@ -150,7 +150,7 @@ try {
   await page.waitForFunction(id => {
     const cards = [...document.querySelectorAll('.center-game')];
     return cards.some(card => card.dataset.gameId === id) &&
-      cards.every(card => /^(wwe|tna)-/.test(card.dataset.gameId));
+      cards.every(card => /^(wwe|tna|aew|wrestling)-/.test(card.dataset.gameId));
   }, smackdown.id);
   await page.getByRole('button', { name: `Remove ${smackdown.name}`, exact: true }).waitFor();
   checked('SmackDown remains discoverable under Wrestling after switching sports');

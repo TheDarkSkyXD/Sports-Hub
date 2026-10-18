@@ -1,0 +1,24 @@
+{
+  "engine": "@ghostery/adblocker",
+  "engineVersion": "2.20.1",
+  "license": "CC-BY-SA-3.0",
+  "attribution": "The EasyList authors (https://easylist.to/)",
+  "licenseUrl": "https://easylist.to/pages/licence.html",
+  "lists": [
+    {
+      "name": "easylist",
+      "url": "https://easylist.to/easylist/easylist.txt",
+      "version": "202610150149",
+      "commit": "a2fcee35f919da36f1ac1e9bf109cb8363e7cb4d",
+      "sha256": "ed003a38f484f6e64b9fb7181c401b71c9e5a7580d0ee1ff9efae4cf9a9efeea"
+    },
+    {
+      "name": "easyprivacy",
+      "url": "https://easylist.to/easylist/easyprivacy.txt",
+      "version": "202610150149",
+      "commit": "a2fcee35f919da36f1ac1e9bf109cb8363e7cb4d",
+      "sha256": "448cb53c154c9391acaffa242aa20ffcad8d3a8a7e29e6b4d638b9193fa8cb4a"
+    }
+  ],
+  "binarySha256": "e1dcbf725c8ee988653ac06cc63f340ec130d76bc8a4a66eb215bc176ed3424b"
+}

@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 const now = Date.now();
 const productBoard = {
   schemaVersion: 2, revision: 1, updatedAt: new Date(now).toISOString(), scheduleState: 'ready',
-  aliases: {}, finishedGameRetentionMinutes: 120, feedCheckIntervalMinutes: 5,
+  aliases: {}, finishedGameRetentionMinutes: 120,
   leagues: {}, games: [],
 };
 const sourcesSnapshot = {

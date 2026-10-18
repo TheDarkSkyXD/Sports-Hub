@@ -27,21 +27,21 @@ function partition(id:'wwe'|'tna'){const value=SCHEDULES.find(row=>row.id===id);
 const reader=async(url:string)=>JSON.stringify(url.includes('streamed.st')?[streamed]:
   url.includes('kultsport.com')?[lsp]:ppv);
 
-test('native listing boundary accepts real WWE mirrors and excludes unrelated catalog channels and AEW',()=>{
+test('native listing boundary accepts wrestling mirrors and excludes unrelated catalog channels',()=>{
   const unrelated={id:'NHLNetwork.us',title:'NHL Network',category:'hockey',date:0,sources:[]};
   const observations=[
     parseListings(source('streamed'),JSON.stringify([unrelated,streamed]),now),
     parseListings(source('livesportpro'),JSON.stringify([unrelated,lsp]),now),
     parseListings(source('ppv'),JSON.stringify(ppv),now),
   ];
-  for(const result of observations){assert.equal(result.outcome,'parsed');assert.equal(result.observations.length,1);
+  for(const result of observations){assert.equal(result.outcome,'parsed');assert.equal(result.observations.length,result===observations[2]?2:1);
     assert.equal(result.observations[0].league,'wwe');assert.equal(result.observations[0].teams,null);}
   assert.equal(observations[0].observations[0].url,`https://streamed.st/watch/${id}`);
   assert.equal(observations[2].observations[0].url,'https://ppv.st/live/wwe/2026-10-09');
   assert.equal(parseListings(source('streamed'),JSON.stringify([{...streamed,sources:'broken'}]),now).outcome,'parser-changed');
   for(const [category,title,league] of [['fight','WWE Monday Night Raw','wwe'],['wrestling','NXT No Mercy','wwe'],
     ['fight','Impact Wrestling Bound For Glory','tna'],['wrestling','TNA Impact','tna'],
-    ['fight','Raw',null],['fight','Impact',null],['fight','AEW Collision',null],
+    ['fight','Raw',null],['fight','Impact',null],['fight','AEW Collision','aew'],
     ['motor-sports','WWE Friday Night Smackdown',null]] as const){
     const result=parseListings(source('streamed'),JSON.stringify([{...streamed,category,title}]),now);
     assert.equal(result.observations[0]?.league??null,league,title);
@@ -86,10 +86,11 @@ test('TNA Impact mirrors match while NXT and Impact specials remain separate wee
   assert.equal(wrestlingShowKey('wwe','NXT No Mercy'),wrestlingShowKey('wwe','WWE NXT No Mercy'));
   assert.notEqual(wrestlingShowKey('tna','Impact Wrestling'),wrestlingShowKey('tna','TNA Bound For Glory'));
   assert.equal(wrestlingShowKey('tna','Impact Wrestling Bound For Glory'),wrestlingShowKey('tna','TNA Bound For Glory'));
-  for(const title of ['Raw','Impact','AEW Collision'])assert.equal(wrestlingPromotion(title),null);
+  for(const title of ['Raw','Impact'])assert.equal(wrestlingPromotion(title),null);
+  assert.equal(wrestlingPromotion('AEW Collision'),'aew');
 });
 
-test('conflicting same-show starts fail and PPV success cannot mask failed TNA catalogs',async()=>{
+test('conflicting same-show starts fail and PPV can supply wrestling schedules alone',async()=>{
   await assert.rejects(readSchedule(partition('wwe'),now,new AbortController().signal,undefined,
     undefined,undefined,undefined,async url=>JSON.stringify(url.includes('kultsport.com')?
       [{...lsp,date:start+3*3600000}]:url.includes('streamed.st')?[streamed]:ppv)),
@@ -97,8 +98,8 @@ test('conflicting same-show starts fail and PPV success cannot mask failed TNA c
   const onlyPpv=async(url:string)=>{if(!url.includes('ppv.st'))throw new Error('offline');return JSON.stringify(ppv);};
   assert.equal((await readSchedule(partition('wwe'),now,new AbortController().signal,undefined,
     undefined,undefined,undefined,onlyPpv)).games.length,1);
-  await assert.rejects(readSchedule(partition('tna'),now,new AbortController().signal,undefined,
-    undefined,undefined,undefined,onlyPpv),/source-schedule-unavailable/);
+  assert.equal((await readSchedule(partition('tna'),now,new AbortController().signal,undefined,
+    undefined,undefined,undefined,onlyPpv)).games.length,0);
 });
 
 test('published WWE route and LiveSportPro PPV target require exact dated host and path',()=>{
@@ -109,7 +110,7 @@ test('published WWE route and LiveSportPro PPV target require exact dated host a
   assert.equal(validStreamTarget('livesportpro','ppv:s','wwe/2026-10-09',1,player),true);
   assert.equal(validStreamTarget('streamed','ppv:s','wwe/2026-10-09',1,player),false);
   assert.equal(validStreamTarget('livesportpro','ppv:s','aew/2026-10-09',1,
-    'https://taifood-blog.asia/embed/aew/2026-10-09'),false);
+    'https://taifood-blog.asia/embed/aew/2026-10-09'),true);
   const observation=parseListings(source('ppv'),JSON.stringify(ppv),now).observations[0];
   const resolved=compatiblePlayers('wwe-123',observation,JSON.stringify(ppvEvent));
   assert.equal(resolved.length,1);

@@ -1,4 +1,4 @@
-import type { CandidateLocator, MediaPhase } from '../football/shared.ts';
+import type { CandidateLocator, MediaPhase,MediaTimings,MediaDeferralReason } from '../football/shared.ts';
 
 export type ResourceKind = 'playlist' | 'media';
 export type ProviderReadResult = {
@@ -15,10 +15,9 @@ export interface ProviderResource {
   read(input: {signal: AbortSignal; range?: string}): Promise<ProviderReadResult>;
   resolve(reference: string, expected: ResourceKind): ProviderResource | null;
 }
-export interface ProviderPlayback {
-  readonly root: ProviderResource;
-  close(): void;
-}
+export type PlayerDocument={url:string;referer:string};
+export type ProviderPlayback=({readonly root:ProviderResource;readonly player?:PlayerDocument}|
+  {readonly root:null;readonly player:PlayerDocument})&{readonly timings?:MediaTimings;close():void};
 export interface PlaybackProvider<L extends CandidateLocator> {
   readonly provider: L['provider'];
   open(locator: L, signal: AbortSignal, purpose?: 'playback' | 'probe'): Promise<ProviderPlayback>;
@@ -27,12 +26,18 @@ export interface PlaybackProvider<L extends CandidateLocator> {
 export class ProviderDeferredError extends Error {
   readonly retryAfterMs: number;
   readonly phase?: MediaPhase;
-  constructor(retryAfterMs: number, phase?: MediaPhase) {
+  readonly reason?:MediaDeferralReason;
+  constructor(retryAfterMs: number, phase?: MediaPhase,reason?:MediaDeferralReason) {
     super('Provider lookup is temporarily deferred');
     this.name='ProviderDeferredError';
     this.retryAfterMs=retryAfterMs;
     this.phase=phase;
+    this.reason=reason;
   }
+}
+
+export class ProviderCapacityError extends ProviderDeferredError {
+  constructor(){super(2000);this.name='ProviderCapacityError';}
 }
 
 export class ProviderNoFeedError extends Error {
@@ -44,10 +49,20 @@ export class ProviderNoFeedError extends Error {
   }
 }
 
+export class ProviderHttpError extends Error {
+  readonly status:number;
+  constructor(status:number){super(`Provider media returned ${status}`);this.name='ProviderHttpError';this.status=status;}
+}
+
 export function sanitizedRead(response: Response): ProviderReadResult {
   if (response.status !== 200 && response.status !== 206 && response.status !== 416) {
     void response.body?.cancel();
-    throw new Error(`Provider media returned ${response.status}`);
+    if(response.status===408||response.status===429||response.status>=500){
+      const retryAfter=response.headers.get('Retry-After')?.trim();
+      const delay=retryAfter?(/^\d+$/.test(retryAfter)?Number(retryAfter)*1000:Date.parse(retryAfter)-Date.now()):NaN;
+      throw new ProviderDeferredError(Number.isFinite(delay)&&delay>=0?Math.min(120_000,Math.max(2000,delay)):30_000,'replay');
+    }
+    throw new ProviderHttpError(response.status);
   }
   return {
     status:response.status,body:response.body,

@@ -5,6 +5,9 @@ import { createRequire } from 'node:module';
 import { PassThrough } from 'node:stream';
 import test from 'node:test';
 import { sportsurgeUrl } from '../lib/playback/providers/public-page.ts';
+import verificationPolicy from '../lib/playback/verification-policy.json' with {type:'json'};
+
+const mediaLimit=verificationPolicy.concurrency+4;
 
 const require = createRequire(import.meta.url);
 const { createObservedMedia } = require('../desktop/observed-media.cjs');
@@ -177,7 +180,7 @@ test('transient native cleanup failures do not exhaust media partitions or reuse
     } },
   });
   try {
-    for (let index = 0; index < 32; index++) {
+    for (let index = 0; index < mediaLimit; index++) {
       const capability = await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' });
       assert.ok(capability);
       media.close(capability);
@@ -185,8 +188,8 @@ test('transient native cleanup failures do not exhaust media partitions or reuse
     }
     await new Promise(resolve => setTimeout(resolve, 500));
     const recovered = await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' });
-    assert.ok(recovered, 'a transient cleanup error must not permanently consume the 32-session pool');
-    assert.ok(created <= 32);
+    assert.ok(recovered, 'a transient cleanup error must not permanently consume the media pool');
+    assert.ok(created <= mediaLimit);
     media.close(recovered);
   } finally {
     media.stop();
@@ -211,14 +214,14 @@ test('permanent native cleanup failures keep the media partition count bounded',
     } },
   });
   try {
-    for (let index = 0; index < 32; index++) {
+    for (let index = 0; index < mediaLimit; index++) {
       const capability = await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' });
       assert.ok(capability);
       media.close(capability);
       await new Promise(resolve => setImmediate(resolve));
     }
     assert.equal(await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' }), null);
-    assert.equal(created, 32);
+    assert.equal(created, mediaLimit);
   } finally {
     media.stop();
   }
@@ -248,7 +251,7 @@ test('a timed out native cleanup stays quarantined after its late completion', a
     const first = await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' });
     assert.ok(first);
     media.close(first);
-    for (let index = 0; index < 31; index++) {
+    for (let index = 0; index < mediaLimit-1; index++) {
       const occupied = await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' });
       assert.ok(occupied);
     }
@@ -258,9 +261,32 @@ test('a timed out native cleanup stays quarantined after its late completion', a
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(clearAuthCalls, 0);
     assert.equal(await media.register({ url: 'https://media.example/root.m3u8', userAgent: 'Observed Chromium' }), null);
-    assert.equal(created, 32);
+    assert.equal(created, mediaLimit);
   } finally {
     media.stop();
     releaseCleanup?.();
   }
+});
+
+test('only the browser-owned progressive root streams beyond finite replay limits',async context=>{
+  context.mock.timers.enable({apis:['Date','setTimeout']});
+  const requests:{request:EventEmitter&{aborted:boolean};incoming:PassThrough&{statusCode:number;headers:object}}[]=[];
+  const transport=createObservedMedia({validateUrl:sportsurgeUrl,pinAddress:async()=>({address:'8.8.8.8',family:4}),
+    network:{request(){
+      const incoming=Object.assign(new PassThrough(),{statusCode:206,headers:{'content-type':'video/mp4','content-range':'bytes 0-999999999/1000000000'}});
+      const request=Object.assign(new EventEmitter(),{aborted:false,setHeader(){},end(){this.emit('response',incoming);},abort(){if(!this.aborted){this.aborted=true;this.emit('abort');}}});
+      requests.push({request,incoming});return request;
+    }},sessions:{fromPartition:()=>({cookies:{async set(){}},setPermissionRequestHandler(){},setPermissionCheckHandler(){},webRequest:{onBeforeRequest(){}},async setProxy(){},async closeAllConnections(){},async clearAuthCache(){},async clearStorageData(){}})}});
+  const capability=await transport.register({url:'https://media.example/game.mp4',kind:'progressive',userAgent:'Captured Chromium'});
+  const output=()=>Object.assign(new EventEmitter(),{headersSent:false,bytes:0,status:0,destroyed:false,
+    writeHead(status:number){this.headersSent=true;this.status=status;},write(value:Buffer){this.bytes+=value.length;return true;},end(){},destroy(){this.destroyed=true;}});
+  try{
+    const root=output();transport.read(capability,'https://media.example/game.mp4','bytes=0-',root);
+    for(let index=0;index<65;index++){requests[0].incoming.write(Buffer.alloc(1024*1024));context.mock.timers.tick(1000);}
+    assert.equal(root.bytes,65*1024*1024);assert.equal(requests[0].request.aborted,false);
+    root.emit('close');assert.equal(requests[0].request.aborted,true);
+    const finite=output();transport.read(capability,'https://media.example/segment.ts',undefined,finite);
+    for(let index=0;index<65;index++)requests[1].incoming.write(Buffer.alloc(1024*1024));
+    assert.equal(requests[1].request.aborted,true);
+  }finally{transport.stop();}
 });

@@ -41,11 +41,21 @@ export function countdown(remainingSeconds: number): string {
   return days ? `${days}d ${clock}` : clock;
 }
 
-export function relativeStartDay({ start, now }: { start: number; now: number }): 'Today' | 'Tomorrow' | null {
-  const startDay = new Date(start).toDateString();
-  const today = new Date(now);
-  if (startDay === today.toDateString()) return 'Today';
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return startDay === tomorrow.toDateString() ? 'Tomorrow' : null;
+const dayFormatters=new Map<string,Intl.DateTimeFormat>();
+function calendarDay(at:number,timeZone:string|undefined):number {
+  const date=new Date(at);
+  if(!timeZone)return Date.UTC(date.getFullYear(),date.getMonth(),date.getDate());
+  let formatter=dayFormatters.get(timeZone);
+  if(!formatter){
+    formatter=new Intl.DateTimeFormat('en-US',{timeZone,year:'numeric',month:'numeric',day:'numeric'});
+    dayFormatters.set(timeZone,formatter);
+  }
+  const parts=formatter.formatToParts(date);
+  const value=(type:string)=>Number(parts.find(part=>part.type===type)?.value);
+  return Date.UTC(value('year'),value('month')-1,value('day'));
+}
+
+export function relativeStartDay({ start, now, timeZone }: { start: number; now: number; timeZone?:string }): 'Today' | 'Tomorrow' | null {
+  const difference=calendarDay(start,timeZone)-calendarDay(now,timeZone);
+  return difference===0?'Today':difference===86_400_000?'Tomorrow':null;
 }

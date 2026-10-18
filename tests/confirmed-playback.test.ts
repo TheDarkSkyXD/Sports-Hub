@@ -7,11 +7,30 @@ import {createFootballCoordinator} from '../lib/football/runtime/composition.ts'
 import {streamIndex,streamToken,revokeVerificationTarget} from '../lib/stream-server.ts';
 import type {ProviderResource} from '../lib/playback/provider.ts';
 import type {AdvancingVideo, VerificationTarget} from '../lib/football/shared.ts';
+import {ProviderCapacityError,ProviderDeferredError} from '../lib/playback/provider.ts';
 
 const at=Date.parse('2026-10-04T17:00:00Z');
 const proof:AdvancingVideo={kind:'advancing-video',version:1,startupMs:3000,
   observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4};
 const drain=async()=>{for(let i=0;i<80;i++)await new Promise(setImmediate);};
+
+for(const capacity of [true,false])test(capacity
+  ? 'busy source browsers return a short capacity wait to the playback verifier'
+  : 'incomplete source capture remains deferred instead of claiming failed playback',async()=>{
+  const value=fixture(true);
+  try{
+    await value.refresh(0);
+    const target=value.pending[0]?.target;
+    assert.ok(target);
+    const response=await streamIndex(target.gameId,target.sessionId,target.candidateId,'0',
+      new AbortController().signal,command=>value.coordinator.command(command),async()=>{
+        throw capacity?new ProviderCapacityError():new ProviderDeferredError(30000,'capture');
+      });
+    assert.equal(response.status,capacity?429:503);
+    assert.equal(response.headers.get('Retry-After'),capacity?'2':'30');
+    revokeVerificationTarget(target.sessionId,target.generation);
+  }finally{await value.stop();}
+});
 
 function fixture(aliases=false){
   let now=at,replaced=false,visible=true,hold=aliases,calls=0;
@@ -53,14 +72,14 @@ test('Available expires at the proof deadline even inside the inventory cache wi
   const value=fixture();
   try{
     await value.refresh(0);
-    await value.refresh(298000);
-    value.setTime(299999);
+    await value.refresh(1_798_000);
+    value.setTime(1_799_999);
     const before=await value.snapshot();
-    value.setTime(300001);
+    value.setTime(1_800_001);
     const after=await value.snapshot();
     assert.equal(before?.games[0].candidates[0].availability.kind,'playable');
     assert.deepEqual(after?.games[0].candidates[0].availability,
-      {kind:'checking',progress:{kind:'queued',since:at+300000}});
+      {kind:'checking',progress:{kind:'queued',since:at+1_800_000}});
     assert.notEqual(before,after);
     const opened=await value.coordinator.command({kind:'open',gameId:value.game.id,manual:false});
     assert.equal(opened.kind,'error');
@@ -83,12 +102,11 @@ test('an aged route remains eligible for re-verification after its proof expires
 test('a private trial cannot authorize a new locator that reused its candidate ID',async()=>{
   const value=fixture(true);
   try{
-    await value.coordinator.command({kind:'set-feed-check-interval',minutes:1});
     await value.refresh(0);
     const first=value.pending[0];
     assert.ok(first);
     value.replace();
-    await value.refresh(60001);
+    await value.refresh(30*60_000);
     const reply=await value.coordinator.command({kind:'authorize',sessionId:first.target.sessionId,
       candidateId:first.target.candidateId,generation:0});
     assert.equal(reply.kind,'error');
@@ -124,5 +142,19 @@ test('a private trial opens playlist and media through the relay, then revokes b
     assert.equal(await segment.text(),'decoded segment');
     revokeVerificationTarget(target.sessionId,target.generation);
     assert.equal((await streamToken(token,null,new AbortController().signal,send)).status,404);
+  }finally{await value.stop();}
+});
+
+
+test('verification grants end with headroom before the outer checker request deadline',async()=>{
+  const value=fixture(true);
+  try{
+    await value.refresh(0);
+    const target=value.pending[0]?.target;assert.ok(target);
+    const authorize=()=>value.coordinator.command({kind:'authorize',sessionId:target.sessionId,candidateId:target.candidateId,generation:0});
+    const initial=await authorize();assert.ok(initial.kind==='verification-authorized');
+    assert.equal(initial.deadline,at+60_000);
+    value.setTime(59_999);assert.equal((await authorize()).kind,'verification-authorized');
+    value.setTime(60_000);const ended=await authorize();assert.ok(ended.kind==='error');assert.equal(ended.status,410);
   }finally{await value.stop();}
 });

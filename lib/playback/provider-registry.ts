@@ -36,12 +36,12 @@ export function providerProbeIdentity(locator:CandidateLocator):string {
 export function openProvider(locator: CandidateLocator, signal: AbortSignal, purpose: 'playback' | 'probe' = 'playback'): Promise<ProviderPlayback> {
   switch(locator.provider) {
     case 'swac': return swac.open(locator,signal);
-    case 'gooz': return goozProvider.open(locator,signal);
-    case 'streamcenter': return streamcenter.open(locator,signal);
-    case 'streameast': return streameast.open(locator,signal);
+    case 'gooz': return goozProvider.open(locator,signal,purpose);
+    case 'streamcenter': return streamcenter.open(locator,signal,purpose);
+    case 'streameast': return streameast.open(locator,signal,purpose);
     case 'streameast-server': return streameastServer.open(locator,signal,purpose);
     case 'sportsurge-v2': return sportsurgeV2.open(locator,signal,purpose);
-    case 'wikisport': return wikisport.open(locator,signal);
+    case 'wikisport': return wikisport.open(locator,signal,purpose);
     case 'event-page': return eventPage.open(locator,signal,purpose);
     case 'tvapp': return tvapp.open(locator,signal,purpose);
     case 'catalog-stream': return catalogStream.open(locator,signal,purpose);

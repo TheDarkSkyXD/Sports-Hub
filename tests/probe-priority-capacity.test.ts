@@ -33,7 +33,7 @@ for(const priority of ['requested','near','live'] as const)test(`a late ${priori
     now:()=>now,schedules:[{id:'nfl',league:'nfl',path:'',group:null}],
     sources:[{id:'fixture',url:'https://fixture.example/list',family:'fixture'}],
     readSchedule:async()=>({games,league:'nfl',at:now}),readHtml:async()=>'<main>fixture</main>',
-    parseListings:()=>({outcome:'parsed',observations:showTarget?observations:observations.slice(0,-1)}),
+    parseListings:()=>({outcome:'parsed',observations:(showTarget?observations:observations.slice(0,-1)).map(row=>({...row,observedAt:now}))}),
     enrichObservation:value=>value,
     compatiblePlayers:gameId=>[{id:`server-${gameId}`,label:'Server',
       locator:{provider:'gooz' as const,playerId:gameId}}],
@@ -53,7 +53,7 @@ for(const priority of ['requested','near','live'] as const)test(`a late ${priori
     await coordinator.refresh(true);
     for(let index=0;held.length<2&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.equal(held.length,2);
-    now=at+300_001;
+    now=at+30*60_000;
     showTarget=true;
     await coordinator.refresh(true);
     for(let index=0;index<100;index++){
@@ -128,7 +128,7 @@ test('a requested game admits both siblings while background work resumes',async
   }
 });
 
-test('manual retry promotes an automatic retry queued behind active checks',async()=>{
+test('manual retry admits a failed feed ahead of the unfinished automatic first pass',async()=>{
   let now=at,targetAttempts=0;
   const backgrounds=Array.from({length:12},(_,index)=>makeGame(index,at+6*60*60_000));
   const target=makeGame(99,at+6*60*60_000);
@@ -172,18 +172,8 @@ test('manual retry promotes an automatic retry queued behind active checks',asyn
     assert.equal(held.length,2);
     now+=300_000;
     await coordinator.refresh(true);
-    let queuedRetry=false;
-    for(let index=0;index<100;index++){
-      const reply=await coordinator.command({kind:'sources'});
-      if(held.length===2&&reply.kind==='sources'&&
-        reply.snapshot.games.find(game=>game.gameId===target.id)?.candidates[0]?.availability.kind==='checking'&&
-        reply.snapshot.games.find(game=>game.gameId===target.id)?.candidates[0]?.availability.progress.kind==='queued'){
-        queuedRetry=true;
-        break;
-      }
-      await new Promise<void>(resolve=>setImmediate(resolve));
-    }
-    assert.equal(queuedRetry,true);
+    const reply=await coordinator.command({kind:'sources'});assert.equal(reply.kind,'sources');
+    if(reply.kind==='sources')assert.equal(reply.snapshot.games.find(game=>game.gameId===target.id)?.candidates[0]?.availability.kind,'unavailable');
     assert.equal(held.length,2);
     assert.equal(targetAttempts,1,'the retry waits for a physical slot');
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[target.id],retry:true}),{kind:'ok'});
@@ -191,7 +181,7 @@ test('manual retry promotes an automatic retry queued behind active checks',asyn
     held[0].release();
     for(let index=0;calls.length<3&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.equal(calls[2],target.id,JSON.stringify(calls));
-    assert.equal(targetAttempts,2,'the queued automatic retry was promoted to a forced attempt');
+    assert.equal(targetAttempts,2,'the explicit retry receives a forced attempt');
     held[1].release();
     for(let index=0;calls.length<4&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.ok(backgrounds.some(game=>game.id===calls[3]),'displaced background work resumes');

@@ -116,7 +116,7 @@ test('live NCAA and NFL games retain and check every safe Sportsurge route acros
   }
 });
 
-test('Sportsurge rechecks working and failed feeds every five minutes for a scheduled game', async () => {
+test('Sportsurge retains working feeds for thirty minutes while failed feeds retry every five minutes', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'sportsurge-fresh-recovery-'));
   const store = new FootballStore(join(dir, 'state.sqlite'));
   const scheduled: Game = { ...game('nfl'), status: 'pre', lifecycle: 'scheduled', date: new Date(at + 3 * 60 * 60_000).toISOString() };
@@ -183,15 +183,15 @@ test('Sportsurge rechecks working and failed feeds every five minutes for a sche
     await publish(initial);
     const recovered = await row();
     assert.equal(recovered.workingChoiceCount, 2, 'working feeds must recover after the failed check cooldown');
-    assert.deepEqual(callCounts(), [2, 2, 2]);
+    assert.deepEqual(callCounts(), [1, 2, 2]);
     assert.deepEqual(recovered.candidates.find(candidate => candidate.id === working.id)?.availability,
-      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 6 * 60_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 60_000 });
 
     advance(7 * 60_000);
     const beforeCooldown = checkpoint(1, clock);
     await publish(beforeCooldown);
     assert.equal((await row()).workingChoiceCount, 2);
-    assert.deepEqual(callCounts(), [2, 2, 2], 'new source evidence must respect the saved check interval');
+    assert.deepEqual(callCounts(), [1, 2, 2], 'new source evidence must respect the saved check interval');
 
     advance(11 * 60_000);
     const latest = checkpoint(2, clock);
@@ -199,12 +199,18 @@ test('Sportsurge rechecks working and failed feeds every five minutes for a sche
     const complete = await row();
     assert.equal(complete.candidates.length, 3);
     assert.equal(complete.workingChoiceCount, 3);
-    assert.deepEqual(callCounts(), [3, 3, 3]);
+    assert.deepEqual(callCounts(), [1, 2, 3]);
     assert.deepEqual(complete.candidates.find(candidate => candidate.id === working.id)?.availability,
-      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 11 * 60_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 60_000 });
     await publish(latest);
     assert.equal((await row()).workingChoiceCount, 3);
-    assert.deepEqual(callCounts(), [3, 3, 3], 'replays and inventory reads must preserve completed checks');
+    assert.deepEqual(callCounts(), [1, 2, 3], 'replays and inventory reads must preserve completed checks');
+    advance(31 * 60_000 - 1);
+    await publish(checkpoint(3, clock));
+    assert.deepEqual(callCounts(), [1, 2, 3], 'all working feeds retain their individual thirty-minute intervals');
+    advance(31 * 60_000);
+    await publish(checkpoint(4, clock));
+    assert.deepEqual(callCounts(), [2, 2, 3], 'only the first working feed is due at its exact thirty-minute boundary');
   } finally {
     await coordinator.stop();
     rmSync(dir, { recursive: true, force: true });

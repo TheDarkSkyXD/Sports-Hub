@@ -3,12 +3,16 @@ I love to build. I focus on building complex things as simple as possible. I lov
 I wanted to share some of my preferences here so we can be more aligned as we work together.
 
 ## Coding preferences - general
-- Keep things simple. Channel "yagni" energy unless told otherwise. 
-- Typesafety is useful, take advantage of it. 
+- Keep things simple. Channel "yagni" energy unless told otherwise.
+- Typesafety is useful, take advantage of it.
 - Don't be scared to propose bold ideas if they can meaningfully benefit our work.
 - Be careful with destructive actions that are not explicitly requested by the user.
 - Tests are good! Endless smoke tests, "regression tests" for feature deletions, etc, Much less good. Tests should be focused, not slop.
 - When making technical decisions, do not give much weight to development cost. Instead, prefer quality, simplicity, robustness, scalability, and long term maintainability.
+
+## Additional code style guidance
+
+Before making relevant code or UI changes, read and follow [Code style](docs/code-style/code-style.md). Keep new coding conventions in that document.
 
 ## Before you write any code
 
@@ -29,6 +33,8 @@ I wanted to share some of my preferences here so we can be more aligned as we wo
 ## While you work
 
 - Run only one local Electron app instance at a time during development. Before launching, check for an existing instance. Close the existing instance before launching a replacement.
+- When chats or agents share the local app, designate one owner for launches and restarts. Coordinate with that owner before closing or replacing it. Announce each restart before closing the window.
+- Launch the shared app independently of a tool's foreground terminal session. On Windows, use `Start-Process -WindowStyle Hidden` with file logging so terminal cleanup cannot close the app. Verification sessions that attach to it must disconnect without sending `Browser.close` or closing its main window.
 - Restart the Electron app as you make code changes so you can see and verify the changes while you work. Rebuild first when needed, then check the updated app before continuing.
 - Always use the Electron app when testing or verifying app behavior.
 - Keep exactly one instance of the current local development Electron app running and ready for the user throughout development and after finishing work, including after creating, updating, or pushing a PR. Before reporting work complete or handing work back to the user, verify that the app is running with the latest local changes. Launch it if it is closed, and leave it running so the user does not have to reopen it. Keep any development server the app needs running too. Brief downtime for restarts or rebuilds is expected. Only leave the app closed if the user explicitly asks you to.
@@ -47,7 +53,7 @@ I wanted to share some of my preferences here so we can be more aligned as we wo
 - **Never leak internal language into user-facing output.** Prototype names,
   codenames, TODO phrasing, your own reasoning. Check the strings a user sees.
   
-## Code style
+## Implementation
 
 - **No dead code, no commented-out blocks, no "keeping this just in case."**
   Version control exists.
@@ -60,11 +66,12 @@ I wanted to share some of my preferences here so we can be more aligned as we wo
 - **Treat any user-submitted text as hostile input.** Sanitize it. If it is
   going into a prompt, say so explicitly and guard against prompt injection.
 
-## Performance without compromise
+## Performance
 
 Lots of apps have gotten bogged down with bad tech decisions and "slop". We have not, and we're proud of the performance. We regularly audit for performance regressions, often caused by sending too much data over websockets, css animations causing gpu spikes, lists being hard to render, and more. Make sure all changes are considerate of performance impact.
 
-## Coding preferences (Typescript focused)
+## TypeScript
+
 - `any` is the enemy. Inferred types are our friend. Our systems adapt to changes, instead of requiring changes everywhere.
 - If your TS code looks like a Python dev wrote it, it is bad TS code.
 - Avoid one-line functions that are just casing wrappers.
@@ -188,16 +195,14 @@ wrote or changed, not to prose you didn't touch.
 - Reproduce it. Run it. Prove it. Fix the cause, not the symptom.
 - When you're wrong, write down the principle not the story.
 
-## Worktree lifecycle
+## Working checkout
 
-- Finish the requested work and run the relevant verification before removing its temporary worktree.
-- Preserve commits, local edits, and non-cache data before cleanup. Keep the main checkout and any worktree another active session uses.
-- Remove completed task worktrees before reporting the task complete. Verify the remaining worktree list.
-- On Windows, inspect the whole checkout for junctions and symbolic links before removal. Preserve those links without traversing their targets.
+- Do not create or use Git worktrees. Work in the main project checkout.
+- Preserve existing edits and coordinate with other active sessions before changing shared files or switching branches.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 

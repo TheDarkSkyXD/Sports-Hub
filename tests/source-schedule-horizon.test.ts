@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 import { SCHEDULES, readSchedule } from '../lib/football/adapters/schedule.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 import type { CandidateProbeResult, ScheduleResult } from '../lib/football/domain/ports.ts';
@@ -54,8 +55,13 @@ test('future-day failures stay visible during a retry and clear after successful
   }
 });
 
-for (const historyState of ['pending', 'history-unavailable']) test(`an overnight live game retains its media check while history is ${historyState}`, async () => {
+for (const historyState of [
+  {name:'loading',issue:{kind:'loading' as const,day:'20261010'}},
+  {name:'history-unavailable',issue:{kind:'failed' as const,day:'20261010',reason:'history-unavailable'}},
+  {name:'settled-before-future',issue:undefined},
+]) test(`an overnight live game retains its media check while history is ${historyState.name}`, async () => {
   const directory = mkdtempSync(join(tmpdir(), 'schedule-overnight-'));
+  const path=join(directory,'state.sqlite');
   const at = Date.parse('2026-10-11T03:00:00Z');
   let clock = at;
   let phase: 'live' | 'partial' | 'empty' = 'live';
@@ -65,12 +71,12 @@ for (const historyState of ['pending', 'history-unavailable']) test(`an overnigh
     away: { id: 'away', name: 'Away', short: 'Away', abbreviation: 'A', color: '332211', score: '0' } };
   const history = Promise.withResolvers<ScheduleResult>();
   const probes: Array<{ signal: AbortSignal; result: ReturnType<typeof Promise.withResolvers<CandidateProbeResult>> }> = [];
-  const coordinator = createFootballCoordinator(join(directory, 'state.sqlite'), {
+  const coordinator = createFootballCoordinator(path, {
     now: () => clock, schedules: [{ id: 'nba', league: 'nba', path: '/fixture', group: null }],
     sources: [{ id: 'ppv', url: 'https://fixture.example/list', family: 'fixture' }],
     readSchedule: async (_source, _now, _signal, onCurrent) => {
       if (phase === 'partial') {
-        onCurrent?.({ games: [], league: 'nba', at: clock, historyErrors: [`20261010:${historyState}`] });
+        onCurrent?.({ games: [], league: 'nba', at: clock, ...(historyState.issue?{history:historyState.issue}:{}) });
         return history.promise;
       }
       return { games: phase === 'live' ? [game] : [], league: 'nba', at: clock };
@@ -102,22 +108,34 @@ for (const historyState of ['pending', 'history-unavailable']) test(`an overnigh
   try {
     await coordinator.refresh(true); await settle();
     assert.equal(probes.length, 1);
+    if(!historyState.issue){
+      probes[0].result.resolve({ kind: 'playable', proof: { kind: 'advancing-video', version: 1,
+        startupMs: 3000, observedMs: 3000, mediaAdvanceMs: 3000, presentedFrames: 4 } });
+      await settle();
+      assert.equal((await sources()).games[0].candidates[0].availability.kind, 'playable');
+    }
     clock += 30_000;
     phase = 'partial';
     const refreshing = coordinator.refresh(true);
     await settle();
-    assert.deepEqual((await board()).games.map(value => value.id), [game.id]);
-    assert.equal(probes[0].signal.aborted, false);
-    probes[0].result.resolve({ kind: 'playable', proof: { kind: 'advancing-video', version: 1,
-      startupMs: 3000, observedMs: 3000, mediaAdvanceMs: 3000, presentedFrames: 4 } });
-    await settle();
-    assert.equal((await sources()).games[0].candidates[0].availability.kind, 'playable');
+    assert.deepEqual((await board()).games.map(value => value.id), historyState.issue?[game.id]:[]);
+    if(historyState.issue){
+      assert.equal(probes[0].signal.aborted, false);
+      probes[0].result.resolve({ kind: 'playable', proof: { kind: 'advancing-video', version: 1,
+        startupMs: 3000, observedMs: 3000, mediaAdvanceMs: 3000, presentedFrames: 4 } });
+      await settle();
+      assert.equal((await sources()).games[0].candidates[0].availability.kind, 'playable');
+    }else{
+      const db=new DatabaseSync(path);
+      try {assert.equal(db.prepare('SELECT COUNT(*) AS n FROM working_feeds').get()?.n,1);}
+      finally {db.close();}
+    }
     phase = 'live';
     history.resolve({ games: [game], league: 'nba', at: clock });
     await refreshing;
     assert.equal((await sources()).games[0].candidates[0].availability.kind, 'playable');
     assert.equal(probes.length, 1);
-    clock += 300_000;
+    clock += 1_800_000;
     await coordinator.refresh(true); await settle();
     assert.equal(probes.length, 2);
     phase = 'empty';

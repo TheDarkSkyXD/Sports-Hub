@@ -51,7 +51,7 @@ test('MLB has an independent seven-day ESPN schedule and no football situation',
   } finally {globalThis.fetch=original;}
 });
 
-test('MLB source catalogs and Streamcenter card match the game',()=>{
+test('MLB source catalogs and StreamCenter API match the game',()=>{
   const tvappEvent={id:'ppv-cleveland-guardians-vs-chicago-white-sox',
     title:'Cleveland Guardians vs. Chicago White Sox',category:'baseball',date:now,
     teams:{home:{name:'Cleveland Guardians'},away:{name:'Chicago White Sox'}},sources:[]};
@@ -69,12 +69,15 @@ test('MLB source catalogs and Streamcenter card match the game',()=>{
   assert.equal(compatiblePlayers(game.id,ppv.observations[0],JSON.stringify(ppvEvent)).length,1);
   assert.equal(validEventPagePair(ppv.observations[0].url,ppvEvent.iframe),true);
   assert.equal(validEventPagePair(ppv.observations[0].url,ppvEvent.iframe.replace('/mlb/','/nhl/')),false);
-  const link='/api/stream-link/iframe/event-espn-league-baseball-mlb-401907993/b953ed0c-6da3-4d0a-ae35-7e7db3e8072e';
-  const card=`<article class="game-card-row"><p class="game-card-league">MLB</p><time datetime="${new Date(now).toISOString()}"></time><span class="game-card-team" title="Cleveland Guardians"></span><span class="game-card-team" title="Chicago White Sox"></span><a class="game-card-open-link" href="${link}">English</a></article>`;
+  const id='event-espn-league-baseball-mlb-401907993';
+  const event={id,title:'Cleveland Guardians vs Chicago White Sox',category:'baseball',date:now,
+    teams:{home:{name:'Cleveland Guardians'},away:{name:'Chicago White Sox'}},sources:[{source:'iframe',id}]};
+  const card=JSON.stringify([event]);
   const center=parseListings(source('streamcenter-mlb'),card,now);
   assert.equal(center.outcome,'parsed');
   assert.deepEqual(matchObservation(center.observations[0],[game],now),{kind:'matched',gameId:game.id});
-  const players=compatiblePlayers(game.id,center.observations[0],'<iframe src="https://streame.center/embed/hls.php?stream=dazhfiach15"></iframe>');
+  const players=compatiblePlayers(game.id,center.observations[0],JSON.stringify({event,streams:[{
+    id:'b953ed0c-6da3-4d0a-ae35-7e7db3e8072e',streamNo:1,source:'iframe',webUrl:'https://streamcenter.st/watch/'+id,embedUrl:'https://streame.center/embed/ch15.php'}]}));
   assert.equal(players.length,1);
   assert.deepEqual(players[0].locator,{provider:'streamcenter',eventId:'401907993',linkId:'b953ed0c-6da3-4d0a-ae35-7e7db3e8072e',league:'mlb'});
   assert.equal(CandidateLocatorSchema.safeParse(players[0].locator).success,true);

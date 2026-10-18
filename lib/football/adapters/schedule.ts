@@ -2,7 +2,7 @@ import { isUfcCardName, parseScoreboard, scoreboardFeedData, scoreboardWeek } fr
 import { GameSchema, isCombatGame, isWrestlingGame, isMatchupGame, isRaceGame, isWrestlingLeague } from '../shared.ts';
 import { wrestlingEventKey } from '../domain/wrestling-events.ts';
 import type { Game, MatchupGame, Observation, SeasonMembership } from '../shared.ts';
-import type { ScheduleResult, ScheduleSource } from '../domain/ports.ts';
+import type { ScheduleProgress, ScheduleResult, ScheduleSource } from '../domain/ports.ts';
 import { recordFinal } from '../domain/lifecycle.ts';
 import { digest, parseListings, readHtml, SOURCES } from './sources.ts';
 
@@ -10,6 +10,7 @@ export const SCHEDULES = [
   {id:'nfl',league:'nfl',path:'nfl',group:null},
   {id:'fbs',league:'ncaaf',path:'college-football',group:'80'},
   {id:'fcs',league:'ncaaf',path:'college-football',group:'81'},
+  {id:'d2-d3',league:'ncaaf',path:'college-football',group:'35'},
   {id:'nba',league:'nba',sport:'basketball',path:'nba',group:null},
   {id:'wnba',league:'wnba',sport:'basketball',path:'wnba',group:null},
   {id:'nhl',league:'nhl',sport:'hockey',path:'nhl',group:null},
@@ -23,6 +24,8 @@ export const SCHEDULES = [
   {id:'boxing',league:'boxing',path:'source-boxing',group:null},
   {id:'wwe',league:'wwe',path:'source-wwe',group:null},
   {id:'tna',league:'tna',path:'source-tna',group:null},
+  {id:'aew',league:'aew',path:'source-aew',group:null},
+  {id:'wrestling',league:'wrestling',path:'source-wrestling',group:null},
 ] as const;
 
 type FutureDay = { date: string; games: Game[]; expiresAt: number };
@@ -56,7 +59,7 @@ function sameTeams(a: Pick<MatchupGame,'home' | 'away'>, b: Pick<MatchupGame,'ho
 export async function readSeasonMembership(season: number, signal: AbortSignal): Promise<SeasonMembership> {
   if (!Number.isInteger(season) || season < 2000 || season > 2100) throw new Error('invalid-season');
   const teams: SeasonMembership['teams'] = {};
-  for (const [group, subdivision] of [[80,'fbs'],[81,'fcs']] as const) {
+  for (const [group, subdivision] of [[80,'fbs'],[81,'fcs'],[35,'d2-d3']] as const) {
     const url = `https://sports.core.api.espn.com/v2/sports/football/leagues/college-football/seasons/${season}/types/2/groups/${group}/teams?limit=1000`;
     const response = await fetch(url,{cache:'no-store',redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),headers:{'User-Agent':'SundayRoom/1.0',Accept:'application/json'}});
     if (!response.ok) { await response.body?.cancel(); throw new Error(`membership-http-${response.status}`); }
@@ -84,10 +87,10 @@ export async function readSeasonMembership(season: number, signal: AbortSignal):
   return {season,at:Date.now(),teams};
 }
 
-export async function readSchedule(partition: ScheduleSource, now: number, signal: AbortSignal, onCurrent?: (result: ScheduleResult) => void,
+export async function readSchedule(partition: ScheduleSource, now: number, signal: AbortSignal, onCurrent?: (result: ScheduleProgress) => void,
   permit:SchedulePermit=directPermit,sharedCache?:ScheduleDayCache,listingCache?:ScheduleListingCache,
   listingReader:ScheduleListingReader=readHtml): Promise<ScheduleResult> {
-  if(partition.league==='motogp'||partition.league==='motorsport'||partition.league==='boxing'||partition.league==='wwe'||partition.league==='tna')return readListingSchedule(partition,now,signal,onCurrent,permit,listingCache,listingReader);
+  if(partition.league==='motogp'||partition.league==='motorsport'||partition.league==='boxing'||isWrestlingLeague(partition.league))return readListingSchedule(partition,now,signal,onCurrent,permit,listingCache,listingReader);
   const date = (time: number) => new Date(time).toISOString().slice(0,10).replaceAll('-','');
   const today = date(now);
   const lastFutureDate = date(now + 7*24*3600000);
@@ -169,29 +172,46 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
     }
   };
   const yesterday=date(now-24*3600000);
-  type History={kind:'complete';games:Game[]}|{kind:'failed';code:string};
+  type History={kind:'complete';games:Game[]}|{kind:'failed';reason:string}|{kind:'aborted';error:unknown};
   let history:History|undefined;
   const currentRead=fetchDay(today,'current',true);
   const historyRead=fetchDay(yesterday,'history').then(value=>{history={kind:'complete',games:value.games} as const;},error=>{
-    history={kind:'failed',code:signal.aborted?'aborted':error instanceof DOMException&&error.name==='TimeoutError'?'timeout':
+    if(signal.aborted){history={kind:'aborted',error};return;}
+    history={kind:'failed',reason:error instanceof DOMException&&error.name==='TimeoutError'?'timeout':
       error instanceof Error&&/^http-\d{3}$/.test(error.message)?error.message:'history-unavailable'} as const;
   });
   const current = await currentRead;
-  if(history?.kind==='complete')addGames(history.games);
-  addGames(current.games);
-  const currentIds = new Set(games.keys());
-  for (let index = 0; index < futureDates.length; index++) {
-    const entry = cached[index];
-    if (!entry) continue;
-    addGames(entry.games,futureDates[index]);
-  }
-  await supplementDates();
-  const currentGames = [...games.values()].filter(game => currentIds.has(game.id));
+  let normalizedCurrent=current.games;
+  let normalizedHistory:Game[]=[];
+  const rebuild = async (historySnapshot:History|undefined,future:(Game[]|undefined)[]) => {
+    games.clear();
+    if(historySnapshot?.kind==='complete')addGames(normalizedHistory.length?normalizedHistory:historySnapshot.games);
+    addGames(normalizedCurrent);
+    for(let index=0;index<futureDates.length;index++){
+      const daily=future[index];
+      if(daily)addGames(daily,futureDates[index]);
+    }
+    await supplementDates();
+    const currentIds=new Set(current.games.map(game=>game.id));
+    normalizedCurrent=[...games.values()].filter(game=>currentIds.has(game.id));
+    if(historySnapshot?.kind==='complete'){
+      const historyIds=new Set(historySnapshot.games.map(game=>game.id));
+      normalizedHistory=[...games.values()].filter(game=>historyIds.has(game.id));
+    }
+  };
+  let publishedHistory=history;
+  await rebuild(publishedHistory,cached.map(entry=>entry?.games));
+  if(history!==publishedHistory){publishedHistory=history;await rebuild(publishedHistory,cached.map(entry=>entry?.games));}
+  const progress = (): ScheduleProgress => ({games:[...games.values()],week:current.week,league:partition.league,at:Date.now(),
+    ...(!history?{history:{kind:'loading' as const,day:yesterday}}:
+      history.kind==='failed'?{history:{kind:'failed' as const,day:yesterday,reason:history.reason}}:{}),
+    ...(horizonErrors.length ? {horizonErrors:[...new Set(horizonErrors)]} : {})});
   const result = (): ScheduleResult => ({games:[...games.values()],week:current.week,league:partition.league,at:Date.now(),
-    ...(history?.kind==='complete'?{}:{historyErrors:[`${yesterday}:${history?.kind==='failed'?history.code:'pending'}`]}),
+    ...(history?.kind==='failed'?{history:{kind:'failed' as const,day:yesterday,reason:history.reason}}:{}),
     ...(horizonErrors.length ? {horizonErrors:[...new Set(horizonErrors)]} : {})});
   horizonErrors.length = 0;
-  onCurrent?.(result());
+  const historyWasLoading=!publishedHistory;
+  onCurrent?.(progress());
 
   const refreshed: Array<Game[] | undefined> = Array.from({length:7});
   const failures: Array<string | undefined> = Array.from({length:7});
@@ -215,31 +235,33 @@ export async function readSchedule(partition: ScheduleSource, now: number, signa
       }
     }
   };
-  await Promise.all([historyRead,...Array.from({length:FUTURE_CONCURRENCY},() => worker())]);
+  const historyProgress=historyWasLoading?historyRead.then(async()=>{
+    if(signal.aborted||history?.kind==='aborted')return;
+    await rebuild(history,cached.map(entry=>entry?.games));
+    onCurrent?.(progress());
+  }):historyRead;
+  await Promise.all([historyProgress,...Array.from({length:FUTURE_CONCURRENCY},() => worker())]);
+  if(history?.kind==='aborted')throw history.error;
+  horizonErrors.length=0;
   horizonErrors.push(...failures.filter((failure): failure is string => failure !== undefined));
-  games.clear();
-  if(history?.kind==='complete')addGames(history.games);
-  addGames(currentGames);
-  for (let index = 0; index < refreshed.length; index++) {
-    const daily = refreshed[index] ?? cached[index]?.games;
-    if (daily) addGames(daily,futureDates[index]);
-  }
-  await supplementDates();
+  await rebuild(history,refreshed.map((daily,index)=>daily??cached[index]?.games));
   return result();
 }
 function numericIdentity(value:string):string {
   return String(parseInt(digest(value).slice(0,12),16));
 }
+export function listingScheduleGroup(partition:ScheduleSource):'wrestling'|'boxing'|'motorsports' {
+  return isWrestlingLeague(partition.league)?'wrestling':partition.league==='boxing'?'boxing':'motorsports';
+}
 async function readListingSchedule(partition:ScheduleSource,now:number,signal:AbortSignal,
   onCurrent?: (result:ScheduleResult)=>void,permit:SchedulePermit=directPermit,cache?:ScheduleListingCache,
   listingReader:ScheduleListingReader=readHtml):Promise<ScheduleResult> {
   if(signal.aborted)throw signal.reason;
-  const eventCards=partition.league==='boxing'||partition.league==='wwe'||partition.league==='tna';
-  const read=partition.league==='wwe'?readWweListings:eventCards?readEventCardListings:readMotorsportsListings;
+  const group=listingScheduleGroup(partition);
+  const read=group==='wrestling'?readWrestlingListings:group==='boxing'?readEventCardListings:readMotorsportsListings;
   if(!cache) {
     let entries=directListingReads.get(signal);
     if(!entries){entries=new Map();directListingReads.set(signal,entries);}
-    const group=partition.league==='wwe'?'wwe':eventCards?'event-cards':'motorsports';
     let direct=entries.get(group);
     if(!direct||direct.at!==now){direct={at:now,promise:read(now,signal,permit,listingReader)};entries.set(group,direct);}
     return listingScheduleFromObservations(partition,now,await direct.promise,onCurrent);
@@ -278,12 +300,16 @@ function listingScheduleFromObservations(partition:ScheduleSource,now:number,obs
         `${partition.league}|${normalizedCombatTitle(title)}|${new Date(observation.kickoff).toISOString().slice(0,10)}`;
       if(!key)continue;
       const eventId=numericIdentity(key);
-      const status=observation.kickoff>now?'pre':'unknown';
+      const endsAt=isWrestlingLeague(partition.league)?observation.endsAt:undefined;
+      const status=observation.kickoff>now?'pre':partition.league==='boxing'||endsAt!==undefined&&now<endsAt?'in':'unknown';
       const game=GameSchema.parse({id:`${partition.league}-${eventId}`,league:partition.league,name:title,date:new Date(observation.kickoff).toISOString(),
-        ...(isWrestlingLeague(partition.league)?{wrestling:{eventId}}:{combat:{eventId}}),status,lifecycle:status==='pre'?'scheduled':'unknown',detail:status==='pre'?'Scheduled':'Status unavailable',partitions:[partition.id]});
+        ...(isWrestlingLeague(partition.league)?{wrestling:{eventId,...(endsAt===undefined?{}:{endsAt})}}:{combat:{eventId}}),status,
+        lifecycle:status==='pre'?'scheduled':status==='in'?'live':'unknown',
+        detail:status==='pre'?'Scheduled':status==='in'?'In progress':'Status unavailable',partitions:[partition.id]});
       const previous=unique.get(game.id);
       if(previous&&Math.abs(Date.parse(previous.date||'')-Date.parse(game.date||''))>90*60_000)
         throw new Error('source-schedule-conflicting-event');
+      if(previous&&isWrestlingGame(previous)&&previous.wrestling.endsAt!==undefined&&endsAt===undefined)continue;
       unique.set(game.id,game);
       continue;
     }
@@ -310,7 +336,7 @@ function listingScheduleFromObservations(partition:ScheduleSource,now:number,obs
 function normalizedCombatTitle(value:string):string {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 }
-async function readWweListings(now:number,signal:AbortSignal,permit:SchedulePermit,
+async function readWrestlingListings(now:number,signal:AbortSignal,permit:SchedulePermit,
   listingReader:ScheduleListingReader):Promise<Observation[]> {
   return readEventCardListings(now,signal,permit,listingReader,true);
 }
@@ -326,7 +352,7 @@ async function readEventCardListings(now:number,signal:AbortSignal,permit:Schedu
     }
     const result=parseListings(source,html,now);
     if(result.outcome==='parser-changed'||result.outcome==='unsupported')throw new Error('source-schedule-unavailable');
-    return result.observations.filter(row=>row.league==='boxing'||row.league==='wwe'||row.league==='tna');
+    return result.observations.filter(row=>row.league==='boxing'||row.league!==null&&isWrestlingLeague(row.league));
   }));
   if(signal.aborted)throw signal.reason;
   const collected=settled.flatMap(result=>result.status==='fulfilled'?[result.value]:[]);
@@ -335,7 +361,8 @@ async function readEventCardListings(now:number,signal:AbortSignal,permit:Schedu
 }
 async function readMotorsportsListings(now:number,signal:AbortSignal,permit:SchedulePermit,
   listingReader:ScheduleListingReader):Promise<Observation[]> {
-  const sources=SOURCES.filter(source=>source.family==='motorsports');
+  const sources=SOURCES.filter(source=>source.family==='motorsports'&&
+    source.leagues.some(league=>league==='motogp'||league==='motorsport'));
   const results=await Promise.allSettled(sources.map(async source=>{
     let html:string;
     try{html=await permit(source.url,'current',signal,()=>listingReader(source.url,signal));}

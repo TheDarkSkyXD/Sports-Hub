@@ -6,7 +6,7 @@ pub(crate) fn is_ufc_card_title(title: &str) -> bool {
     static TITLE: OnceLock<Regex> = OnceLock::new();
     TITLE
         .get_or_init(|| {
-            Regex::new(r"^(?:ufc(?:\s+fight\s+night|\s+on\s+espn|\s+on\s+abc|\s+\d+)|dana white's contender series)\b")
+            Regex::new(r"^(?:ufc(?:\s+fight\s+night|\s+on\s+espn|\s+on\s+abc|\s+\d+)|dana white['’]?s contender series|dwcs)\b")
                 .expect("fixed UFC title expression")
         })
         .is_match(&label)

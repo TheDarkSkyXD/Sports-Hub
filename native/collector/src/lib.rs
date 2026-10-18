@@ -23,6 +23,7 @@ pub mod html;
 pub mod http;
 pub mod listing_html;
 pub mod listing_json;
+mod published;
 pub mod registry;
 pub mod resolver;
 pub mod sweep;
@@ -434,6 +435,7 @@ impl Collector {
                 | "tvapp-nhl"
                 | "tvapp-mlb"
                 | "streamed"
+                | "sportsupa"
                 | "livesportpro"
                 | "sportsbite"
                 | "sportsfeed24"

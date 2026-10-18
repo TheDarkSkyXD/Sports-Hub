@@ -1,3 +1,7 @@
+function pollingAck(reply:Awaited<ReturnType<import('../lib/football/runtime/coordinator.ts').FootballCoordinator['command']>>) {
+  if(reply.kind!=='catalog-ack')return reply;
+  const result={...reply};delete result.nextSweepAt;delete result.reuseCategories;return result;
+}
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -262,7 +266,7 @@ test('live rollover rejects missing routes, changed game state, and a replaced l
       }
       if(scenario==='stale-schedule')clock+=91_000;
       if(scenario==='replaced-listing'){
-        clock+=300_000;
+        clock+=30*60_000;
         listed={...listed,observedAt:clock,teams:['Other','Home']};
         await coordinator.refresh(true);
         await until(async()=>{
@@ -590,14 +594,14 @@ test('accepted browser categories record one durable attempt and replay adds non
     events:[],rejectedGames:[],
   };
   try{
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:sportsurge}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:sportsurge}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
-    assert.deepEqual(await coordinator.command({kind:'streameast-catalog',catalog:streameast}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
-    assert.deepEqual(await coordinator.command({kind:'streameast-catalog',catalog:streameast}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
+    assert.deepEqual(pollingAck(await coordinator.command({kind:'sportsurge-catalog',catalog:sportsurge})),{kind:'catalog-ack',skipDetailEventIds:[]});
+    assert.deepEqual(pollingAck(await coordinator.command({kind:'sportsurge-catalog',catalog:sportsurge})),{kind:'catalog-ack',skipDetailEventIds:[]});
+    assert.deepEqual(pollingAck(await coordinator.command({kind:'streameast-catalog',catalog:streameast})),{kind:'catalog-ack',skipDetailEventIds:[]});
+    assert.deepEqual(pollingAck(await coordinator.command({kind:'streameast-catalog',catalog:streameast})),{kind:'catalog-ack',skipDetailEventIds:[]});
     const reply=await coordinator.command({kind:'sources'});
     assert.equal(reply.kind,'sources');
     if(reply.kind==='sources'){
-      assert.equal(reply.snapshot.sources.find(row=>row.id==='sportsurge-v2')?.lastAttempt?.outcome,'parsed');
+      assert.equal(reply.snapshot.sources.find(row=>row.id==='sportsurge-v2')?.lastAttempt?.outcome,'empty');
       assert.equal(reply.snapshot.sources.find(row=>row.id==='streameast')?.lastAttempt?.outcome,'failed');
     }
   } finally {await coordinator.stop();}
@@ -605,7 +609,7 @@ test('accepted browser categories record one durable attempt and replay adds non
   try{
     const attempts=db.prepare('SELECT source_id,league,outcome FROM catalog_attempts ORDER BY source_id,league').all().map(row=>({...row}));
     assert.deepEqual(attempts,[
-      {source_id:'sportsurge-v2',league:'ncaaf',outcome:'parsed'},
+      {source_id:'sportsurge-v2',league:'ncaaf',outcome:'empty'},
       {source_id:'streameast',league:'nfl',outcome:'failed'},
     ]);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM diagnostics WHERE source_id LIKE '%:%'").get()?.n,2);

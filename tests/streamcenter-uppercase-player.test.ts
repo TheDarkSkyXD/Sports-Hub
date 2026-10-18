@@ -1,3 +1,4 @@
+import {streamcenterApiReply} from './fixtures/streamcenter-api.ts';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
@@ -10,7 +11,6 @@ test('captured-shape Streamcenter ch30 uppercase token reaches case-matched play
   const stream='AbC123def456GH';
   const linkId='aef974e2-5ef2-412c-b65e-e6905af1edfa';
   const locator={provider:'streamcenter' as const,eventId:'401871051',linkId};
-  const publicUrl=`https://streamcenter.st/api/stream-link/iframe/event-espn-league-football-college-football-${locator.eventId}/${linkId}`;
   const parent='https://streame.center/embed/ch30.php';
   const hls=`https://streame.center/embed/hls.php?stream=${stream}`;
   const manifest=`https://edgestream7.pro/hls/${stream}.m3u8?st=${'a'.repeat(32)}&e=${Math.floor(Date.now()/1000)+3600}`;
@@ -25,7 +25,7 @@ test('captured-shape Streamcenter ch30 uppercase token reaches case-matched play
     const url=String(input);
     const headers=new Headers(init?.headers);
     requests.push({url,referer:headers.get('referer'),origin:headers.get('origin')});
-    if(url===publicUrl)return new Response(null,{status:302,headers:{Location:parent}});
+    const api=streamcenterApiReply(url,locator.eventId,linkId,parent);if(api)return api;
     if(url===parent)return new Response(html,{headers:{'Content-Type':'text/html'}});
     if(url===hls)return new Response(`<script>const streamUrl = ${JSON.stringify(manifest)};</script>`);
     if(url===manifest)return new Response(`#EXTM3U\n#EXTINF:5,\n/hls/${stream}-907340670.ts\n`,
@@ -39,8 +39,8 @@ test('captured-shape Streamcenter ch30 uppercase token reaches case-matched play
     return provider.open(candidate,signal);
   });
   assert.deepEqual(result,{kind:'playable',proof:'media'});
-  assert.deepEqual(requests.map(request=>request.url),[publicUrl,parent,hls,manifest,segment]);
-  assert.equal(requests[2].referer,parent);
-  assert.equal(requests[3].origin,'https://streame.center');
-  assert.equal(requests[4].referer,hls);
+  assert.deepEqual(requests.map(request=>request.url),['https://streamcenter.st/api/matches/football',`https://streamcenter.st/api/stream/iframe/event-espn-league-football-college-football-${locator.eventId}`,parent,hls,manifest,segment]);
+  assert.equal(requests[3].referer,parent);
+  assert.equal(requests[4].origin,'https://streame.center');
+  assert.equal(requests[5].referer,hls);
 });

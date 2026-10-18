@@ -15,7 +15,7 @@ for (const name of ['sportsurge', 'streameast']) for (const [kind, reason, delay
   const exported = { exports: {} };
   const sweepName = name === 'sportsurge' ? 'runSportsurgeSweep' : 'runStreameastSweep';
   const createName = name === 'sportsurge' ? 'createSportsurgeCollector' : 'createStreameastCollector';
-  const session = { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} };
+  const session = { setPermissionRequestHandler() {}, setPermissionCheckHandler(){},on(){},setProxy:async()=>{},webRequest:{onBeforeRequest(){}} };
   runInNewContext(readFileSync(file, 'utf8'), { module: exported,
     require: (id: string) => id === 'electron' ? { session: { fromPartition: () => session } } :
       id === `./${name}-sweep.cjs` ? { [sweepName]: async () => {
@@ -23,7 +23,7 @@ for (const name of ['sportsurge', 'streameast']) for (const [kind, reason, delay
       } } : require(id),
     Date: { now: () => clock }, AbortController,
     setTimeout: setTimer, clearTimeout: (id: number) => timers.delete(id),
-    setInterval: setTimer, clearInterval: (id: number) => timers.delete(id),
+    setInterval: () => 1, clearInterval() {},
   });
   const create = Reflect.get(exported.exports, createName);
   const collector = create({ origin: 'http://127.0.0.1:1', controlToken: 'unused' });
@@ -44,7 +44,7 @@ for (const name of ['sportsurge', 'streameast']) for (const [kind, reason, delay
 });
 
 for(const name of ['sportsurge','streameast'])for(const [reason,delay] of [[undefined,60_000],['rate-limited',300_000]] as const)
-test(`${name} applies the checkpoint interval with ${reason||'success'}`,async()=>{
+test(`${name} applies the automatic checkpoint deadline with ${reason||'success'}`,async()=>{
   const file=resolve(`desktop/${name}-collector.cjs`), require=createRequire(file);
   const clock=0;
   let timerId=0;
@@ -53,15 +53,16 @@ test(`${name} applies the checkpoint interval with ${reason||'success'}`,async()
   const exported={exports:{}};
   const sweepName=name==='sportsurge'?'runSportsurgeSweep':'runStreameastSweep';
   const createName=name==='sportsurge'?'createSportsurgeCollector':'createStreameastCollector';
-  const session={setPermissionRequestHandler(){},setPermissionCheckHandler(){},on(){}};
+  const session={setPermissionRequestHandler(){},setPermissionCheckHandler(){},on(){},setProxy:async()=>{},webRequest:{onBeforeRequest(){}}};
   runInNewContext(readFileSync(file,'utf8'),{module:exported,
     require:(id:string)=>id==='electron'?{session:{fromPartition:()=>session}}:
       id===`./${name}-sweep.cjs`?{[sweepName]:async({send}:{send:(catalog:object)=>Promise<unknown>})=>{
         await send({runId:'fixture',sequence:0,events:[]});return {state:{kind:reason?'partial':'complete',reason}};
       }}:require(id),
-    fetch:async()=>Response.json({kind:'catalog-ack',skipDetailEventIds:[],sourceRefreshMs:60_000}),
+    fetch:async()=>Response.json({kind:'catalog-ack',skipDetailEventIds:[],nextSweepAt:60_000}),
     Buffer,AbortSignal,AbortController,Date:{now:()=>clock},
     setTimeout:setTimer,clearTimeout:(id:number)=>timers.delete(id),
+    setInterval:()=>1,clearInterval(){},
   });
   const create=Reflect.get(exported.exports,createName);
   const collector=create({origin:'http://127.0.0.1:1',controlToken:'unused'});

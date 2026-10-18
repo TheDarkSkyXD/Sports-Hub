@@ -164,15 +164,31 @@ fn ppv_players(game_id: &str, observation: &Observation, body: &str) -> Vec<Reso
         || event.starts_at <= 0
         || observation.url != format!("https://ppv.st/live/{}", root.uri_name)
         || observation.kickoff != event.starts_at.checked_mul(1000)
-        || observation.league == Some(crate::types::League::Wwe) && root.tag != "Wrestling"
+        || matches!(
+            observation.league,
+            Some(
+                crate::types::League::Wwe
+                    | crate::types::League::Tna
+                    | crate::types::League::Aew
+                    | crate::types::League::Wrestling
+            )
+        ) && root.tag != "Wrestling"
         || (root.tag == "Wrestling"
-            && (observation.league != Some(crate::types::League::Wwe)
+            && (observation.league
+                != Some(
+                    crate::wrestling::league(&root.name).unwrap_or(crate::types::League::Wrestling),
+                )
                 || observation.teams.is_some()
                 || observation.id != format!("ppv:{}", root.id)
                 || observation.title != root.name.split_whitespace().collect::<Vec<_>>().join(" ")
-                || crate::wrestling::league(&root.name) != Some(crate::types::League::Wwe)
                 || !observation.kickoff.is_some_and(|kickoff| {
-                    crate::wrestling::wwe_ppv_route(&root.uri_name, kickoff)
+                    crate::wrestling::ppv_route(
+                        &root.uri_name,
+                        crate::wrestling::league(&root.name)
+                            .unwrap_or(crate::types::League::Wrestling),
+                        root.id,
+                        kickoff,
+                    )
                 })))
         || !matches!(
             root.tag.as_str(),
@@ -355,14 +371,19 @@ fn sportsfeed_players(
     let mut players = Vec::new();
     let mut seen = HashMap::new();
     let links = game
-        .streamer_links
-        .iter()
-        .flatten()
-        .map(|link| link.website_link.as_str())
+        .trendy
+        .as_deref()
+        .into_iter()
         .chain(game.player2.as_deref())
-        .chain(game.website_link.as_deref());
+        .chain(game.website_link.as_deref())
+        .chain(
+            game.streamer_links
+                .iter()
+                .flatten()
+                .map(|link| link.website_link.as_str()),
+        );
     for url in links.filter(|value| !value.is_empty()) {
-        if !valid_event_page_pair(&observation.url, url) {
+        if !valid_event_page_pair(&observation.url, url) || seen.contains_key(url) {
             continue;
         }
         let player = ResolvedPlayer {
@@ -378,12 +399,8 @@ fn sportsfeed_players(
                 server_url: url.to_string(),
             },
         };
-        if let Some(index) = seen.get(url) {
-            players[*index] = player;
-        } else {
-            seen.insert(url.to_string(), players.len());
-            players.push(player);
-        }
+        seen.insert(url.to_string(), players.len());
+        players.push(player);
     }
     Ok(players)
 }
@@ -399,7 +416,8 @@ fn sportsfeed_missing(observation: &Observation, body: &str) -> MissingPlayerRea
     if !sportsfeed_identity(&game, observation, false) {
         return MissingPlayerReason::ConflictingGame;
     }
-    if game.streamer_links.is_some_and(|rows| !rows.is_empty())
+    if game.trendy.as_ref().is_some_and(|value| !value.is_empty())
+        || game.streamer_links.is_some_and(|rows| !rows.is_empty())
         || game.player2.as_ref().is_some_and(|value| !value.is_empty())
         || game
             .website_link
@@ -413,20 +431,33 @@ fn sportsfeed_missing(observation: &Observation, body: &str) -> MissingPlayerRea
 }
 
 pub(crate) fn streamed_identity(event: &StreamedEvent, observation: &Observation) -> bool {
-    let teams = event
-        .teams
-        .as_ref()
-        .map(|teams| [teams.home.name.clone(), teams.away.name.clone()]);
+    let wrestling = matches!(
+        observation.league,
+        Some(
+            crate::types::League::Wwe
+                | crate::types::League::Tna
+                | crate::types::League::Aew
+                | crate::types::League::Wrestling
+        )
+    );
+    let teams = if wrestling {
+        None
+    } else {
+        event
+            .teams
+            .as_ref()
+            .map(|teams| [teams.home.name.clone(), teams.away.name.clone()])
+    };
     valid_streamed_id(&event.id)
         && observation.url == streamed_event_url(&observation.source_id, &event.id)
         && observation.title == event.title
         && observation.kickoff == Some(event.date)
         && observation.teams == teams
-        && (!matches!(
-            observation.league,
-            Some(crate::types::League::Wwe | crate::types::League::Tna)
-        ) || matches!(event.category.as_str(), "fight" | "wrestling")
-            && crate::wrestling::league(&event.title) == observation.league)
+        && (!wrestling
+            || matches!(event.category.as_str(), "fight" | "wrestling")
+                && crate::wrestling::league(&event.title).or_else(|| {
+                    (event.category == "wrestling").then_some(crate::types::League::Wrestling)
+                }) == observation.league)
 }
 
 fn streamed_missing(observation: &Observation, body: &str) -> MissingPlayerReason {
@@ -446,18 +477,47 @@ fn streamed_missing(observation: &Observation, body: &str) -> MissingPlayerReaso
     }
 }
 
+
+#[derive(Deserialize)]
+struct StreamcenterRow {id:String,#[serde(rename="streamNo")] stream_no:u32,source:String,
+    #[serde(rename="embedUrl")] embed_url:String,#[serde(rename="webUrl")] web_url:String}
+#[derive(Deserialize)]
+struct StreamcenterDetail {event:crate::listing_json::StreamcenterMatch,streams:Vec<StreamcenterRow>}
+
+fn streamcenter_players(game_id:&str,observation:&Observation,body:&str)->Vec<ResolvedPlayer> {
+    let Ok(detail)=serde_json::from_str::<StreamcenterDetail>(body) else {return vec![];};
+    let event=detail.event;
+    let Some((league,event_id,source))=crate::listing_json::streamcenter_event_identity(&event.id) else {return vec![];};
+    let league_name=match league {crate::types::League::Ncaaf=>"ncaaf",crate::types::League::Nba=>"nba",crate::types::League::Wnba=>"wnba",crate::types::League::Nhl=>"nhl",crate::types::League::Mlb=>"mlb",_=>return vec![]};
+    let watch=format!("https://streamcenter.st/watch/{}",event.id);
+    if !crate::listing_json::valid_streamcenter_match(&event) || observation.url!=watch || observation.source_id!=source
+        || observation.league!=Some(league) || game_id!=format!("{league_name}-{event_id}")
+        || observation.kickoff!=Some(event.date)
+        || observation.title!=format!("{} vs {}",event.teams.home.name,event.teams.away.name)
+        || observation.teams!=Some([event.teams.home.name.clone(),event.teams.away.name.clone()])
+        || detail.streams.len()>24 {return vec![];}
+    let mut ids=std::collections::HashSet::new();let mut numbers=std::collections::HashSet::new();
+    if detail.streams.iter().any(|row|row.source!="iframe" || row.web_url!=watch || !(1..=100).contains(&row.stream_no)
+        || !cached_regex!(r"^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$").unwrap().is_match(&row.id)
+        || !cached_regex!(r"^https://streame[.]center/embed/ch[0-9]{1,4}[.]php$").unwrap().is_match(&row.embed_url)
+        || !ids.insert(&row.id) || !numbers.insert(row.stream_no)){return vec![];}
+    detail.streams.into_iter().map(|row|ResolvedPlayer {id:format!("streamcenter-{event_id}-{}",row.id),label:"Streamcenter".into(),
+        locator:CandidateLocator::Streamcenter {event_id:event_id.into(),link_id:row.id,league:(league!=crate::types::League::Ncaaf).then_some(league)}}).collect()
+}
+
 pub fn compatible_json_players(
     game_id: &str,
     observation: &Observation,
     body: &str,
 ) -> Option<Vec<ResolvedPlayer>> {
     match observation.source_id.as_str() {
+        "streamcenter" | "streamcenter-nba" | "streamcenter-nhl" | "streamcenter-mlb" if observation.url.starts_with("https://streamcenter.st/watch/") => Some(streamcenter_players(game_id,observation,body)),
         "tvapp" | "tvapp-nba" | "tvapp-nhl" | "tvapp-mlb" => {
             Some(tvapp_html_player(game_id, observation, body))
         }
         "swac" => Some(swac_player(observation, body)),
         "ppv" => Some(ppv_players(game_id, observation, body)),
-        "sportsbite" | "sportsfeed24" | "streamed" | "livesportpro" => Some(vec![]),
+        "sportsbite" | "sportsfeed24" | "streamed" | "sportsupa" | "livesportpro" => Some(vec![]),
         _ => None,
     }
 }
@@ -479,7 +539,7 @@ pub fn missing_json_reason(observation: &Observation, body: &str) -> Option<Miss
         "tvapp" | "tvapp-nba" | "tvapp-nhl" | "tvapp-mlb" => Some(tvapp_missing(body)),
         "sportsbite" => Some(sportsbite_missing(observation, body)),
         "sportsfeed24" => Some(sportsfeed_missing(observation, body)),
-        "streamed" | "livesportpro" => Some(streamed_missing(observation, body)),
+        "streamed" | "sportsupa" | "livesportpro" => Some(streamed_missing(observation, body)),
         _ => None,
     }
 }

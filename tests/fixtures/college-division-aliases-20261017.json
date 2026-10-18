@@ -1,0 +1,365 @@
+{
+  "source": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?dates=20261017&groups=35&limit=200",
+  "events": [
+    {
+      "title": "Frostburg State Bobcats vs Charleston Golden Eagles",
+      "id": "401907583",
+      "name": "University Of Charleston (WV) Golden Eagles at Frostburg State Bobcats",
+      "date": "2026-10-17T17:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:341",
+          "name": "Frostburg State Bobcats",
+          "location": "Frostburg State",
+          "short": "Frostburg St"
+        },
+        {
+          "id": "espn:ncaaf:2128",
+          "name": "University Of Charleston (WV) Golden Eagles",
+          "location": "University Of Charleston (WV)",
+          "short": "Charleston WV"
+        }
+      ]
+    },
+    {
+      "title": "Beloit Buccaneers vs Monmouth Fighting Scots",
+      "id": "401908755",
+      "name": "Monmouth (IL) Fighting Scots at Beloit College Buccaneers",
+      "date": "2026-10-17T18:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:266",
+          "name": "Beloit College Buccaneers",
+          "location": "Beloit College",
+          "short": "Beloit"
+        },
+        {
+          "id": "espn:ncaaf:2919",
+          "name": "Monmouth (IL) Fighting Scots",
+          "location": "Monmouth (IL)",
+          "short": "Monmouth (IL)"
+        }
+      ]
+    },
+    {
+      "title": "Anderson Trojans vs Catawba Indians",
+      "id": "401907399",
+      "name": "Catawba Indians at Anderson (SC) Trojans",
+      "date": "2026-10-17T18:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:129469",
+          "name": "Anderson (SC) Trojans",
+          "location": "Anderson (SC)",
+          "short": "Anderson (SC)"
+        },
+        {
+          "id": "espn:ncaaf:2107",
+          "name": "Catawba Indians",
+          "location": "Catawba",
+          "short": "Catawba"
+        }
+      ]
+    },
+    {
+      "title": "Johnson C. Smith Golden Bulls vs Lincoln Lions",
+      "id": "401906136",
+      "name": "Lincoln (PA) Lions at Johnson C Smith Golden Bulls",
+      "date": "2026-10-17T18:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:2304",
+          "name": "Johnson C Smith Golden Bulls",
+          "location": "Johnson C Smith",
+          "short": "Johnson C Smth"
+        },
+        {
+          "id": "espn:ncaaf:2339",
+          "name": "Lincoln (PA) Lions",
+          "location": "Lincoln (PA)",
+          "short": "Lincoln (PA)"
+        }
+      ]
+    },
+    {
+      "title": "Nebraska Kearney Lopers vs Missouri Southern Lions",
+      "id": "401907372",
+      "name": "Missouri Southern State Lions at Nebraska-Kearney Lopers",
+      "date": "2026-10-17T18:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:2438",
+          "name": "Nebraska-Kearney Lopers",
+          "location": "Nebraska-Kearney",
+          "short": "NE Kearney"
+        },
+        {
+          "id": "espn:ncaaf:2403",
+          "name": "Missouri Southern State Lions",
+          "location": "Missouri Southern State",
+          "short": "Missouri So St"
+        }
+      ]
+    },
+    {
+      "title": "UW Stout Blue Devils vs UW-Whitewater Warhawks",
+      "id": "401907890",
+      "name": "Wisconsin-Whitewater Warhawks at Wisconsin-Stout Blue Devils",
+      "date": "2026-10-17T18:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:2744",
+          "name": "Wisconsin-Stout Blue Devils",
+          "location": "Wisconsin-Stout",
+          "short": "UW-Stout"
+        },
+        {
+          "id": "espn:ncaaf:2745",
+          "name": "Wisconsin-Whitewater Warhawks",
+          "location": "Wisconsin-Whitewater",
+          "short": "UW-Whitewater"
+        }
+      ]
+    },
+    {
+      "title": "Colorado Mesa Mavericks vs Colorado Mines Orediggers",
+      "id": "401907134",
+      "name": "Colorado School of Mines Orediggers at Colorado Mesa Mavericks",
+      "date": "2026-10-17T19:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:11",
+          "name": "Colorado Mesa Mavericks",
+          "location": "Colorado Mesa",
+          "short": "Colorado Mesa"
+        },
+        {
+          "id": "espn:ncaaf:2146",
+          "name": "Colorado School of Mines Orediggers",
+          "location": "Colorado School of Mines",
+          "short": "Colorado Mines"
+        }
+      ]
+    },
+    {
+      "title": "Colorado State Pueblo Thunderwolves vs New Mexico Highlands Cowboys",
+      "id": "401907146",
+      "name": "New Mexico Highlands Cowboys at CSU Pueblo ThunderWolves",
+      "date": "2026-10-17T20:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:2570",
+          "name": "CSU Pueblo ThunderWolves",
+          "location": "CSU Pueblo",
+          "short": "CSU Pueblo"
+        },
+        {
+          "id": "espn:ncaaf:2424",
+          "name": "New Mexico Highlands Cowboys",
+          "location": "New Mexico Highlands",
+          "short": "NM Highlands"
+        }
+      ]
+    },
+    {
+      "title": "Lewis And Clark Pioneers vs George Fox Bruins",
+      "id": "401908397",
+      "name": "George Fox Bruins at Lewis & Clark River Otters",
+      "date": "2026-10-17T20:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:2333",
+          "name": "Lewis & Clark River Otters",
+          "location": "Lewis & Clark",
+          "short": "Lewis & Clark"
+        },
+        {
+          "id": "espn:ncaaf:415",
+          "name": "George Fox Bruins",
+          "location": "George Fox",
+          "short": "George Fox"
+        }
+      ]
+    },
+    {
+      "title": "Pacific Boxers vs Pacific Lutheran Lutes",
+      "id": "401908424",
+      "name": "Pacific Lutheran Lutes at Pacific (OR) Boxers",
+      "date": "2026-10-17T20:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:205",
+          "name": "Pacific (OR) Boxers",
+          "location": "Pacific (OR)",
+          "short": "Pacific (OR)"
+        },
+        {
+          "id": "espn:ncaaf:2486",
+          "name": "Pacific Lutheran Lutes",
+          "location": "Pacific Lutheran",
+          "short": "Pac Lutheran"
+        }
+      ]
+    },
+    {
+      "title": "Barton Bulldogs vs North Carolina Pembroke Braves",
+      "id": "401906173",
+      "name": "UNC Pembroke Braves at Barton Bulldogs",
+      "date": "2026-10-17T20:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:122666",
+          "name": "Barton Bulldogs",
+          "location": "Barton",
+          "short": "Barton"
+        },
+        {
+          "id": "espn:ncaaf:2882",
+          "name": "UNC Pembroke Braves",
+          "location": "UNC Pembroke",
+          "short": "UNC Pembroke"
+        }
+      ]
+    },
+    {
+      "title": "Wilmington Quakers vs Muskingum Fighting Muskies",
+      "id": "401908842",
+      "name": "Muskingum Fighting Muskies at Wilmington (OH) Fightin' Quakers",
+      "date": "2026-10-17T20:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:2733",
+          "name": "Wilmington (OH) Fightin' Quakers",
+          "location": "Wilmington (OH)",
+          "short": "Wilmington OH"
+        },
+        {
+          "id": "espn:ncaaf:332",
+          "name": "Muskingum Fighting Muskies",
+          "location": "Muskingum",
+          "short": "Muskingum"
+        }
+      ]
+    },
+    {
+      "title": "Wayne State Warriors vs Saginaw Valley State Cardinals",
+      "id": "401906885",
+      "name": "Saginaw Valley State Cardinals at Wayne State (MI) Warriors",
+      "date": "2026-10-17T22:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:131",
+          "name": "Wayne State (MI) Warriors",
+          "location": "Wayne State (MI)",
+          "short": "Wayne St (MI)"
+        },
+        {
+          "id": "espn:ncaaf:129",
+          "name": "Saginaw Valley State Cardinals",
+          "location": "Saginaw Valley State",
+          "short": "Saginaw Valley"
+        }
+      ]
+    },
+    {
+      "title": "Texas-Permian Basin Falcons vs Western Oregon Wolves",
+      "id": "401907318",
+      "name": "Western Oregon Wolves at UT Permian Basin Falcons",
+      "date": "2026-10-17T23:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:110243",
+          "name": "UT Permian Basin Falcons",
+          "location": "UT Permian Basin",
+          "short": "UT Prmian Basn"
+        },
+        {
+          "id": "espn:ncaaf:2848",
+          "name": "Western Oregon Wolves",
+          "location": "Western Oregon",
+          "short": "West Oregon"
+        }
+      ]
+    },
+    {
+      "title": "Centenary Gents vs Austin Kangaroos",
+      "id": "401908551",
+      "name": "Austin 'Roos at Centenary Gentlemen",
+      "date": "2026-10-17T23:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:101442",
+          "name": "Centenary Gentlemen",
+          "location": "Centenary",
+          "short": "Centenary (LA)"
+        },
+        {
+          "id": "espn:ncaaf:2045",
+          "name": "Austin 'Roos",
+          "location": "Austin",
+          "short": "Austin"
+        }
+      ]
+    },
+    {
+      "title": "Geneva Golden Tornadoes vs Westminster Titans",
+      "id": "401909036",
+      "name": "Westminster (PA) Titans at Geneva Golden Tornadoes",
+      "date": "2026-10-17T23:35Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:2242",
+          "name": "Geneva Golden Tornadoes",
+          "location": "Geneva",
+          "short": "Geneva"
+        },
+        {
+          "id": "espn:ncaaf:2849",
+          "name": "Westminster (PA) Titans",
+          "location": "Westminster (PA)",
+          "short": "Westminster PA"
+        }
+      ]
+    },
+    {
+      "title": "South Dakota Hardrockers vs Black Hills State Yellow Jackets",
+      "id": "401907115",
+      "name": "Black Hills State Yellow Jackets at South Dakota Mines Hardrockers",
+      "date": "2026-10-18T00:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:613",
+          "name": "South Dakota Mines Hardrockers",
+          "location": "South Dakota Mines",
+          "short": "SD Mines"
+        },
+        {
+          "id": "espn:ncaaf:2069",
+          "name": "Black Hills State Yellow Jackets",
+          "location": "Black Hills State",
+          "short": "Black Hills St"
+        }
+      ]
+    },
+    {
+      "title": "California Lutheran Kingsmen vs Pomona Pitzer Sagehens",
+      "id": "401908438",
+      "name": "Pomona Pitzer Sagehens at Cal Lutheran Kingsmen",
+      "date": "2026-10-18T02:00Z",
+      "teams": [
+        {
+          "id": "espn:ncaaf:2094",
+          "name": "Cal Lutheran Kingsmen",
+          "location": "Cal Lutheran",
+          "short": "Cal Lutheran"
+        },
+        {
+          "id": "espn:ncaaf:2923",
+          "name": "Pomona Pitzer Sagehens",
+          "location": "Pomona Pitzer",
+          "short": "Pomona Pitzer"
+        }
+      ]
+    }
+  ]
+}

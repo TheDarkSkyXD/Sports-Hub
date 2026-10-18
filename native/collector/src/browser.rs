@@ -268,11 +268,15 @@ pub fn sportsurge_detail_url(
     }
     let path = cached_regex!(r"^/watch-(\d{1,12})-([a-z0-9]+)-[a-z0-9]+(?:-[a-z0-9]+)*/$").unwrap();
     let groups = path.captures(url.path())?;
-    if category(registry, BrowserKind::Sportsurge, league)?
-        .path_code
-        .as_deref()?
-        != groups.get(2)?.as_str()
-    {
+    let category = category(registry, BrowserKind::Sportsurge, league)?;
+    let valid_path = if league == League::NascarCup {
+        cached_regex!(r"^/watch-[0-9]{1,12}-nascar-nascar-cup-series-at-[a-z0-9]+(?:-[a-z0-9]+)*/$")
+            .unwrap()
+            .is_match(url.path())
+    } else {
+        category.path_code.as_deref()? == groups.get(2)?.as_str()
+    };
+    if !valid_path {
         return None;
     }
     Some((
@@ -395,6 +399,16 @@ pub fn sportsurge_category(
     let mut urls = HashSet::new();
     for row in rows {
         let row_text = normalize(&text(row));
+        if league == League::NascarTruck
+            && sportsurge_detail_url(
+                attr(row, "href").unwrap_or_default(),
+                League::NascarCup,
+                registry,
+            )
+            .is_some()
+        {
+            continue;
+        }
         let Some((id, url)) =
             sportsurge_detail_url(attr(row, "href").unwrap_or_default(), league, registry)
         else {
@@ -655,6 +669,13 @@ pub fn streameast_event_url(
     }
     let pattern = cached_regex!(r"^/([a-z0-9-]+)/([a-z0-9]+(?:-[a-z0-9]+)*)/$").unwrap();
     let groups = pattern.captures(url.path())?;
+    if league == League::Motorsport
+        && !cached_regex!(r"^/other-events/[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{10}/$")
+            .unwrap()
+            .is_match(url.path())
+    {
+        return None;
+    }
     if category(registry, BrowserKind::Streameast, league)?
         .path_code
         .as_deref()?
@@ -713,13 +734,25 @@ pub fn streameast_category(
     let mut seen_urls = HashSet::new();
     let mut seen_ids = HashSet::new();
     for card in cards {
-        let link = first(card, "a.m-card__link");
-        let title = clipped(
-            link.and_then(|link| attr(link, "aria-label"))
-                .unwrap_or_default()
-                .trim(),
-            240,
-        );
+        let motorsport = league == League::Motorsport;
+        if motorsport && attr(card, "data-sport-tag") != Some("motorsport") {
+            continue;
+        }
+        let link = if motorsport {
+            (card.value().name() == "a" && has_class(card, "m-card--event")).then_some(card)
+        } else {
+            first(card, "a.m-card__link")
+        };
+        let title = if motorsport {
+            clipped(first_text(card, ".m-card__title").trim(), 240)
+        } else {
+            clipped(
+                link.and_then(|link| attr(link, "aria-label"))
+                    .unwrap_or_default()
+                    .trim(),
+                240,
+            )
+        };
         let url = link
             .and_then(|link| attr(link, "href"))
             .and_then(|url| streameast_event_url(url, league, registry));
@@ -739,7 +772,8 @@ pub fn streameast_category(
             });
             continue;
         }
-        let source_id = attr(card, "data-match-id").unwrap_or_default();
+        let source_id = attr(card, if motorsport { "data-mac-id" } else { "data-match-id" })
+            .unwrap_or_default();
         if !(1..=12).contains(&source_id.len())
             || !source_id.bytes().all(|byte| byte.is_ascii_digit())
         {
@@ -783,6 +817,19 @@ pub fn streameast_category(
         } else {
             None
         };
+        if motorsport
+            && (title.is_empty()
+                || teams.is_some()
+                || kickoff.is_none()
+                || !url.ends_with(&format!("-{raw_time}/")))
+        {
+            result.rejected_games.push(RejectedGame {
+                league,
+                title,
+                reason: RejectionReason::InvalidDetailUrl,
+            });
+            continue;
+        }
         let raw_espn = attr(card, "data-espn-event-id").unwrap_or_default();
         let espn_event_id = if attr(card, "data-espn-path")
             == category.and_then(|category| category.espn_path.as_deref())

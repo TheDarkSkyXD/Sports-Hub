@@ -1,10 +1,11 @@
 import { createDecipheriv } from 'node:crypto';
 import type { CandidateProbeResult,ProbeProgress } from '../football/domain/ports.ts';
-import { AdvancingVideoSchema, type CandidateLocator, type VerificationTarget } from '../football/shared.ts';
+import { MediaCheckResultSchema, type CandidateLocator, type VerificationTarget } from '../football/shared.ts';
 import { openProvider } from './provider-registry.ts';
 export { providerProbeIdentity as probeIdentity } from './provider-registry.ts';
-import { ProviderDeferredError, ProviderNoFeedError, type ProviderPlayback, type ProviderResource } from './provider.ts';
+import { ProviderCapacityError, ProviderDeferredError, ProviderNoFeedError, type ProviderPlayback, type ProviderResource } from './provider.ts';
 import {createProbeResources} from './probe-capacity.ts';
+import verificationPolicy from './verification-policy.json' with {type:'json'};
 
 type Range = { start: number; length: number };
 type Encryption = { uri: string; iv?: string };
@@ -209,6 +210,7 @@ export async function probeCandidate(locator: CandidateLocator, signal: AbortSig
     const work = async (): Promise<MediaProbeResult> => {
       playback = await opener(locator,signal,'probe');
       if (signal.aborted) { closePlayback(); signal.throwIfAborted(); }
+      if(!playback.root)throw new ProviderDeferredError(30000,'ownership');
       await checkPlaylist(playback.root,signal,{bytes:0,playlists:0},new Set());
       signal.throwIfAborted();
       return {kind:'playable',proof:'media'};
@@ -216,8 +218,9 @@ export async function probeCandidate(locator: CandidateLocator, signal: AbortSig
     return await Promise.race([work(),canceled]);
   } catch (error) {
     if (signal.aborted) return {kind:'deferred',retryAfterMs:2000};
+    if (error instanceof ProviderCapacityError) return {kind:'deferred',reason:'capacity',retryAfterMs:error.retryAfterMs};
     if (error instanceof ProviderDeferredError) return {kind:'deferred',retryAfterMs:error.retryAfterMs,
-      ...(error.phase ? {phase:error.phase} : {})};
+      ...(error.phase ? {phase:error.phase} : {}),...(error.reason ? {reason:error.reason} : {})};
     if (error instanceof ProviderNoFeedError) return {kind:'unavailable',reason:'no-feed',phase:error.phase};
     if (error instanceof Error && error.name==='TimeoutError') return {kind:'deferred',retryAfterMs:300_000};
     if (error instanceof ProbeFailure) return {kind:'unavailable',reason:error.reason};
@@ -246,15 +249,14 @@ export async function configuredProbeCandidate(_locator:CandidateLocator,signal:
     const response=await fetch(`${origin}/verify`,{method:'POST',cache:'no-store',redirect:'manual',
       signal:AbortSignal.any([signal,AbortSignal.timeout(65_000)]),
       headers:{'Content-Type':'application/json','x-sunday-control-token':token},body:JSON.stringify(target)});
-    if(response.status===429||response.status===503)return {kind:'deferred',retryAfterMs:2000};
-    if(!response.ok)return {kind:'unavailable',reason:'playback',phase:'replay'};
+    if(response.status===429)return {kind:'deferred',reason:'capacity',retryAfterMs:2000};
+    if(response.status===503)return {kind:'deferred',retryAfterMs:30000};
+    if(!response.ok)return {kind:'deferred',retryAfterMs:30000};
     const value:unknown=await response.json();
     if(!value||typeof value!=='object'||!('kind' in value))return {kind:'deferred',retryAfterMs:30000};
-    if(value.kind==='playable'&&'proof' in value){
-      const proof=AdvancingVideoSchema.safeParse(value.proof);
-      return proof.success?{kind:'playable',proof:proof.data}:{kind:'unavailable',reason:'playback',phase:'replay'};
-    }
-    if(value.kind==='unavailable')return {kind:'unavailable',reason:'playback',phase:'replay'};
+    if(value.kind==='unavailable'&&!('reason' in value))return {kind:'unavailable',reason:'playback',phase:'replay'};
+    const parsed=MediaCheckResultSchema.safeParse(value);
+    if(parsed.success)return parsed.data.kind==='unavailable'&&!parsed.data.phase?{...parsed.data,phase:'replay'}:parsed.data;
     return {kind:'deferred',retryAfterMs:30000};
   }catch{return {kind:'deferred',retryAfterMs:30000};}
   finally {
@@ -263,3 +265,4 @@ export async function configuredProbeCandidate(_locator:CandidateLocator,signal:
       body:JSON.stringify(target),signal:AbortSignal.timeout(5000)}).catch(()=>{});
   }
 }
+configuredProbeCandidate.concurrency=verificationPolicy.concurrency;

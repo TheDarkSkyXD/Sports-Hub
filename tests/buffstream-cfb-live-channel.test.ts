@@ -117,6 +117,25 @@ test('CFB clock allowance remains exact-team, fresh and source-scoped',()=>{
   assert.equal(parseListings(nfl,'<a href="http://ms.buffstream.io/cfb-streams/kennesaw-state-live-stream">Kennesaw State vs Jacksonville State2026-10-07 - 07:00 pm ET</a>',at).observations.length,0);
 });
 
+test('resolved CFB players survive the observed thirty-minute fifty-two-second listing gap only through collection settle',()=>{
+  const observation=parseListings(source,fixture('catalog'),at).observations[0];
+  assert.ok(observation);
+  const game=games[0],result=raw(observation);
+  const evidence:DetailEvidence={outcome:'resolved',observationId:observation.id,identity:detailIdentity(observation),generation:'fixture',
+    at:at+10*60_000,players:compatiblePlayers(game.id,observation,detail(observation.url)),nextEligibleAt:at+40*60_000,
+    event:{gameId:game.id,date:game.date??null}};
+  for(const elapsed of [30*60_000+52_000,31*60_000]){
+    const now=at+elapsed;
+    assert.equal(provisionalLiveChannel(observation,result,games,now),null,'Unresolved listings keep the existing thirty-minute limit');
+    assert.deepEqual(resolvedLiveChannelMatch(observation,result,games,evidence,now),{kind:'matched',gameId:game.id});
+    for(const event of [undefined,{gameId:'other-game',date:game.date??null},{gameId:game.id,date:'2026-10-08T23:00:00Z'}])
+      assert.deepEqual(resolvedLiveChannelMatch(observation,result,games,{...evidence,event},now),result);
+    assert.deepEqual(resolvedLiveChannelMatch(observation,result,[{...game,date:'2026-10-08T23:00:00Z'}],evidence,now),result);
+    assert.deepEqual(resolvedLiveChannelMatch(observation,result,[{...game,id:'other-game'}],evidence,now),result);
+  }
+  assert.deepEqual(resolvedLiveChannelMatch(observation,result,games,evidence,at+31*60_000+1),result);
+});
+
 test('CFB discovery publishes all four verified live channels under the correct games',async()=>{
   const directory=mkdtempSync(join(tmpdir(),'buff-cfb-live-'));
   const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{

@@ -116,24 +116,17 @@ export async function prepareDevelopmentElectron() {
   const [sourceBytes, iconBytes] = await Promise.all([readFile(executablePath), readFile(iconPath)]);
   const fingerprint = {
     preparerVersion,
+    brandingSha256: hash(JSON.stringify(branding)),
     electronSha256: hash(sourceBytes),
     iconSha256: hash(iconBytes),
   };
-  const { executable, resource } = resources(sourceBytes);
-  const sourceGroups = ResEdit.Resource.IconGroupEntry.fromEntries(resource.entries);
-  const sourceVersions = ResEdit.Resource.VersionInfo.fromEntries(resource.entries);
-  if (!sourceGroups.length || !sourceVersions.length) throw new Error('The Electron executable has no icon or version resources to brand.');
-  const icons = iconPayloads(ResEdit.Data.IconFile.from(iconBytes));
-  if (!icons.length) throw new Error('The Sunday Room icon has no images.');
-
   try {
     const [stamp, brandedBytes] = await Promise.all([
       readFile(stampPath, 'utf8').then(JSON.parse),
       readFile(brandedPath),
     ]);
     if (stamp && Object.entries(fingerprint).every(([key, value]) => stamp[key] === value) &&
-        stamp.outputSha256 === hash(brandedBytes) &&
-        isBranded(brandedBytes, sourceGroups, sourceVersions, icons)) {
+        stamp.outputSha256 === hash(brandedBytes)) {
       await syncDistribution(sourceDir, runtimeDir);
       return brandedPath;
     }
@@ -141,6 +134,12 @@ export async function prepareDevelopmentElectron() {
     if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
   }
 
+  const { executable, resource } = resources(sourceBytes);
+  const sourceGroups = ResEdit.Resource.IconGroupEntry.fromEntries(resource.entries);
+  const sourceVersions = ResEdit.Resource.VersionInfo.fromEntries(resource.entries);
+  if (!sourceGroups.length || !sourceVersions.length) throw new Error('The Electron executable has no icon or version resources to brand.');
+  const icons = iconPayloads(ResEdit.Data.IconFile.from(iconBytes));
+  if (!icons.length) throw new Error('The Sunday Room icon has no images.');
   const iconFile = ResEdit.Data.IconFile.from(iconBytes);
   for (const { id, lang } of sourceGroups) {
     ResEdit.Resource.IconGroupEntry.replaceIconsForResource(resource.entries, id, lang, iconFile.icons.map(item => item.data));

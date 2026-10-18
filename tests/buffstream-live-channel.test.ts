@@ -49,6 +49,12 @@ test('captured Buff team channels bind one live game only after exact published 
       [game,{...game,id:'ambiguous'}]])
       assert.equal(resolvedLiveChannelMatch(observation,matchObservation(observation,games,at),games,detail,at).kind,'unmatched');
     assert.deepEqual(resolvedLiveChannelMatch(observation,raw,[game],{...detail,at:at-1800000},at),raw);
+    const retained={...detail,at:at-1800000,event:{gameId:game.id,date:game.date??null}};
+    assert.deepEqual(resolvedLiveChannelMatch(observation,raw,[game],retained,at),raw);
+    assert.deepEqual(resolvedLiveChannelMatch(observation,raw,[game],retained,at,{retainedPublication:true}),{kind:'matched',gameId:game.id});
+    assert.deepEqual(resolvedLiveChannelMatch(observation,raw,[game],{...retained,at:at-60*60_000-1},at,{retainedPublication:true}),raw);
+    for(const event of [{gameId:'other',date:game.date??null},{gameId:game.id,date:'2026-10-06T00:20:00Z'}])
+      assert.deepEqual(resolvedLiveChannelMatch(observation,raw,[game],{...retained,event},at,{retainedPublication:true}),raw);
     assert.deepEqual(resolvedLiveChannelMatch(observation,raw,[game],{...detail,at:at+60001},at),raw);
     const locator=players[0].locator;
     assert.equal(locator.provider,'event-page');

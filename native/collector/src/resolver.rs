@@ -4,7 +4,7 @@ use crate::{
         StreamRef, StreamedEvent, component, preferred_catalog_teams, valid_streamed_event,
     },
     time::{digest, player_id},
-    types::{CandidateLocator, Observation, ResolvedPlayer},
+    types::{CandidateLocator, League, Observation, ResolvedPlayer},
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -76,6 +76,7 @@ pub struct Resolver {
     stage: Stage,
     players: Vec<ResolvedPlayer>,
     keys: HashMap<String, usize>,
+    first_failure: Option<ResolveFailure>,
 }
 
 impl Resolver {
@@ -86,6 +87,7 @@ impl Resolver {
             stage: Stage::Done,
             players: vec![],
             keys: HashMap::new(),
+            first_failure: None,
         };
         match observation.source_id.as_str() {
             "tvapp" | "tvapp-nba" | "tvapp-nhl" | "tvapp-mlb" => {
@@ -116,7 +118,7 @@ impl Resolver {
                     },
                 )
             }
-            "streamed" | "livesportpro" => {
+            "streamed" | "sportsupa" | "livesportpro" => {
                 let Ok(event) = serde_json::from_str::<StreamedEvent>(body) else {
                     return (
                         state,
@@ -181,9 +183,7 @@ impl Resolver {
 
     pub fn action(&self) -> ResolveAction {
         match &self.stage {
-            Stage::Done => ResolveAction::Done {
-                players: self.players.clone(),
-            },
+            Stage::Done => self.completed(),
             Stage::TvappCatalog => unreachable!("begin supplies the catalog URL"),
             Stage::TvappStreams { refs } => ResolveAction::ReadBatch {
                 requests: refs
@@ -199,9 +199,7 @@ impl Resolver {
             },
             Stage::Streamed { refs, offset, .. } => {
                 if *offset >= refs.len() {
-                    return ResolveAction::Done {
-                        players: self.players.clone(),
-                    };
+                    return self.completed();
                 }
                 let mut requests = Vec::new();
                 for reference in refs.iter().skip(*offset).take(4) {
@@ -214,7 +212,7 @@ impl Resolver {
                 }
                 ResolveAction::ReadBatch {
                     requests,
-                    abort_siblings_on_failure: true,
+                    abort_siblings_on_failure: self.observation.source_id!="livesportpro",
                 }
             }
         }
@@ -252,7 +250,7 @@ impl Resolver {
                 error: ResolveFailure::parser_changed(),
             };
         }
-        if let Some(error) = responses
+        if (!matches!(stage,Stage::Streamed{..}) || self.observation.source_id!="livesportpro") && let Some(error) = responses
             .iter()
             .find_map(|response| response.as_ref().err())
         {
@@ -262,7 +260,10 @@ impl Resolver {
         }
         let bodies: Vec<String> = responses
             .into_iter()
-            .map(|response| response.expect("errors handled above"))
+            .map(|response|match response {
+                Ok(body)=>body,
+                Err(error)=>{self.first_failure.get_or_insert(error);String::new()},
+            })
             .collect();
         let next = match stage {
             Stage::TvappCatalog => self.catalog_response(&bodies[0]),
@@ -279,10 +280,16 @@ impl Resolver {
                 self.stage = stage;
                 self.action()
             }
-            Ok(None) => ResolveAction::Done {
-                players: self.players.clone(),
-            },
+            Ok(None) => self.completed(),
             Err(error) => ResolveAction::Failed { error },
+        }
+    }
+
+    fn completed(&self) -> ResolveAction {
+        if self.players.is_empty() && let Some(error)=&self.first_failure {
+            ResolveAction::Failed {error:error.clone()}
+        } else {
+            ResolveAction::Done {players:self.players.clone()}
         }
     }
 
@@ -326,15 +333,18 @@ impl Resolver {
     ) -> Result<Option<Stage>, ResolveFailure> {
         let mut streams = Vec::new();
         for (reference, body) in refs.iter().zip(bodies) {
-            let rows: Vec<TvappStream> =
+            let rows: Vec<serde_json::Value> =
                 serde_json::from_str(body).map_err(|_| ResolveFailure::parser_changed())?;
             if rows.len() > 100 {
                 return Err(ResolveFailure::parser_changed());
             }
             let mut seen = HashSet::new();
-            for row in rows {
+            for value in rows {
+                let Ok(row)=serde_json::from_value::<TvappStream>(value) else {
+                    self.first_failure.get_or_insert_with(ResolveFailure::parser_changed);continue;
+                };
                 if !row.valid(reference) || !seen.insert(row.stream_no) {
-                    return Err(ResolveFailure::parser_changed());
+                    self.first_failure.get_or_insert_with(ResolveFailure::parser_changed);continue;
                 }
                 streams.push(row);
             }
@@ -389,10 +399,28 @@ impl Resolver {
         bodies: &[String],
     ) -> Result<Option<Stage>, ResolveFailure> {
         for (reference, body) in refs.iter().skip(offset).zip(bodies) {
-            let rows: Vec<CatalogStream> =
-                serde_json::from_str(body).map_err(|_| ResolveFailure::parser_changed())?;
-            for row in rows {
-                if row.stream_no == 0
+            let rows: Vec<serde_json::Value> =match serde_json::from_str(body) {
+                Ok(rows)=>rows,
+                Err(_)=>{
+                    if self.observation.source_id!="livesportpro" {return Err(ResolveFailure::parser_changed());}
+                    self.first_failure.get_or_insert_with(ResolveFailure::parser_changed);continue;
+                },
+            };
+            if rows.len()>100 {return Err(ResolveFailure::parser_changed());}
+            for value in rows {
+                let Ok(row)=serde_json::from_value::<CatalogStream>(value) else {
+                    self.first_failure.get_or_insert_with(ResolveFailure::parser_changed);continue;
+                };
+                if self.observation.source_id=="livesportpro" && reference.source=="scl:iframe" {
+                    if let Some(player)=streamcenter_reference(&self.game_id,&self.observation,reference,&row) {
+                        if !self.keys.contains_key(&player.id) {
+                            self.keys.insert(player.id.clone(),self.players.len());
+                            self.players.push(player);
+                        }
+                    } else {self.first_failure.get_or_insert_with(ResolveFailure::parser_changed);}
+                    continue;
+                }
+                if !(1..=100).contains(&row.stream_no)
                     || url::Url::parse(&row.embed_url).is_err()
                     || row.id != reference.id
                     || !valid_stream_source(
@@ -401,7 +429,8 @@ impl Resolver {
                         row.source.as_deref(),
                     )
                 {
-                    return Err(ResolveFailure::parser_changed());
+                    self.first_failure.get_or_insert_with(ResolveFailure::parser_changed);
+                    continue;
                 }
                 if !valid_stream_target(
                     &self.observation.source_id,
@@ -429,6 +458,8 @@ impl Resolver {
                         "{} · {} {}",
                         if self.observation.source_id == "streamed" {
                             "Streamed"
+                        } else if self.observation.source_id=="sportsupa" {
+                            "SportSupa"
                         } else {
                             "LiveSportPro"
                         },
@@ -472,17 +503,30 @@ impl Resolver {
     }
 }
 
+fn streamcenter_reference(game_id:&str,observation:&Observation,reference:&StreamRef,row:&CatalogStream)->Option<ResolvedPlayer> {
+    let event=cached_regex!(r"^event-espn-league-(football-college-football|basketball-(?:nba|wnba)|hockey-nhl|baseball-mlb)-([0-9]{5,12})$").unwrap().captures(&reference.id)?;
+    let league=match &event[1] {
+        "football-college-football"=>League::Ncaaf,"basketball-nba"=>League::Nba,
+        "basketball-wnba"=>League::Wnba,"hockey-nhl"=>League::Nhl,"baseball-mlb"=>League::Mlb,_=>return None,
+    };
+    let prefix=match league {League::Ncaaf=>"ncaaf",League::Nba=>"nba",League::Wnba=>"wnba",League::Nhl=>"nhl",League::Mlb=>"mlb",_=>return None};
+    if game_id!=format!("{prefix}-{}",&event[2]) || observation.league!=Some(league) || row.source.as_deref()!=Some("streamcenter") || !(1..=100).contains(&row.stream_no)
+        || !cached_regex!(r"^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$").unwrap().is_match(&row.id)
+        || !cached_regex!(r"^https://streame\.center/embed/ch[0-9]{1,4}\.php$").unwrap().is_match(&row.embed_url) {return None;}
+    Some(ResolvedPlayer{id:format!("streamcenter-{}-{}",&event[2],row.id),label:"LiveSportPro · Streamcenter".into(),
+        locator:CandidateLocator::Streamcenter{event_id:event[2].into(),link_id:row.id.clone(),league:Some(league)}})
+}
+
 pub fn valid_streamed_response(body: &str) -> bool {
-    serde_json::from_str::<Vec<CatalogStream>>(body)
+    serde_json::from_str::<Vec<serde_json::Value>>(body)
         .ok()
         .is_some_and(|rows| {
-            rows.iter()
-                .all(|row| row.stream_no > 0 && url::Url::parse(&row.embed_url).is_ok())
+            rows.len()<=100
         })
 }
 
 fn valid_stream_source(variant: &str, reference: &StreamRef, actual: Option<&str>) -> bool {
-    let expected = if variant == "streamed" {
+    let expected = if matches!(variant,"streamed"|"sportsupa") {
         Some(reference.source.as_str())
     } else if reference.source == "ppv:s" {
         Some("ppv")
@@ -637,7 +681,9 @@ fn stream_api_url(variant: &str, reference: &StreamRef) -> Option<String> {
     {
         return None;
     }
-    let host = if variant == "streamed" {
+    let host = if variant == "sportsupa" {
+        "https://streamed.pk"
+    } else if variant == "streamed" {
         "https://streamed.st"
     } else {
         "https://api.kultsport.com"
@@ -689,18 +735,53 @@ fn valid_stream_target(
     if host == "taifood-blog.asia" {
         return variant == "livesportpro"
             && reference.source == "ppv:s"
-            && league == Some(crate::types::League::Wwe)
-            && crate::wrestling::wwe_ppv_route(&reference.id, kickoff)
+            && league.is_some_and(|league| {
+                crate::wrestling::dated_ppv_route(&reference.id, league, kickoff)
+            })
             && url.path() == format!("/embed/{}", reference.id);
     }
     static HOST: OnceLock<Regex> = OnceLock::new();
     static PATH: OnceLock<Regex> = OnceLock::new();
     variant == "livesportpro" && HOST.get_or_init(|| Regex::new(r"^lb\d{1,3}\.strmd\.st$").unwrap()).is_match(host)
-        && PATH.get_or_init(|| Regex::new(r"^/secure/[A-Za-z0-9_-]{16,160}/ingest/stream/[a-zA-Z0-9_-]{1,100}/[1-9]\d{0,2}/playlist\.m3u8$").unwrap()).is_match(url.path())
+        && PATH.get_or_init(|| Regex::new(r"^/secure/[A-Za-z0-9_-]{16,160}/(ingest|hotel)/stream/[a-zA-Z0-9_-]{1,100}/[1-9]\d{0,2}/playlist\.m3u8$").unwrap())
+            .captures(url.path()).is_some_and(|matched| &matched[1] == "ingest" || reference.source == "sp:hotel")
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn invalid_catalog_rows_cannot_drop_valid_stream_one_hundred() {
+        let golden:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/collector-parity.json")).unwrap();
+        let input=golden["inputs"]["cases"].as_array().unwrap().iter().find(|item|item["id"]=="streamed").unwrap();
+        let observation:Observation=serde_json::from_value(golden["expected"]["listings"]["streamed"]["enriched"].clone()).unwrap();
+        let event:StreamedEvent=serde_json::from_str(input["detail"].as_str().unwrap()).unwrap();
+        let (mut resolver,_)=Resolver::begin("401892458",&observation,input["detail"].as_str().unwrap());
+        let body=serde_json::json!([
+            {"id":"2123","source":"golf","streamNo":100,"embedUrl":"https://embed.st/embed/golf/2123/100"},
+            {"id":"2123","source":"golf","streamNo":101,"embedUrl":"https://embed.st/embed/golf/2123/101"},
+            {"id":"2123","source":"golf","streamNo":"broken","embedUrl":"https://embed.st/embed/golf/2123/1"}
+        ]).to_string();
+        assert!(valid_streamed_response(&body),"row admission belongs to the resolver, so one invalid row cannot abort valid siblings");
+        resolver.streamed_responses(event,vec![StreamRef{source:"golf".into(),id:"2123".into()}],0,&[body]).unwrap();
+        assert_eq!(resolver.players.len(),1);
+        assert!(matches!(&resolver.players[0].locator,CandidateLocator::CatalogStream{stream_no:100,..}));
+    }
+
+    #[test]
+    fn invalid_tvapp_rows_preserve_the_valid_sibling() {
+        let golden:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/collector-parity.json")).unwrap();
+        let input=golden["inputs"]["cases"].as_array().unwrap().iter().find(|item|item["id"]=="tvapp").unwrap();
+        let observation:Observation=serde_json::from_value(golden["expected"]["listings"]["tvapp"]["enriched"].clone()).unwrap();
+        let (mut resolver,_)=Resolver::begin("ncaaf-401858472",&observation,input["detail"].as_str().unwrap());
+        let body=serde_json::json!([
+            {"id":"one","source":"delta","streamNo":101,"language":"English","hd":true,"embedUrl":"https://embed.st/embed/delta/one/101"},
+            {"id":"one","source":"delta","streamNo":100,"language":"English","hd":true,"embedUrl":"https://embed.st/embed/delta/one/100"},
+            {"streamNo":1}
+        ]).to_string();
+        resolver.tvapp_stream_responses(&[StreamRef{source:"delta".into(),id:"one".into()}],&[body]).unwrap();
+        assert_eq!(resolver.players.len(),1);
+        assert!(matches!(&resolver.players[0].locator,CandidateLocator::Tvapp{stream_no:100,..}));
+    }
     use super::*;
     use crate::detail_json::{compatible_json_players, missing_json_reason};
 
@@ -953,11 +1034,10 @@ mod tests {
         for malformed in [
             "not json",
             r#"{"id":"one"}"#,
-            r#"[{"id":"one","streamNo":0,"embedUrl":"https://embed.st/embed/admin/one/1"}]"#,
-            r#"[{"id":"one","streamNo":1,"embedUrl":"not-a-url"}]"#,
         ] {
             assert!(!valid_streamed_response(malformed), "{malformed}");
         }
+        assert!(valid_streamed_response(r#"[{"id":"one","streamNo":0,"embedUrl":"not-a-url"}]"#));
         let error = ResolveFailure {
             name: "AbortError".into(),
             message: "cancelled".into(),

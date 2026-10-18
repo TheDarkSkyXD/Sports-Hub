@@ -1,0 +1,86 @@
+{
+  "event": {
+    "id": "buffalo-sabres-vs-florida-panthers-2591571",
+    "title": "Buffalo Sabres vs Florida Panthers",
+    "category": "hockey",
+    "date": 1791824400000,
+    "teams": {
+      "home": {
+        "name": "Buffalo Sabres"
+      },
+      "away": {
+        "name": "Florida Panthers"
+      }
+    },
+    "sources": [
+      {
+        "source": "sp:golf",
+        "id": "2184"
+      },
+      {
+        "source": "scl:iframe",
+        "id": "event-espn-league-hockey-nhl-401892485"
+      },
+      {
+        "source": "sp:admin",
+        "id": "ppv-florida-panthers-vs-buffalo-sabres"
+      },
+      {
+        "source": "ppv:s",
+        "id": "nhl/2026-10-12/fla-buf"
+      }
+    ]
+  },
+  "streams": [
+    [
+      {
+        "id": "2184",
+        "streamNo": 3,
+        "embedUrl": "https://embed.st/embed/golf/2184/3",
+        "source": "streamed"
+      },
+      {
+        "id": "2184",
+        "streamNo": 2,
+        "embedUrl": "https://embed.st/embed/golf/2184/2",
+        "source": "streamed"
+      },
+      {
+        "id": "2184",
+        "streamNo": 4,
+        "embedUrl": "https://embed.st/embed/golf/2184/4",
+        "source": "streamed"
+      }
+    ],
+    [
+      {
+        "id": "4f6fb9e5-00d4-40e9-b173-3994e3b88739",
+        "streamNo": 1,
+        "embedUrl": "https://streame.center/embed/ch50.php",
+        "source": "streamcenter"
+      }
+    ],
+    [
+      {
+        "id": "ppv-florida-panthers-vs-buffalo-sabres",
+        "streamNo": 1,
+        "embedUrl": "https://embed.st/embed/admin/ppv-florida-panthers-vs-buffalo-sabres/1",
+        "source": "streamed"
+      },
+      {
+        "id": "ppv-florida-panthers-vs-buffalo-sabres",
+        "streamNo": 2,
+        "embedUrl": "https://embed.st/embed/admin/ppv-florida-panthers-vs-buffalo-sabres/2",
+        "source": "streamed"
+      }
+    ],
+    [
+      {
+        "id": "nhl/2026-10-12/fla-buf",
+        "streamNo": 1,
+        "embedUrl": "https://taifood-blog.asia/embed/nhl/2026-10-12/fla-buf",
+        "source": "ppv"
+      }
+    ]
+  ]
+}

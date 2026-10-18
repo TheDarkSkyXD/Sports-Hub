@@ -2,10 +2,36 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { isPublicAddress, publicHttpsRequest, sportsurgeUrl, sportsurgeV2Provider } from '../lib/playback/providers/sportsurge-v2.ts';
+import {resource,type Requester} from '../lib/playback/providers/public-page.ts';
 import { registeredResource, revokeSession, rewritePlaylist } from '../lib/stream-relay.ts';
 
 const locator = { provider: 'sportsurge-v2' as const, eventId: 'ncaaf:123', providerId: 'stream-123-0',
   url: 'https://provider.example/watch/123' };
+
+test('Sportsurge static hops share one acquisition budget instead of restarting twenty-five seconds',async context=>{
+  context.mock.timers.enable({apis:['Date']});
+  const budgets:(number|undefined)[]=[];
+  const requester:Requester=async(url,_signal,_headers,budget)=>{
+    budgets.push(budget);context.mock.timers.tick(4000);
+    return new Response(budgets.length===3?'<video src="https://cdn.example/game.m3u8"></video>':
+      `<iframe src="https://provider.example/hop-${budgets.length}"></iframe>`,{headers:{'Content-Type':'text/html'}});
+  };
+  const provider=sportsurgeV2Provider(requester,async()=>({root:resource(new URL('https://cdn.example/game.m3u8'),new URL(locator.url),'playlist',requester),close(){}}));
+  const playback=await provider.open(locator,new AbortController().signal);
+  try{assert.deepEqual(budgets,[10000,6000,2000]);assert.equal(playback.root?.kind,'playlist');}
+  finally{playback.close();}
+});
+
+test('Sportsurge retains browser-selected progressive video as progressive media',async()=>{
+  let observed=0;
+  const requester:Requester=async()=>new Response('<div id="player"><video src="https://cdn.example/advert.mp4"></video></div>',{headers:{'Content-Type':'text/html'}});
+  const playback=await sportsurgeV2Provider(requester,async url=>{observed++;assert.equal(url.href,locator.url);
+    return {root:resource(new URL('https://cdn.example/game.mp4'),url,'media',requester,'Mozilla/5.0','progressive'),close(){}};
+  }).open(locator,new AbortController().signal);
+  assert.equal(observed,1);
+  try{assert.equal(playback.root?.kind,'media');assert.equal(playback.root?.identity,'https://cdn.example/game.mp4');}
+  finally{playback.close();}
+});
 
 test('Sportsurge URLs reject unsafe authorities and DNS results', async () => {
   assert.equal(sportsurgeUrl(locator.url)?.href, locator.url);
@@ -41,7 +67,7 @@ test('Sportsurge resolves a page manifest into scoped HLS resources', async () =
       { status: 206, headers: { 'Content-Type': 'video/mp2t', 'Content-Range': 'bytes 0-2/3' } });
     throw new Error(`Unexpected ${url.href}`);
   };
-  const playback = await sportsurgeV2Provider(requester).open(locator, new AbortController().signal);
+  const playback = await sportsurgeV2Provider(requester,async url=>({root:resource(new URL('https://cdn.example/live/index.m3u8?st=abc'),url,'playlist',requester),close(){}})).open(locator, new AbortController().signal);
   const playlist = await playback.root.read({ signal: new AbortController().signal });
   assert.equal(await new Response(playlist.body).text(), `#EXTM3U\n#EXTINF:5,\n${segment}\n`);
   const grant = { sessionId: '9b916b55-189a-4bcf-81da-c1b7e28ef800', gameId: 'ncaaf-123', candidateId: 'sportsurge-123', generation: 0 };
@@ -69,11 +95,11 @@ test('Sportsurge bounds redirects and page extraction', async () => {
     if (url.href === locator.url) return new Response(null, { status: 302, headers: { Location: '/player' } });
     if (url.href === 'https://provider.example/player') return new Response('<iframe src="https://embed.example/player"></iframe>',
       { headers: { 'Content-Type': 'text/html' } });
-    if (url.href === 'https://embed.example/player') return new Response('file: "https://cdn.example/live.m3u8"',
+    if (url.href === 'https://embed.example/player') return new Response('<video src="https://cdn.example/live.m3u8"></video>',
       { headers: { 'Content-Type': 'text/html' } });
     throw new Error(`Unexpected ${url.href}`);
   };
-  const playback = await sportsurgeV2Provider(requester).open(locator, new AbortController().signal);
+  const playback = await sportsurgeV2Provider(requester,async url=>({root:resource(new URL('https://cdn.example/live.m3u8'),url,'playlist',requester),close(){}})).open(locator, new AbortController().signal);
   assert.equal(playback.root.identity, 'https://cdn.example/live.m3u8');
   assert.deepEqual(visited, [locator.url, 'https://provider.example/player', 'https://embed.example/player']);
   await assert.rejects(sportsurgeV2Provider(async () => new Response(null,
@@ -110,7 +136,7 @@ test('Sportsurge uses the private browser observer when static HTML has no HLS',
   process.env.SUNDAY_ROOM_CONTROL_TOKEN = 'test-control-token';
   try {
     const playback = await sportsurgeV2Provider(async () => {
-      return new Response('<div>No stream in static HTML</div>',{headers:{'Content-Type':'text/html'}});
+      return new Response('<script>const hlsUrl="https://ads.example/ad.m3u8"</script><div data-hls="https://ads.example/other.m3u8"></div>',{headers:{'Content-Type':'text/html'}});
     }).open(locator, new AbortController().signal);
     assert.equal(playback.root.identity, 'https://cdn.example/live/index.m3u8');
     const rootRead=await playback.root.read({signal:AbortSignal.timeout(1000)});
@@ -135,7 +161,7 @@ test('Sportsurge uses the private browser observer when static HTML has no HLS',
   }
 });
 
-test('Sportsurge browser fallback starts at the sole published Sportspatrika player', async () => {
+test('Sportsurge browser selection starts at the publishing page and validates its selected child', async () => {
   const outer = 'https://socowatch.site/14748/0/cfb/93';
   const player = 'https://embed.sportspatrika.com/live/embed.php?ch=es168';
   const channel = 'https://embed.sportspatrika.com/live/channel.php?ch=es168';
@@ -162,9 +188,9 @@ test('Sportsurge browser fallback starts at the sole published Sportspatrika pla
   process.env.SUNDAY_ROOM_CONTROL_TOKEN = 'test-control-token';
   try {
     const cases = [
-      { html: `<iframe src="${player}"></iframe>`, expected: player },
-      { html: '<iframe src="https://ch.aianimalvibes.com/football/728"></iframe>', expected: 'https://ch.aianimalvibes.com/football/728' },
-      { html: '<iframe src="https://ch.aianimalvibes.com/cfb/66184"></iframe>', expected: 'https://ch.aianimalvibes.com/cfb/66184' },
+      { html: `<iframe src="${player}"></iframe>`, expected: outer },
+      { html: '<iframe src="https://ch.aianimalvibes.com/football/728"></iframe>', expected: outer },
+      { html: '<iframe src="https://ch.aianimalvibes.com/cfb/66184"></iframe>', expected: outer },
       { html: '<iframe src="https://ch.aianimalvibes.com/cfb/66184?ad=1"></iframe>', expected: outer },
       { html: '<iframe src="https://ch.aianimalvibes.com/football/728"></iframe><iframe src="https://ads.example/"></iframe>', expected: outer },
       { html: '<iframe src="https://ch.aianimalvibes.com.evil.example/football/728"></iframe>', expected: outer },
@@ -197,4 +223,45 @@ test('Sportsurge browser fallback starts at the sole published Sportspatrika pla
     else process.env.SUNDAY_ROOM_CONTROL_TOKEN = previousToken;
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
+});
+
+
+test('Sportsurge follows the selected player iframe before unrelated ad HLS',async()=>{
+  const selected='https://embed.example/player',manifest='https://cdn.example/game.m3u8';
+  const visited:string[]=[];
+  const requester=async(url:URL):Promise<Response>=>{
+    visited.push(url.href);
+    return new Response(url.href===locator.url
+      ? '<script>var ad={file:"https://ads.example/ad.m3u8"}</script><video src="https://ads.example/preroll.m3u8"></video><div id="player"><iframe src="'+selected+'"></iframe></div>'
+      : '<video src="'+manifest+'"></video>',{headers:{'content-type':'text/html'}});
+  };
+  const playback=await sportsurgeV2Provider(requester,async url=>({root:resource(new URL(manifest),url,'playlist',requester),close(){}})).open(locator,new AbortController().signal);
+  try{assert.equal(playback.root.identity,manifest);assert.deepEqual(visited,[locator.url,selected]);}
+  finally{playback.close();}
+});
+
+test('Sportsurge accepts only the selected video source instead of arbitrary page scripts',async()=>{
+  const manifest='https://cdn.example/game.m3u8';
+  const requester:Requester=async()=>new Response('<script>var source="https://ads.example/ad.m3u8"</script><video src="https://ads.example/preroll.m3u8"></video><div id="player"><video><source src="'+manifest+'"></video></div>',{headers:{'content-type':'text/html'}});
+  let observed=0;
+  const playback=await sportsurgeV2Provider(requester,async url=>{observed++;return {root:resource(new URL(manifest),url,'playlist',requester),close(){}};}).open(locator,new AbortController().signal);
+  assert.equal(observed,1);
+  try{assert.equal(playback.root.identity,manifest);}finally{playback.close();}
+});
+
+
+for(const [shape,html] of Object.entries({
+  plain:'<div id="player"><video src="https://cdn.example/advert.mp4"></video></div>',
+  inlineHidden:'<div id="player" style="display:none"><video src="https://cdn.example/advert.mp4"></video></div>',
+  hiddenAttribute:'<div hidden><div id="player"><video src="https://cdn.example/advert.mp4"></video></div></div>',
+  css:'<style>.concealed{opacity:0}</style><div id="player" class="concealed"><video src="https://cdn.example/advert.mp4"></video></div>',
+  stylesheet:'<link rel="stylesheet" href="/player.css"><div id="player"><video src="https://cdn.example/advert.mp4"></video></div>',
+  closedDialog:'<dialog><div id="player"><video src="https://cdn.example/advert.mp4"></video></div></dialog>',
+  closedDetails:'<details><div id="player"><video src="https://cdn.example/advert.mp4"></video></div></details>',
+  template:'<template><div id="player"><video src="https://cdn.example/advert.mp4"></video></div></template>',
+}))test('generic Sportsurge '+shape+' requires browser-selected ownership before media admission',async()=>{
+  const old=process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN;delete process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN;
+  try{await assert.rejects(sportsurgeV2Provider(async()=>new Response(html+'<iframe src="https://actual-player.example/game"></iframe>',{headers:{'content-type':'text/html'}}))
+    .open(locator,new AbortController().signal,'probe'),{name:'ProviderDeferredError'});}
+  finally{if(old!==undefined)process.env.SUNDAY_ROOM_SPORTSURGE_OBSERVER_ORIGIN=old;}
 });

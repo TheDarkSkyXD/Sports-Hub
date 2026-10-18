@@ -17,6 +17,10 @@ macro_rules! pattern {
     };
 }
 
+#[cfg(test)]
+#[path = "watch_parser_gap_tests.rs"]
+mod watch_parser_gap_tests;
+
 fn result(observations: Vec<Observation>, empty: bool) -> ListingResult {
     let outcome = if !observations.is_empty() {
         ListingOutcome::Parsed
@@ -115,6 +119,7 @@ fn live_tv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
             teams: Some(teams),
             league: Some(league),
             kickoff: None,
+            ends_at: None,
             raw_time: String::new(),
             observed_at: now,
             parser_version: 2,
@@ -254,6 +259,7 @@ fn nflstreams(source: &ListingSource, body: &str, now: i64) -> ListingResult {
             teams: Some(pair),
             league: Some(League::Nfl),
             kickoff: Some(kickoff),
+            ends_at: None,
             raw_time,
             observed_at: now,
             parser_version: 2,
@@ -290,87 +296,125 @@ fn nflstreams(source: &ListingSource, body: &str, now: i64) -> ListingResult {
     )
 }
 
-fn streamcenter(source: &ListingSource, body: &str, now: i64) -> ListingResult {
+fn foxtrend(source: &ListingSource, body: &str, now: i64) -> ListingResult {
     let doc = HtmlDoc::parse(body);
-    let link = cached_regex!(r"^/api/stream-link/iframe/event-espn-league-(football-college-football|basketball-(?:nba|wnba)|hockey-nhl|baseball-mlb)-(\d{5,12})/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$").unwrap();
     let mut observations = Vec::new();
-    let mut invalid = false;
-    let cards = doc.select("article.game-card-row");
-    for card in &cards {
-        let label = select(*card, ".game-card-league")
-            .first()
-            .copied()
-            .map(content)
-            .unwrap_or_default();
-        let league = match label.as_str() {
-            "NCAA Football" => League::Ncaaf,
-            "NBA" => League::Nba,
-            "WNBA" => League::Wnba,
-            "NHL" => League::Nhl,
-            "MLB" => League::Mlb,
-            _ => continue,
-        };
-        if (source.id == "streamcenter-nhl") != (league == League::Nhl)
-            || (source.id == "streamcenter-mlb") != (league == League::Mlb)
-            || (source.id == "streamcenter-nba") != matches!(league, League::Nba | League::Wnba)
+    let mut seen = HashSet::new();
+    let mut recognized = false;
+    for script in doc.select("script") {
+        let script = text(script);
+        if !script
+            .trim_start()
+            .starts_with("window.FOXTREND_SCHEDULE_BOOT = {")
         {
             continue;
         }
-        let teams: Vec<String> = select(*card, ".game-card-team[title]")
-            .into_iter()
-            .filter_map(|item| attr(item, "title").map(str::trim).map(str::to_string))
-            .collect();
-        let raw_time = select(*card, "time[datetime]")
-            .first()
-            .and_then(|item| attr(*item, "datetime"))
-            .unwrap_or("");
-        let kickoff = parse_kickoff(raw_time);
-        if teams.len() != 2 || kickoff.is_none() {
-            invalid = true;
+        let property = |name: &str| {
+            let value = script
+                .lines()
+                .find_map(|line| line.trim_start().strip_prefix(name))?;
+            serde_json::Deserializer::from_str(value.trim_start())
+                .into_iter::<serde_json::Value>()
+                .next()?
+                .ok()
+        };
+        let Some(hosts) = property("watchBaseByCat:") else {
+            continue;
+        };
+        if hosts["motor-sports"].as_str() != Some("https://foxiy.st") {
             continue;
         }
-        for anchor in select(*card, "a.game-card-open-link[href]") {
-            let href = attr(anchor, "href").unwrap_or("");
-            let Some(found) = link.captures(href) else {
-                invalid = true;
+        let Some(events) = property("events:") else {
+            continue;
+        };
+        let Some(days) = events["byDate"].as_object() else {
+            continue;
+        };
+        recognized = true;
+        for day in days.values() {
+            let Some(rows) = day["motor-sports"].as_array() else {
                 continue;
             };
-            let expected = match league {
-                League::Ncaaf => "football-college-football",
-                League::Nhl => "hockey-nhl",
-                League::Mlb => "baseball-mlb",
-                League::Nba => "basketball-nba",
-                League::Wnba => "basketball-wnba",
-                _ => unreachable!(),
-            };
-            if &found[1] != expected {
-                invalid = true;
-                continue;
+            for row in rows {
+                if row["cat"].as_str() != Some("motor-sports") {
+                    continue;
+                }
+                let Some(path) = row["pathPart"].as_str() else {
+                    continue;
+                };
+                let Some(route) = cached_regex!(
+                    r"^([a-z0-9]+(?:-[a-z0-9]+)*)-nascar-(cup|truck)-series-([0-9]{10})$"
+                )
+                .expect("fixed FoxTrend route")
+                .captures(path) else {
+                    continue;
+                };
+                let Some(kickoff) = row["start"].as_i64().filter(|time| {
+                    route[3]
+                        .parse::<i64>()
+                        .ok()
+                        .and_then(|seconds| seconds.checked_mul(1000))
+                        == Some(*time)
+                }) else {
+                    continue;
+                };
+                let title = row["t"]
+                    .as_str()
+                    .unwrap_or("")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if title.is_empty()
+                    || row["slug"].as_str() != Some(&route[1])
+                    || slug(&title) != route[1]
+                {
+                    continue;
+                }
+                let url = format!("https://foxiy.st/event/{path}");
+                let conflicting_card = doc
+                    .select("a.card.watch.card-sport-motor-sports")
+                    .into_iter()
+                    .any(|card| {
+                        let card_title = select(card, ".card-title")
+                            .first()
+                            .copied()
+                            .map(clean_text)
+                            .unwrap_or_default();
+                        let href = attr(card, "href");
+                        let label = attr(card, "aria-label");
+                        (href == Some(url.as_str())
+                            || card_title == title
+                            || label == Some(title.as_str()))
+                            && (href != Some(url.as_str())
+                                || card_title != title
+                                || label != Some(title.as_str()))
+                    });
+                if conflicting_card || !seen.insert(url.clone()) {
+                    continue;
+                }
+                observations.push(Observation {
+                    id: format!("{}:{}", source.id, digest(&url)),
+                    source_id: source.id.clone(),
+                    url,
+                    title,
+                    teams: None,
+                    league: Some(if &route[2] == "cup" {
+                        League::NascarCup
+                    } else {
+                        League::NascarTruck
+                    }),
+                    kickoff: Some(kickoff),
+                    ends_at: None,
+                    raw_time: kickoff.to_string(),
+                    observed_at: now,
+                    parser_version: 2,
+                    legacy_id: None,
+                    kickoff_lineage: None,
+                });
             }
-            observations.push(Observation {
-                id: format!("{}:{}", source.id, digest(href)),
-                source_id: source.id.clone(),
-                url: Url::parse("https://streamcenter.st")
-                    .unwrap()
-                    .join(href)
-                    .unwrap()
-                    .to_string(),
-                title: format!("{} vs {}", teams[0], teams[1]),
-                teams: Some([teams[0].clone(), teams[1].clone()]),
-                league: Some(league),
-                kickoff,
-                raw_time: raw_time.to_string(),
-                observed_at: now,
-                parser_version: 2,
-                legacy_id: None,
-                kickoff_lineage: None,
-            });
         }
     }
-    if invalid {
-        return result(Vec::new(), false);
-    }
-    result(observations, !cards.is_empty())
+    result(observations, recognized)
 }
 
 fn motorsports(source: &ListingSource, body: &str, now: i64) -> ListingResult {
@@ -430,6 +474,7 @@ fn motorsports(source: &ListingSource, body: &str, now: i64) -> ListingResult {
             teams: None,
             league: Some(league),
             kickoff: Some(kickoff),
+            ends_at: None,
             raw_time: raw_time.to_string(),
             observed_at: now,
             parser_version: 2,
@@ -437,7 +482,15 @@ fn motorsports(source: &ListingSource, body: &str, now: i64) -> ListingResult {
             kickoff_lineage: None,
         });
     }
-    result(observations, !doc.select("a.ev[data-start]").is_empty())
+    let channels=doc.select("section.lg#g-247 a.ev.ev-plain[href]");
+    let channel_only=doc.select("h1").iter().any(|heading| {
+        let title=clean_text(*heading);
+        title.starts_with("F1 ") && title.contains("Streams")
+    }) && !channels.is_empty() && channels.iter().all(|channel| {
+        select(*channel,".ev-chip").iter().any(|chip|clean_text(*chip)=="24/7")
+            && attr(*channel,"href").is_some_and(|href|pattern!(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$",href))
+    });
+    result(observations, !doc.select("a.ev[data-start]").is_empty() || channel_only)
 }
 
 fn first_attr(element: ElementRef<'_>, selector: &str, name: &str) -> Option<String> {
@@ -455,7 +508,7 @@ fn section_league(section: &str, hockey: bool, baseball: bool) -> Option<League>
             None
         }
     } else if baseball {
-        pattern!(r"^g-cat-mlb-\d{8}$", section).then_some(League::Mlb)
+        pattern!(r"^g-(?:cat|lg)-mlb-\d{8}$", section).then_some(League::Mlb)
     } else {
         None
     }
@@ -484,6 +537,40 @@ fn path_allowed(source_id: &str, path: &str) -> bool {
             r"(?i)/(?:watch/(?:nfl|cfb|nba(?:-preseason)?|nhl|mlb-playoffs)/|onair/(?:nfl|ncaaf|nba|nhl)/|(?:nfl|cfb|nba|nhl|mlb|college-football)/.*(?:live|stream)|(?:nfl|cfb|nba|nhl|mlb)-streams/.+-live-stream|event/)",
             path,
         )
+}
+
+fn isportsurge_nascar(url: &Url, anchor: ElementRef<'_>) -> Option<(League, String)> {
+    if url.scheme() != "https"
+        || url.host_str() != Some("isportsurge.ws")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
+    let path = cached_regex!(
+        r"^/event/(nascar|nascar-cup-series)/([a-z0-9]+(?:-[a-z0-9]+)*)-live-streaming-links$"
+    )
+    .unwrap()
+    .captures(url.path())?;
+    let headings = select(anchor, "h4");
+    if headings.len() != 1 {
+        return None;
+    }
+    let title = clean_text(headings[0]);
+    if slug(&title) != path[2] || pattern!(r"(?i)\b(?:xfinity|motogp|formula\s*1|f1)\b", &title) {
+        return None;
+    }
+    let cup = pattern!(r"(?i)\bnascar cup series\b", &title);
+    let truck = pattern!(r"(?i)\b(?:nascar truck series|truck playoff)\b", &title);
+    let league = match (cup, truck) {
+        (true, false) => League::NascarCup,
+        (false, true) if &path[1] == "nascar" => League::NascarTruck,
+        _ => return None,
+    };
+    Some((league, title))
 }
 
 fn general(
@@ -533,7 +620,17 @@ fn general(
         } else {
             closest(anchor, "tr,[data-start],article,li,.event,.match,.card").unwrap_or(anchor)
         };
-        let title = if source.id == "mlbbox-mlb" {
+        let nascar = if source.id == "sportsurge" && published.path().starts_with("/event/nascar") {
+            let Some(race) = isportsurge_nascar(&published, anchor) else {
+                continue;
+            };
+            Some(race)
+        } else {
+            None
+        };
+        let title = if let Some((_, title)) = &nascar {
+            title.clone()
+        } else if source.id == "mlbbox-mlb" {
             select(anchor, "h2")
                 .first()
                 .copied()
@@ -565,8 +662,18 @@ fn general(
             .unwrap()
             .replace(&cleaned, "")
             .to_string();
+        let wnba_event = source.family == "event"
+            && cached_regex!(r"(?i)\bWNBA\b").unwrap().is_match(&cleaned);
+        if wnba_event && !source.leagues.contains(&League::Wnba) {
+            continue;
+        }
         let matchup = if matches!(source.id.as_str(), "methstreams-mlb" | "crackstreams-mlb") {
             cached_regex!(r"(?i)\s*\((?:ALDS|NLDS|ALCS|NLCS|World Series) Game \d+\)\s*$")
+                .unwrap()
+                .replace(&cleaned, "")
+                .to_string()
+        } else if wnba_event {
+            cached_regex!(r"(?i)\s*\(WNBA\b[^)]*\)\s*$")
                 .unwrap()
                 .replace(&cleaned, "")
                 .to_string()
@@ -618,7 +725,9 @@ fn general(
         } else {
             Vec::new()
         };
-        let teams = if full_names.len() == 2 && full_names.iter().all(|part| !part.is_empty()) {
+        let teams = if nascar.is_some() {
+            None
+        } else if full_names.len() == 2 && full_names.iter().all(|part| !part.is_empty()) {
             Some([full_names[0].clone(), full_names[1].clone()])
         } else if !full_names.is_empty() {
             None
@@ -668,7 +777,9 @@ fn general(
                 String::new()
             });
         let path = published.path();
-        let inferred_league = if pattern!(
+        let inferred_league = if let Some((league, _)) = nascar {
+            Some(league)
+        } else if pattern!(
             r"(?i)/(?:watch/cfb|cfb|ncaaf|college-football)(?:/|-)",
             path,
         ) {
@@ -705,6 +816,8 @@ fn general(
             Some(League::Nhl)
         } else if section.contains("college-football") {
             Some(League::Ncaaf)
+        } else if wnba_event {
+            Some(League::Wnba)
         } else if source.family == "event" {
             None
         } else {
@@ -784,6 +897,7 @@ fn general(
             league,
             raw_time,
             kickoff,
+            ends_at: None,
             observed_at: now,
             parser_version: 2,
             legacy_id,
@@ -944,6 +1058,7 @@ fn crichd(body: &str, now: i64) -> ListingResult {
             league,
             teams,
             kickoff: Some(kickoff),
+            ends_at: None,
             raw_time: raw_time.into(),
             observed_at: now,
             parser_version: 1,
@@ -965,10 +1080,14 @@ pub fn parse_html(
     registry: &SourceRegistry,
 ) -> Option<ListingResult> {
     match (source.id.as_str(), source.family.as_str()) {
+        (_, "published-events") => Some(crate::published::events(source,body,now)),
+        (_, "linked-cards") => Some(crate::published::linked_cards(source,body,now)),
+        (_, "microdata" | "wordpress") => Some(crate::published::cards(source,body,now)),
+        (_, "legacy-schedule") => Some(crate::published::legacy(source,body,now)),
+        ("foxtrend", _) => Some(foxtrend(source, body, now)),
         ("livetv", _) => Some(live_tv(source, body, now)),
         ("nflstreams", _) => Some(nflstreams(source, body, now)),
         ("crichd", _) => Some(crichd(body, now)),
-        (_, "streamcenter") => Some(streamcenter(source, body, now)),
         (_, "motorsports") => Some(motorsports(source, body, now)),
         _ if matches!(
             source.kind,
@@ -1006,7 +1125,6 @@ mod tests {
             "event",
             "livetv",
             "nflstreams",
-            "streamcenter",
             "motorsports",
             "crichd",
         ] {

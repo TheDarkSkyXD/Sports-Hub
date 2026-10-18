@@ -53,7 +53,7 @@ test('a dated live binding prevents the first undated republish after final grac
     await coordinator.command({kind:'set-retention',minutes:5});
     await coordinator.refresh(true);
     await until(()=>listingReads>=1);
-    clock+=300_001;
+    clock+=1_800_001;
     finished=true;
     await coordinator.refresh(true);
     await until(()=>listingReads>=2);
@@ -61,6 +61,7 @@ test('a dated live binding prevents the first undated republish after final grac
     await coordinator.command({kind:'sources'});
     assert.equal(countObservation(),0,'grace cleanup removes the dated observation');
     undated=true;
+    clock+=25*60_000;
     await coordinator.refresh(true);
     await until(()=>listingReads>=3);
     const sources=await coordinator.command({kind:'sources'});

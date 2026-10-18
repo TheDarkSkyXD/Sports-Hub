@@ -282,6 +282,7 @@ fn parse_tvapp(source: &ListingSource, body: &str, now: i64) -> ListingResult {
             teams,
             league,
             kickoff: Some(event.date),
+            ends_at: None,
             raw_time,
             observed_at: now,
             parser_version: 3,
@@ -314,6 +315,8 @@ struct PpvEvent {
     tag: String,
     uri_name: String,
     starts_at: i64,
+    #[serde(default)]
+    ends_at: Option<serde_json::Value>,
 }
 
 fn parse_ppv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
@@ -357,11 +360,8 @@ fn parse_ppv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
                 "NHL" => League::Nhl,
                 "MLB" => League::Mlb,
                 "Formula 1" => League::F1,
-                "Wrestling"
-                    if wrestling_group
-                        && crate::wrestling::league(&event.name) == Some(League::Wwe) =>
-                {
-                    League::Wwe
+                "Wrestling" if wrestling_group => {
+                    crate::wrestling::league(&event.name).unwrap_or(League::Wrestling)
                 }
                 _ => continue,
             };
@@ -373,10 +373,10 @@ fn parse_ppv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
                 League::Nhl => "nhl",
                 League::Mlb => "mlb",
                 League::F1 => "f1",
-                League::Wwe => "wwe",
+                League::Wwe | League::Tna | League::Aew | League::Wrestling => "",
                 _ => unreachable!(),
             };
-            if !event.uri_name.starts_with(&format!("{prefix}/")) {
+            if !prefix.is_empty() && !event.uri_name.starts_with(&format!("{prefix}/")) {
                 continue;
             }
             if !valid_ppv_path(&event.uri_name, league) {
@@ -391,14 +391,21 @@ fn parse_ppv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
             if !(FIRST_DATE..LAST_DATE).contains(&kickoff) {
                 return invalid();
             }
-            if league == League::Wwe && !crate::wrestling::wwe_ppv_route(&event.uri_name, kickoff) {
+            if matches!(
+                league,
+                League::Wwe | League::Tna | League::Aew | League::Wrestling
+            ) && !crate::wrestling::ppv_route(&event.uri_name, league, event.id, kickoff)
+            {
                 return invalid();
             }
             if kickoff > now + WEEK {
                 continue;
             }
             let title = normalized(&event.name);
-            let teams = if matches!(league, League::F1 | League::Wwe) {
+            let teams = if matches!(
+                league,
+                League::F1 | League::Wwe | League::Tna | League::Aew | League::Wrestling
+            ) {
                 None
             } else {
                 catalog_teams(&title).map(|pair| {
@@ -420,6 +427,12 @@ fn parse_ppv(source: &ListingSource, body: &str, now: i64) -> ListingResult {
                 teams,
                 league: Some(league),
                 kickoff: Some(kickoff),
+                ends_at: event
+                    .ends_at
+                    .as_ref()
+                    .and_then(serde_json::Value::as_i64)
+                    .and_then(|end| end.checked_mul(1000))
+                    .filter(|end| *end > kickoff && (FIRST_DATE..LAST_DATE).contains(end)),
                 raw_time,
                 observed_at: now,
                 parser_version: 2,
@@ -450,9 +463,12 @@ fn valid_ppv_path(path: &str, league: League) -> bool {
     });
     if league == League::F1 {
         f1.is_match(path)
-    } else if league == League::Wwe {
-        static WWE: OnceLock<Regex> = OnceLock::new();
-        WWE.get_or_init(|| Regex::new(r"^wwe/\d{4}-\d{2}-\d{2}$").unwrap())
+    } else if matches!(
+        league,
+        League::Wwe | League::Tna | League::Aew | League::Wrestling
+    ) {
+        static WRESTLING: OnceLock<Regex> = OnceLock::new();
+        WRESTLING.get_or_init(|| Regex::new(r"^(?:(?:wwe|tna|aew)/\d{4}-\d{2}-\d{2}|[a-z0-9]+(?:-[a-z0-9]+)*-[1-9][0-9]{0,18})$").unwrap())
             .is_match(path)
     } else {
         normal.is_match(path)
@@ -500,7 +516,9 @@ pub(crate) fn valid_streamed_id(id: &str) -> bool {
 }
 
 pub(crate) fn streamed_event_url(source_id: &str, id: &str) -> String {
-    if source_id == "streamed" {
+    if source_id == "sportsupa" {
+        format!("https://streamed.pk/watch/{id}")
+    } else if source_id == "streamed" {
         format!("https://streamed.st/watch/{id}")
     } else {
         format!("https://api.kultsport.com/api/matches/all#{id}")
@@ -513,9 +531,18 @@ enum CatalogCategory {
     Unsupported,
 }
 
-fn catalog_category(category: &str) -> CatalogCategory {
+fn normalized_category(category: &str) -> String {
     let label = category.to_ascii_lowercase().replace(['-', '_'], " ");
     let label = label.split_whitespace().collect::<Vec<_>>().join(" ");
+    match label.as_str() {
+        "mma" => "fight".to_string(),
+        "motor sports" | "motorsports" | "f1" | "motogp" => "motor-sports".to_string(),
+        _ => label,
+    }
+}
+
+fn catalog_category(category: &str) -> CatalogCategory {
+    let label = normalized_category(category);
     match label.as_str() {
         "nfl" => CatalogCategory::League(League::Nfl),
         "ncaaf" | "ncaa football" | "college football" => CatalogCategory::League(League::Ncaaf),
@@ -524,17 +551,22 @@ fn catalog_category(category: &str) -> CatalogCategory {
         "nhl" => CatalogCategory::League(League::Nhl),
         "mlb" => CatalogCategory::League(League::Mlb),
         "american football" | "basketball" | "hockey" | "ice hockey" | "baseball"
-        | "main events" | "streams today" | "motor sports" | "motorsports" | "f1" | "motogp"
-        | "fight" | "ufc" | "mma" | "boxing" | "wrestling" => CatalogCategory::Matchup,
+        | "main events" | "streams today" | "motor-sports" | "fight" | "ufc" | "boxing"
+        | "wrestling" => CatalogCategory::Matchup,
         _ => CatalogCategory::Unsupported,
     }
 }
 
-fn streamed_league(category: &str, title: &str) -> Option<League> {
-    if matches!(category, "fight" | "wrestling")
+pub(crate) fn streamed_league(category: &str, title: &str, id: &str) -> Option<League> {
+    let category = normalized_category(category);
+    let category = category.as_str();
+    if matches!(category, "fight" | "ufc" | "wrestling")
         && let Some(league) = crate::wrestling::league(title)
     {
         return Some(league);
+    }
+    if category == "wrestling" {
+        return Some(League::Wrestling);
     }
     if crate::combat::is_ufc_card_title(title) && matches!(category, "fight" | "ufc") {
         return Some(League::Ufc);
@@ -548,8 +580,33 @@ fn streamed_league(category: &str, title: &str) -> Option<League> {
     if category != "motor-sports" {
         return None;
     }
-    static F1: OnceLock<Regex> = OnceLock::new();
+    static CUP: OnceLock<Regex> = OnceLock::new();
+    static TRUCK: OnceLock<Regex> = OnceLock::new();
     let label = title.to_ascii_lowercase();
+    let id_label = id.to_ascii_lowercase().replace('-', " ");
+    let cup = CUP
+        .get_or_init(|| Regex::new(r"\bnascar cup series\b").expect("fixed Cup series expression"));
+    let truck = TRUCK.get_or_init(|| {
+        Regex::new(r"\bnascar truck series\b").expect("fixed Truck series expression")
+    });
+    let cup = cup.is_match(&label) || cup.is_match(&id_label);
+    let truck = truck.is_match(&label) || truck.is_match(&id_label);
+    if cup || truck {
+        static OTHER_SERIES: OnceLock<Regex> = OnceLock::new();
+        let other_series = OTHER_SERIES.get_or_init(|| {
+            Regex::new(r"\b(?:nascar xfinity series|motogp|formula 1|f1)\b")
+                .expect("fixed conflicting series expression")
+        });
+        if other_series.is_match(&label) || other_series.is_match(&id_label) {
+            return None;
+        }
+        return match (cup, truck) {
+            (true, false) => Some(League::NascarCup),
+            (false, true) => Some(League::NascarTruck),
+            _ => None,
+        };
+    }
+    static F1: OnceLock<Regex> = OnceLock::new();
     if F1
         .get_or_init(|| Regex::new(r"^(?:formula 1|f1)\b").expect("fixed F1 title expression"))
         .is_match(&label)
@@ -596,11 +653,19 @@ fn parse_streamed(source: &ListingSource, body: &str, now: i64) -> ListingResult
         let league = match catalog_category(&event.category) {
             CatalogCategory::Unsupported => continue,
             CatalogCategory::League(league) => Some(league),
-            CatalogCategory::Matchup => streamed_league(&event.category, &title),
+            CatalogCategory::Matchup => streamed_league(&event.category, &title, &event.id),
+        };
+        let teams = if matches!(
+            league,
+            Some(League::Wwe | League::Tna | League::Aew | League::Wrestling)
+        ) {
+            None
+        } else {
+            teams
         };
         if teams.is_none() && league.is_none()
             || matches!(
-                event.category.as_str(),
+                normalized_category(&event.category).as_str(),
                 "fight" | "ufc" | "boxing" | "wrestling"
             ) && league.is_none()
         {
@@ -617,6 +682,7 @@ fn parse_streamed(source: &ListingSource, body: &str, now: i64) -> ListingResult
             teams,
             league,
             kickoff: Some(event.date),
+            ends_at: None,
             raw_time,
             observed_at: now,
             parser_version: 1,
@@ -662,7 +728,7 @@ pub(crate) fn valid_sportsbite_event(event: &SportsbiteEvent) -> bool {
 #[derive(Deserialize)]
 struct SportsbiteDay {
     date: String,
-    events: Vec<SportsbiteEvent>,
+    events: Vec<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -671,18 +737,33 @@ struct SportsbiteCatalog {
     days: Vec<SportsbiteDay>,
 }
 
+fn sportsbite_events(catalog: SportsbiteCatalog) -> Option<Vec<SportsbiteEvent>> {
+    let mut events = Vec::new();
+    for day in catalog.days {
+        let _ = day.date;
+        for value in day.events {
+            let category = value.get("category")?.as_str()?;
+            if matches!(catalog_category(category), CatalogCategory::Unsupported) {
+                continue;
+            }
+            events.push(serde_json::from_value(value).ok()?);
+        }
+    }
+    Some(events)
+}
+
 pub(crate) fn sportsbite_event_url(key: &str) -> Option<String> {
     static KEY: OnceLock<Regex> = OnceLock::new();
     KEY.get_or_init(|| {
-        Regex::new(r"^fg-[a-z0-9]+(?:-[a-z0-9]+)*$").expect("fixed SportsBite key expression")
+        Regex::new(r"^fg-(?:streamed-[a-z0-9]+(?:[-_][a-z0-9]+)*|[a-z0-9]+(?:-[a-z0-9]+)*)$").expect("fixed SportsBite key expression")
     })
     .is_match(key)
     .then(|| format!("https://sportsbite.org/event/{key}"))
 }
 
 fn sportsbite_league(event: &SportsbiteEvent) -> Option<League> {
-    if event.category != "motor-sports" {
-        return None;
+    if normalized_category(&event.category) != "motor-sports" {
+        return streamed_league(&event.category, &event.title, &event.event_key);
     }
     let title = event.title.to_ascii_lowercase();
     static F1: OnceLock<Regex> = OnceLock::new();
@@ -749,62 +830,63 @@ fn parse_sportsbite(body: &str, now: i64) -> ListingResult {
     if scraped_at > now + 60_000 || now - scraped_at >= 30 * 60_000 {
         return invalid();
     }
+    let Some(events) = sportsbite_events(catalog) else {
+        return invalid();
+    };
     let mut observations = Vec::new();
     let mut seen = HashMap::<String, (String, i64, Option<[String; 2]>)>::new();
-    for day in catalog.days {
-        let _ = day.date;
-        for event in day.events {
-            if !valid_sportsbite_event(&event) {
-                return invalid();
-            }
-            if event.kickoff_ms < FIRST_DATE || event.kickoff_ms > now + WEEK {
-                continue;
-            }
-            let Some(url) = sportsbite_event_url(&event.event_key) else {
-                return invalid();
-            };
-            if DateTime::parse_from_rfc3339(&event.start)
-                .ok()
-                .map(|date| date.timestamp_millis())
-                != Some(event.kickoff_ms)
-            {
-                return invalid();
-            }
-            let teams = event
-                .teams
-                .as_ref()
-                .map(|teams| [teams.home.name.clone(), teams.away.name.clone()]);
-            let league = match catalog_category(&event.category) {
-                CatalogCategory::Unsupported => continue,
-                CatalogCategory::League(league) => Some(league),
-                CatalogCategory::Matchup => sportsbite_league(&event),
-            };
-            if teams.is_none() && league.is_none() {
-                continue;
-            }
-            let key = (event.title.clone(), event.kickoff_ms, teams.clone());
-            if let Some(previous) = seen.get(&event.event_key) {
-                if previous != &key {
-                    return invalid();
-                }
-                continue;
-            }
-            seen.insert(event.event_key.clone(), key);
-            observations.push(Observation {
-                id: format!("sportsbite:{}", event.event_key),
-                source_id: "sportsbite".to_string(),
-                url,
-                title: event.title,
-                teams,
-                league,
-                kickoff: Some(event.kickoff_ms),
-                raw_time: event.start,
-                observed_at: now,
-                parser_version: 1,
-                legacy_id: None,
-                kickoff_lineage: None,
-            });
+    for event in events {
+        if !valid_sportsbite_event(&event) {
+            return invalid();
         }
+        let teams = event
+            .teams
+            .as_ref()
+            .map(|teams| [teams.home.name.clone(), teams.away.name.clone()]);
+        let league = match catalog_category(&event.category) {
+            CatalogCategory::Unsupported => continue,
+            CatalogCategory::League(league) => Some(league),
+            CatalogCategory::Matchup => sportsbite_league(&event),
+        };
+        if teams.is_none() && league.is_none() {
+            continue;
+        }
+        if event.kickoff_ms < FIRST_DATE || event.kickoff_ms > now + WEEK {
+            continue;
+        }
+        let Some(url) = sportsbite_event_url(&event.event_key) else {
+            return invalid();
+        };
+        if DateTime::parse_from_rfc3339(&event.start)
+            .ok()
+            .map(|date| date.timestamp_millis())
+            != Some(event.kickoff_ms)
+        {
+            return invalid();
+        }
+        let key = (event.title.clone(), event.kickoff_ms, teams.clone());
+        if let Some(previous) = seen.get(&event.event_key) {
+            if previous != &key {
+                return invalid();
+            }
+            continue;
+        }
+        seen.insert(event.event_key.clone(), key);
+        observations.push(Observation {
+            id: format!("sportsbite:{}", event.event_key),
+            source_id: "sportsbite".to_string(),
+            url,
+            title: event.title,
+            teams,
+            league,
+            kickoff: Some(event.kickoff_ms),
+            ends_at: None,
+            raw_time: event.start,
+            observed_at: now,
+            parser_version: 1,
+            legacy_id: None,
+            kickoff_lineage: None,
+        });
     }
     complete(observations)
 }
@@ -925,6 +1007,7 @@ fn parse_swac(source: &ListingSource, body: &str, now: i64) -> ListingResult {
             teams: Some(teams),
             league: Some(League::Ncaaf),
             kickoff: Some(kickoff),
+            ends_at: None,
             raw_time,
             observed_at: now,
             parser_version: 1,
@@ -961,6 +1044,8 @@ pub(crate) struct SportsfeedGame {
     pub streamer_links: Option<Vec<SportsfeedLink>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub player2: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trendy: Option<String>,
     #[serde(rename = "websiteLink")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub website_link: Option<String>,
@@ -1186,6 +1271,7 @@ fn parse_sportsfeed(body: &str, now: i64) -> ListingResult {
                 teams,
                 league,
                 kickoff: Some(kickoff),
+                ends_at: None,
                 raw_time: game.match_date.clone(),
                 observed_at: now,
                 parser_version: 1,
@@ -1257,19 +1343,11 @@ pub fn select_streamed_event(catalog: &str, _variant: &str, id: &str) -> Result<
 pub fn select_sportsbite_event(catalog: &str, key: &str) -> Result<String, String> {
     let parsed: SportsbiteCatalog =
         serde_json::from_str(catalog).map_err(|_| "parser-changed".to_string())?;
-    if parsed
-        .days
-        .iter()
-        .flat_map(|day| &day.events)
-        .any(|event| !valid_sportsbite_event(event))
-    {
+    let events = sportsbite_events(parsed).ok_or_else(|| "parser-changed".to_string())?;
+    if events.iter().any(|event| !valid_sportsbite_event(event)) {
         return Err("parser-changed".to_string());
     }
-    let mut matches = parsed
-        .days
-        .into_iter()
-        .flat_map(|day| day.events)
-        .filter(|event| event.event_key == key);
+    let mut matches = events.into_iter().filter(|event| event.event_key == key);
     let event = matches.next().ok_or_else(|| "parser-changed".to_string())?;
     if matches.next().is_some() {
         return Err("parser-changed".to_string());
@@ -1277,8 +1355,82 @@ pub fn select_sportsbite_event(catalog: &str, key: &str) -> Result<String, Strin
     serde_json::to_string(&event).map_err(|_| "parser-changed".to_string())
 }
 
+
+#[derive(Clone,Deserialize,Serialize)]
+pub(crate) struct StreamcenterMatch {
+    pub id:String,
+    pub title:String,
+    pub category:String,
+    pub date:i64,
+    pub teams:Teams,
+    pub sources:Vec<StreamRef>,
+}
+
+pub(crate) fn streamcenter_event_identity(id:&str)->Option<(League,&str,&'static str)> {
+    let found=cached_regex!(r"^event-espn-league-(football-college-football|basketball-nba|basketball-wnba|hockey-nhl|baseball-mlb)-([0-9]{5,12})$").unwrap().captures(id)?;
+    let (league,source)=match &found[1] {
+        "football-college-football"=>(League::Ncaaf,"streamcenter"),
+        "basketball-nba"=>(League::Nba,"streamcenter-nba"),
+        "basketball-wnba"=>(League::Wnba,"streamcenter-nba"),
+        "hockey-nhl"=>(League::Nhl,"streamcenter-nhl"),
+        "baseball-mlb"=>(League::Mlb,"streamcenter-mlb"),
+        _=>return None,
+    };
+    Some((league,found.get(2)?.as_str(),source))
+}
+
+pub(crate) fn valid_streamcenter_match(event:&StreamcenterMatch)->bool {
+    let Some((league,_,_))=streamcenter_event_identity(&event.id) else {return false;};
+    let category=match league {League::Ncaaf=>"football",League::Nba|League::Wnba=>"basketball",League::Nhl=>"hockey",League::Mlb=>"baseball",_=>return false};
+    let Some(title_teams)=catalog_teams(&event.title) else {return false;};
+    let home=&event.teams.home.name;let away=&event.teams.away.name;
+    event.category==category && (FIRST_DATE..LAST_DATE).contains(&event.date)
+        && !home.is_empty() && home.len()<=160 && !away.is_empty() && away.len()<=160 && home!=away
+        && event.title.len()<=400 && (title_teams==[home.clone(),away.clone()]||title_teams==[away.clone(),home.clone()])
+        && event.sources.len()<=24 && event.sources.iter().filter(|group|group.source=="iframe" && group.id==event.id).count()==1
+        && event.sources.iter().map(|group|(&group.source,&group.id)).collect::<HashSet<_>>().len()==event.sources.len()
+}
+
+fn streamcenter_catalog(body:&str)->Result<Vec<StreamcenterMatch>,String> {
+    let rows:Vec<serde_json::Value>=serde_json::from_str(body).map_err(|_|"parser-changed")?;
+    if rows.len()>200{return Err("parser-changed".into());}
+    let mut events=Vec::new();let mut ids=HashSet::new();
+    for row in rows {
+        let id=row.get("id").and_then(serde_json::Value::as_str).ok_or("parser-changed")?;
+        if streamcenter_event_identity(id).is_none(){continue;}
+        let event:StreamcenterMatch=serde_json::from_value(row).map_err(|_|"parser-changed")?;
+        if !valid_streamcenter_match(&event)||!ids.insert(event.id.clone()){return Err("parser-changed".into());}
+        events.push(event);
+    }
+    Ok(events)
+}
+
+fn parse_streamcenter(source:&ListingSource,body:&str,now:i64)->ListingResult {
+    let Ok(events)=streamcenter_catalog(body) else {return invalid();};
+    let mut observations=Vec::new();
+    for event in events {
+        let Some((league,_,source_id))=streamcenter_event_identity(&event.id) else {return invalid();};
+        if source_id!=source.id || !source.leagues.contains(&league){continue;}
+        observations.push(Observation {id:format!("{}:{}",source.id,event.id),source_id:source.id.clone(),
+            url:format!("https://streamcenter.st/watch/{}",event.id),title:format!("{} vs {}",event.teams.home.name,event.teams.away.name),
+            teams:Some([event.teams.home.name,event.teams.away.name]),league:Some(league),kickoff:Some(event.date),
+            ends_at:None,raw_time:iso(event.date).unwrap_or_default(),observed_at:now,parser_version:3,legacy_id:None,kickoff_lineage:None});
+    }
+    complete(observations)
+}
+
+pub(crate) fn select_streamcenter_event(body:&str,id:&str)->Result<StreamcenterMatch,String> {
+    let events=streamcenter_catalog(body)?;
+    let mut selected=events.into_iter().filter(|event|event.id==id);
+    let event=selected.next().ok_or("parser-changed")?;
+    if selected.next().is_some(){return Err("parser-changed".into());}
+    Ok(event)
+}
+
 pub fn parse_json(source: &ListingSource, body: &str, now: i64) -> Option<ListingResult> {
     match source.family.as_str() {
+        "streamcenter" if source.url.contains("/api/matches/") => Some(parse_streamcenter(source,body,now)),
+        "wordpress" if body.trim_start().starts_with('{') => Some(crate::published::wordpress(source,body,now)),
         "tvapp" => Some(parse_tvapp(source, body, now)),
         "ppv" => Some(parse_ppv(source, body, now)),
         "streamed" | "livesportpro" => Some(parse_streamed(source, body, now)),
@@ -1293,6 +1445,24 @@ pub fn parse_json(source: &ListingSource, body: &str, now: i64) -> Option<Listin
 mod tests {
     use super::*;
     use crate::registry::SourceRegistry;
+
+    #[test]
+    fn source_api_catalogs_preserve_event_identity_and_ignore_post_publication_time() {
+        let fixture:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/source-api-review.json")).unwrap();
+        let registry=SourceRegistry::parse(include_str!("../../../lib/football/source-registry.json")).unwrap();
+        let source=registry.get("streamcenter").unwrap();
+        let result=parse_json(source,&fixture["matches"].to_string(),1_792_016_400_000).unwrap();
+        assert_eq!(result.outcome,ListingOutcome::Parsed);
+        let event=result.observations.iter().find(|row|row.url.ends_with("401862800")).unwrap();
+        assert_eq!(event.kickoff,Some(1_792_107_000_000));
+        assert_eq!(event.teams,Some(["UAB Blazers".into(),"East Carolina Pirates".into()]));
+        let source=registry.get("dudestream-nba").unwrap();
+        let body=serde_json::json!({"category":fixture["category"][0],"posts":fixture["posts"]});
+        let result=parse_json(source,&body.to_string(),1_792_016_400_000).unwrap();
+        let post=result.observations.iter().find(|row|row.url=="https://dudestream1.com/nba3/").unwrap();
+        assert_eq!(post.title,"Charlotte Hornets vs Boston Celtics");
+        assert_eq!(post.kickoff,None);
+    }
 
     fn wrestling_source(id: &str, family: &str) -> ListingSource {
         serde_json::from_value(serde_json::json!({
@@ -1355,7 +1525,7 @@ mod tests {
     }
 
     #[test]
-    fn wrestling_listing_excludes_other_promotions_and_undated_channels() {
+    fn wrestling_listing_keeps_promotions_and_excludes_undated_channels() {
         let at = 1_791_590_400_000;
         let events = serde_json::json!([
             {"id":"raw","title":"WWE Monday Night Raw","category":"fight","date":at,"sources":[]},
@@ -1377,13 +1547,50 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             leagues,
-            [Some(League::Wwe), Some(League::Wwe), Some(League::Tna)]
+            [
+                Some(League::Wwe),
+                Some(League::Wwe),
+                Some(League::Tna),
+                Some(League::Aew)
+            ]
         );
         assert!(result.observations.iter().all(|row| row.teams.is_none()));
     }
 
     #[test]
-    fn ppv_accepts_only_dated_wwe_rows_in_wrestling_group() {
+    fn ppv_retains_only_valid_published_wrestling_end_times() {
+        let at = 1_791_750_600_000;
+        let mut catalog = serde_json::json!({"success":true,"streams":[{"category":"Wrestling","streams":[
+            {"id":30225,"name":"TNA Bound for Glory","tag":"Wrestling","uri_name":"tna-bound-for-glory-30225",
+             "starts_at":1791750600,"ends_at":1791765000}
+        ]}]});
+        let source = wrestling_source("ppv", "ppv");
+        let result = parse_json(&source, &catalog.to_string(), at).unwrap();
+        assert_eq!(
+            serde_json::to_value(&result.observations[0]).unwrap()["endsAt"],
+            1_791_765_000_000_i64
+        );
+        for end in [
+            serde_json::Value::Null,
+            0.into(),
+            1791750600_i64.into(),
+            "later".into(),
+            4102444800_i64.into(),
+        ] {
+            catalog["streams"][0]["streams"][0]["ends_at"] = end;
+            let result = parse_json(&source, &catalog.to_string(), at).unwrap();
+            assert_eq!(result.outcome, ListingOutcome::Parsed);
+            assert!(
+                serde_json::to_value(&result.observations[0])
+                    .unwrap()
+                    .get("endsAt")
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn ppv_accepts_dated_promotions_in_wrestling_group() {
         let at = 1_791_590_400_000;
         let catalog = serde_json::json!({"success":true,"streams":[{"category":"Wrestling","streams":[
             {"id":29976,"name":"WWE Friday Night Smackdown","tag":"Wrestling","uri_name":"wwe/2026-10-09","starts_at":1791590400},
@@ -1393,7 +1600,7 @@ mod tests {
         ]}]});
         let result = parse_json(&wrestling_source("ppv", "ppv"), &catalog.to_string(), at).unwrap();
         assert_eq!(result.outcome, ListingOutcome::Parsed);
-        assert_eq!(result.observations.len(), 1);
+        assert_eq!(result.observations.len(), 3);
         let row = &result.observations[0];
         assert_eq!(row.id, "ppv:29976");
         assert_eq!(row.url, "https://ppv.st/live/wwe/2026-10-09");

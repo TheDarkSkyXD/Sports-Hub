@@ -1,12 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import Hls from 'hls.js';
-import { Popover } from 'radix-ui';
-import { AlertCircle, LoaderCircle, Maximize, Minimize, Pause, PictureInPicture2, Play, Radio, RotateCcw, Settings2, Volume2, VolumeX } from 'lucide-react';
+import {AlertCircle,LoaderCircle,Play,Radio,RotateCcw} from 'lucide-react';
 import { chooseDefaultLevel, type QualityLevel, type QualityPreference } from '@/lib/playback-quality';
 import type { Feed } from '@/lib/sunday';
-import { createAdvancingVideoSampler, type AdvancingVideo } from '@/lib/playback/advancing-video';
+import type { AdvancingVideo } from '@/lib/playback/advancing-video';
+import { observeVideoEvidence } from '@/lib/playback/video-evidence';
+import type { MediaFailureReason,MediaPhase,MediaDeferralReason,MediaTimings } from '@/lib/football/shared';
+import {relayOutcome} from '@/lib/playback/presentation';
+import {PlayerControlsSurface,type PlayerControlsQuality} from './player-controls-surface';
+import {QualityLevelIdSchema,type PlayerUiResult,type QualitySelection} from '@/lib/desktop-player';
 
 type Status = 'loading' | 'ready' | 'buffering' | 'error' | 'gesture' | 'audio-gesture' | 'ended';
 type Quality = { index: number; label: string };
@@ -20,16 +24,19 @@ type Props = {
   onPlayingChange: (playing: boolean) => void;
   onAudibleChange: (audible: boolean) => void;
   onVolumeChange: (volume: number) => void;
-  onFatal?: (feedUrl:string) => void;
-  onDecoded?: (feedUrl:string,evidence:AdvancingVideo) => void;
+  onFocus?:()=>void;
+  onFatal?: (feedUrl:string,reason?:MediaFailureReason,phase?:MediaPhase) => void;
+  onDeferred?: (feedUrl:string,reason:MediaDeferralReason,details?:{phase?:MediaPhase;retryAfterMs?:number}) => void;
+  onDecoded?: (feedUrl:string,evidence:AdvancingVideo,timings?:MediaTimings) => void;
   onEnded?: (feedUrl:string) => void;
   onRetry?: (feedUrl:string) => void;
   errorHint?: string;
   startupTimeoutMs?: number;
+  noProgressTimeoutMs?: number;
   purpose?: 'viewing'|'verification';
 };
 
-export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onDecoded, onEnded, onRetry, errorHint, startupTimeoutMs = 20000, purpose='viewing' }: Props) {
+export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onDeferred, onDecoded, onEnded, onRetry, errorHint, startupTimeoutMs = 20000, noProgressTimeoutMs, purpose='viewing' }: Props) {
   const shell = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -38,8 +45,6 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
   const manualQualityRef = useRef(false);
   const sourceGeneration = useRef(0);
   const needsGesture = useRef(false);
-  const pointerTimer = useRef<number | null>(null);
-  const pointerActiveRef = useRef(false);
   const liveRef = useRef(false);
   const playingRef = useRef(playing);
   const wasPlayingRef = useRef(playing);
@@ -50,17 +55,13 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
   const [nativeHls, setNativeHls] = useState(false);
   const [nativeHeight, setNativeHeight] = useState<number | null>(null);
   const [usesHls, setUsesHls] = useState(false);
-  const [settings, setSettings] = useState(false);
   const [live, setLive] = useState(false);
   const [pip, setPip] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
   const [canPip, setCanPip] = useState(false);
-  const [notice, setNotice] = useState('');
-  const [pointerActive, setPointerActive] = useState(false);
-  const callbacks = useRef({ onFatal, onDecoded, onEnded, onPlayingChange, onAudibleChange, onVolumeChange });
+  const callbacks = useRef({ onFatal, onDeferred, onDecoded, onEnded, onPlayingChange, onAudibleChange, onVolumeChange });
   useEffect(() => { playingRef.current = playing; }, [playing]);
-  useEffect(() => { callbacks.current = { onFatal, onDecoded, onEnded, onPlayingChange, onAudibleChange, onVolumeChange }; }, [onFatal, onDecoded, onEnded, onPlayingChange, onAudibleChange, onVolumeChange]);
+  useEffect(() => { callbacks.current = { onFatal, onDeferred, onDecoded, onEnded, onPlayingChange, onAudibleChange, onVolumeChange }; }, [onFatal, onDeferred, onDecoded, onEnded, onPlayingChange, onAudibleChange, onVolumeChange]);
   useEffect(() => {
     preferenceRef.current = defaultQuality;
     manualQualityRef.current = false;
@@ -69,7 +70,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
 
   const syncToLive = useCallback((force = false) => {
     const video = ref.current;
-    if (!video || !playingRef.current || (!force && video.paused) || !(liveRef.current || !hlsRef.current && video.duration === Infinity) || !video.seekable.length) return;
+    if (!video || !playingRef.current || !force && (video.paused || hlsRef.current) || !(liveRef.current || !hlsRef.current && video.duration === Infinity) || !video.seekable.length) return;
     const start = video.seekable.start(video.seekable.length - 1);
     const end = video.seekable.end(video.seekable.length - 1);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
@@ -85,7 +86,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     sourceGeneration.current += 1;
     let failed = false;
     let hasLoaded = false;
-    let hasAdvancing = false;
+    let startupState:'waiting'|'moving'|'proved'='waiting';
     let deferredFailure = false;
     let manifestParsed = false;
     let metadataLoaded = false;
@@ -94,38 +95,15 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     needsGesture.current = false;
     liveRef.current = false;
     const native = /\.m3u8(?:\?|$)/i.test(feed.url) && !Hls.isSupported();
-    const reset = window.setTimeout(() => { if (!active) return; setStatus('loading'); setSettings(false); if (!manifestParsed) { setQualities([]); setQuality(-1); setUsesHls(false); } if (!metadataLoaded) setNativeHeight(null); if (!liveRef.current && video.duration !== Infinity) setLive(false); setNativeHls(native); setNotice(''); }, 0);
+    const reset = window.setTimeout(() => { if (!active) return; setStatus('loading'); if (!manifestParsed) { setQualities([]); setQuality(-1); setUsesHls(false); } if (!metadataLoaded) setNativeHeight(null); if (!liveRef.current && video.duration !== Infinity) setLive(false); setNativeHls(native); }, 0);
     const ready = () => { if (active) { hasLoaded = true; setStatus(needsGesture.current ? 'audio-gesture' : 'ready'); syncToLive(); } };
     const loaded = () => { if (!active) return; hasLoaded = true; if (!playingRef.current) setStatus('ready'); syncToLive(); };
     const canRecover = () => playingRef.current && navigator.onLine && (purpose==='verification'||!document.hidden);
-    const sampler=createAdvancingVideoSampler(performance.now());
-    let nextEvidenceAt=0;
-    let frameCallback: number | undefined;
-    const sampleFrame=(mediaMs:number,frames:number)=>{
-      if(!active||failed||!canRecover()||needsGesture.current||video.paused){sampler.reset();return;}
-      const proof=sampler.sample({wallMs:performance.now(),mediaMs,currentMs:video.currentTime*1000,
-        frames,width:video.videoWidth,height:video.videoHeight,playing:true});
-      if(!proof)return;
-      hasAdvancing=true;
-      if(performance.now()>=nextEvidenceAt){
-        nextEvidenceAt=performance.now()+60_000;
-        callbacks.current.onDecoded?.(feed.url,proof);
-      }
-    };
-    const observeFrame = () => {
-      frameCallback = video.requestVideoFrameCallback((_now, metadata) => {
-        sampleFrame(metadata.mediaTime*1000,metadata.presentedFrames);
-        if (active) observeFrame();
-      });
-    };
-    const decodedProgress = () => {
-      if (video.readyState < 2 || typeof video.getVideoPlaybackQuality !== 'function') return;
-      const quality = video.getVideoPlaybackQuality();
-      sampleFrame(video.currentTime*1000,quality.totalVideoFrames-quality.droppedVideoFrames);
-    };
-    if (typeof video.requestVideoFrameCallback === 'function') observeFrame();
-    else video.addEventListener('timeupdate', decodedProgress);
-    const error = () => {
+    const evidence = observeVideoEvidence({ video, sourceStartedAt: performance.now(), sampleIntervalMs: purpose === 'verification' ? 0 : 1000,
+      canSample: () => active && !failed && canRecover() && !needsGesture.current,
+      onProof: proof => { startupState='proved'; callbacks.current.onDecoded?.(feed.url, proof,{decodeMs:proof.startupMs}); },
+    });
+    const fail = (reason:MediaFailureReason,phase:MediaPhase='decode') => {
       if (!active || failed) return;
       if (!canRecover() || (hasLoaded && video.paused) || performance.now() - lastTick > 6000) {
         deferredFailure = true;
@@ -134,12 +112,12 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       }
       failed = true;
       setStatus('error');
-      callbacks.current.onFatal?.(feed.url);
+      callbacks.current.onFatal?.(feed.url,reason,phase);
     };
+    const error = () => fail(video.error?.code===3?'invalid-media':video.error?.code===4?'unsupported':video.error?.code===2?'upstream':'playback');
     const ended = () => { if (active) { setStatus('ended'); callbacks.current.onEnded?.(feed.url); } };
-    const waiting = () => { sampler.reset(); if (active) setStatus(current => current === 'ready' ? 'buffering' : current); };
-    const paused = () => { sampler.reset(); if (active && !playingRef.current) setStatus(current => current === 'buffering' ? 'ready' : current); };
-    const seeking = () => sampler.reset();
+    const waiting = () => { if (active) setStatus(current => current === 'ready' ? 'buffering' : current); };
+    const paused = () => { if (active && !playingRef.current) setStatus(current => current === 'buffering' ? 'ready' : current); };
     const enterPip = () => { if (active) setPip(true); };
     const leavePip = () => { if (active) setPip(false); };
     const playInPip = () => { if (active && document.pictureInPictureElement === video) callbacks.current.onPlayingChange(true); };
@@ -150,7 +128,6 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     video.addEventListener('ended', ended);
     video.addEventListener('waiting', waiting);
     video.addEventListener('pause', paused);
-    video.addEventListener('seeking',seeking);
     video.addEventListener('enterpictureinpicture', enterPip);
     video.addEventListener('leavepictureinpicture', leavePip);
     video.addEventListener('play', playInPip);
@@ -168,12 +145,15 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       lastTick = now;
       const position = video.currentTime;
       if (deferredFailure && !slept && canRecover()) { deferredFailure = false; setRetry(value => value + 1); return; }
+      const forwardMs=(position-lastPosition)*1000;
+      if(startupState==='waiting'&&!slept&&hasLoaded&&canRecover()&&!video.paused&&!video.ended&&!video.seeking&&video.readyState>=2&&
+        forwardMs>=250&&forwardMs<=elapsed*1.5+500)startupState='moving';
       if (!slept) syncToLive();
-      if (!hasAdvancing && !slept && canRecover()) {
+      if (startupState!=='proved' && !slept && canRecover()) {
         startupElapsed += elapsed;
-        if (startupElapsed >= startupTimeoutMs) error();
+        if(startupElapsed>=startupTimeoutMs||startupState==='waiting'&&noProgressTimeoutMs!==undefined&&startupElapsed>=noProgressTimeoutMs)fail('timeout');
       }
-      if (slept || !hasLoaded || !canRecover() || video.paused || video.ended) {
+      if (slept || !hasLoaded || !canRecover() || video.paused || video.ended || purpose==='verification'&&startupState!=='proved') {
         lastPosition = position;
         lastProgress = now;
         return;
@@ -219,9 +199,9 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     video.addEventListener('loadedmetadata', onVideoDimensions);
     video.addEventListener('resize', onVideoDimensions);
     if (/\.m3u8(?:\?|$)/i.test(feed.url) && Hls.isSupported()) {
-      hls = new Hls({ ...(purpose === 'verification'
+      hls = new Hls({ workerPath: '/generated/hls.worker.js', ...(purpose === 'verification'
         ? { maxBufferLength: 4, maxMaxBufferLength: 8, maxBufferSize: 8_000_000, backBufferLength: 0 }
-        : { maxBufferLength: 45, backBufferLength: 90 }), liveSyncDurationCount: 3,
+        : { maxBufferLength: 45, maxMaxBufferLength: 60, backBufferLength: 15 }), liveSyncDurationCount: 3,
         ...(startupTimeoutMs > 20000 ? {manifestLoadPolicy:{default:{
           ...Hls.DefaultConfig.manifestLoadPolicy.default,maxLoadTimeMs:startupTimeoutMs-5000,
         }}} : {}) });
@@ -236,7 +216,29 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       const updateLive = (isLive: boolean) => { if (active) { liveRef.current = isLive; setLive(isLive); syncToLive(); } };
       hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => updateLive(data.details.live));
       hls.on(Hls.Events.LEVEL_UPDATED, (_event, data) => updateLive(data.details.live));
-      hls.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) error(); });
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if(!active||failed)return;
+        const code=data.response?.code;
+        const reported=relayOutcome(data.networkDetails)??relayOutcome(data.response?.data);
+        const invalidPlaylist=data.details===Hls.ErrorDetails.MANIFEST_PARSING_ERROR||data.details===Hls.ErrorDetails.LEVEL_PARSING_ERROR;
+        const unsupportedCodec=data.details===Hls.ErrorDetails.BUFFER_ADD_CODEC_ERROR&&
+          (data.error?.name==='NotSupportedError'||!!data.mimeType&&typeof MediaSource!=='undefined'&&!MediaSource.isTypeSupported(data.mimeType));
+        if(purpose==='verification'&&callbacks.current.onDeferred&&
+          (code===429||code===503||data.fatal&&data.type===Hls.ErrorTypes.NETWORK_ERROR&&!invalidPlaylist&&
+            (code===undefined||code===0||code===408||code>=500))){
+          failed=true;
+          hls?.stopLoad();
+          const deferred=reported?.kind==='deferred'?reported:null;
+          callbacks.current.onDeferred(feed.url,deferred?.reason??(code===429?'capacity':'upstream'),
+            {phase:deferred?.phase??'replay',retryAfterMs:deferred?.retryAfterMs??(code===429?2000:30000)});
+          return;
+        }
+        if(data.fatal){
+          fail(reported?.kind==='unavailable'?reported.reason:code===401||code===403?'blocked':code===404||code===410?'not-found':
+            code===415||unsupportedCodec?'unsupported':code===422||data.type===Hls.ErrorTypes.MEDIA_ERROR||invalidPlaylist?'invalid-media':
+              data.type===Hls.ErrorTypes.NETWORK_ERROR?'upstream':'playback',reported?.phase??'replay');
+        }
+      });
       hls.loadSource(feed.url);
       hls.attachMedia(video);
     } else {
@@ -244,6 +246,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     }
     return () => {
       active = false;
+      evidence.stop();
       sourceGeneration.current += 1;
       window.clearInterval(stallCheck);
       window.clearTimeout(reset);
@@ -252,18 +255,15 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       if (applyDefaultRef.current === applyDefault) applyDefaultRef.current = null;
       video.pause();
       video.removeEventListener('playing', ready); video.removeEventListener('loadeddata', loaded);
-      if (frameCallback !== undefined) video.cancelVideoFrameCallback(frameCallback);
-      video.removeEventListener('timeupdate', decodedProgress);
       video.removeEventListener('error', error); video.removeEventListener('ended', ended);
       video.removeEventListener('waiting', waiting); video.removeEventListener('pause', paused);
-      video.removeEventListener('seeking',seeking);
       video.removeEventListener('enterpictureinpicture', enterPip); video.removeEventListener('leavepictureinpicture', leavePip);
       video.removeEventListener('play', playInPip); video.removeEventListener('pause', pauseInPip);
       video.removeEventListener('durationchange', durationChanged); video.removeEventListener('progress', progressed);
       video.removeEventListener('loadedmetadata', onVideoDimensions); video.removeEventListener('resize', onVideoDimensions);
       video.removeAttribute('src'); video.load();
     };
-  }, [feed.url, retry, startupTimeoutMs, syncToLive, purpose]);
+  }, [feed.url, retry, startupTimeoutMs, noProgressTimeoutMs, syncToLive, purpose]);
 
   useEffect(() => {
     const video = ref.current;
@@ -297,15 +297,12 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     sync();
     wasPlayingRef.current = playing;
     return () => { active = false; video.removeEventListener('loadedmetadata', sync); };
-  }, [playing, feed.url, retry, syncToLive]);
-
-  useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 4000); return () => window.clearTimeout(timer); }, [notice]);
+  }, [playing, feed.url, retry, syncToLive, pip]);
 
   useEffect(() => {
     const update = () => {
       const element = document.fullscreenElement;
       setFullscreen(element === shell.current);
-      setPortalContainer(element instanceof HTMLElement ? element : null);
     };
     document.addEventListener('fullscreenchange', update);
     update();
@@ -314,37 +311,34 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
 
   useEffect(() => { setCanPip(document.pictureInPictureEnabled && typeof ref.current?.requestPictureInPicture === 'function'); }, []);
 
-  useEffect(() => () => { if (pointerTimer.current !== null) window.clearTimeout(pointerTimer.current); }, []);
-
-  const hideControls = () => {
-    if (pointerTimer.current !== null) window.clearTimeout(pointerTimer.current);
-    pointerTimer.current = null;
-    if (pointerActiveRef.current) { pointerActiveRef.current = false; setPointerActive(false); }
-  };
-  const showControls = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== 'mouse') return;
-    if (!pointerActiveRef.current) { pointerActiveRef.current = true; setPointerActive(true); }
-    if (pointerTimer.current !== null) window.clearTimeout(pointerTimer.current);
-    pointerTimer.current = window.setTimeout(() => {
-      pointerTimer.current = null;
-      if (pointerActiveRef.current) { pointerActiveRef.current = false; setPointerActive(false); }
-    }, 3000);
-  };
-
   useEffect(() => {
-    if (!focused) queueMicrotask(() => setSettings(false));
     if (!focused && document.fullscreenElement === shell.current) {
-      void document.exitFullscreen().catch(() => setNotice('Press Esc to leave this stream fullscreen.'));
+      void document.exitFullscreen().catch(()=>{});
     }
   }, [focused]);
 
-  const toggleFullscreen = async () => { try { if (document.fullscreenElement === shell.current) await document.exitFullscreen(); else await shell.current?.requestFullscreen(); } catch { setNotice('Fullscreen is unavailable for this stream.'); } };
-  const togglePip = async () => {
-    const video = ref.current;
-    if (!video || !document.pictureInPictureEnabled) return;
-    try { if (document.pictureInPictureElement === video) await document.exitPictureInPicture(); else await video.requestPictureInPicture(); } catch { setNotice('Picture in picture is unavailable for this stream.'); }
+  const setFullscreenActive=async(active:boolean):Promise<PlayerUiResult>=>{
+    try{
+      if(active){if(document.fullscreenElement!==shell.current)await shell.current?.requestFullscreen();}
+      else if(document.fullscreenElement===shell.current)await document.exitFullscreen();
+      return {kind:'applied'};
+    }catch{return {kind:'unavailable'};}
   };
-  const chooseQuality = (index: number) => { if (hlsRef.current) { manualQualityRef.current = true; hlsRef.current.currentLevel = index; setQuality(index); } setSettings(false); };
+  const setPictureInPictureActive=async(active:boolean):Promise<PlayerUiResult>=>{
+    const video = ref.current;
+    if(!video||!document.pictureInPictureEnabled)return {kind:'unavailable'};
+    try{
+      if(active){if(document.pictureInPictureElement!==video)await video.requestPictureInPicture();}
+      else if(document.pictureInPictureElement===video)await document.exitPictureInPicture();
+      return {kind:'applied'};
+    }catch{return {kind:'unavailable'};}
+  };
+  const chooseQuality=async(selection:QualitySelection):Promise<PlayerUiResult>=>{
+    if(!hlsRef.current)return {kind:'unavailable'};
+    const index=selection.kind==='auto'?-1:Number(selection.id);
+    if(index!==-1&&(!Number.isInteger(index)||!qualities.some(level=>level.index===index)))return {kind:'unavailable'};
+    manualQualityRef.current=true;hlsRef.current.currentLevel=index;setQuality(index);return {kind:'applied'};
+  };
   const enablePlayback = () => {
     const video = ref.current; if (!video) return;
     const generation = sourceGeneration.current;
@@ -357,9 +351,13 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     video.muted = false;
     void video.play().then(() => { if (sourceGeneration.current === generation) { needsGesture.current = false; setStatus('ready'); } }).catch(() => { if (sourceGeneration.current === generation) { video.muted = true; setStatus('audio-gesture'); } });
   };
-  return <div ref={shell} className={`native-player ${focused ? 'player-focused' : ''} ${settings ? 'player-settings-open' : ''} ${pointerActive ? 'player-pointer-active' : ''}`} onPointerEnter={showControls} onPointerMove={showControls} onPointerLeave={hideControls}>
+  const controlsQuality:PlayerControlsQuality=usesHls?{
+    kind:'selectable',automatic:true,
+    selection:quality===-1?{kind:'auto'}:{kind:'level',id:QualityLevelIdSchema.parse(String(quality))},
+    options:qualities.map(level=>({id:QualityLevelIdSchema.parse(String(level.index)),label:level.label,height:null,bitrate:null})),
+  }:{kind:'message',text:`${nativeHeight?`${nativeHeight}p · `:''}${nativeHls?'Managed by your browser':'This feed has one quality'}`};
+  return <div ref={shell} className={`native-player ${focused?'player-focused':''}`}>
     <video ref={ref} playsInline autoPlay={playing} muted={!audible} aria-label={feed.label}/>
-    {notice && <div className="player-notice" role="status">{notice}</div>}
     {status === 'loading' && <div className="player-message"><LoaderCircle className="spin"/><span>Connecting to your feed…</span></div>}
     {status === 'buffering' && <div className="player-buffering" role="status"><LoaderCircle className="spin" size={20}/><span>Buffering</span></div>}
     {status === 'gesture' && playing && <button className="player-message gesture" onClick={enablePlayback}><Play/><span>{audible ? 'Click to enable audio' : 'Click to start playback'}</span></button>}
@@ -367,27 +365,11 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     {status === 'ended' && playing && <button className="player-message gesture" onClick={() => { if (ref.current) { ref.current.currentTime = 0; enablePlayback(); } }}><RotateCcw/><span>Replay video</span></button>}
     {status === 'error' && <div className="player-message"><AlertCircle/><strong>Feed couldn&apos;t play</strong><p>{errorHint || 'Check the URL, availability, and whether the provider allows playback here.'}</p><button className="button" onClick={() => onRetry ? onRetry(feed.url) : setRetry(value => value + 1)}>Try again</button></div>}
     {status === 'ready' && !focused && <span className="feed-label"><Radio size={12}/>{feed.label}</span>}
-    {focused && status !== 'error' && <div className="player-controls" role="group" aria-label="Focused stream controls">
-      <div className="player-control-row">
-        <button aria-label={playing ? 'Pause stream' : 'Play stream'} title={playing ? 'Pause focused game (Space)' : 'Play focused game (Space)'} onClick={() => callbacks.current.onPlayingChange(!playing)}>{playing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button>
-        <button aria-label={audible ? 'Mute stream' : 'Unmute stream'} title="Toggle focused audio (M)" onClick={() => callbacks.current.onAudibleChange(!audible)}>{audible ? <Volume2 size={17}/> : <VolumeX size={17}/>}</button>
-        <input className="player-volume" type="range" min="0" max="100" step="1" value={volume} aria-label="Stream volume" onChange={event => callbacks.current.onVolumeChange(Number(event.target.value))}/>
-        <span className="player-source">{feed.label}</span>
-        {live && <span className="player-live"><Radio size={10}/>LIVE</span>}
-        {canPip && <button aria-label={pip ? 'Exit picture in picture' : 'Picture in picture'} title="Picture in picture" onClick={() => void togglePip()}><PictureInPicture2 size={17}/></button>}
-        <Popover.Root open={settings} onOpenChange={setSettings}>
-          <Popover.Trigger asChild><button aria-label="Video quality" title="Quality settings"><Settings2 size={17}/></button></Popover.Trigger>
-          <Popover.Portal container={portalContainer ?? undefined}>
-            <Popover.Content className="player-settings" side="top" align="end" sideOffset={6} collisionPadding={8} aria-label="Playback quality">
-              <strong>Quality</strong>
-              <div className="player-settings-options" role="group" aria-label="Playback quality options">
-                {usesHls ? <><button className={quality === -1 ? 'selected' : ''} onClick={() => chooseQuality(-1)}>Auto {quality === -1 ? '✓' : ''}</button>{qualities.map(level => <button key={level.index} className={quality === level.index ? 'selected' : ''} onClick={() => chooseQuality(level.index)}>{level.label} {quality === level.index ? '✓' : ''}</button>)}</> : <span>{nativeHeight ? `${nativeHeight}p · ` : ''}{nativeHls ? 'Managed by your browser' : 'This feed has one quality'}</span>}
-              </div>
-            </Popover.Content>
-          </Popover.Portal>
-        </Popover.Root>
-        <button aria-label={fullscreen ? 'Exit fullscreen stream' : 'Fullscreen stream'} title="Fullscreen focused game" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize size={17}/> : <Maximize size={17}/>}</button>
-      </div>
-    </div>}
+    {focused&&status!=='error'&&purpose!=='verification'&&<PlayerControlsSurface interactionRoot={shell} label={feed.label}
+      playing={playing} audible={audible} volume={volume} playback={live?'live':'unknown'} quality={controlsQuality}
+      pictureInPicture={canPip?{kind:'available',active:pip}:{kind:'unsupported'}} fullscreen={fullscreen}
+      onPlayingChange={onPlayingChange} onAudibleChange={onAudibleChange}
+      onVolumeChange={onVolumeChange} onQualityChange={chooseQuality}
+      onPictureInPictureChange={setPictureInPictureActive} onFullscreenChange={setFullscreenActive}/>}
   </div>;
 }

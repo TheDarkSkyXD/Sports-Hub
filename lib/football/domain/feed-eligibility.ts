@@ -1,4 +1,4 @@
-import { isCombatGame, isWrestlingGame, type Game } from '../shared.ts';
+import { isWrestlingGame, isWrestlingLeague, type Game } from '../shared.ts';
 
 const calendar = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric',
@@ -42,14 +42,14 @@ export function feedDateEligible(kickoff: number, now: number): boolean {
 export function feedEligible(game: Pick<Game, 'lifecycle' | 'date' | 'finalObservedAt'> & {league?:Game['league']}, now: number): boolean {
   if (game.finalObservedAt !== undefined || game.lifecycle === 'final') return false;
   if (game.lifecycle === 'live') return true;
-  if ((game.league==='wwe'||game.league==='tna')&&game.lifecycle==='unknown'&&game.date!==undefined) {
+  if (game.league!==undefined&&isWrestlingLeague(game.league)&&game.lifecycle==='unknown'&&game.date!==undefined) {
     const start=Date.parse(game.date);
     return Number.isFinite(start)&&now>=start&&now-start<=6*60*60_000;
   }
   return game.lifecycle === 'scheduled' && game.date !== undefined && feedDateEligible(Date.parse(game.date), now);
 }
 export function combatListingFeedEligible(game: Game, now:number):boolean {
-  if(!(isCombatGame(game)||isWrestlingGame(game))||!['boxing','wwe','tna'].includes(game.league)||game.lifecycle!=='unknown'||game.finalObservedAt!==undefined)return false;
+  if(!(game.league==='boxing'||isWrestlingGame(game))||game.lifecycle!=='unknown'||game.finalObservedAt!==undefined)return false;
   const kickoff=Date.parse(game.date);
   const showDay=feedCalendarDay(kickoff),today=feedCalendarDay(now);
   return Number.isFinite(kickoff)&&kickoff<=now&&now-kickoff<=6*60*60_000&&

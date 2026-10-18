@@ -218,7 +218,7 @@ for (const result of [{ kind: 'playable', proof:{kind:'advancing-video',version:
     try {
       await run.publish(0, games[0]);
       run.hold();
-      await run.advance(300_000);
+      await run.advance(1_800_000);
       assert.equal(run.pending.length, 1);
       assert.equal((await run.snapshot()).games.find(game => game.gameId === games[0].id)?.workingChoiceCount, 0);
       const oldResult = run.pending[0];

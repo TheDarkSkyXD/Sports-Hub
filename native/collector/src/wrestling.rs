@@ -20,22 +20,45 @@ pub(crate) fn league(title: &str) -> Option<League> {
         .is_match(&label)
     {
         Some(League::Tna)
+    } else if label.starts_with("aew ") && label.len() > 4
+        || label.starts_with("all elite wrestling ") && label.len() > 20 {
+        Some(League::Aew)
     } else {
         None
     }
 }
 
-pub(crate) fn wwe_ppv_route(path: &str, kickoff: i64) -> bool {
+pub(crate) fn ppv_route(path: &str, promotion: League, id: i64, kickoff: i64) -> bool {
+    static SLUG: OnceLock<Regex> = OnceLock::new();
+    if SLUG
+        .get_or_init(|| Regex::new(r"^[a-z0-9]+(?:-[a-z0-9]+)*-[1-9][0-9]{0,18}$").unwrap())
+        .is_match(path)
+    {
+        return path
+            .rsplit_once('-')
+            .is_some_and(|(_, value)| value == id.to_string())
+            && league(&path.replace('-', " ")).is_none_or(|league| league == promotion);
+    }
+    dated_ppv_route(path, promotion, kickoff)
+}
+
+pub(crate) fn dated_ppv_route(path: &str, promotion: League, kickoff: i64) -> bool {
     static ROUTE: OnceLock<Regex> = OnceLock::new();
-    let Some(date) = ROUTE
-        .get_or_init(|| Regex::new(r"^wwe/(\d{4}-\d{2}-\d{2})$").unwrap())
+    let Some(route) = ROUTE
+        .get_or_init(|| Regex::new(r"^(wwe|tna|aew)/(\d{4}-\d{2}-\d{2})$").unwrap())
         .captures(path)
-        .map(|capture| capture[1].to_string())
     else {
         return false;
     };
-    DateTime::<Utc>::from_timestamp_millis(kickoff)
-        .is_some_and(|at| at.with_timezone(&Chicago).format("%Y-%m-%d").to_string() == date)
+    let expected = match &route[1] {
+        "wwe" => League::Wwe,
+        "tna" => League::Tna,
+        "aew" => League::Aew,
+        _ => unreachable!(),
+    };
+    promotion == expected
+        && DateTime::<Utc>::from_timestamp_millis(kickoff)
+            .is_some_and(|at| at.with_timezone(&Chicago).format("%Y-%m-%d").to_string() == route[2])
 }
 
 #[cfg(test)]
@@ -61,22 +84,49 @@ mod tests {
         ] {
             assert_eq!(league(title), Some(League::Tna), "{title}");
         }
-        for title in [
-            "AEW Grand Slam: Collision",
-            "Raw",
-            "Impact",
-            "The Impact of Wrestling",
-            "WWE",
-        ] {
+        for title in ["Raw", "Impact", "The Impact of Wrestling", "WWE"] {
             assert_eq!(league(title), None, "{title}");
         }
+        assert_eq!(league("AEW Grand Slam: Collision"), Some(League::Aew));
     }
 
     #[test]
     fn ppv_route_uses_chicago_broadcast_date() {
-        assert!(wwe_ppv_route("wwe/2026-10-09", 1_791_590_400_000));
-        assert!(!wwe_ppv_route("wwe/2026-10-10", 1_791_590_400_000));
-        assert!(!wwe_ppv_route("wwe/2026-10-09/extra", 1_791_590_400_000));
-        assert!(!wwe_ppv_route("wwe/2026-02-30", 1_791_590_400_000));
+        assert!(ppv_route(
+            "wwe/2026-10-09",
+            League::Wwe,
+            29976,
+            1_791_590_400_000
+        ));
+        assert!(!ppv_route(
+            "wwe/2026-10-10",
+            League::Wwe,
+            29976,
+            1_791_590_400_000
+        ));
+        assert!(!ppv_route(
+            "wwe/2026-10-09/extra",
+            League::Wwe,
+            29976,
+            1_791_590_400_000
+        ));
+        assert!(!ppv_route(
+            "wwe/2026-02-30",
+            League::Wwe,
+            29976,
+            1_791_590_400_000
+        ));
+        assert!(ppv_route(
+            "tna-bound-for-glory-30225",
+            League::Tna,
+            30225,
+            1_791_750_600_000
+        ));
+        assert!(!ppv_route(
+            "tna-bound-for-glory-30225",
+            League::Tna,
+            30226,
+            1_791_750_600_000
+        ));
     }
 }

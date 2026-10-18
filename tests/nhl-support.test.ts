@@ -79,12 +79,15 @@ test('NHL providers publish exact locators and reject mixed-sport player routes'
   const ppv=SOURCES.find(source=>source.id==='ppv');
   const buffstream=SOURCES.find(source=>source.id==='buffstream-nhl');
   assert.ok(streamcenter&&ppv&&buffstream);
-  const link='/api/stream-link/iframe/event-espn-league-hockey-nhl-401892456/dbf33b39-195b-4ff1-b5c1-23447b0980ec';
-  const card=`<article class="game-card-row"><p class="game-card-league">NHL</p><time datetime="${new Date(now).toISOString()}"></time><span class="game-card-team" title="Edmonton Oilers"></span><span class="game-card-team" title="Anaheim Ducks"></span><a class="game-card-open-link" href="${link}">English</a></article>`;
+  const id='event-espn-league-hockey-nhl-401892456';
+  const event={id,title:'Edmonton Oilers vs Anaheim Ducks',category:'hockey',date:now,
+    teams:{home:{name:'Edmonton Oilers'},away:{name:'Anaheim Ducks'}},sources:[{source:'iframe',id}]};
+  const card=JSON.stringify([event]);
   const row=parseListings(streamcenter,card,now);
   assert.equal(row.outcome,'parsed');
   assert.deepEqual(matchObservation(row.observations[0],[nhl],now),{kind:'matched',gameId:nhl.id});
-  const streamPlayers=compatiblePlayers(nhl.id,row.observations[0],'<iframe src="https://streame.center/embed/hls.php?stream=nhl52"></iframe>');
+  const streamPlayers=compatiblePlayers(nhl.id,row.observations[0],JSON.stringify({event,streams:[{
+    id:'dbf33b39-195b-4ff1-b5c1-23447b0980ec',streamNo:1,source:'iframe',webUrl:'https://streamcenter.st/watch/'+id,embedUrl:'https://streame.center/embed/ch52.php'}]}));
   assert.equal(streamPlayers.length,1);
   assert.deepEqual(streamPlayers[0].locator,{provider:'streamcenter',eventId:'401892456',linkId:'dbf33b39-195b-4ff1-b5c1-23447b0980ec',league:'nhl'});
   assert.equal(CandidateLocatorSchema.safeParse(streamPlayers[0].locator).success,true);

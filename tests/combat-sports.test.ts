@@ -7,6 +7,7 @@ import {combatListingFeedEligible} from '../lib/football/domain/feed-eligibility
 import {workingFeedMatches,workingFeedOwner} from '../lib/football/domain/working-feed.ts';
 import {CatalogStreamLocatorSchema,GameSchema,MatchupGameSchema,isCombatGame} from '../lib/football/shared.ts';
 import {parseScoreboard} from '../lib/sunday.ts';
+import {gameTiming} from '../lib/game-timing.ts';
 
 const at=Date.parse('2026-10-09T18:00:00Z');
 const cardDate='2026-10-10T21:00:00Z';
@@ -92,6 +93,26 @@ test('boxing schedule deduplicates mirrors by card and day',async()=>{
   await assert.rejects(readSchedule(SCHEDULES.find(row=>row.id==='boxing')!,at,new AbortController().signal,undefined,
     undefined,undefined,undefined,async url=>JSON.stringify(url.includes('streamed.st')?event:shifted)),
   /source-schedule-conflicting-event/);
+});
+
+test('dated boxing cards count down before their start and show in progress from their start',async()=>{
+  const start=Date.parse('2026-10-17T16:00:00Z');
+  const partition=SCHEDULES.find(row=>row.id==='boxing');assert.ok(partition);
+  const observations=parseListings(source('livesportpro'),
+    listing('boxing','Volkovs vs McIntyre',start,'volkovs-vs-mcintyre'),start-1000).observations;
+  assert.equal(observations.length,1);
+  const offline=async()=>{throw new Error('The saved listing should be used');};
+  for(const [now,status,lifecycle,detail] of [
+    [start-1000,'pre','scheduled','Scheduled'],[start,'in','live','In progress'],
+    [start+60*60_000,'in','live','In progress'],
+  ] as const){
+    const result=await readSchedule(partition,now,new AbortController().signal,undefined,undefined,undefined,
+      {snapshot:{at:now,observations}},offline);
+    assert.equal(result.games.length,1);
+    const game=result.games[0];
+    assert.deepEqual([game.status,game.lifecycle,game.detail],[status,lifecycle,detail],new Date(now).toISOString());
+    if(now<start)assert.deepEqual(gameTiming(game,now),{kind:'counting',start,remainingSeconds:1});
+  }
 });
 
 test('combat owner rejects a reused game ID with a different card identity',()=>{

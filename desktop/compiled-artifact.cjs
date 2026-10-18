@@ -20,23 +20,40 @@ async function fileHash(file) {
 
 async function inventory(root) {
   const files = [];
+  const pending = [];
   const realRoot = await realpath(root);
+  async function contained(name) {
+    const relativeTarget = path.relative(realRoot, await realpath(path.join(root, name)));
+    if (relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget))
+      throw new Error(`Standalone entry leaves its build: ${name}`);
+  }
   async function visit(directory) {
     for (const entry of await readdir(path.join(root, directory), { withFileTypes: true })) {
       const name = path.posix.join(directory.replaceAll('\\', '/'), entry.name);
       if (name === completionFile) continue;
-      const absolute = path.join(root, name);
-      const relativeTarget = path.relative(realRoot, await realpath(absolute));
-      if (relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget))
-        throw new Error(`Standalone entry leaves its build: ${name}`);
-      if (entry.isDirectory()) await visit(name);
-      else if (entry.isFile()) {
-        const details = await stat(absolute);
-        files.push([name, details.size, await fileHash(absolute)]);
-      } else throw new Error(`Unsupported standalone entry: ${name}`);
+      if (entry.isFile()) pending.push(name);
+      else {
+        await contained(name);
+        if (entry.isDirectory()) await visit(name);
+        else throw new Error(`Unsupported standalone entry: ${name}`);
+      }
     }
   }
   await visit('');
+  const results = await Promise.allSettled(Array.from({ length: 4 }, async () => {
+    try {
+      while (pending.length) {
+        const name = pending.pop();
+        await contained(name);
+        const details = await stat(path.join(root, name));
+        files.push([name, details.size, await fileHash(path.join(root, name))]);
+      }
+    } catch (error) {
+      pending.length = 0;
+      throw error;
+    }
+  }));
+  for (const result of results) if (result.status === 'rejected') throw result.reason;
   files.sort(([left], [right]) => left.localeCompare(right));
   return files;
 }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import { load } from 'cheerio';
 
@@ -26,6 +27,22 @@ test('the published offline player banner ends observation only after its docume
   assert.equal(isOfflinePlayerState({ ...state, title: 'Technical Issue' }), false);
   assert.equal(isOfflinePlayerState({ ...state, status: '' }), false);
   assert.equal(isOfflinePlayerState({ ...state, description: 'The player is loading.' }), false);
+});
+
+test('the current offline banner requires its complete published message and no video',()=>{
+  const select=load(readFileSync(new URL('./fixtures/sd0-offline-20261018.html',import.meta.url),'utf8'));
+  const state={title:select('title').text(),readyState:'complete',hasVideo:false,
+    status:select('.banner-container .status-badge span').text().trim(),
+    description:select('.banner-container .overlay-msg').text().trim()};
+  assert.equal(isOfflinePlayerState(state),true);
+  for(const changed of [{readyState:'loading'},{hasVideo:true},{title:'Watch Live'},{status:'Online'},
+    {description:'The player is loading.'}])assert.equal(isOfflinePlayerState({...state,...changed}),false);
+  const player={url:'https://dervlin.me/sd0embed/american-football?pid=10&v=fhdnfl3&player=jw'};
+  const event='https://strikeout.im/nfl/2/philadelphia-eagles-vs-carolina-panthers-stream';
+  assert.equal(offlinePlayerFrame(event,[player]),player);
+  assert.equal(offlinePlayerFrame(event,[player,{...player}]),null);
+  assert.equal(offlinePlayerFrame(event,[{url:player.url.replace('dervlin.me','ads.example')}]),null);
+  assert.equal(offlinePlayerFrame('https://vipbox.fm/live/nba/portland-vs-golden-state-1',[player]),null);
 });
 
 test('offline detection applies only to one named player under its known event-page source', () => {

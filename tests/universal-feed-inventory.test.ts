@@ -69,7 +69,7 @@ test('paid, unclassified and legacy StreamEast details cannot claim no published
       events:[{...event,detail:{kind:'collected',at,servers:[],...(publication?{publication}:{})}}],rejectedGames:[]});
     const snapshot=sourceInventory({...base,sources:[{id:'streameast',url:'https://v2.streameast.ga/nfl-streams/',
       family:'streameast',kind:'browser-catalog',leagues:['nfl']}],streameastCatalog:{current:{catalog,receivedAt:at},lastComplete:null,previous:null}});
-    assert.deepEqual(snapshot.sources[0].links[0].evidence,{kind:'missing',checkedAt:at,reason,retryAt:null});
+    assert.deepEqual(snapshot.sources[0].links[0].evidence,{kind:'missing',checkedAt:at,reason,retryAt:at+30*60_000});
     assert.equal(snapshot.sources[0].scopes[0].feeds.kind,publication&&reason==='no-published-player'?'no-feeds':'incomplete');
   }
   const unresolved=StreameastCatalogSchema.parse({runId:'11111111-1111-4111-8111-111111111111',sequence:0,
@@ -79,7 +79,61 @@ test('paid, unclassified and legacy StreamEast details cannot claim no published
   const snapshot=sourceInventory({...base,sources:[{id:'streameast',url:'https://v2.streameast.ga/nfl-streams/',
     family:'streameast',kind:'browser-catalog',leagues:['nfl']}],streameastCatalog:{current:{catalog:unresolved,receivedAt:at},lastComplete:null,previous:null}});
   assert.equal(snapshot.sources[0].scopes[0].feeds.kind,'incomplete');
-  assert.deepEqual(snapshot.sources[0].links[0].evidence,{kind:'missing',checkedAt:at,reason:'no-compatible-media',retryAt:null});
+  assert.deepEqual(snapshot.sources[0].links[0].evidence,{kind:'missing',checkedAt:at,reason:'no-compatible-media',retryAt:at+30*60_000});
+});
+
+for(const sourceId of ['sportsurge-v2','streameast'] as const) {
+    for(const outcome of ['empty','failed','unsupported'] as const) {
+      test(`${sourceId} ${outcome} detail exposes its automatic retry deadline`,()=>{
+        const delay=outcome==='failed'?300_000:30*60_000;
+        const checkedAt=at+10_000;
+        const detail=outcome==='failed'?{kind:'failed',at:checkedAt,reason:'timeout'}:
+          {kind:'collected',at:checkedAt};
+        const catalogBase={runId:'11111111-1111-4111-8111-111111111111',sequence:0,startedAt:at,
+          state:{kind:'collecting'},categories:{nfl:{kind:'collected',at},ncaaf:{kind:'pending'}},rejectedGames:[]};
+        const event={league:'nfl',title:'Away vs Home',teams:['Away','Home'],kickoff:at+3600_000};
+        const catalog=sourceId==='sportsurge-v2'?
+          SportsurgeCatalogSchema.parse({...catalogBase,catalogIssues:[],events:[{...event,id:'nfl:100',
+            url:'https://v2.sportsurge.net/watch-100-nfl-away-vs-home/',sourceStatus:'upcoming',advertisedLinkCount:0,
+            detail:outcome==='failed'?detail:{...detail,providers:outcome==='unsupported'?
+              [{id:'1',label:'Unsupported provider',observedAt:checkedAt,destination:{kind:'rejected',reason:'insecure',display:'fixture.example'}}]:[]}}]}):
+          StreameastCatalogSchema.parse({...catalogBase,events:[{...event,id:'nfl:100',
+            url:'https://v2.streameast.ga/nfl/away-vs-home/',espnEventId:null,
+            detail:outcome==='failed'?detail:{...detail,publication:{premium:0,unknown:0},servers:outcome==='unsupported'?
+              [{id:'1',label:'Unsupported server',url:'https://v2.streameast.ga/nfl/away-vs-home/1',availability:{kind:'free-unsupported'}}]:[]}}]});
+        const input={...base,at:checkedAt,sources:[{id:sourceId,
+          url:sourceId==='sportsurge-v2'?'https://v2.sportsurge.net/':'https://v2.streameast.ga/',
+          family:sourceId==='sportsurge-v2'?'sportsurge':'streameast',kind:'browser-catalog' as const,leagues:['nfl'] as const}]};
+        const snapshot=sourceId==='sportsurge-v2'?
+          sourceInventory({...input,sportsurgeCatalog:{current:{catalog:SportsurgeCatalogSchema.parse(catalog),receivedAt:checkedAt},lastComplete:null,previous:null}}):
+          sourceInventory({...input,streameastCatalog:{current:{catalog:StreameastCatalogSchema.parse(catalog),receivedAt:checkedAt},lastComplete:null,previous:null}});
+        assert.deepEqual(snapshot.sources[0].links[0].evidence,outcome==='failed'?
+          {kind:'failed',checkedAt,failure:'timed-out',retryAt:checkedAt+delay}:
+          {kind:'missing',checkedAt,reason:outcome==='unsupported'?'unsupported-player':'no-published-player',retryAt:checkedAt+delay});
+      });
+    }
+}
+
+test('coordinator inventory follows automatic browser detail discovery',async()=>{
+  const directory=mkdtempSync(join(tmpdir(),'browser-catalog-retry-'));
+  const catalog=StreameastCatalogSchema.parse({runId:'11111111-1111-4111-8111-111111111111',sequence:0,
+    startedAt:at,state:{kind:'collecting'},categories:{nfl:{kind:'collected',at},ncaaf:{kind:'pending'}},
+    events:[{id:'nfl:100',url:'https://v2.streameast.ga/nfl/away-vs-home/',league:'nfl',title:'Away vs Home',
+      teams:['Away','Home'],kickoff:at+3600_000,espnEventId:null,
+      detail:{kind:'collected',at,servers:[],publication:{premium:0,unknown:0}}}],rejectedGames:[]});
+  const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{now:()=>at,
+    sources:[{id:'streameast',url:'https://v2.streameast.ga/',family:'streameast',kind:'browser-catalog',leagues:['nfl']}],
+    schedules:[{id:'nfl',league:'nfl',path:'football/nfl',group:null}],
+    readSchedule:async()=>({league:'nfl',games:[game],at})});
+  try {
+    await coordinator.refresh();
+    const accepted=await coordinator.command({kind:'streameast-catalog',catalog});
+    assert.equal(accepted.kind,'catalog-ack');
+    const reply=await coordinator.command({kind:'sources'});
+    if(reply.kind!=='sources')assert.fail('expected sources reply');
+    assert.deepEqual(reply.snapshot.sources[0].links[0].evidence,
+      {kind:'missing',checkedAt:at,reason:'no-published-player',retryAt:at+30*60_000});
+  } finally {await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 
 test('duplicate provider event identities prevent a complete empty scope',()=>{
@@ -188,7 +242,7 @@ test('a later source cycle proceeds while a saved schedule refresh remains pendi
     await coordinator.refresh(true);
     for(let index=0;index<30&&sourceReads<1;index++)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.equal(sourceReads,1);
-    clock+=300_001;
+    clock+=30*60_000;
     const refreshing=coordinator.refresh(true);
     for(let index=0;index<30&&sourceReads<2;index++)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.equal(sourceReads,2);
@@ -293,7 +347,7 @@ test('the common pipeline collects today and tomorrow across every supported lea
     const common={id:`${league}-${day+1}`,league,date,partitions:[league],status:'pre',lifecycle:'scheduled',detail:'Scheduled'};
     return GameSchema.parse(isMotorsportsLeague(league)?{...common,name:`${league} Fixture Grand Prix Race`,
       race:{eventId:'1',sessionId:String(day+1),session:'race',round:'Fixture Grand Prix'}}:
-      isWrestlingLeague(league)?{...common,name:league==='wwe'?'WWE NXT':'TNA Impact',wrestling:{eventId:String(day+1)}}:
+      isWrestlingLeague(league)?{...common,name:{wwe:'WWE NXT',tna:'TNA Impact',aew:'AEW Dynamite',wrestling:'NJPW Dominion'}[league],wrestling:{eventId:String(day+1)}}:
       league==='ufc'||league==='boxing'?{...common,
         name:league==='ufc'?`UFC ${day+300}: Fixture Card`:league==='boxing'?`Boxing Fixture Card ${day+1}`:
           league==='wwe'?'WWE Friday Night Smackdown':'TNA Impact',
@@ -318,14 +372,14 @@ test('the common pipeline collects today and tomorrow across every supported lea
       const reply=await coordinator.command({kind:'sources'});
       if(reply.kind!=='sources')assert.fail('expected sources reply');
       if(index===249)last=JSON.stringify(reply.snapshot.games.map(row=>({id:row.gameId,feeds:row.feeds,links:row.sourceLinks.length})));
-      if(reply.snapshot.games.length===30&&reply.snapshot.games.every(row=>row.feeds.kind==='feeds'&&row.feeds.mediaVerified===1)){
+      if(reply.snapshot.games.length===34&&reply.snapshot.games.every(row=>row.feeds.kind==='feeds'&&row.feeds.mediaVerified===1)){
         assert.deepEqual(reply.snapshot.games.map(row=>row.gameId).sort(),[
-          'boxing-1','boxing-2',
+          'aew-1','aew-2','boxing-1','boxing-2',
           'f1-1','f1-2','mlb-1','mlb-2','motogp-1','motogp-2','motorsport-1','motorsport-2',
           'nascar-cup-1','nascar-cup-2','nascar-truck-1','nascar-truck-2','nba-1','nba-2',
           'ncaaf-1','ncaaf-2',
-          'nfl-1','nfl-2','nhl-1','nhl-2','tna-1','tna-2','ufc-1','ufc-2','wnba-1','wnba-2','wwe-1','wwe-2']);
-        assert.equal(reply.snapshot.sources[0].scopes.length,15);
+          'nfl-1','nfl-2','nhl-1','nhl-2','tna-1','tna-2','ufc-1','ufc-2','wnba-1','wnba-2','wrestling-1','wrestling-2','wwe-1','wwe-2']);
+        assert.equal(reply.snapshot.sources[0].scopes.length,17);
         return;
       }
       await new Promise<void>(resolve=>setImmediate(resolve));

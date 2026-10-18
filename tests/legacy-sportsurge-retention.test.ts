@@ -76,9 +76,9 @@ test('legacy Sportsurge rereads a live page with missing playable siblings after
     await run.refresh();
     for(let turn=0;turn<20;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.equal(run.detailReads,1);
-    run.advance(60_000);
+    run.advance(26*60_000);
     await run.refresh();
-    await until(async()=>run.detailReads===2,'detail retried at five minutes');
+    await until(async()=>run.detailReads===2,'detail retried at thirty minutes');
     run.advance(31*60_000);
     await run.refresh();
     await until(async()=>run.detailReads===3&&(await run.choices()).length===3&&
@@ -115,7 +115,7 @@ test('legacy Sportsurge keeps complete live proof while rereading detail after r
     await run.refresh();
     await until(async()=>{const rows=await run.choices();return rows.length===3&&
       rows.every(row=>row.availability.kind==='playable');},'three playable players');
-    run.advance(31*60_000);
+    run.advance(31*60_000+1);
     run.holdNetwork();
     await run.restart();
     const pendingRefresh=run.refresh();

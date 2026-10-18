@@ -21,12 +21,17 @@ export function sameStreameastEvent(left:StreameastCatalog['events'][number],rig
     left.kickoff===right.kickoff&&JSON.stringify(left.teams)===JSON.stringify(right.teams)&&left.espnEventId===right.espnEventId;
 }
 
-export function sanitizeStreameastCatalog(input:StreameastCatalog,now=Date.now(),history:readonly StoredStreameastCatalog[]=[]):StreameastCatalog|null {
+export function sanitizeStreameastCatalog(input:StreameastCatalog,now=Date.now(),history:readonly StoredStreameastCatalog[]=[],finished?:(event:StreameastCatalog['events'][number])=>boolean):StreameastCatalog|null {
   const catalog=freeCatalog(input);
   if(catalog.startedAt>now+60_000||catalog.startedAt<now-24*3600_000)return null;
   const current=(at:number)=>at>=catalog.startedAt&&at<=now+60_000;
   if(catalog.state.kind!=='collecting'&&!current(catalog.state.at))return null;
-  if(Object.values(catalog.categories).some(category=>category.kind!=='pending'&&!current(category.at)))return null;
+  if(Object.entries(catalog.categories).some(([league,category])=>category.kind!=='pending'&&!current(category.at)&&!(category.kind==='collected'&&history.some(stored=>{
+    const prior=stored.catalog.categories[league];
+    const previous=stored.catalog.events.filter(event=>event.league===league),incoming=catalog.events.filter(event=>event.league===league);
+    return prior?.kind==='collected'&&prior.at===category.at&&incoming.every(event=>previous.some(row=>sameStreameastEvent(event,row)))&&
+      previous.every(event=>incoming.some(row=>sameStreameastEvent(event,row))||finished?.(event)===true);
+  }))))return null;
   let latest=catalog.startedAt;
   for(const category of Object.values(catalog.categories))if(category.kind!=='pending')latest=Math.max(latest,category.at);
   if(Object.keys(catalog.categories).some(league=>!browserCategory('streameast',league)))return null;
@@ -36,6 +41,10 @@ export function sanitizeStreameastCatalog(input:StreameastCatalog,now=Date.now()
     let url:URL;
     try {url=new URL(event.url);} catch{return null;}
     const match=EVENT_PATH.exec(url.pathname);
+    if(event.league==='motorsport') {
+      const timestamp=/^\/other-events\/[a-z0-9]+(?:-[a-z0-9]+)*-([0-9]{10})\/$/.exec(url.pathname)?.[1];
+      if(!timestamp||event.kickoff!==Number(timestamp)*1000||event.teams!==null)return null;
+    }
     if(url.origin!=='https://v2.streameast.ga'||url.username||url.password||url.search||url.hash||!match||
       match[1] !== browserCategory('streameast',event.league)?.pathCode || !catalog.categories[event.league] || !event.id.startsWith(`${event.league}:`)||urls.has(url.href)||ids.has(event.id))return null;
     urls.add(url.href);ids.add(event.id);
@@ -119,6 +128,8 @@ function publicReason(value:string):SourceMatchReason {
 export function streameastCatalogView(stored:StoredStreameastCatalog,games:Game[],now:number):StreameastCatalogView {
   const {catalog,receivedAt}=stored;
   const match=createSourceEventMatcher(games);
+  const nascarGames=new Map(games.filter(game=>game.league==='nascar-cup'||game.league==='nascar-truck')
+    .map(game=>[game.id,game]));
   const finished=createFinishedGameMatcher(games);
   const activeEvents=catalog.events.filter(event=>{
     const category=catalog.categories[event.league];
@@ -131,7 +142,8 @@ export function streameastCatalogView(stored:StoredStreameastCatalog,games:Game[
     const observedAt=category.kind==='pending'?catalog.startedAt:category.at;
     const observation=streameastObservation(event,observedAt);
     const result=match(observation,streameastEvidence(event),now).match;
-    return {id:event.id,title:event.title,url:event.url,league:event.league,
+    const nascar=event.league==='motorsport'&&result.kind==='matched'?nascarGames.get(result.gameId):undefined;
+    return {id:event.id,title:nascar?.name??event.title,url:event.url,league:nascar?.league??event.league,
       gameId:result.kind==='matched'?result.gameId:null,
       matchReason:result.kind==='unmatched'?publicReason(result.reason):null,detail:freeDetail(event.detail)};
   });
@@ -142,7 +154,9 @@ export function streameastCatalogView(stored:StoredStreameastCatalog,games:Game[
   const compatible=new Set(views.flatMap((view,index)=>view.gameId&&activeEvents[index].detail.kind==='collected'?
     streameastCandidates(activeEvents[index],view.gameId).map(candidate=>`${view.gameId}:${candidate.id}`):[]));
   return {runId:catalog.runId,startedAt:catalog.startedAt,receivedAt,interrupted:catalog.state.kind==='collecting'&&now-receivedAt>180000,
-    state:catalog.state,categories:catalog.categories,gameCount:activeEvents.length,
+    state:catalog.state,categories:{...catalog.categories,...(catalog.categories.motorsport?{
+      'nascar-cup':catalog.categories.motorsport,'nascar-truck':catalog.categories.motorsport,
+    }:{})},gameCount:activeEvents.length,
     collectedDetails:details.filter(detail=>detail.kind==='collected').length,
     pendingDetails:details.filter(detail=>detail.kind==='pending').length,
     failedDetails:details.filter(detail=>detail.kind==='failed').length,

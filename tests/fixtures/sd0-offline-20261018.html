@@ -1,0 +1,102 @@
+<!doctype html><title>Stream Player - Offline</title><div class="banner-container">
+
+    <!-- Player Wrapper - 16:9 Aspect Ratio -->
+    <div class="relative w-full aspect-video max-w-6xl rounded-lg sm:rounded-xl overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.6)] border border-slate-700/50 bg-black group flex flex-col justify-between">
+
+        
+        <div class="absolute inset-0 z-0">
+            
+            <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800 via-slate-900 to-black"></div>
+            
+            <div class="absolute inset-0 opacity-[0.03] bg-[radial-gradient(circle_at_center,_#ffffff_1px,_transparent_1px)]" style="background-size: 24px 24px;"></div>
+
+            
+            <div class="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,0.9)]"></div>
+        </div>
+
+        
+        <div class="scanlines"></div>
+
+        <div class="top-bar relative z-20 flex justify-between items-start w-full bg-gradient-to-b from-black/80 to-transparent transition-opacity duration-300 opacity-0 group-hover:opacity-100">
+            <h2 class="stream-title font-semibold tracking-wide drop-shadow-md text-slate-200 truncate pr-4">
+                Livestream
+            </h2>
+            <div class="status-badge inline-flex items-center gap-1.5 rounded-md bg-red-500/10 border border-red-500/20 backdrop-blur-md shrink-0">
+                <div class="status-dot rounded-full bg-red-500 animate-pulse-red"></div>
+                <span class="font-bold tracking-wider text-red-400 uppercase">Offline</span>
+            </div>
+        </div>
+
+        <div class="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+            
+            <button id="mainPlayBtn" class="play-btn-wrapper pointer-events-auto group/btn relative rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-300 hover:bg-white/20 hover:scale-105 hover:shadow-[0_0_30px_rgba(255,255,255,0.15)] focus:outline-none focus:ring-2 focus:ring-white/50">
+
+                
+                
+
+                
+                
+            </button>
+        </div>
+
+        
+        <div id="offlineOverlay" class="absolute inset-0 z-30 flex items-center justify-center bg-black/80 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-500">
+            <div class="text-center transform translate-y-4 transition-transform duration-500" id="offlineContent">
+                <p class="overlay-msg font-bold text-white mb-2">Stream is currently offline</p>
+                <button onclick="resetPlayer()" class="text-slate-400 hover:text-white transition-colors duration-200 control-text underline underline-offset-4">
+                    Dismiss
+                </button>
+            </div>
+        </div>
+
+        <div class="controls-bar relative z-20 w-full flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300 opacity-0 group-hover:opacity-100">
+
+            
+            <div class="w-full progress-container bg-white/20 rounded-full cursor-not-allowed relative group/progress">
+                
+                <div class="absolute inset-y-0 left-0 bg-white/30 rounded-full w-0"></div>
+                
+                <div class="absolute inset-y-0 left-0 bg-red-500 rounded-full w-0 flex items-center justify-end">
+                    
+                    <div class="progress-knob absolute bg-white rounded-full shadow opacity-0 group-hover/progress:opacity-100 transition-opacity"></div>
+                </div>
+            </div>
+
+            
+            <div class="flex justify-between items-center w-full">
+                
+                <div class="flex items-center">
+                    <button class="icon-btn text-white hover:text-red-400 transition-colors focus:outline-none">
+                        
+                        
+                    </button>
+
+                    <button class="icon-btn text-white hover:text-slate-300 transition-colors focus:outline-none ml-1 sm:ml-2 group/vol">
+                        
+                        
+                    </button>
+
+                    
+                    <span class="control-text text-slate-300 font-mono tracking-tighter">
+                        00:00 / 00:00
+                    </span>
+                </div>
+
+                
+                <div class="flex items-center">
+                    <button class="icon-btn text-white hover:text-slate-300 transition-colors focus:outline-none mr-1 sm:mr-2">
+                        
+                        
+                    </button>
+
+                    <button class="icon-btn text-white hover:text-slate-300 transition-colors focus:outline-none">
+                        
+                        
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div>
+        <div></div>    </div>
+</div>

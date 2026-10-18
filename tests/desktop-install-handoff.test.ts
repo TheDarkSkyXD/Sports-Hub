@@ -59,7 +59,9 @@ test('Install keeps the window open until the local server stops, then starts th
   }
 
   const app = Object.assign(new EventEmitter(), {
+    commandLine: { appendSwitch() {} },
     isPackaged: true,
+    enableSandbox() {}, isReady: () => true,
     setName: () => {},
     setAppUserModelId: () => {},
     getPath: () => userData,
@@ -116,12 +118,15 @@ test('Install keeps the window open until the local server stops, then starts th
     stop: () => { events.push(`${name} stopped`); },
   });
   const observer = {
+    players:{registerHost(){}},
     start: async () => 'http://127.0.0.1:4132',
     stop: () => { events.push('observer stopped'); },
   };
   const dependency = (name: string) => {
     if (name === './closed-stdio.cjs') return {};
+    if (name === './security.cjs') return require('../desktop/security.cjs');
     if (name === 'electron') return {
+      session: { defaultSession: Object.assign(new EventEmitter(), { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, setDevicePermissionHandler() {}, setDisplayMediaRequestHandler() {} }) },
       app, autoUpdater, BrowserWindow: FakeWindow,
       ipcMain: { handle: (channel: string, handler: (event: unknown) => Promise<unknown>) => handlers.set(channel, handler) },
       shell: { openExternal: async () => {} }, powerMonitor: new EventEmitter(),

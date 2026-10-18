@@ -12,7 +12,7 @@ const output = path.join(root, '.scratch', 'sources-all');
 const profile = await mkdtemp(path.join(tmpdir(), 'sunday-room-sources-all-'));
 const buildId = randomUUID();
 const at = Date.now();
-const leagues = ['nfl', 'ncaaf', 'nba', 'wnba', 'nhl', 'mlb', 'f1', 'nascar-cup', 'nascar-truck', 'motogp', 'motorsport', 'ufc', 'boxing', 'wwe', 'tna'];
+const leagues = ['nfl', 'ncaaf', 'nba', 'wnba', 'nhl', 'mlb', 'f1', 'nascar-cup', 'nascar-truck', 'motogp', 'motorsport', 'ufc', 'boxing', 'wwe', 'tna', 'aew', 'wrestling'];
 const feeds = { kind: 'feeds', discovered: 1, mediaVerified: 0, decoded: 1, checking: 0 };
 const link = (id, league) => ({ title: `${id} listing`, url: `https://example.invalid/${id}`, gameId: id, league, observedAt: at, freshness: 'fresh' });
 const source = (id, name, supported, links) => ({
@@ -82,7 +82,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await desktop.context().route('**/api/games', route => route.fulfill({ json: {
     schemaVersion: 2, revision: 1, updatedAt: new Date(at).toISOString(), scheduleState: 'ready',
-    aliases: {}, leagues: {}, games: [], finishedGameRetentionMinutes: 120, feedCheckIntervalMinutes: 5,
+    aliases: {}, leagues: {}, games: [], finishedGameRetentionMinutes: 120,
   } }));
   await desktop.context().route('**/api/sources', route => route.fulfill({ json: snapshot }));
   await page.reload();

@@ -1,0 +1,104 @@
+{
+  "capturedAt": "2026-10-17T22:43:38.969Z",
+  "catalog": {
+    "runId": "85948167-aa58-4fc6-8d3d-1388e8631ece",
+    "startedAt": 1792276974300,
+    "category": {
+      "kind": "collected",
+      "at": 1792275874323
+    }
+  },
+  "event": {
+    "id": "ncaaf:66919",
+    "url": "https://v2.sportsurge.net/watch-66919-cfb-washington-state-cougars-oregon-state-beavers-4/",
+    "league": "ncaaf",
+    "title": "Washington State Cougars vs Oregon State Beavers",
+    "teams": [
+      "Washington State Cougars",
+      "Oregon State Beavers"
+    ],
+    "sourceStatus": "live",
+    "kickoff": null,
+    "advertisedLinkCount": 19,
+    "detail": {
+      "kind": "collected",
+      "at": 1792275879983,
+      "retainedFromRunId": "05236740-5c01-44fd-bb58-6f411a539948",
+      "providers": [
+        {
+          "id": "stream-1322628-0",
+          "label": "Streameast",
+          "observedAt": 1792275879983,
+          "destination": {
+            "kind": "link",
+            "url": "https://streameast.ga/cfb/washington-state-cougars-vs-oregon-state-beavers/"
+          }
+        },
+        {
+          "id": "stream-1323607-0",
+          "label": "Tvsportslive",
+          "observedAt": 1792275879983,
+          "destination": {
+            "kind": "link",
+            "url": "https://tvsportslive.fr/66919"
+          }
+        }
+      ]
+    }
+  },
+  "game": {
+    "id": "ncaaf-401860903",
+    "league": "ncaaf",
+    "name": "Washington State Cougars at Oregon State Beavers",
+    "date": "2026-10-17T22:00Z",
+    "home": {
+      "id": "espn:ncaaf:204",
+      "name": "Oregon State Beavers",
+      "short": "Oregon St",
+      "abbreviation": "ORST",
+      "color": "dc4405",
+      "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
+      "score": "14",
+      "record": "4-2",
+      "aliases": [
+        "Oregon State Beavers",
+        "Oregon State",
+        "Oregon St",
+        "ORST"
+      ]
+    },
+    "away": {
+      "id": "espn:ncaaf:265",
+      "name": "Washington State Cougars",
+      "short": "Washington St",
+      "abbreviation": "WSU",
+      "color": "a60f2d",
+      "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/265.png",
+      "score": "0",
+      "record": "1-5",
+      "aliases": [
+        "Washington State Cougars",
+        "Washington State",
+        "Washington St",
+        "WSU"
+      ]
+    },
+    "season": 2026,
+    "partitions": [
+      "fbs"
+    ],
+    "detail": "3:26 - 1st",
+    "redzone": false,
+    "possession": "WSU",
+    "down": "4th & 4 at WSU 25",
+    "lastPlay": "(03:37) Shotgun #17 O.Eshelman pass incomplete short left to #1 D.Blood thrown to WSU35 broken up by #2 A.Sullivan QB hurried by #10 L.Knapp",
+    "venue": "Reser Stadium",
+    "broadcast": "USA Net",
+    "status": "in",
+    "lifecycle": "live"
+  },
+  "expectedCandidateIds": [
+    "sportsurge-v2:84fac0e5601dfb5d5bbdd7cf",
+    "sportsurge-v2:8f19998246a9a7679a247994"
+  ]
+}

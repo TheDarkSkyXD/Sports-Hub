@@ -1,4 +1,4 @@
-import { browserCategory, sourceCoverage } from '../lib/football/source-registry.ts';
+import { browserCategory, SOURCE_REGISTRY, sourceCoverage } from '../lib/football/source-registry.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -221,7 +221,7 @@ test('six minutes of fresh scores retain working choices and saved proof survive
       assert.equal(reply.kind,'board');
       if(reply.kind==='board')assert.deepEqual(reply.board.leagues.nfl.errors,[]);
     }
-    assert.equal(probes,2,'working evidence is rechecked once at five minutes');
+    assert.equal(probes,1,'working evidence is not rechecked during the first six minutes');
     scheduleFails=true;
     clock+=30_000;
     await coordinator.refresh(true);
@@ -233,14 +233,14 @@ test('six minutes of fresh scores retain working choices and saved proof survive
       assert.deepEqual(failed.board.leagues.nfl.errors,['NFL schedule refresh failed; showing saved scores.']);
     }
     assert.equal((await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false})).kind,'error');
-    assert.equal(probes,2);
+    assert.equal(probes,1,'a failed score refresh does not trigger an early working-feed recheck');
     scheduleFails=false;
     await coordinator.refresh(true);
     await until(working,'a successful score refresh should restore the fresh working choice');
     clock+=90_001;
     assert.equal(await working(),true,'verified proof remains visible while score freshness expires');
     assert.equal((await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false})).kind,'error');
-    assert.equal(probes,2);
+    assert.equal(probes,1,'stale scores do not trigger an early working-feed recheck');
   } finally {await close();}
 });
 
@@ -297,7 +297,7 @@ test('an unchanged refreshed listing retains fresh choices while its detail refr
       const reply=await coordinator.command({kind:'sources'});
       return reply.kind==='sources'&&reply.snapshot.games[0]?.candidates.length===1;
     },'the first detail should publish one choice');
-    clock+=301_000;
+    clock+=1_801_000;
     await coordinator.refresh(true);
     await until(()=>reads===2,'the next detail refresh should start');
     await coordinator.refresh(true);
@@ -305,7 +305,7 @@ test('an unchanged refreshed listing retains fresh choices while its detail refr
     assert.equal(refreshing.kind,'sources');
     if(refreshing.kind==='sources')assert.deepEqual(refreshing.snapshot.games[0]?.candidates.map(candidate=>({
       id:candidate.id,observedAt:candidate.observedAt})),[{id:'gooz-100',observedAt:at}]);
-    clock=at+30*60_000+1;
+    clock=at+60*60_000+1001;
     await coordinator.refresh(true);
     const expired=await coordinator.command({kind:'sources'});
     assert.equal(expired.kind,'sources');
@@ -320,7 +320,6 @@ test('unverified cached choices do not survive changed semantic listing metadata
   const live=game(0,0,'live'),listing=source('fixture');
   const changes:Partial<Observation>[]=[
     {title:'Updated listing title'},
-    {rawTime:'Updated published time'},
     {league:'ncaaf'},
     {teams:['Other','Home 0']},
     {kickoff:at+6*3600_000},
@@ -343,7 +342,7 @@ test('unverified cached choices do not survive changed semantic listing metadata
         const reply=await coordinator.command({kind:'sources'});
         return reply.kind==='sources'&&reply.snapshot.games[0]?.candidates.length===1;
       },'the initial semantic observation should publish a choice');
-      clock+=301_000;listed={...listed,...change};
+      clock+=1_801_000;listed={...listed,...change,observedAt:clock};
       await coordinator.refresh(true);
       await until(async()=>{
         const reply=await coordinator.command({kind:'sources'});
@@ -355,6 +354,40 @@ test('unverified cached choices do not survive changed semantic listing metadata
       if(reply.kind==='sources')assert.equal(reply.snapshot.games.reduce((count,row)=>count+row.candidates.length,0),0,JSON.stringify(change));
     } finally {pending.release();await close();}
   }
+});
+
+for(const dated of [true,false])test(`unverified cached choices ${dated?'retain equivalent timestamp formatting':'reject changed raw time without a kickoff'}`,async()=>{
+  const pending=gate(),live=game(0,0,'live'),listing=source(dated?'fixture':'sportsurge');
+  let clock=at,reads=0;
+  let listed:Observation={...observation(live,listing),kickoff:dated?at:null,rawTime:dated?String(at):'2:00 PM ET'};
+  const {coordinator,close}=fixture([live],[listing],{
+    now:()=>clock,
+    parseListings:()=>({outcome:'parsed',observations:[listed]}),
+    readHtml:async url=>{if(!url.endsWith('/list')&&++reads>1)await pending.promise;return '<main>fixture</main>';},
+    probeCandidate:async()=>({kind:'deferred',retryAfterMs:60_000}),
+  });
+  try{
+    await coordinator.refresh(true);
+    await until(async()=>{
+      const reply=await coordinator.command({kind:'sources'});
+      return reply.kind==='sources'&&reply.snapshot.games[0]?.candidates.length===1;
+    },'the original listing should publish one unchecked choice');
+    clock+=1_801_000;
+    listed={...listed,rawTime:dated?new Date(at).toISOString():'3:00 PM ET',observedAt:clock};
+    await coordinator.refresh(true);
+    await until(async()=>{
+      const reply=await coordinator.command({kind:'sources'});
+      return reply.kind==='sources'&&reply.snapshot.sources[0]?.lastAttempt?.at===clock;
+    },'the refreshed listing should be stored');
+    await new Promise<void>(resolve=>setImmediate(resolve));
+    const reply=await coordinator.command({kind:'sources'});
+    assert.equal(reply.kind,'sources');
+    if(reply.kind==='sources'){
+      assert.deepEqual(reply.snapshot.games.flatMap(row=>row.candidates.map(candidate=>candidate.id)),dated?['gooz-100']:[]);
+      assert.equal(reply.snapshot.games.reduce((count,row)=>count+row.workingChoiceCount,0),0);
+      assert.ok(reply.snapshot.games.every(row=>row.candidates.every(candidate=>candidate.availability.kind!=='playable')));
+    }
+  }finally{pending.release();await close();}
 });
 
 test('an in-flight same-identity detail cannot replace a newer observation generation',async()=>{
@@ -378,10 +411,10 @@ test('an in-flight same-identity detail cannot replace a newer observation gener
       const reply=await coordinator.command({kind:'sources'});
       return reply.kind==='sources'&&reply.snapshot.games[0]?.candidates[0]?.id==='gooz-100';
     },'the original detail should publish');
-    clock+=301_000;
+    clock+=1_801_000;
     await coordinator.refresh(true);
     await until(()=>reads===2,'the second detail should begin');
-    clock+=301_000;
+    clock+=1_801_000;
     await coordinator.refresh(true);
     await until(async()=>{
       const reply=await coordinator.command({kind:'sources'});
@@ -409,7 +442,7 @@ test('retaining a dated live listing does not report an empty collector result',
       const reply=await coordinator.command({kind:'sources'});
       return reply.kind==='sources'&&reply.snapshot.sources[0]?.lastAttempt?.count===1;
     },'the first listing should establish a positive collector count');
-    clock+=301_000;
+    clock+=1_801_000;
     await coordinator.refresh(true);
     await until(async()=>{
       const reply=await coordinator.command({kind:'sources'});
@@ -505,8 +538,8 @@ test('near-kickoff details start before distant scheduled games in kickoff order
   } finally {pending.release();await close();}
 });
 
-test('a late near-kickoff choice enters the frontier before distant siblings',async()=>{
-  const listing=gate(),live=game(0,0,'live'),distant=game(1,720),near=game(2,10);
+test('a late near-kickoff choice enters the frontier before distant same-day siblings',async()=>{
+  const listing=gate(),live=game(0,0,'live'),distant=game(1,360),near=game(2,10);
   const calls:string[]=[],pending:(()=>void)[]=[];
   const {coordinator,close}=fixture([live,distant,near],[source('initial'),source('late')],{
     parseListings:row=>({outcome:'parsed',observations:(row.id==='late'?[near]:[live,distant]).map(match=>observation(match,row))}),
@@ -549,7 +582,9 @@ test('a late near-kickoff choice enters the frontier before distant siblings',as
 const require=createRequire(import.meta.url);
 const {runSportsurgeSweep}=require('../desktop/sportsurge-sweep.cjs');
 const surgeCategoryCount=sourceCoverage('sportsurge-v2').length;
-const eastCategoryCount=sourceCoverage('streameast').length;
+const eastCategories=SOURCE_REGISTRY.find(source=>source.id==='streameast')?.browserCategories;
+assert.ok(eastCategories);
+const eastCategoryCount=eastCategories.length;
 const {runStreameastSweep}=require('../desktop/streameast-sweep.cjs');
 
 test('Sportsurge browser sweep checks urgent games first and preserves serial checkpoints and background progress',async()=>{
@@ -590,6 +625,7 @@ test('StreamEast browser sweep prioritizes current and near games with serial fr
       active++;peak=Math.max(peak,active);
       try {
         await new Promise<void>(resolve=>setImmediate(resolve));
+        if(page==='category'&&league==='motorsport')return '<a class="m-card m-card--event" data-sport-tag="darts" href="/other-events/swiss-darts-trophy-1791712800/"><span class="m-card__title">Swiss Darts Trophy</span></a>';
         if(page==='category')return url.includes('/cfb-streams/')?category:empty.replace('No NFL games available',browserCategory('streameast',league)?.emptyTitles?.[0]||'');
         if(page==='server')return '<iframe src="https://streame.center/stream-east/ch33.php"></iframe>';
         return `<div class="stream-alt-list"><a class="stream-alt-item" href="${url}1"><span class="stream-alt-name">Free</span><span class="stream-alt-free-badge">Free</span></a></div>`;
@@ -613,6 +649,7 @@ test('StreamEast stops on a free-server rate limit without replacing prior compl
   const result:StreameastCatalog=await runStreameastSweep({
     read:async(url:string,page:string,league:string)=>{
       calls.push(page);
+      if(page==='category'&&league==='motorsport')return '<a class="m-card m-card--event" data-sport-tag="darts" href="/other-events/swiss-darts-trophy-1791712800/"><span class="m-card__title">Swiss Darts Trophy</span></a>';
       if(page==='category')return url.includes('/cfb-streams/')?category:
         `<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">${browserCategory('streameast',league)?.emptyTitles?.[0]}</h2></div>`;
       if(page==='server')throw new Error('rate-limited');

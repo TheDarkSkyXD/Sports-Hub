@@ -44,6 +44,7 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} reuses
       read: async (url: string, page: string, league: string) => {
         reads.push(page);
         if (page === 'category') {
+          if (!surge && league === 'motorsport') return '<a class="m-card m-card--event" data-sport-tag="darts" href="/other-events/swiss-darts-trophy-1791712800/"><span class="m-card__title">Swiss Darts Trophy</span></a>';
           if (!url.includes('nfl')) return surge ? '<main id="match-list-container"><div class="watch-empty-state">No live or upcoming games</div></main>' : `<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">${browserCategory('streameast',league)?.emptyTitles?.[0]}</h2></div>`;
           return surge ? `<main id="match-list-container">${listed.map(index => `<a class="match-row" href="watch-${10000 + index}-nfl-away-home-${index}/"><span class="match-row-team-name">Away ${index}</span><span class="match-row-team-name">Home ${index}</span><time class="match-time" data-timestamp="${Date.parse(game(index).date || '') / 1000}"></time>${index !== 3 ? '<span class="live-badge">Live</span>' : ''}2 Streams</a>`).join('')}</main>` : listed.map(index => `<article class="m-card" data-match-id="${10000 + index}" data-team-names="Away ${index}|Home ${index}" data-time="${Date.parse(game(index).date || '') / 1000}"><a class="m-card__link" href="https://v2.streameast.ga/nfl/away-${index}-vs-home-${index}-${at / 1000}/"></a></article>`).join('');
         }
@@ -65,13 +66,13 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} reuses
     clock += 60000; listed = [1, 2, 3]; reads.length = 0;
     const second = await sweep(); await drain();
     assert.equal(second.state.kind, 'complete');
-    assert.equal(reads.filter(page => page === 'detail').length, 1, 'only the new upcoming game needs a detail read');
-    assert.equal(reads.filter(page => page === 'server').length, surge ? 0 : 2);
+    assert.equal(reads.filter(page => page === 'detail').length, 0, 'sleeping event details are reused until their deadline');
+    assert.equal(reads.filter(page => page === 'server').length, 0);
     assert.deepEqual(second.events.slice(0, 2).map(event => event.detail.kind === 'collected' ? event.detail.at : null), [at, at]);
     const snapshot = await coordinator.command({ kind: 'sources' });
     assert.equal(snapshot.kind, 'sources');
     if (snapshot.kind === 'sources') {
-      assert.deepEqual(snapshot.snapshot.games.map(row => row.workingChoiceCount), [2, 2, 2]);
+      assert.deepEqual(snapshot.snapshot.games.map(row => row.workingChoiceCount), [2, 2, 0]);
       assert.ok(snapshot.snapshot.games.slice(0, 2).every(row => row.candidates.every(candidate => candidate.observedAt === at)));
     }
     for (const mutation of ['timestamp', 'identity', 'provenance']) {
@@ -88,7 +89,9 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} reuses
       assert.equal(reply.kind, 'error', mutation);
       if (reply.kind === 'error') assert.equal(reply.status, 400);
     }
-    for (let run = 0; run < 4; run++) { clock += 300000; reads.length = 0; await sweep(); assert.equal(reads.filter(page => page === 'detail').length, 3); }
+    clock=at+30*60000;reads.length=0;await sweep();await drain();
+    assert.equal(reads.filter(page=>page==='detail').length,3,'the thirty-minute source cycle discovers the new event');
+    for (let run = 0; run < 4; run++) { clock += 30*60000; reads.length = 0; await sweep(); assert.equal(reads.filter(page => page === 'detail').length, 3); }
     clock += 10 * 60000;
     await coordinator.refresh(true); await drain();
     for (const gameId of ['10001', '10002']) {
@@ -106,7 +109,7 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} reuses
     }
     clock += 300000; reads.length = 0;
     await sweep();
-    assert.equal(reads.filter(page => page === 'detail').length, 3, 'negative media proof releases live detail reuse');
+    assert.equal(reads.filter(page => page === 'detail').length, 2, 'broken playback releases detail reuse only for affected events');
     finished = true; clock += 300000;
     const final = await sweep();
     assert.equal(final.events.some(event => event.id === 'nfl:10001'), false, 'finished event removal remains distinct from reuse');
@@ -155,9 +158,8 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
     assert.equal(first.snapshot.games[0].workingChoiceCount, 1);
     const firstCandidateId = first.snapshot.games[0].candidates[0].id;
     const firstAvailability = first.snapshot.games[0].candidates[0].availability;
-    assert.deepEqual(firstAvailability, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
-    assert.equal((await coordinator.command({ kind: 'set-feed-check-interval', minutes: 1 })).kind, 'board');
-    clock += 60000;
+    assert.deepEqual(firstAvailability, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: clock });
+    clock += 30*60000;
     published = 2;
     reads.length = 0;
     await sweep(); await drain();
@@ -166,9 +168,9 @@ for (const sourceId of ['sportsurge-v2', 'streameast']) test(`${sourceId} discov
     if (second.kind === 'sources') {
       assert.equal(second.snapshot.games[0].workingChoiceCount, 2);
       assert.deepEqual(second.snapshot.games[0].candidates.find(candidate => candidate.id === firstCandidateId)?.availability,
-        { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
+        { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: clock });
       assert.deepEqual(second.snapshot.games[0].candidates.find(candidate => candidate.id !== firstCandidateId)?.availability,
-        { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 60_000 });
+        { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: clock });
     }
     assert.equal(reads.filter(page => page === 'detail').length, 1);
   } finally { await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); }

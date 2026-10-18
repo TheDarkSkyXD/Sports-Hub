@@ -34,7 +34,18 @@ function publishedOwner(name:string,edge:'start'|'end'):string|null {
 }
 
 export function publishedFootballMatchup(expected:ExpectedMatchup|undefined,title:string):'matches'|'conflicting'|'unknown' {
-  if(expected?.league!=='ncaaf')return 'unknown';
+  if(!expected)return 'unknown';
+  if(expected.league!=='ncaaf'){
+    if(!['nfl','nba','nhl','mlb'].includes(expected.league))return 'unknown';
+    const headline=title.normalize('NFKC').trim()
+      .replace(/^(?:MLB Streams\s*\|\s*|MLB Live:\s*|Live\s+)/i,'')
+      .replace(/\s+(?:(?:Online\s+)?Live Stream(?:\s*\|\s*(?:Watch MLB|Strikeout))?|Streams Online(?:Starting Soon)?|Online)$/i,'');
+    const parts=headline.split(/\s+(?:vs\.?|versus|at)\s+/i);
+    if(parts.length!==2||parts.some(part=>part.trim().split(/\s+/).length<2))return 'unknown';
+    const published=parts.map(normalizedName),wanted=expected.teams.map(normalizedName);
+    if(!published[0]||!published[1]||wanted[0]===wanted[1])return 'unknown';
+    return published[0]===wanted[0]&&published[1]===wanted[1]||published[0]===wanted[1]&&published[1]===wanted[0]?'matches':'conflicting';
+  }
   const headline=title.normalize('NFKC').replace(/\s+[–—]\s+[^A-Za-z0-9]*DudeStream[^A-Za-z0-9]*$/i,'');
   const parts=headline.split(/\s+(?:vs\.?|versus|at)\s+/i);
   if(parts.length!==2)return 'unknown';

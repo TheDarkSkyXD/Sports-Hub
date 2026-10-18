@@ -18,6 +18,8 @@ pub enum League {
     Boxing,
     Wwe,
     Tna,
+    Aew,
+    Wrestling,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -94,6 +96,8 @@ pub struct Observation {
     pub league: Option<League>,
     pub teams: Option<[String; 2]>,
     pub kickoff: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ends_at: Option<i64>,
     pub raw_time: String,
     pub observed_at: i64,
     #[serde(deserialize_with = "parse_parser_version")]

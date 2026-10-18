@@ -31,6 +31,7 @@ function fixture(upcoming = false, catalog = false) {
   let checks = 0;
   let detailReads = 0;
   let held = false;
+  let rejectedPlayer:string|undefined;
   const pending: Array<{ id: string; resolve: (result: CandidateProbeResult) => void }> = [];
   const matches = () => games.map(game => upcoming ? { ...game, status: 'pre' as const, lifecycle: 'scheduled' as const,
     date: new Date(at + 3600000).toISOString() } : finished ? { ...game, status: 'post' as const,
@@ -53,6 +54,7 @@ function fixture(upcoming = false, catalog = false) {
       assert.ok(locator.provider === 'gooz' || locator.provider === 'sportsurge-v2');
       const id = locator.provider === 'gooz' ? locator.playerId : locator.provider === 'sportsurge-v2' ? locator.providerId : '';
       checks++;
+      if(id===rejectedPlayer)return {kind:'unavailable',reason:'playback'};
       if (held) return await new Promise<CandidateProbeResult>(resolve => {
         pending.push({ id, resolve });
         signal.addEventListener('abort', () => resolve({ kind: 'deferred', retryAfterMs: 1000 }), { once: true });
@@ -71,6 +73,7 @@ function fixture(upcoming = false, catalog = false) {
     checks: () => checks, detailReads: () => detailReads,
     hideListings: () => { published = false; }, hidePlayers: () => { playersPublished = false; },
     finish: () => { finished = true; }, hold: () => { held = true; },
+    rejectPlayer:(id:string)=>{rejectedPlayer=id;},
     async stop() { for (const job of pending) job.resolve({ kind: 'deferred', retryAfterMs: 1000 });
       await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); },
   };
@@ -83,7 +86,7 @@ test('live working alternatives survive scheduled detail rereads and media reche
     assert.deepEqual((await run.snapshot()).games.map(row => row.workingChoiceCount), [2, 2]);
     assert.equal(run.detailReads(), 2);
     run.hidePlayers();
-    await run.refresh(at + 301000);
+    await run.refresh(at + 30*60_000);
     assert.deepEqual((await run.snapshot()).games.map(row => row.candidates.filter(row => row.availability.kind === 'playable').length), [2, 2]);
     assert.equal(run.detailReads(), 4, 'both live observations are reread after their interval');
     assert.equal(run.checks(), 8, 'each proven route is rechecked at the saved interval');
@@ -113,6 +116,7 @@ test('a playback failure removes only the retained route whose listing is gone',
     assert.equal(opened.kind, 'playback');
     if (opened.kind !== 'playback') return;
     assert.equal(opened.playback.session.candidateId, `${games[0].id}-1`);
+    run.rejectPlayer(`${games[0].id}1`);
     await run.coordinator.command({ kind: 'session', sessionId: opened.playback.session.id,
       generation: 0, failure: true, retry: false });
     await run.refresh(at + 31 * 60000);
@@ -130,12 +134,12 @@ test('final games retain routes throughout their retention window without more c
     await run.refresh(at);
     assert.equal((await run.snapshot()).games.length, 2);
     run.finish();
-    await run.refresh(at + 301000);
+    await run.refresh(at + 1_801_000);
     const retained = (await run.snapshot()).games;
     assert.deepEqual(retained.map(row => row.candidates.length), [2, 2]);
     assert.deepEqual(retained.map(row => row.workingChoiceCount), [0, 0]);
     assert.equal(run.checks(), 4);
-    await run.refresh(at + 301000 + 24 * 60 * 60_000);
+    await run.refresh(at + 1_801_000 + 24 * 60 * 60_000);
     assert.deepEqual((await run.snapshot()).games, []);
     assert.equal(run.checks(), 4);
   } finally { await run.stop(); }

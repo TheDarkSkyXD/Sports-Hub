@@ -69,7 +69,7 @@ test('a new observation admits a changed locator while retaining the proven same
     await run.refresh();
     await until(()=>run.probes.includes('111'),'old route should receive media proof');
     assert.equal((await run.snapshot()).games[0].workingChoiceCount,1);
-    run.setClock(at+301000);
+    run.setClock(at+1_801_000);
     run.setVersion('new');
     await run.refresh();
     await until(()=>run.detailReads.some(url=>url.endsWith('/new')),'new listing detail should be visited');
@@ -84,7 +84,7 @@ test('a failed source refresh leaves a proven live feed available',async()=>{
   try{
     await run.refresh();
     await until(()=>run.probes.includes('111'),'old route should receive media proof');
-    run.setClock(at+301000);
+    run.setClock(at+1_801_000);
     run.failListing();
     await run.refresh();
     const snapshot=await run.snapshot();
@@ -118,8 +118,8 @@ test('a same-ID replacement preserves an active viewer and reuses the new proven
     const sessionId=opened.playback.session.id;
     run.setClock(at+60_000);
     await run.coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false});
-    for(const time of [120000,180000,240000]){run.setClock(at+time);await run.coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false});}
-    run.setClock(at+301000);run.setVersion('new');await run.refresh();
+    for(let time=120000;time<=1_740_000;time+=60_000){run.setClock(at+time);await run.coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false});}
+    run.setClock(at+1_801_000);run.setVersion('new');await run.refresh();
     const authorization=await run.coordinator.command({kind:'authorize',sessionId,generation:0,candidateId:'same-player'});
     assert.equal(authorization.kind,'authorized');
     if(authorization.kind==='authorized')assert.deepEqual(authorization.candidate.locator,{provider:'gooz',playerId:'111'});
@@ -131,13 +131,13 @@ test('a same-ID replacement preserves an active viewer and reuses the new proven
     assert.equal(link?.evidence.kind,'collected');
     if(link?.evidence.kind==='collected')assert.ok(link.evidence.candidateIds.includes(newer.id));
     await run.coordinator.command({kind:'session',sessionId,generation:0,failure:true,retry:false});
+    await drain();
     const reads=run.detailReads.filter(url=>url.endsWith('/new')).length;
-    run.setClock(at+602000);await run.refresh();
+    run.setClock(at+3_602_000);await run.refresh();
     assert.equal(run.detailReads.filter(url=>url.endsWith('/new')).length,reads+1,
       'the new live detail is checked again after its interval');
     const after=await run.snapshot();
-    assert.equal(after.games[0].candidates.length,2,JSON.stringify(after.games[0].candidates));
-    assert.ok(after.games[0].candidates.some(candidate=>candidate.id===newer.id));
+    assert.deepEqual(after.games[0].candidates.map(candidate=>candidate.id),[newer.id]);
     assert.equal(after.games[0].candidates.find(candidate=>candidate.id===newer.id)?.availability.kind,'playable');
   }finally{await run.close();}
 });

@@ -1,6 +1,7 @@
 import { browserCategory } from '../source-registry.ts';
 import { createFinishedGameMatcher, createSourceEventMatcher, type SourceEventEvidence } from './matching.ts';
 import { createHash } from 'node:crypto';
+import {ACTIVE_DISCOVERY_MS,COLLECTION_SETTLE_MS} from './source-policy.ts';
 import type { Candidate, Game, Observation, SourceEventBinding, SourceMatchReason, SportsurgeCatalog, SportsurgeCatalogView, SportsurgeProvider, StoredSportsurgeCatalog } from '../shared.ts';
 
 const DETAIL_PATH=/^\/watch-(\d{1,12})-([a-z0-9]+)-[a-z0-9]+(?:-[a-z0-9]+)*\/$/;
@@ -32,8 +33,11 @@ export function sanitizeSportsurgeCatalog(catalog:SportsurgeCatalog,history:read
     let url:URL;
     try { url=new URL(event.url); } catch { return null; }
     const match=DETAIL_PATH.exec(url.pathname);
+    const validPath=event.league==='nascar-cup'
+      ? /^\/watch-[0-9]{1,12}-nascar-nascar-cup-series-at-[a-z0-9]+(?:-[a-z0-9]+)*\/$/.test(url.pathname)
+      : match?.[2]===browserCategory('sportsurge-v2',event.league)?.pathCode;
     if (url.origin!=='https://v2.sportsurge.net' || url.username || url.password || url.search || url.hash || !match ||
-      event.id!==`${event.league}:${match[1]}` || match[2] !== browserCategory('sportsurge-v2',event.league)?.pathCode || !catalog.categories[event.league] || urls.has(event.url)) return null;
+      event.id!==`${event.league}:${match[1]}` || !validPath || !catalog.categories[event.league] || urls.has(event.url)) return null;
     urls.add(event.url);
     const detail=event.detail;
     const retained=detail.kind==='collected'&&detail.retainedFromRunId!==undefined;
@@ -71,7 +75,7 @@ export function sportsurgeObservation(event:SportsurgeCatalog['events'][number],
 export function sportsurgeEvidence(event:SportsurgeCatalog['events'][number],now:number):SourceEventEvidence {
   const detail=event.detail;
   return {undated:event.sourceStatus==='live'&&detail.kind==='collected'&&
-    detail.at<=now+60_000&&now-detail.at<30*60_000?'retained-live-detail':
+    detail.at<=now+60_000&&now-detail.at<=ACTIVE_DISCOVERY_MS+COLLECTION_SETTLE_MS?'retained-live-detail':
     event.sourceStatus==='live'?'live-claim':'published-listing',externalGameId:null};
 }
 
@@ -92,11 +96,13 @@ export function sportsurgeCandidates(input:{
   lastComplete:StoredSportsurgeCatalog|null;
   games:Game[];
   now:number;
+  freshness?:(observation:Observation)=>number|undefined;
+  detailFresh?:(id:string,at:number)=>boolean;
 }):Candidate[] {
   const {current,previous,lastComplete,games,now}=input;
   const older=current?.catalog.state.kind==='complete'?[]:[previous,lastComplete];
   const catalogs=[current,...older].filter((stored):stored is StoredSportsurgeCatalog=>stored!==null);
-  const match=createSourceEventMatcher(games,'inventory-live');
+  const match=createSourceEventMatcher(games,'inventory-live',input.freshness);
   const replaced=new Set<string>();
   const candidates=new Map<string,Candidate>();
   for(const stored of catalogs) for(const event of stored.catalog.events) {
@@ -104,19 +110,28 @@ export function sportsurgeCandidates(input:{
     const category=stored.catalog.categories[event.league];
     if(category.kind!=='collected'||event.detail.kind!=='collected')continue;
     const detail=event.detail;
-    if(!detail.retainedFromRunId&&detail.at<category.at||detail.at>now+60_000||now-detail.at>=30*60_000)continue;
+    if(!detail.retainedFromRunId&&detail.at<category.at||detail.at>now+60_000||!(input.detailFresh?.(`sportsurge-v2:${event.url}`,detail.at)??now-detail.at<30*60_000))continue;
     replaced.add(event.url);
     const decision=match(sportsurgeObservation(event,category.at),sportsurgeEvidence(event,now),now);
     const game=games.find(item=>item.id===(decision.kind==='matched'?decision.gameId:''));
     if(!game)continue;
-    for(const provider of detail.providers) {
-      if(provider.destination.kind!=='link'||provider.observedAt!==detail.at)continue;
-      const id=`sportsurge-v2:${rowIdentity(event.url,provider.id,provider.destination.url)}`;
-      candidates.set(id,{id,gameId:game.id,label:`Sportsurge v2 · ${provider.label}`,
-        sourceIds:['sportsurge-v2'],observedAt:detail.at,
-        locator:{provider:'sportsurge-v2',eventId:event.id,providerId:provider.id,url:provider.destination.url,
-          ...(event.teams?{expectedMatchup:{league:event.league,teams:event.teams}}:{})}});
-    }
+    for(const candidate of sportsurgeEventCandidates(event,game.id))candidates.set(candidate.id,candidate);
+  }
+  return [...candidates.values()];
+}
+
+export function sportsurgeEventCandidates(event:SportsurgeCatalog['events'][number],gameId:string):Candidate[] {
+  const detail=event.detail;
+  if(detail.kind!=='collected')return [];
+  const candidates=new Map<string,Candidate>();
+  for(const provider of detail.providers) {
+    if(provider.destination.kind!=='link'||provider.observedAt!==detail.at)continue;
+    const id=`sportsurge-v2:${rowIdentity(event.url,provider.id,provider.destination.url)}`;
+    candidates.set(id,{id,gameId,label:`Sportsurge v2 · ${provider.label}`,
+      sourceIds:['sportsurge-v2'],observedAt:detail.at,
+      locator:{provider:'sportsurge-v2',eventId:event.id,providerId:provider.id,url:provider.destination.url,
+        ...(event.teams?{expectedMatchup:{league:event.league,teams:event.teams,
+          ...(event.kickoff!==null?{kickoff:event.kickoff}:{})}}:{})}});
   }
   return [...candidates.values()];
 }
@@ -129,9 +144,9 @@ function publicReason(value:string):SourceMatchReason {
   }
 }
 
-export function sportsurgeCatalogView(stored:StoredSportsurgeCatalog,games:Game[],now:number,bindings:readonly SourceEventBinding[]=[]):SportsurgeCatalogView {
+export function sportsurgeCatalogView(stored:StoredSportsurgeCatalog,games:Game[],now:number,bindings:readonly SourceEventBinding[]=[],freshness?:(observation:Observation)=>number|undefined):SportsurgeCatalogView {
   const {catalog,receivedAt}=stored;
-  const match=createSourceEventMatcher(games,'inventory-live');
+  const match=createSourceEventMatcher(games,'inventory-live',freshness);
   const finished=createFinishedGameMatcher(games);
   const activeEvents=catalog.events.filter(event=>{
     const category=catalog.categories[event.league];

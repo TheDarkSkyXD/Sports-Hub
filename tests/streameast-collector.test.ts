@@ -10,12 +10,12 @@ test('one HTTP 429 delays manual and interval sweeps even when the checkpoint fa
   const original=Module._load;
   let reads=0;
   let sweeps=0;
-  const sourceSession={setPermissionRequestHandler(){},setPermissionCheckHandler(){},on(){}};
+  const sourceSession={setPermissionRequestHandler(){},setPermissionCheckHandler(){},on(){},setProxy:async()=>{},webRequest:{onBeforeRequest(){}}};
   function BrowserWindow(){
     const contents=new EventEmitter();
     let url='';
     let destroyed=false;
-    Object.assign(contents,{setAudioMuted(){},setWindowOpenHandler(){},getURL(){return url;},stop(){},
+    Object.assign(contents,{setWebRTCIPHandlingPolicy() {}, setAudioMuted(){},setWindowOpenHandler(){},getURL(){return url;},stop(){},
       mainFrame:{executeJavaScript(){throw new Error('The rate-limited page must not be parsed');}}});
     return {webContents:contents,isDestroyed(){return destroyed;},destroy(){destroyed=true;},loadURL(target:string){
       url=target;

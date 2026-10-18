@@ -21,6 +21,16 @@ const SWAC_API: &str = "https://ott.gideo.video/api/legacy";
 const SWAC_TENANT: &str = "Southwestern-Athletic-Conference";
 const SWAC_CATEGORY: &str = "e1dbe7ec9a7e686b42b53ab33c3e30e4";
 
+fn page_byte_limit(value: &str) -> usize {
+    if Url::parse(value).is_ok_and(|url| {
+        url.scheme() == "https" && url.host_str() == Some("sportsurgei.is")
+    }) {
+        4 * 1024 * 1024
+    } else {
+        2 * 1024 * 1024
+    }
+}
+
 fn matches(expression: &'static str, value: &str) -> bool {
     static PATTERNS: OnceLock<Mutex<HashMap<&'static str, Regex>>> = OnceLock::new();
     let cache = PATTERNS.get_or_init(|| Mutex::new(HashMap::new()));
@@ -78,13 +88,50 @@ pub fn allowed_discovery_url(value: &str, registry: &SourceRegistry) -> bool {
         return false;
     };
     match host {
-        "streamed.st" => {
-            value == "https://streamed.st/api/matches/all"
+        "ihdstreams.top" => url.fragment().is_none() && value==url.as_str() && (
+            matches!(url.path(),"/"|"/index.php"|"/category.php")
+                && url.query_pairs().count()==1 && url.query_pairs().any(|(key,value)|key=="sport" && matches!(value.as_ref(),"NFL"|"NBA"|"NHL"|"MLB"|"CFB"|"WNBA"|"UFC"|"Boxing"|"WWE"|"F1"))
+            || url.query().is_none() && matches(r"^/watch/[a-z0-9]+(?:-[a-z0-9]+)*$",url.path())),
+        "mlbbite.org" => url.query().is_none() && url.fragment().is_none() && value==url.as_str()
+            && (matches!(url.path(),"/"|"/MLB"|"/NBA"|"/NFL"|"/Fight"|"/Motor-Sports")
+                || matches(r"^/(?:event/)?[a-z0-9]+(?:-[a-z0-9]+)*$",url.path())),
+        "buffstreams.ch" => {
+            url.query().is_none() && url.fragment().is_none()
+                && (matches!(url.path(), "/" | "/NFL" | "/CFB" | "/NBA" | "/NHL" | "/MLB" | "/MMA" | "/Boxing" | "/WWE" | "/F1")
+                    || matches(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$",url.path()))
+                && value == url.as_str()
+        }
+        "methstreams.vg" => {
+            url.query().is_none()
+                && url.fragment().is_none()
+                && (url.path() == "/F1"
+                    || matches(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", url.path()))
+                && value == url.as_str()
+        }
+        "foxtrend.app" => url.query().is_none() && url.fragment().is_none()
+            && matches!(url.path(), "/home" | "/" | "/American-Football" | "/Basketball" | "/Ice-Hockey" | "/Baseball" | "/Motor-Sports" | "/Fight") && value==url.as_str(),
+        "foxiy.st" => {
+            url.query().is_none()
+                && url.fragment().is_none()
+                && (matches(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*-nascar-(?:cup|truck)-series-[0-9]{10}$", url.path())
+                    || matches(r"^/event/(?:m-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4}|ppv-[a-z0-9]+(?:-[a-z0-9]+)*)$",url.path()))
+                && value == url.as_str()
+        }
+        "trend48.st" | "iohit.st" => url.query().is_none() && url.fragment().is_none()
+            && (url.path()=="/" || matches(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$",url.path())
+                || host=="iohit.st" && matches(r"^/category/(?:american-football|basketball|baseball|hockey|motorsport|fight|mma|boxing|wrestling)$",url.path()))
+            && value==url.as_str(),
+        "sportsurgei.is" | "nbabitez.com" => url.query().is_none() && url.fragment().is_none()
+            && (url.path()=="/" || matches(r"^/[A-Za-z0-9-]+/[1-9][0-9]{0,11}$",url.path())
+                || host=="sportsurgei.is" && matches(r"^/(?:nfl|nba|nhl|mlb|formula1|motogp|ufc|boxing)$",url.path()))
+            && value==url.as_str(),
+        "streamed.st" | "streamed.pk" => {
+            value == format!("https://{host}/api/matches/all")
                 || matches(
-                    r"^https://streamed\.st/api/stream/[a-z][a-z0-9-]{0,39}/[a-zA-Z0-9_-]{1,160}$",
+                    r"^https://streamed\.(?:st|pk)/api/stream/[a-z][a-z0-9-]{0,39}/[a-zA-Z0-9_-]{1,160}$",
                     value,
                 )
-                || matches(r"^https://streamed\.st/watch/[a-zA-Z0-9_-]{1,160}$", value)
+                || matches(r"^https://streamed\.(?:st|pk)/watch/[a-zA-Z0-9_-]{1,160}$", value)
         }
         "api.kultsport.com" => {
             value == "https://api.kultsport.com/api/matches/all"
@@ -128,10 +175,8 @@ pub fn allowed_discovery_url(value: &str, registry: &SourceRegistry) -> bool {
         }
         "sportsbite.org" => {
             value == "https://sportsbite.org/matches"
-                || matches(
-                    r"^https://sportsbite\.org/event/fg-[a-z0-9]+(?:-[a-z0-9]+)*$",
-                    value,
-                )
+                || value.strip_prefix("https://sportsbite.org/event/")
+                    .and_then(crate::listing_json::sportsbite_event_url).as_deref() == Some(value)
         }
         "ott.gideo.video" => {
             value == SWAC_CATALOG_URL
@@ -153,7 +198,7 @@ pub fn allowed_discovery_url(value: &str, registry: &SourceRegistry) -> bool {
                     && match host {
                         "tvapp1.pk" => matches(r"^/watch/[a-zA-Z0-9-]{1,120}$", url.path()),
                         "ppv.st" => {
-                            matches(r"^/live/wwe/[0-9]{4}-[0-9]{2}-[0-9]{2}$", url.path())
+                            matches(r"^/live/(?:(?:wwe|tna|aew)/[0-9]{4}-[0-9]{2}-[0-9]{2}|[a-z0-9]+(?:-[a-z0-9]+)*-[1-9][0-9]{0,18})$", url.path())
                                 || matches(
                                     r"^/live/(?:cfb|nfl|nba|wnba|nhl|mlb)/[0-9]{4}-[0-9]{2}-[0-9]{2}/[a-z0-9-]+$",
                                     url.path(),
@@ -191,9 +236,47 @@ pub struct ReqwestTransport {
     client: reqwest::Client,
 }
 
+fn public_ip(address: std::net::IpAddr) -> bool {
+    !address.is_multicast() && !iprfc::RFC6890.contains(&address) && match address {
+        std::net::IpAddr::V4(_) => true,
+        std::net::IpAddr::V6(value) => value.segments()[0] & 0xe000 == 0x2000,
+    }
+}
+
+struct SystemResolver;
+impl reqwest::dns::Resolve for SystemResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        Box::pin(async move {
+            let addresses = tokio::net::lookup_host((name.as_str(), 0)).await?.collect::<Vec<_>>();
+            Ok(Box::new(addresses.into_iter()) as reqwest::dns::Addrs)
+        })
+    }
+}
+
+struct PublicResolver<R>(R);
+impl<R: reqwest::dns::Resolve> reqwest::dns::Resolve for PublicResolver<R> {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let lookup = self.0.resolve(name);
+        Box::pin(async move {
+            let addresses = tokio::time::timeout(Duration::from_secs(3), lookup).await??
+                .collect::<Vec<_>>();
+            if addresses.is_empty() || addresses.iter().any(|address| !public_ip(address.ip())) {
+                return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "private-address").into());
+            }
+            Ok(Box::new(addresses.into_iter()) as reqwest::dns::Addrs)
+        })
+    }
+}
+
 impl ReqwestTransport {
     pub fn new() -> Result<Self, CollectorError> {
+        Self::with_resolver(SystemResolver)
+    }
+
+    fn with_resolver(resolver: impl reqwest::dns::Resolve + 'static) -> Result<Self, CollectorError> {
         let client = reqwest::Client::builder()
+            .no_proxy()
+            .dns_resolver(Arc::new(PublicResolver(resolver)))
             .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_secs(10))
             .build()
@@ -266,6 +349,7 @@ impl PageReader for ReqwestTransport {
         }
         let mut stream = response.bytes_stream();
         let mut bytes = Vec::new();
+        let byte_limit = page_byte_limit(url);
         loop {
             let part = tokio::select! {
                 _ = cancel.cancelled() => return Err(failure("aborted")),
@@ -273,7 +357,7 @@ impl PageReader for ReqwestTransport {
             };
             match part {
                 Some(Ok(chunk)) => {
-                    if bytes.len() + chunk.len() > 2 * 1024 * 1024 {
+                    if bytes.len() + chunk.len() > byte_limit {
                         return Err(failure("response-too-large"));
                     }
                     bytes.extend_from_slice(&chunk);
@@ -328,6 +412,7 @@ async fn read_page<R: PageReader>(
 ) -> Result<String, FetchFailure> {
     let original = Url::parse(url).map_err(|_| failure("unsupported-discovery-address"))?;
     let mut current = original.clone();
+    let mut redirect_location: Option<String> = None;
     for _ in 0..=3 {
         if cancel.is_cancelled() {
             return Err(failure("aborted"));
@@ -335,7 +420,13 @@ async fn read_page<R: PageReader>(
         if !allowed_discovery_url(current.as_str(), registry)
             || (current.host_str() != original.host_str()
                 && !(original.host_str() == Some("crichd.pk")
-                    && current.host_str() == Some("m.crichd.pk")))
+                    && current.host_str() == Some("m.crichd.pk")
+                    || matches(
+                        r"^https://streamcenter\.st/api/stream-link/iframe/event-espn-league-(?:football-college-football|basketball-(?:nba|wnba)|hockey-nhl|baseball-mlb)-[0-9]{5,12}/[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
+                        url,
+                    ) && redirect_location.as_deref().is_some_and(|location| {
+                        matches(r"^https://streame\.center/embed/ch[0-9]{1,4}\.php$", location)
+                    })))
         {
             return Err(failure("unsupported-discovery-address"));
         }
@@ -355,6 +446,7 @@ async fn read_page<R: PageReader>(
             if body.is_some() && next != original {
                 return Err(failure("unsupported-discovery-address"));
             }
+            redirect_location = Some(location);
             current = next;
             continue;
         }
@@ -365,7 +457,7 @@ async fn read_page<R: PageReader>(
             });
         }
         let bytes = page.body.ok_or_else(|| failure("empty-response"))?;
-        if bytes.len() > 2 * 1024 * 1024 {
+        if bytes.len() > page_byte_limit(current.as_str()) {
             return Err(failure("response-too-large"));
         }
         return Ok(String::from_utf8_lossy(&bytes).into_owned());
@@ -417,7 +509,7 @@ pub fn remember_listing(
     }
     let at = now_ms();
     let mut state = state.lock();
-    if matches!(source_id, "streamed" | "livesportpro" | "sportsbite") {
+    if matches!(source_id, "streamed" | "sportsupa" | "livesportpro" | "sportsbite" | "streamcenter" | "streamcenter-nba" | "streamcenter-nhl" | "streamcenter-mlb") {
         state.catalogs.insert(
             source_id.to_string(),
             CatalogSnapshot {
@@ -459,6 +551,44 @@ pub(crate) async fn read_html_with<R: PageReader>(
         return error_message("aborted");
     }
     let registry = { state.lock().registry.clone() };
+    if let Some(slug)=crate::published::wordpress_slug(url) {
+        let category_url=format!("https://dudestream1.com/wp-json/wp/v2/categories?slug={slug}&_fields=id,slug,name");
+        let category_body=match read_page(reader,&registry,&category_url,None,"application/json",cancel).await {
+            Ok(body)=>body,Err(error)=>return failed(error),
+        };
+        let Ok(mut categories)=serde_json::from_str::<Vec<crate::published::WordpressCategory>>(&category_body) else {return error_message("parser-changed");};
+        if categories.len()!=1 || categories[0].id<=0 || categories[0].slug!=slug || categories[0].name.trim().is_empty(){return error_message("parser-changed");}
+        let category=categories.remove(0);
+        let mut posts=Vec::new();
+        for page in 1..=3 {
+            let endpoint=format!("https://dudestream1.com/wp-json/wp/v2/posts?categories={}&per_page=100&page={page}&_fields=id,link,title,categories",category.id);
+            let body=match read_page(reader,&registry,&endpoint,None,"application/json",cancel).await {
+                Ok(body)=>body,Err(error)=>return failed(error),
+            };
+            let Ok(rows)=serde_json::from_str::<Vec<crate::published::WordpressPost>>(&body) else {return error_message("parser-changed");};
+            let finished=rows.len()<100;
+            if rows.len()>100{return error_message("parser-changed");}
+            posts.extend(rows);
+            if !crate::published::valid_wordpress_posts(&posts,category.id){return error_message("parser-changed");}
+            if finished {
+                return ReadOutcome::Complete(json!(crate::published::WordpressListing {category,posts}).to_string());
+            }
+        }
+        return error_message("listing-page-limit");
+    }
+    if let Some(id)=url.strip_prefix("https://streamcenter.st/watch/") {
+        let Some((_,_,source_id))=crate::listing_json::streamcenter_event_identity(id) else {return error_message("unsupported-discovery-address");};
+        let event=match catalog_body(state,source_id).and_then(|body|crate::listing_json::select_streamcenter_event(&body,id).map_err(failure)) {
+            Ok(event)=>event,Err(error)=>return failed(error),
+        };
+        let endpoint=format!("https://streamcenter.st/api/stream/iframe/{id}");
+        let body=match read_page(reader,&registry,&endpoint,None,"application/json",cancel).await {
+            Ok(body)=>body,Err(error)=>return failed(error),
+        };
+        let Ok(streams)=serde_json::from_str::<Value>(&body) else {return error_message("parser-changed");};
+        if !streams.as_array().is_some_and(|rows|rows.len()<=24){return error_message("parser-changed");}
+        return ReadOutcome::Complete(json!({"event":event,"streams":streams}).to_string());
+    }
     if url == "https://bestfreestreaming.app/api/xhr" {
         let names = [
             "", "NFL", "NBA", "NHL", "MLB", "F1", "motogp", "UFC", "Boxing",
@@ -500,30 +630,40 @@ pub(crate) async fn read_html_with<R: PageReader>(
         if complete {
             return ReadOutcome::Complete(body);
         }
-        let mut first = errors.remove(0);
+        let retry = errors
+            .iter()
+            .filter_map(|error| error.retry_after_ms)
+            .max()
+            .unwrap_or(0);
+        let selected = errors
+            .iter()
+            .find(|error| matches!(error.message.as_str(), "http-429" | "rate-limited"))
+            .unwrap_or(&errors[0]);
+        let failure = FetchFailure {
+            message: selected.message.clone(),
+            retry_after_ms: Some(retry),
+        };
         return if categories.is_empty() {
-            failed(first)
+            failed(failure)
         } else {
-            let retry = errors
-                .iter()
-                .filter_map(|error| error.retry_after_ms)
-                .chain(first.retry_after_ms)
-                .max()
-                .unwrap_or(0);
-            first.retry_after_ms = Some(retry);
             ReadOutcome::Partial {
                 body,
-                failure: first,
+                failure,
             }
         };
     }
-    if url == "https://streamed.st/api/matches/all"
+    if url == "https://streamed.pk/api/matches/all" || url == "https://streamed.st/api/matches/all"
         || url == "https://api.kultsport.com/api/matches/all"
         || url == "https://sportsbite.org/matches"
     {
         return match read_page(reader, &registry, url, None, "application/json", cancel).await {
             Ok(body) => ReadOutcome::Complete(body),
             Err(error) => failed(error),
+        };
+    }
+    if let Some(id)=url.strip_prefix("https://streamed.pk/watch/") {
+        return match catalog_body(state,"sportsupa").and_then(|body|crate::listing_json::select_streamed_event(&body,"sportsupa",id).map_err(failure)) {
+            Ok(body)=>ReadOutcome::Complete(body),Err(error)=>failed(error),
         };
     }
     if let Some(id) = url.strip_prefix("https://streamed.st/watch/") {
@@ -671,6 +811,7 @@ pub(crate) async fn read_html_with<R: PageReader>(
             "https://isportsurge.ws/nba/livestreams3",
             "https://isportsurge.ws/nhl/livestreams3",
             "https://isportsurge.ws/mlb/livestreams2",
+            "https://isportsurge.ws/f1/livestreams2",
         ];
         let settled = join_all(
             categories
@@ -727,7 +868,7 @@ pub(crate) async fn read_html_with<R: PageReader>(
             | "https://api-backups.handleapi.win/matches/sport/hockey"
             | "https://api-backups.handleapi.win/matches/sport/baseball"
             | "https://api.ppv.st/api/streams"
-    ) || url == SWAC_CATALOG_URL
+    ) || url == SWAC_CATALOG_URL || matches!(url,"https://streamcenter.st/api/matches/football"|"https://streamcenter.st/api/matches/basketball"|"https://streamcenter.st/api/matches/hockey"|"https://streamcenter.st/api/matches/baseball")
     {
         "application/json"
     } else {
@@ -903,10 +1044,11 @@ impl PageReader for FixtureTransport {
                 }
                 let bytes = if let Some(chunks) = script.chunks {
                     let mut bytes = Vec::new();
+                    let byte_limit = page_byte_limit(url);
                     for chunk in chunks {
                         self.pause(url, chunk.delay_ms, cancel).await?;
                         bytes.extend_from_slice(chunk.body.as_bytes());
-                        if bytes.len() > 2 * 1024 * 1024 {
+                        if bytes.len() > byte_limit {
                             return Err(failure("response-too-large"));
                         }
                     }
@@ -1178,4 +1320,148 @@ mod tests {
             "response-too-large"
         );
     }
+
+    #[tokio::test]
+    async fn sportsurgei_larger_page_budget_is_bounded_and_source_specific() {
+        let registry =
+            SourceRegistry::parse(include_str!("../../../lib/football/source-registry.json"))
+                .unwrap();
+        let transport = FixtureTransport::default();
+        let sportsurgei = "https://sportsurgei.is/mlb";
+        let normal = "https://ms.buffstream.io/cfb-streams-live-26";
+        for (url, size, accepted) in [
+            (sportsurgei, 2_542_815, true),
+            (sportsurgei, 4 * 1024 * 1024 + 1, false),
+            (normal, 2 * 1024 * 1024 + 1, false),
+        ] {
+            transport.enqueue(
+                url,
+                None,
+                Ok(PageResponse {
+                    status: 200,
+                    location: None,
+                    retry_after: None,
+                    body: Some(vec![b'x'; size]),
+                }),
+            );
+            let result = read_page(
+                &transport,
+                &registry,
+                url,
+                None,
+                "text/html",
+                &CancellationToken::new(),
+            )
+            .await;
+            if accepted {
+                assert_eq!(result.unwrap().len(), size);
+            } else {
+                assert_eq!(result.unwrap_err().message, "response-too-large");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn sportsurgei_chunked_fixture_uses_its_page_budget() {
+        let registry =
+            SourceRegistry::parse(include_str!("../../../lib/football/source-registry.json"))
+                .unwrap();
+        let transport = FixtureTransport::default();
+        let url = "https://sportsurgei.is/mlb";
+        transport.enqueue_script(FixtureScript {
+            url: url.into(),
+            method: "GET".into(),
+            request_body: None,
+            status: 200,
+            headers: HashMap::new(),
+            body: None,
+            chunks: Some(vec![
+                FixtureChunk { body: "x".repeat(1_500_000), delay_ms: 0 },
+                FixtureChunk { body: "y".repeat(1_042_815), delay_ms: 0 },
+            ]),
+            delay_ms: 0,
+            pending: false,
+            failure: None,
+        }).unwrap();
+        let page = read_page(
+            &transport,
+            &registry,
+            url,
+            None,
+            "text/html",
+            &CancellationToken::new(),
+        ).await.unwrap();
+        assert_eq!(page.len(), 2_542_815);
+        assert_eq!(page.as_bytes()[1_500_000], b'y');
+    }
+    #[tokio::test]
+    async fn native_http_rejects_private_dns_before_opening_a_socket() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let done = Arc::new(AtomicBool::new(false));
+        let connections = Arc::new(AtomicUsize::new(0));
+        let accept_done = done.clone();
+        let accepted = connections.clone();
+        let thread = std::thread::spawn(move || {
+            while !accept_done.load(Ordering::Relaxed) {
+                if listener.accept().is_ok() { accepted.fetch_add(1, Ordering::Relaxed); }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        });
+        let transport = ReqwestTransport::new().unwrap();
+        let result = transport.request(&format!("https://localhost:{port}/"), None, "text/html", &CancellationToken::new()).await;
+        done.store(true, Ordering::Relaxed); thread.join().unwrap();
+        assert!(result.is_err());
+        assert_eq!(connections.load(Ordering::Relaxed), 0);
+    }
+
+    struct FixedDns(Vec<std::net::SocketAddr>);
+    impl reqwest::dns::Resolve for FixedDns {
+        fn resolve(&self, _: reqwest::dns::Name) -> reqwest::dns::Resolving {
+            let addresses = self.0.clone();
+            Box::pin(async move { Ok(Box::new(addresses.into_iter()) as reqwest::dns::Addrs) })
+        }
+    }
+
+    struct PendingDns;
+    impl reqwest::dns::Resolve for PendingDns {
+        fn resolve(&self, _: reqwest::dns::Name) -> reqwest::dns::Resolving {
+            Box::pin(std::future::pending())
+        }
+    }
+
+    #[tokio::test]
+    async fn native_dns_validates_every_answer_and_returns_the_same_public_sockets() {
+        use reqwest::dns::Resolve;
+        for address in ["127.0.0.1", "10.0.0.1", "100.64.0.1", "169.254.169.254", "192.168.1.1", "198.18.0.1", "224.0.0.1",
+            "::1", "::ffff:8.8.8.8", "::ffff:127.0.0.1", "fc00::1", "fe80::1", "ff02::1", "2001:2::1", "2001:20::1", "2001:db8::1", "2002:808:808::1", "3fff::1"] {
+            let ip: std::net::IpAddr = address.parse().unwrap();
+            assert!(!public_ip(ip), "{address}");
+            for answers in [vec![std::net::SocketAddr::new(ip, 0)], vec!["8.8.8.8:0".parse().unwrap(), std::net::SocketAddr::new(ip, 0)]] {
+                assert!(PublicResolver(FixedDns(answers)).resolve("source.example".parse().unwrap()).await.is_err(), "{address}");
+            }
+        }
+        let expected = vec!["8.8.8.8:0".parse().unwrap(), "[2606:4700:4700::1111]:0".parse().unwrap()];
+        let resolved = PublicResolver(FixedDns(expected.clone())).resolve("source.example".parse().unwrap()).await.unwrap().collect::<Vec<_>>();
+        assert_eq!(resolved, expected);
+        assert!(PublicResolver(FixedDns(vec![])).resolve("source.example".parse().unwrap()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn native_dns_has_a_deadline_and_request_cancellation_does_not_wait_for_dns() {
+        use reqwest::dns::Resolve;
+        let started = std::time::Instant::now();
+        assert!(PublicResolver(PendingDns).resolve("source.example".parse().unwrap()).await.is_err());
+        assert!(started.elapsed() < Duration::from_secs(4));
+        let transport = ReqwestTransport::with_resolver(PendingDns).unwrap();
+        let cancel = CancellationToken::new();
+        let abort = cancel.clone();
+        tokio::spawn(async move { tokio::time::sleep(Duration::from_millis(20)).await; abort.cancel(); });
+        let started = std::time::Instant::now();
+        assert_eq!(transport.request("https://source.example/", None, "text/html", &cancel).await.err().unwrap().message, "aborted");
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
 }

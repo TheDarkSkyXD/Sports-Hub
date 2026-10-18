@@ -226,6 +226,27 @@ pub enum ReuseDetails {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct ReusedCategory {
+    pub league: League,
+    pub at: i64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "kind")]
+pub enum ReuseCategories {
+    #[serde(rename = "sportsurge-v2")]
+    Sportsurge {
+        categories: Vec<ReusedCategory>,
+        events: Vec<SportsurgeEvent>,
+    },
+    #[serde(rename = "streameast")]
+    Streameast {
+        categories: Vec<ReusedCategory>,
+        events: Vec<StreameastEvent>,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogAck {
     pub kind: String,
@@ -235,7 +256,9 @@ pub struct CatalogAck {
     #[serde(default)]
     pub reuse_details: Option<ReuseDetails>,
     #[serde(default)]
-    pub source_refresh_ms: Option<u64>,
+    pub next_sweep_at: Option<i64>,
+    #[serde(default)]
+    pub reuse_categories: Option<ReuseCategories>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -262,7 +285,7 @@ pub enum SweepAction {
     Done {
         catalog: BrowserCatalog,
         #[serde(rename = "sourceRefreshMs")]
-        source_refresh_ms: u64,
+        next_sweep_at: Option<i64>,
     },
     Failed {
         reason: BrowserFailure,
@@ -325,10 +348,11 @@ pub struct BrowserSweep {
     category_urls: Vec<(League, String)>,
     category_pages: HashMap<String, ReadResult>,
     pending: Vec<String>,
+    resume_category: Option<usize>,
     admitted: usize,
     current_detail: Option<CurrentDetail>,
     unresolved_read: bool,
-    source_refresh_ms: u64,
+    next_sweep_at: Option<i64>,
     next_action_id: u64,
     phase: Phase,
 }
@@ -388,10 +412,11 @@ impl BrowserSweep {
             category_urls,
             category_pages: HashMap::new(),
             pending: Vec::new(),
+            resume_category: None,
             admitted: 0,
             current_detail: None,
             unresolved_read: false,
-            source_refresh_ms: 300_000,
+            next_sweep_at: None,
             next_action_id: 1,
             phase: Phase::Done,
         };
@@ -431,7 +456,7 @@ impl BrowserSweep {
         self.phase = Phase::Done;
         SweepAction::Done {
             catalog: self.catalog.clone(),
-            source_refresh_ms: self.source_refresh_ms,
+            next_sweep_at: self.next_sweep_at,
         }
     }
 
@@ -580,12 +605,58 @@ impl BrowserSweep {
     ) -> SweepAction {
         match next {
             AfterPublish::Initial => self.next_category(registry, 0, now),
-            AfterPublish::Category(index) => self.next_category(registry, index, now),
-            AfterPublish::DetailPreparse(url, read) => self.detail_read_settled(&url, read, now),
+            AfterPublish::Category(index) => {
+                if self.kind == BrowserKind::Sportsurge {
+                    let league = self.category_urls[index - 1].0;
+                    let collected = self.catalog.categories().0.iter().any(|(item, state)| {
+                        *item == league && matches!(state, CategoryState::Collected { .. })
+                    });
+                    if collected {
+                        let urgent = self
+                            .catalog
+                            .event_urls()
+                            .into_iter()
+                            .filter(|url| {
+                                self.catalog.event_league(url) == Some(league)
+                                    && self.catalog.event_is_pending(url)
+                                    && self.urgency(url, now) < 2
+                            })
+                            .min_by_key(|url| {
+                                (
+                                    self.urgency(url, now),
+                                    self.catalog.event_kickoff(url).unwrap_or(i64::MAX),
+                                )
+                            });
+                        if let Some(url) = urgent {
+                            self.resume_category = Some(index);
+                            self.admitted += 1;
+                            return self.read(
+                                url.clone(),
+                                BrowserRole::Detail,
+                                league,
+                                ReadContext::Detail(url),
+                            );
+                        }
+                    }
+                }
+                self.next_category(registry, index, now)
+            }
+            AfterPublish::DetailPreparse(url, read) => {
+                if !self.catalog.event_is_pending(&url)
+                    && let Some(index) = self.resume_category.take()
+                {
+                    self.next_category(registry, index, now)
+                } else {
+                    self.detail_read_settled(&url, read, now)
+                }
+            }
             AfterPublish::ServerPreparse(event_url, server_url, read) => {
                 self.server_read_settled(&event_url, &server_url, read, now)
             }
-            AfterPublish::DetailFinal => self.next_detail_or_finish(now),
+            AfterPublish::DetailFinal => match self.resume_category.take() {
+                Some(index) => self.next_category(registry, index, now),
+                None => self.next_detail_or_finish(now),
+            },
             AfterPublish::Final | AfterPublish::RateLimit => self.done(),
             AfterPublish::Fallback(reason) => self.failed(reason),
         }
@@ -593,6 +664,11 @@ impl BrowserSweep {
 
     fn next_category(&mut self, registry: &SourceRegistry, index: usize, now: i64) -> SweepAction {
         if let Some((league, url)) = self.category_urls.get(index).cloned() {
+            if self.catalog.categories().0.iter().any(|(item, state)| {
+                *item == league && matches!(state, CategoryState::Collected { .. })
+            }) {
+                return self.next_category(registry, index + 1, now);
+            }
             if self.kind == BrowserKind::Sportsurge
                 && let Some(read) = self.category_pages.get(&url).cloned()
             {
@@ -894,14 +970,82 @@ impl BrowserSweep {
         if ack.kind != "catalog-ack" {
             return Err("invalid catalog acknowledgement kind".into());
         }
-        if let Some(refresh) = ack.source_refresh_ms {
-            if ![60_000, 300_000, 600_000, 900_000].contains(&refresh) {
-                return Err("invalid catalog refresh interval".into());
+        if let Some(deadline) = ack.next_sweep_at {
+            if deadline < 0 {
+                return Err("invalid catalog polling deadline".into());
             }
-            self.source_refresh_ms = refresh;
+            self.next_sweep_at = Some(deadline);
         }
         if !matches!(self.catalog.state(), CatalogState::Collecting) {
             return Ok(());
+        }
+        if let Some(reuse) = ack.reuse_categories {
+            if self.catalog.sequence() != 0 {
+                return Err("category reuse requires initial checkpoint".into());
+            }
+            match (&mut self.catalog, reuse) {
+                (
+                    BrowserCatalog::Sportsurge(catalog),
+                    ReuseCategories::Sportsurge { categories, events },
+                ) => {
+                    for category in &categories {
+                        if category.at < 0
+                            || !catalog
+                                .categories
+                                .0
+                                .iter()
+                                .any(|(league, _)| *league == category.league)
+                        {
+                            return Err("invalid reused category".into());
+                        }
+                        catalog.categories.set(
+                            category.league,
+                            CategoryState::Collected { at: category.at },
+                        );
+                    }
+                    for mut event in events {
+                        if !categories
+                            .iter()
+                            .any(|category| category.league == event.league)
+                        {
+                            return Err("event outside reused category".into());
+                        }
+                        event.detail = SportsurgeDetail::Pending;
+                        catalog.events.push(event);
+                    }
+                }
+                (
+                    BrowserCatalog::Streameast(catalog),
+                    ReuseCategories::Streameast { categories, events },
+                ) => {
+                    for category in &categories {
+                        if category.at < 0
+                            || !catalog
+                                .categories
+                                .0
+                                .iter()
+                                .any(|(league, _)| *league == category.league)
+                        {
+                            return Err("invalid reused category".into());
+                        }
+                        catalog.categories.set(
+                            category.league,
+                            CategoryState::Collected { at: category.at },
+                        );
+                    }
+                    for mut event in events {
+                        if !categories
+                            .iter()
+                            .any(|category| category.league == event.league)
+                        {
+                            return Err("event outside reused category".into());
+                        }
+                        event.detail = StreameastDetail::Pending;
+                        catalog.events.push(event);
+                    }
+                }
+                _ => return Err("retained category source mismatch".into()),
+            }
         }
         let skip_ids: HashSet<_> = ack.skip_detail_event_ids.into_iter().collect();
         let skip_urls: HashSet<_> = ack.skip_detail_event_urls.into_iter().collect();
@@ -1062,6 +1206,7 @@ mod tests {
                             },
                             BrowserKind::Streameast => match role {
                                 BrowserRole::Category if league == League::Ncaaf => east_category.clone(),
+                                BrowserRole::Category if league == League::Motorsport => "<a class=\"m-card m-card--event\" data-sport-tag=\"darts\" href=\"/other-events/swiss-darts-trophy-1791712800/\"><span class=\"m-card__title\">Swiss Darts Trophy</span></a>".to_owned(),
                                 BrowserRole::Category => {
                                     let league = serde_json::to_string(&league).unwrap().trim_matches('"').to_uppercase();
                                     format!("<div id=\"m-schedule-empty\" class=\"m-empty\"><h2 class=\"m-empty__title\">No {} available</h2></div>", if league == "F1" { "F1 races".to_owned() } else if league == "UFC" || league == "BOXING" { format!("{league} events") } else { format!("{league} games") })
@@ -1155,7 +1300,8 @@ mod tests {
             skip_detail_event_ids: vec!["ncaaf:123".into()],
             skip_detail_event_urls: vec![],
             reuse_details: None,
-            source_refresh_ms: Some(60_000),
+            next_sweep_at: Some(at + 60_000),
+            reuse_categories: None,
         };
         let action = sweep
             .advance(&registry, SweepResult::PublishOk { id, ack: Some(ack) }, at)
@@ -1212,7 +1358,7 @@ mod tests {
                 reason: BrowserFailure::Limit
             }
         ));
-        assert_eq!(sweep.source_refresh_ms, 60_000);
+        assert_eq!(sweep.next_sweep_at, Some(at + 60_000));
     }
 
     #[test]
@@ -1243,6 +1389,8 @@ mod tests {
                         format!(
                             "<article class=\"m-card\" data-match-id=\"12345\" data-team-names=\"Away|Home\" data-time=\"1791493800\"><a class=\"m-card__link\" aria-label=\"Away vs Home\" href=\"{event_url}\"></a></article>"
                         )
+                    } else if league == League::Motorsport {
+                        "<a class=\"m-card m-card--event\" data-sport-tag=\"darts\" href=\"/other-events/swiss-darts-trophy-1791712800/\"><span class=\"m-card__title\">Swiss Darts Trophy</span></a>".to_owned()
                     } else {
                         let category = registry.browser_category("streameast", league).unwrap();
                         format!(
@@ -1292,7 +1440,8 @@ mod tests {
                             skip_detail_event_ids: skip,
                             skip_detail_event_urls: vec![],
                             reuse_details: None,
-                            source_refresh_ms: None,
+                            next_sweep_at: None,
+                            reuse_categories: None,
                         }),
                     }
                 }
@@ -1371,7 +1520,8 @@ mod tests {
                             skip_detail_event_ids: vec![],
                             skip_detail_event_urls: vec![],
                             reuse_details,
-                            source_refresh_ms: None,
+                            next_sweep_at: None,
+                            reuse_categories: None,
                         }),
                     }
                 }

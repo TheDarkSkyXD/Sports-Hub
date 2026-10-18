@@ -1,0 +1,258 @@
+{
+  "provenance": {
+    "matches": {
+      "url": "https://streamcenter.st/api/matches/football",
+      "status": 200,
+      "capturedAt": "2026-10-15T04:13:36.354Z",
+      "contentType": "application/json; charset=utf-8",
+      "sha256": "417e75f913d1cc4dcfd65de1bdfb8d1139cc257a80f9f8bf6dd83eea1d247ad2"
+    },
+    "streams": {
+      "url": "https://streamcenter.st/api/stream/iframe/event-espn-league-football-college-football-401862800",
+      "status": 200,
+      "capturedAt": "2026-10-15T04:13:36.354Z",
+      "contentType": "application/json",
+      "sha256": "8bfda33e251581139d2542ee6b1037d67ba3178ce7ce277d6d0b04e25fc212d5"
+    },
+    "category": {
+      "url": "https://dudestream1.com/wp-json/wp/v2/categories?slug=nba&_fields=id,slug,name",
+      "status": 200,
+      "capturedAt": "2026-10-15T04:13:36.354Z",
+      "contentType": "application/json; charset=UTF-8",
+      "sha256": "6b97a1aac7e86abe5cfb1ffced8377604d3b36f6f01a925b56892a2358149bc0"
+    },
+    "posts": {
+      "url": "https://dudestream1.com/wp-json/wp/v2/posts?categories=4&per_page=10&_fields=id,link,title,content,date_gmt,categories",
+      "status": 200,
+      "capturedAt": "2026-10-15T04:13:36.354Z",
+      "contentType": "application/json; charset=UTF-8",
+      "sha256": "a64059a0732d5c5cfbe484ce117e8a8a0b9a1c3ad4ee2e2042469695f3f93dd7"
+    }
+  },
+  "matches": [
+    {
+      "id": "event-espn-league-football-college-football-401862800",
+      "title": "East Carolina Pirates at UAB Blazers",
+      "category": "football",
+      "date": 1792107000000,
+      "popular": false,
+      "teams": {
+        "home": {
+          "name": "UAB Blazers",
+          "badge": "fdba55a5-b5e8-4fcf-b427-0fc26f5cb474"
+        },
+        "away": {
+          "name": "East Carolina Pirates",
+          "badge": "a556e167-3fd8-430f-bd57-162d9da875ef"
+        }
+      },
+      "sources": [
+        {
+          "source": "iframe",
+          "id": "event-espn-league-football-college-football-401862800"
+        }
+      ]
+    },
+    {
+      "id": "event-espn-league-football-college-football-401869950",
+      "title": "Georgia Southern Eagles at Old Dominion Monarchs",
+      "category": "football",
+      "date": 1792107000000,
+      "popular": false,
+      "teams": {
+        "home": {
+          "name": "Old Dominion Monarchs",
+          "badge": "5d348735-1158-46ef-b5e6-ba7f569e1a72"
+        },
+        "away": {
+          "name": "Georgia Southern Eagles",
+          "badge": "8cf3be22-73cb-4e64-bb99-89a9307ac780"
+        }
+      },
+      "sources": [
+        {
+          "source": "iframe",
+          "id": "event-espn-league-football-college-football-401869950"
+        }
+      ]
+    },
+    {
+      "id": "event-espn-league-football-college-football-401860923",
+      "title": "Colorado State Rams at Texas State Bobcats",
+      "category": "football",
+      "date": 1792108800000,
+      "popular": false,
+      "teams": {
+        "home": {
+          "name": "Texas State Bobcats",
+          "badge": "948f18e3-fd90-4462-9a3c-e2b2c9104dc6"
+        },
+        "away": {
+          "name": "Colorado State Rams",
+          "badge": "85a28aa5-ccb7-4dbd-98d3-50928b6497ba"
+        }
+      },
+      "sources": [
+        {
+          "source": "iframe",
+          "id": "event-espn-league-football-college-football-401860923"
+        }
+      ]
+    },
+    {
+      "id": "event-espn-league-football-nfl-401872995",
+      "title": "Seattle Seahawks at Denver Broncos",
+      "category": "football",
+      "date": 1792109700000,
+      "popular": false,
+      "teams": {
+        "home": {
+          "name": "Denver Broncos",
+          "badge": "df9d2b1d-89ee-4862-93fd-2d73bd8eec59"
+        },
+        "away": {
+          "name": "Seattle Seahawks",
+          "badge": "a09572c6-2501-427d-a75e-f41909c7101d"
+        }
+      },
+      "sources": [
+        {
+          "source": "iframe",
+          "id": "event-espn-league-football-nfl-401872995"
+        }
+      ]
+    }
+  ],
+  "streams": [
+    {
+      "id": "999f2d14-a516-42cc-847d-d9ce8e83e6dd",
+      "streamNo": 1,
+      "language": "English",
+      "hd": false,
+      "embedUrl": "https://streame.center/embed/ch31.php",
+      "webUrl": "https://streamcenter.st/watch/event-espn-league-football-college-football-401862800",
+      "source": "iframe"
+    }
+  ],
+  "category": [
+    {
+      "id": 4,
+      "name": "NBA",
+      "slug": "nba"
+    }
+  ],
+  "posts": [
+    {
+      "id": 478,
+      "date_gmt": "2026-10-14T06:52:00",
+      "link": "https://dudestream1.com/nba3/",
+      "title": {
+        "rendered": "Charlotte Hornets vs Boston Celtics"
+      },
+      "content": {
+        "rendered": "\n<form action=\"https://dudestream1.com/nba3/\">       \n    <input type=\"submit\" value=\"Stream 1\">\n</form>\n<form action=\"https://dudestream1.com/los-angeles-lakers-vs-sacramento-kings-stream-2/\">\n    <input type=\"submit\" value=\"Stream 2\">\n</form>\n\n\n\n<iframe src='https://embedsports.me/basketball/boston-celtics-vs-charlotte-hornets-stream-1' width='100%' height='950' scrolling='no' frameborder='0' allowfullscreen allowtransparency referrerpolicy='unsafe-url'></iframe>\n",
+        "protected": false
+      },
+      "categories": [
+        4,
+        22
+      ]
+    },
+    {
+      "id": 610,
+      "date_gmt": "2026-10-14T06:50:00",
+      "link": "https://dudestream1.com/nba1/",
+      "title": {
+        "rendered": "Brooklyn Nets vs Miami Heat"
+      },
+      "content": {
+        "rendered": "\n<form action=\"https://dudestream1.com/nba1/\">       \n    <input type=\"submit\" value=\"Stream 1\">\n</form>\n<form action=\"https://dudestream1.com/new-york-knicks-vs-san-antonio-spurs-stream-2/\">\n    <input type=\"submit\" value=\"Stream 2\">\n</form>\n\n\n\n<iframe src='https://embedsports.me/basketball/miami-heat-vs-brooklyn-nets-stream-1' width='100%' height='950' scrolling='no' frameborder='0' allowfullscreen allowtransparency referrerpolicy='unsafe-url'></iframe>\n",
+        "protected": false
+      },
+      "categories": [
+        4,
+        22
+      ]
+    },
+    {
+      "id": 7146,
+      "date_gmt": "2026-10-14T06:48:00",
+      "link": "https://dudestream1.com/nba2/",
+      "title": {
+        "rendered": "New Orleans Pelicans vs Dallas Mavericks"
+      },
+      "content": {
+        "rendered": "\n<form action=\"https://dudestream1.com/nba2/\">       \n    <input type=\"submit\" value=\"Stream 1\">\n</form>\n<form action=\"https://dudestream1.com/golden-state-warriors-vs-los-angeles-clippers-stream-2/\">\n    <input type=\"submit\" value=\"Stream 2\">\n</form>\n\n\n\n<iframe src='https://embedsports.me/basketball/dallas-mavericks-vs-new-orleans-pelicans-stream-1' width='100%' height='950' scrolling='no' frameborder='0' allowfullscreen allowtransparency referrerpolicy='unsafe-url'></iframe>\n",
+        "protected": false
+      },
+      "categories": [
+        4,
+        22
+      ]
+    },
+    {
+      "id": 6226,
+      "date_gmt": "2026-10-14T06:44:00",
+      "link": "https://dudestream1.com/nba4/",
+      "title": {
+        "rendered": "Chicago Bulls vs Milwaukee Bucks"
+      },
+      "content": {
+        "rendered": "\n<form action=\"https://dudestream1.com/nba4/\">       \n    <input type=\"submit\" value=\"Stream 1\">\n</form>\n<form action=\"https://dudestream1.com/new-york-knicks-vs-philadelphia-76ers-stream-2/\">\n    <input type=\"submit\" value=\"Stream 2\">\n</form>\n\n\n\n<iframe src='https://embedsports.me/basketball/milwaukee-bucks-vs-chicago-bulls-stream-1' width='100%' height='950' scrolling='no' frameborder='0' allowfullscreen allowtransparency referrerpolicy='unsafe-url'></iframe>\n",
+        "protected": false
+      },
+      "categories": [
+        4,
+        22
+      ]
+    },
+    {
+      "id": 6224,
+      "date_gmt": "2026-10-14T06:42:00",
+      "link": "https://dudestream1.com/nba5/",
+      "title": {
+        "rendered": "Detroit Pistons vs Minnesota Timberwolves"
+      },
+      "content": {
+        "rendered": "\n<form action=\"https://dudestream1.com/nba5/\">\n</form>\n<form action=\"https://dudestream1.com/minnesota-timberwolves-vs-milwaukee-bucks-stream-2/\">\n    <input type=\"submit\" value=\"Stream 2\">\n</form>\n\n\n\n<iframe src='https://embedsports.me/basketball/minnesota-timberwolves-vs-detroit-pistons-stream-1' width='100%' height='950' scrolling='no' frameborder='0' allowfullscreen allowtransparency referrerpolicy='unsafe-url'></iframe>\n",
+        "protected": false
+      },
+      "categories": [
+        4,
+        22
+      ]
+    },
+    {
+      "id": 477,
+      "date_gmt": "2026-10-14T06:36:00",
+      "link": "https://dudestream1.com/nba9/",
+      "title": {
+        "rendered": "Phoenix Suns vs San Antonio Spurs"
+      },
+      "content": {
+        "rendered": "\n<form action=\"https://dudestream1.com/nba9/\">       \n    <input type=\"submit\" value=\"Stream 1\">\n</form>\n<form action=\"https://dudestream1.com/sacramento-kings-vs-los-angeles-lakers-stream-2/\">\n    <input type=\"submit\" value=\"Stream 2\">\n</form>\n\n\n\n<iframe src='https://embedsports.me/basketball/san-antonio-spurs-vs-phoenix-suns-stream-1' width='100%' height='950' scrolling='no' frameborder='0' allowfullscreen allowtransparency referrerpolicy='unsafe-url'></iframe>\n",
+        "protected": false
+      },
+      "categories": [
+        4,
+        22
+      ]
+    },
+    {
+      "id": 8927,
+      "date_gmt": "2026-10-14T06:34:00",
+      "link": "https://dudestream1.com/nba15/",
+      "title": {
+        "rendered": "Denver Nuggets vs Los Angeles Clippers"
+      },
+      "content": {
+        "rendered": "\n<form action=\"https://dudestream1.com/nba15/\">       \n    <input type=\"submit\" value=\"Stream 1\">\n</form>\n<form action=\"https://dudestream1.com/san-antonio-spurs-vs-phoenix-suns-stream-2/\">\n    <input type=\"submit\" value=\"Stream 2\">\n</form>\n\n\n\n<iframe src='https://embedsports.me/basketball/los-angeles-clippers-vs-denver-nuggets-stream-1' width='100%' height='950' scrolling='no' frameborder='0' allowfullscreen allowtransparency referrerpolicy='unsafe-url'></iframe>\n",
+        "protected": false
+      },
+      "categories": [
+        4,
+        22
+      ]
+    }
+  ]
+}

@@ -30,6 +30,31 @@ test('an accepted-result callback failure rejects only its request and leaves th
   } finally {await client.close();}
 });
 
+test('a second accepted-result callback failure cancels only its request',async()=>{
+  const messages:Array<{kind:string;id:number}>=[];
+  const fake=new EventEmitter() as EventEmitter & {postMessage:(message:{kind:string;id:number})=>void;terminate:()=>Promise<number>};
+  fake.postMessage=message=>{
+    messages.push(message);
+    if(message.kind!=='read')return;
+    const result={games:[],at:Date.now(),league:'nfl'};
+    setImmediate(()=>{
+      fake.emit('message',{kind:'current',id:message.id,result:{...result,history:{kind:'loading',day:'20261017'}}});
+      fake.emit('message',{kind:'current',id:message.id,result});
+      fake.emit('message',{kind:'complete',id:message.id,result});
+    });
+  };
+  fake.terminate=async()=>0;
+  const client=new ScheduleWorkerClient(()=>fake as unknown as Worker);
+  try {
+    let accepted=0;
+    await assert.rejects(client.readSchedule(SCHEDULES[0],Date.now(),new AbortController().signal,()=>{
+      if(++accepted===2)throw new Error('settled-history-accept-failed');
+    }),/settled-history-accept-failed/);
+    assert.equal(accepted,2);
+    assert.ok(messages.some(message=>message.kind==='cancel'&&message.id===1));
+  } finally {await client.close();}
+});
+
 test('cancellation after a current publication discards late completion',async()=>{
   const controller=new AbortController();
   const messages:Array<{kind:string;id:number}>=[];

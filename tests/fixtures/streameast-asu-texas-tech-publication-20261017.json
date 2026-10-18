@@ -1,0 +1,126 @@
+{
+  "capturedAt": "2026-10-17T22:42:43.613Z",
+  "catalog": {
+    "runId": "aeb7bc7e-778a-4e8d-bf99-4f4f9f3004bd",
+    "startedAt": 1792276799945,
+    "category": {
+      "kind": "collected",
+      "at": 1792276576585
+    }
+  },
+  "event": {
+    "id": "ncaaf:46996",
+    "league": "ncaaf",
+    "url": "https://v2.streameast.ga/cfb/arizona-state-sun-devils-vs-texas-tech-red-raiders/",
+    "title": "Arizona State Sun Devils vs Texas Tech Red Raiders",
+    "teams": [
+      "Arizona State Sun Devils",
+      "Texas Tech Red Raiders"
+    ],
+    "kickoff": 1792265400000,
+    "espnEventId": "401856828",
+    "detail": {
+      "kind": "collected",
+      "at": 1792276724005,
+      "retainedFromRunId": "305814bf-e887-4f2b-8554-a395b01c1ecd",
+      "servers": [
+        {
+          "id": "1",
+          "label": "Server 1",
+          "url": "https://v2.streameast.ga/cfb/arizona-state-sun-devils-vs-texas-tech-red-raiders/1",
+          "availability": {
+            "kind": "free-channel",
+            "channelId": "54"
+          }
+        },
+        {
+          "id": "2",
+          "label": "Server 2",
+          "url": "https://v2.streameast.ga/cfb/arizona-state-sun-devils-vs-texas-tech-red-raiders/2",
+          "availability": {
+            "kind": "free-wikisport",
+            "section": "strm",
+            "playerId": "24"
+          }
+        },
+        {
+          "id": "3",
+          "label": "Server 3",
+          "url": "https://v2.streameast.ga/cfb/arizona-state-sun-devils-vs-texas-tech-red-raiders/3",
+          "availability": {
+            "kind": "free-page"
+          }
+        },
+        {
+          "id": "4",
+          "label": "Server 4",
+          "url": "https://v2.streameast.ga/cfb/arizona-state-sun-devils-vs-texas-tech-red-raiders/4",
+          "availability": {
+            "kind": "free-page"
+          }
+        },
+        {
+          "id": "5",
+          "label": "Server 5",
+          "url": "https://v2.streameast.ga/cfb/arizona-state-sun-devils-vs-texas-tech-red-raiders/5",
+          "availability": {
+            "kind": "free-unsupported"
+          }
+        }
+      ],
+      "publication": {
+        "premium": 4,
+        "unknown": 0
+      }
+    }
+  },
+  "game": {
+    "id": "ncaaf-401856828",
+    "league": "ncaaf",
+    "name": "Arizona State Sun Devils at Texas Tech Red Raiders",
+    "date": "2026-10-17T19:30Z",
+    "home": {
+      "id": "espn:ncaaf:2641",
+      "name": "Texas Tech Red Raiders",
+      "short": "Texas Tech",
+      "abbreviation": "TTU",
+      "color": "da291c",
+      "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2641.png",
+      "score": "53",
+      "record": "5-0",
+      "aliases": [
+        "Texas Tech Red Raiders",
+        "Texas Tech",
+        "Texas Tech",
+        "TTU"
+      ]
+    },
+    "away": {
+      "id": "espn:ncaaf:9",
+      "name": "Arizona State Sun Devils",
+      "short": "Arizona St",
+      "abbreviation": "ASU",
+      "color": "ffc627",
+      "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/9.png",
+      "score": "17",
+      "record": "3-2",
+      "aliases": [
+        "Arizona State Sun Devils",
+        "Arizona State",
+        "Arizona St",
+        "ASU"
+      ]
+    },
+    "season": 2026,
+    "partitions": [
+      "fbs"
+    ],
+    "detail": "9:27 - 4th",
+    "redzone": false,
+    "lastPlay": "(S. Harrington KICK)",
+    "venue": "Galaxy Stadium",
+    "broadcast": "Fox",
+    "status": "in",
+    "lifecycle": "live"
+  }
+}

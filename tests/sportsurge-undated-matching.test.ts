@@ -8,7 +8,8 @@ import { FootballCoordinator } from '../lib/football/runtime/coordinator.ts';
 import { createObservationMatcher } from '../lib/football/domain/matching.ts';
 import { sportsurgeCandidates, sportsurgeCatalogView } from '../lib/football/domain/sportsurge-catalog.ts';
 import { sourceInventory } from '../lib/football/domain/source-inventory.ts';
-import type { Game, Observation, SportsurgeCatalog } from '../lib/football/shared.ts';
+import {browserEvidenceFresh} from '../lib/football/domain/browser-polling.ts';
+import type { DetailEvidence, Game, Observation, SportsurgeCatalog } from '../lib/football/shared.ts';
 
 const now = Date.parse('2026-10-07T22:00:00Z');
 const kickoffToday = Date.parse('2026-10-08T01:00:00Z');
@@ -49,6 +50,22 @@ const v2Event = (game: Game, index: number): SportsurgeCatalog['events'][number]
     id: `${index}-${player}`, label: `Server ${player}`, observedAt: now,
     destination: { kind: 'link', url: `https://media.example/${index}/${player}` },
   })) },
+});
+
+test('an undated live Sportsurge feed stays matched through the detail settle deadline only',()=>{
+  const live:Game={...games[0],date:new Date(now-60*60_000).toISOString(),status:'in',lifecycle:'live'};
+  const event={...v2Event(live,1),sourceStatus:'live' as const};
+  const catalog:SportsurgeCatalog={runId,sequence:0,startedAt:now,state:{kind:'complete',at:now},
+    categories:{nfl:{kind:'collected',at:now}},events:[event],rejectedGames:[],catalogIssues:[]};
+  const detail:DetailEvidence={outcome:'resolved',observationId:`sportsurge-v2:${event.url}`,generation:'fixture',
+    at:now,players:[],nextEligibleAt:now+1800000};
+  for(const [elapsed,expected] of [[1800000,2],[1860000,2],[1860001,0],[-60001,0]]){
+    const clock=now+elapsed;
+    assert.equal(browserEvidenceFresh(detail,now,clock),expected===2);
+    const candidates=sportsurgeCandidates({current:{catalog,receivedAt:now},previous:null,lastComplete:null,games:[live],now:clock,
+      freshness:()=>now+1860000,detailFresh:(_id,at)=>browserEvidenceFresh(detail,at,clock)});
+    assert.equal(candidates.length,expected,`detail age ${elapsed}`);
+  }
 });
 
 test('legacy Sportsurge resolves every unique undated NFL, FBS, and FCS game and both feeds', async () => {

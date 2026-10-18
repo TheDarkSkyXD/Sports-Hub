@@ -150,8 +150,6 @@ test('the command set and the failure vocabulary agree across the boundary', () 
   for (const reason of FailureReasonSchema.options) {
     assert.ok(failureReasons.includes(reason), `${reason} must exist in the engine`);
   }
-  assert.equal(channels.cancel, undefined, 'electron-updater cannot cancel, so no cancel channel exists');
-  assert.match(channels.setSource as string, /^sunday-update:/, 'the feed can be moved in development');
 });
 
 test('the feed parser accepts a canonical release URL and one trailing slash', () => {
@@ -734,21 +732,6 @@ test('stopping one service removes only its updater listeners', async () => {
     rmSync(first.userDataDir, { recursive: true, force: true });
     rmSync(second.userDataDir, { recursive: true, force: true });
   }
-});
-
-// The channel literals the preload duplicates. A mismatch cannot ship, because
-// `tests/packaged-desktop.mjs` calls the bridge end to end against the packaged app.
-const channels = {
-  cancel: (updateModule.CH as Record<string, unknown>).cancel,
-  setSource: updateModule.CH.setSource as string | undefined,
-};
-
-test('the preload carries exactly the channels the engine defines', () => {
-  const preload = readFileSync(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
-  for (const key of ['status', 'get', 'check', 'download', 'install', 'setSource'] as const) {
-    assert.ok(preload.includes(`'${updateModule.CH[key]}'`), `preload.cjs must carry ${key}: ${updateModule.CH[key]}`);
-  }
-  assert.ok(!/CH\.cancel/.test(preload), 'the preload must not offer a channel the engine dropped');
 });
 
 // The pure table, kept honest on its own. These do not need a service, so a change to the

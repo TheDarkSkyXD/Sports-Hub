@@ -103,7 +103,7 @@ test('listing evidence counts only admitted current choices and preserves parser
   assert.equal(withoutChoices.games[0].freeChoiceCount,0);
   assert.deepEqual(withoutChoices.games[0].sourceLinks[0].evidence,
     {kind:'collected',checkedAt:at,candidateIds:[]});
-  const stale=inventory({at:at+31*60_000,details:[resolved]});
+  const stale=inventory({at:at+31*60_000+1,details:[resolved]});
   assert.equal(stale.games[0].freeChoiceCount,0);
   assert.notEqual(stale.games[0].sourceLinks[0]?.evidence.kind,'collected');
   const parseFailure:DetailEvidence={outcome:'unresolved',observationId:observation.id,
@@ -160,13 +160,13 @@ test('saved resolved evidence survives only an unchanged identity and its origin
   const changed={...observation,title:'Changed event identity'};
   assert.equal(inventory({observations:[changed],details:[saved]})
     .games[0].sourceLinks[0].evidence.kind,'pending');
-  const expired={...renewed,observedAt:at+31*60_000};
-  assert.equal(inventory({at:at+31*60_000,observations:[expired],details:[saved],candidates:[]})
+  const expired={...renewed,observedAt:at+31*60_000+1};
+  assert.equal(inventory({at:at+31*60_000+1,observations:[expired],details:[saved],candidates:[]})
     .games[0].sourceLinks[0].evidence.kind,'pending');
 });
 
 test('a fresh checked browser player counts as working when its dated live listing is older',()=>{
-  const listingAt=at-31*60_000;
+  const listingAt=at-31*60_000-1;
   const eventUrl='https://v2.sportsurge.net/watch-12345-cfb-montana-state-idaho/';
   const catalog:SportsurgeCatalog={runId:'22222222-2222-4222-8222-222222222222',sequence:0,
     startedAt:listingAt,state:{kind:'complete',at},categories:{ncaaf:{kind:'collected',at:listingAt},
@@ -230,7 +230,7 @@ test('shared route requires the exact current published free server URL and reta
     const failed=snapshot(freeServer);
     for(const sourceId of ['streameast','sportsurge-v2']) {
       assert.deepEqual(failed.games[0].sourceLinks.find(link=>link.sourceId===sourceId)?.evidence,
-        {kind:'failed',checkedAt:at,failure:reason,retryAt:null});
+        {kind:'failed',checkedAt:at,failure:reason,retryAt:at+300_000});
     }
   }
 });

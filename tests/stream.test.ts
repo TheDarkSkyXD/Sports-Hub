@@ -1,3 +1,4 @@
+import {streamcenterApiReply} from './fixtures/streamcenter-api.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CandidateSchema, PlaybackSchema, candidateSummary } from '../lib/football/shared.ts';
@@ -355,9 +356,8 @@ test('Streamcenter resource grammar binds signed manifest and segments to one st
     segment+'?x=1',segment.replace('.ts','.m3u8')]) assert.equal(validStreamcenterResourceUrl(bad,session,'media'),false);
 });
 
-test('Streamcenter opens published public link once, then reads signed HLS with scoped headers',async()=>{
+test('StreamCenter API selects its player, then reads signed HLS with scoped headers',async()=>{
   const linkId='aef974e2-5ef2-412c-b65e-e6905af1edfa';
-  const publicUrl=`https://streamcenter.st/api/stream-link/iframe/event-espn-league-football-college-football-401856699/${linkId}`;
   const player='https://streame.center/embed/ch52.php';
   const hls='https://streame.center/embed/hls.php?stream=lmdsjkfgv52';
   const manifest=`https://edgestream1.pro/hls/lmdsjkfgv52.m3u8?st=${'a'.repeat(32)}&e=${Math.floor(Date.now()/1000)+3600}`;
@@ -367,7 +367,7 @@ test('Streamcenter opens published public link once, then reads signed HLS with 
     const url=String(input);
     const headers=new Headers(init?.headers);
     requests.push({url,referer:headers.get('referer'),origin:headers.get('origin'),range:headers.get('range')});
-    if (url===publicUrl) return new Response(null,{status:302,headers:{Location:player}});
+    const api=streamcenterApiReply(url,'401856699',linkId,player);if(api)return api;
     if (url===player) return new Response(`<iframe src="//streame.center/embed/hls.php?stream=lmdsjkfgv52"></iframe>`);
     if (url===hls) return new Response(`<script>const streamUrl = ${JSON.stringify(manifest).replace('&','\\u0026')};</script>`);
     if (url===manifest) return new Response(`#EXTM3U\n#EXTINF:5,\n/hls/lmdsjkfgv52-907340670.ts\n`,{headers:{'Content-Type':'application/vnd.apple.mpegurl'}});
@@ -385,17 +385,16 @@ test('Streamcenter opens published public link once, then reads signed HLS with 
   assert.ok(child);
   const mediaRead=await child.read({signal:new AbortController().signal,range:'bytes=0-2'});
   assert.equal(mediaRead.status,206);
-  assert.equal(requests.length,5);
-  assert.equal(requests[2].referer,player);
-  assert.equal(requests[3].origin,'https://streame.center');
-  assert.equal(requests[4].range,'bytes=0-2');
-  assert.equal(requests[4].referer,hls);
+  assert.equal(requests.length,6);
+  assert.equal(requests[3].referer,player);
+  assert.equal(requests[4].origin,'https://streame.center');
+  assert.equal(requests[5].range,'bytes=0-2');
+  assert.equal(requests[5].referer,hls);
   playback.close();
 });
 
 test('Streamcenter opens a published hls2 player with its exact parent Referer',async()=>{
   const linkId='aef974e2-5ef2-412c-b65e-e6905af1edfa';
-  const publicUrl=`https://streamcenter.st/api/stream-link/iframe/event-espn-league-football-college-football-401858469/${linkId}`;
   const player='https://streame.center/embed/ch85.php';
   const hls='https://streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85';
   const manifest=`https://edgestream3.pro/hls/jkhfsgqghjqsd85.m3u8?st=${'a'.repeat(32)}&e=${Math.floor(Date.now()/1000)+3600}`;
@@ -403,18 +402,19 @@ test('Streamcenter opens a published hls2 player with its exact parent Referer',
   const fetcher:typeof fetch=async (input,init)=>{
     const url=String(input);
     requests.push({url,referer:new Headers(init?.headers).get('referer')});
-    if (url===publicUrl) return new Response(null,{status:302,headers:{Location:player}});
+    const api=streamcenterApiReply(url,'401858469',linkId,player);if(api)return api;
     if (url===player) return new Response('<iframe src="//streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85"></iframe>');
     if (url===hls) return new Response(`<script>const streamUrl = ${JSON.stringify(manifest)};</script>`);
     if (url===manifest) return new Response('#EXTM3U\n#EXTINF:5,\n/hls/jkhfsgqghjqsd85-907340670.ts\n');
     throw new Error(`Unexpected request: ${url}`);
   };
   const playback=await streamcenterProvider(fetcher).open({provider:'streamcenter',eventId:'401858469',linkId},new AbortController().signal);
+  assert.deepEqual(playback.player,{url:hls,referer:player});
   const read=await playback.root.read({signal:new AbortController().signal});
   assert.equal(read.status,200);
-  assert.deepEqual(requests.map(request=>request.url),[publicUrl,player,hls,manifest]);
-  assert.equal(requests[2].referer,player);
-  assert.equal(requests[3].referer,hls);
+  assert.deepEqual(requests.map(request=>request.url),['https://streamcenter.st/api/matches/football','https://streamcenter.st/api/stream/iframe/event-espn-league-football-college-football-401858469',player,hls,manifest]);
+  assert.equal(requests[3].referer,player);
+  assert.equal(requests[4].referer,hls);
   playback.close();
 });
 

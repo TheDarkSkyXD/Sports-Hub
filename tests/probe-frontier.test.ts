@@ -52,7 +52,7 @@ test('the bounded frontier admits one candidate per background game before sibli
   }finally{await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 
-test('a due playable recheck gets the next game slot ahead of unknown siblings',async()=>{
+test('unknown siblings finish their first checks before a due playable recheck',async()=>{
   const at=Date.parse('2026-10-08T17:00:00Z');
   let now=at;
   const kickoff=at+6*60*60_000;
@@ -71,7 +71,7 @@ test('a due playable recheck gets the next game slot ahead of unknown siblings',
     now:()=>now,schedules:[{id:'nfl',league:'nfl',path:'',group:null}],
     sources:[{id:'fixture',url:'https://fixture.example/list',family:'fixture'}],
     readSchedule:async()=>({games:[game],league:'nfl',at:now}),readHtml:async()=>'<main>fixture</main>',
-    parseListings:()=>({observations:[observation],outcome:'parsed'}),enrichObservation:value=>value,
+    parseListings:()=>({observations:[{...observation,observedAt:now}],outcome:'parsed'}),enrichObservation:value=>value,
     compatiblePlayers:()=>[1,2,3].map(playerId=>({id:`server-${playerId}`,label:`Server ${playerId}`,
       locator:{provider:'gooz' as const,playerId:String(playerId)}})),
     probeCandidate:async locator=>{
@@ -86,18 +86,18 @@ test('a due playable recheck gets the next game slot ahead of unknown siblings',
     await coordinator.refresh(true);
     for(let index=0;calls.length<2&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.deepEqual(calls,['1','2']);
-    now=at+300_001;
+    now=at+1_800_000;
     await coordinator.refresh(true);
     releaseSibling();
     for(let index=0;calls.length<3&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
     const snapshot=await coordinator.command({kind:'sources'});
-    assert.deepEqual(calls.slice(0,3),['1','2','1'],JSON.stringify(snapshot));
+    assert.deepEqual(calls.slice(0,3),['1','2','3'],JSON.stringify(snapshot));
     for(let index=0;calls.length<4&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
-    assert.equal(calls[3],'3');
+    assert.equal(calls[3],'1');
   }finally{releaseSibling();await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 
-for(const demanded of [false,true])test(`a due recheck passes ${demanded?'live first-feed':'background'} permit waiters and they resume afterward`,async()=>{
+for(const demanded of [false,true])test(`${demanded?'live first-feed':'background'} permit waiters finish before a due recheck`,async()=>{
   const at=Date.parse('2026-10-08T17:00:00Z');
   let now=at;
   const kickoff=at+6*60*60_000;
@@ -118,7 +118,7 @@ for(const demanded of [false,true])test(`a due recheck passes ${demanded?'live f
     now:()=>now,schedules:[{id:'nfl',league:'nfl',path:'',group:null}],
     sources:[{id:'fixture',url:'https://fixture.example/list',family:'fixture'}],
     readSchedule:async()=>({games,league:'nfl',at:now}),readHtml:async()=>'<main>fixture</main>',
-    parseListings:()=>({observations,outcome:'parsed'}),enrichObservation:value=>value,
+    parseListings:()=>({observations:observations.map(observation=>({...observation,observedAt:now})),outcome:'parsed'}),enrichObservation:value=>value,
     compatiblePlayers:gameId=>[{id:`server-${gameId}`,label:'Server',
       locator:{provider:'gooz' as const,playerId:gameId}}],
     probeCandidate:(locator,signal,onProgress)=>resources.run(signal,onProgress,async active=>{
@@ -137,16 +137,20 @@ for(const demanded of [false,true])test(`a due recheck passes ${demanded?'live f
     for(let index=0;pending.length<2&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.equal(pending.length,2);
     assert.equal(calls.filter(id=>id==='1000').length,1);
-    now=at+300_001;
+    now=at+1_800_000;
     await coordinator.refresh(true);
     assert.equal(pending.every(job=>!job.signal.aborted),true);
     pending[0].release();
-    for(let index=0;calls.filter(id=>id==='1000').length<2&&index<100;index++)
+    for(let index=0;calls.length<4&&index<100;index++)
       await new Promise<void>(resolve=>setImmediate(resolve));
-    assert.equal(calls[3],'1000',JSON.stringify(calls));
-    for(let index=0;calls.length<5&&index<100;index++)await new Promise<void>(resolve=>setImmediate(resolve));
-    assert.equal(calls[4],'1003');
+    assert.equal(calls[3],'1003',JSON.stringify(calls));
     assert.equal(pending[1].signal.aborted,false);
+    for(let next=1;calls.filter(id=>id==='1000').length<2&&next<12;next++){
+      assert.ok(pending[next]);pending[next].release();
+      for(let turn=0;turn<30;turn++)await new Promise<void>(resolve=>setImmediate(resolve));
+    }
+    assert.equal(new Set(calls.slice(0,12)).size,12);
+    assert.equal(calls[12],'1000');
   }finally{
     for(const job of pending)job.release();
     await coordinator.stop();rmSync(directory,{recursive:true,force:true});
@@ -204,7 +208,7 @@ test('a background waiter advances through sustained newly due rechecks',async()
       if(reply.kind==='sources'&&reply.snapshot.games.slice(0,10).every(game=>game.workingChoiceCount===1))break;
       await new Promise<void>(resolve=>setImmediate(resolve));
     }
-    now+=300_001;
+    now+=30*60_000;
     showBackground=true;
     await coordinator.refresh(true);
     let backgroundVisible=false;

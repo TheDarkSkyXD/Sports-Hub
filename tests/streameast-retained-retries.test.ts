@@ -118,10 +118,11 @@ test('a fresh matched board keeps older published StreamEast servers retryable a
   try {
     await run.publish(catalog(at, collected(at), { state: 'complete' }));
     assert.equal((await run.candidates()).length, 3);
-    await run.advance(25);
+    await run.advance(30);
     assert.equal((await run.candidates()).filter(row => row.availability.kind === 'unavailable').length, 3);
     await run.advance(31);
     await run.publish(catalog(at + 31 * minute, { kind: 'failed', at: at + 31 * minute, reason: 'rate-limited' }));
+    await run.advance(35);
     const rows = await run.candidates();
     assert.equal(rows.length, 3);
     assert.ok(rows.every(row => row.availability.kind !== 'playable'));
@@ -197,9 +198,9 @@ test('a fresh collected-empty detail immediately removes unavailable server rows
   const run = fixture();
   try {
     await run.publish(catalog(at, collected(at), { state: 'complete' }));
-    await run.advance(5);
+    await run.advance(30);
     assert.equal((await run.candidates()).filter(row => row.availability.kind === 'unavailable').length, 3);
-    await run.publish(catalog(at + 5 * minute, collected(at + 5 * minute, [])));
+    await run.publish(catalog(at + 30 * minute, collected(at + 30 * minute, [])));
     assert.equal((await run.candidates()).length, 0);
   } finally { await run.stop(); }
 });
@@ -218,7 +219,7 @@ test('a final game cannot recover an older published server', async () => {
   const run = fixture();
   try {
     await run.publish(catalog(at, collected(at), { state: 'complete' }));
-    await run.advance(25);
+    await run.advance(30);
     run.setGame({ ...game, status: 'post', lifecycle: 'final', finalObservedAt: at + 31 * minute });
     await run.advance(31);
     await run.publish(catalog(at + 31 * minute, { kind: 'pending' }));
@@ -245,19 +246,20 @@ test('a later run reusing older detail cannot outrank a newer collected-empty de
   const run = fixture();
   try {
     await run.publish(catalog(at, collected(at), { state: 'complete' }));
-    await run.coordinator.command({ kind: 'set-feed-check-interval', minutes: 15 });
-    run.clockWithoutProjection(5);
-    await run.publish(catalog(at + 5 * minute, collected(at + 5 * minute, [])));
-    run.clockWithoutProjection(6);
-    const collecting = catalog(at + 6 * minute, { kind: 'pending' });
+    await run.advance(30);
+    run.clockWithoutProjection(35);
+    await run.publish({...catalog(at + 35 * minute, collected(at + 35 * minute, [])),runId:'22222222-2222-4222-8222-222222222222'});
+    run.clockWithoutProjection(36);
+    const collecting = {...catalog(at + 36 * minute, { kind: 'pending' }),runId:'33333333-3333-4333-8333-333333333333'};
     const ack = await run.coordinator.command({ kind: 'streameast-catalog', catalog: collecting });
     assert.equal(ack.kind, 'catalog-ack');
-    assert.equal(ack.reuseDetails, undefined);
-    await run.publish({ ...collecting, sequence: 1, state: { kind: 'complete', at: at + 6 * minute },
+    if(ack.kind==='catalog-ack')assert.deepEqual(ack.reuseDetails?.events.map(event=>event.detail),
+      [{kind:'collected',at:at+35*minute,servers:[],retainedFromRunId:'22222222-2222-4222-8222-222222222222'}]);
+    await run.publish({ ...collecting, sequence: 1, state: { kind: 'complete', at: at + 36 * minute },
       events: [{ ...collecting.events[0], detail: { ...collected(at), retainedFromRunId: '11111111-1111-4111-8111-111111111111' } }] });
     assert.equal((await run.candidates()).filter(row => row.availability.kind === 'playable').length, 0);
-    await run.advance(31);
-    await run.publish(catalog(at + 31 * minute, { kind: 'failed', at: at + 31 * minute, reason: 'rate-limited' }));
+    await run.advance(61);
+    await run.publish(catalog(at + 61 * minute, { kind: 'failed', at: at + 61 * minute, reason: 'rate-limited' }));
     assert.equal((await run.candidates()).length, 0);
   } finally { await run.stop(); }
 });

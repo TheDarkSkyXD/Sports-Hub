@@ -10,7 +10,7 @@ async function collectAck(file:string,exportName:string,sweepName:string,respons
   const originalFetch=globalThis.fetch;
   let seen:unknown;
   let error:unknown;
-  const sourceSession={setPermissionRequestHandler(){},setPermissionCheckHandler(){},on(){}};
+  const sourceSession={setPermissionRequestHandler(){},setPermissionCheckHandler(){},on(){},setProxy:async()=>{},webRequest:{onBeforeRequest(){}}};
   Module._load=function(request:string,parent:{filename?:string}|null,isMain:boolean) {
     if(parent?.filename?.endsWith(file)) {
       if(request==='electron')return {session:{fromPartition(){return sourceSession;}}};
@@ -42,12 +42,12 @@ test('both collectors return accepted checkpoint acknowledgments and tolerate le
   ]) {
     const ack={kind:'catalog-ack',skipDetailEventIds:['ncaaf:10001']};
     assert.deepEqual((await collectAck(file,exportName,sweepName,Response.json(ack))).seen,ack);
-    const intervalAck={kind:'catalog-ack',skipDetailEventIds:[],sourceRefreshMs:60_000};
-    assert.deepEqual((await collectAck(file,exportName,sweepName,Response.json(intervalAck))).seen,intervalAck);
+    const deadlineAck={kind:'catalog-ack',skipDetailEventIds:[],nextSweepAt:60_000};
+    assert.deepEqual((await collectAck(file,exportName,sweepName,Response.json(deadlineAck))).seen,deadlineAck);
     assert.equal((await collectAck(file,exportName,sweepName,new Response(null,{status:204}))).seen,undefined);
     const malformed=await collectAck(file,exportName,sweepName,Response.json({kind:'catalog-ack',skipDetailEventIds:[42]}));
     assert.equal(malformed.error instanceof Error?malformed.error.message:null,'parser-changed');
-    const invalidInterval=await collectAck(file,exportName,sweepName,Response.json({kind:'catalog-ack',skipDetailEventIds:[],sourceRefreshMs:500}));
-    assert.equal(invalidInterval.error instanceof Error?invalidInterval.error.message:null,'parser-changed');
+    const invalidDeadline=await collectAck(file,exportName,sweepName,Response.json({kind:'catalog-ack',skipDetailEventIds:[],nextSweepAt:-1}));
+    assert.equal(invalidDeadline.error instanceof Error?invalidDeadline.error.message:null,'parser-changed');
   }
 });

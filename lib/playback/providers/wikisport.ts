@@ -2,6 +2,7 @@ import { load } from 'cheerio';
 import type { CandidateLocator } from '../../football/shared.ts';
 import {scopedFetch,timedFetch} from '../probe-capacity.ts';
 import { boundedText, sanitizedRead, type PlaybackProvider, type ProviderResource, type ResourceKind } from '../provider.ts';
+import {observedPublicPage} from './public-page.ts';
 
 type WikisportLocator=Extract<CandidateLocator,{provider:'wikisport'}>;
 type MediaSession={stream:string;host:string;referer:string;fetcher:typeof fetch};
@@ -58,7 +59,7 @@ function mediaResource(value:string,session:MediaSession,kind:ResourceKind):Prov
 }
 
 export function wikisportProvider(fetcher:typeof fetch=scopedFetch):PlaybackProvider<WikisportLocator> {
-  return {provider:'wikisport',async open(locator,signal) {
+  return {provider:'wikisport',async open(locator,signal,purpose='playback') {
     const wrapper=`https://wikisport.info/${locator.section}/${locator.playerId}.php`;
     const response=await timedFetch(fetcher,wrapper,{cache:'no-store',redirect:'manual',signal,headers:{Accept:'text/html'}},15000);
     const player=publishedPlayer(await boundedText(response));
@@ -74,9 +75,10 @@ export function wikisportProvider(fetcher:typeof fetch=scopedFetch):PlaybackProv
       try {
         const response=await root.read({signal});
         await response.body?.cancel();
-        if(response.status===200)return {root,close(){}};
+        if(response.status===200)return {root,player:{url:player.url,referer:wrapper},close(){}};
       } catch {signal.throwIfAborted();}
     }
+    const observed=await observedPublicPage(new URL(player.url),signal,purpose);if(observed)return observed;
     throw new Error('Wikisport HLS source changed');
   }};
 }

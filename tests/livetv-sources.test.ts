@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {compatiblePlayers,enrichObservation,parseListings,SOURCES} from '../lib/football/adapters/sources.ts';
+import {createSourceEventMatcher} from '../lib/football/domain/matching.ts';
+import {listingEventEvidence} from '../lib/football/source-registry.ts';
+import type {Game} from '../lib/football/shared.ts';
 import {validEventPagePair} from '../lib/playback/providers/event-page-policy.ts';
 
 const source=SOURCES.find(item=>item.id==='livetv');
@@ -36,6 +39,26 @@ test('LiveTV admits only published NFL event rows and enriches from exact dated 
     {provider:'event-page',gameId:'401872974',eventUrl:alias,serverUrl:wrapper('3081333')},
     {provider:'event-page',gameId:'401872974',eventUrl:alias,serverUrl:wrapper('3082009')},
   ]);
+});
+
+test('LiveTV published listings own only a fresh unique matchup in the feed window',()=>{
+  const now=Date.parse('2026-10-04T16:00:00Z');
+  const row=parseListings(source,listing,now).observations[0];
+  const team=(id:string,name:string):Game['home']=>({id,name,short:name,abbreviation:name.slice(0,3),color:'112233',score:null});
+  const game=(id:string,date:string):Game=>({id,league:'nfl',name:'Buffalo Bills at New England Patriots',date,
+    away:team('espn:nfl:2','Buffalo Bills'),home:team('espn:nfl:17','New England Patriots'),
+    status:'pre',lifecycle:'scheduled',detail:'Scheduled',redzone:false,partitions:['nfl']});
+  const today=game('401872974','2026-10-04T17:00:00Z');
+  const evidence=listingEventEvidence('livetv');
+  assert.deepEqual(evidence,{undated:'published-listing',externalGameId:null});
+  assert.equal(createSourceEventMatcher([today])(row,evidence,now).kind,'matched');
+
+  const ambiguous=createSourceEventMatcher([today,game('nfl-rematch','2026-10-05T17:00:00Z')])(row,evidence,now);
+  assert.equal(ambiguous.kind,'possible');
+  const outsideWindow=createSourceEventMatcher([game('nfl-future','2026-10-06T17:00:00Z')])(row,evidence,now);
+  assert.equal(outsideWindow.kind,'possible');
+  const stale=createSourceEventMatcher([today])({...row,observedAt:now-31*60_000},evidence,now);
+  assert.equal(stale.kind,'rejected');
 });
 
 test('LiveTV rejects wrong detail identity, date, and altered wrapper contexts',()=>{

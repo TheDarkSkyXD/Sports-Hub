@@ -13,7 +13,12 @@ async function prepareCollector(root) {
   await ensureCollectorAddon(root);
 }
 
-function createLocalServer({ root, origin, port, userData, controlToken, observerOrigin, mode = 'compiled', logDir = path.join(root, '.desktop-runtime'), onReady, onHealthy, ensureCollector = prepareCollector }) {
+async function preparePlayback(root) {
+  const { preparePlaybackWorker } = await import('../scripts/prepare-playback-worker.mjs');
+  await preparePlaybackWorker(root);
+}
+
+function createLocalServer({ root, origin, port, userData, controlToken, observerOrigin, mode = 'compiled', logDir = path.join(root, '.desktop-runtime'), onReady, onHealthy, ensureCollector = prepareCollector, ensurePlaybackWorker = preparePlayback }) {
   fs.mkdirSync(logDir, { recursive: true });
   const logPath = path.join(logDir, 'server.log');
   let owned;
@@ -277,6 +282,7 @@ function createLocalServer({ root, origin, port, userData, controlToken, observe
 
   async function resolveServerTarget() {
     await ensureCollector(root);
+    await ensurePlaybackWorker(root);
     const inheritedPublicEnvironment = publicEnvironment();
     const sourceId = await sourceIdentity(root, inheritedPublicEnvironment);
     if (stopping) throw new Error('Local server preparation was cancelled');
@@ -351,7 +357,12 @@ function createLocalServer({ root, origin, port, userData, controlToken, observe
         ? { kind: 'dev', cwd: root, entry: path.join(root, 'node_modules', 'next', 'dist', 'bin', 'next') }
         : { kind: 'standalone', cwd: root, entry: path.join(root, 'server.js') };
       startupTimer = setTimeout(() => beginStop(new Error('Local server startup timed out')), 120000);
-      try { spawnServer(); } catch (error) { beginStop(error); }
+      if (mode === 'packaged') {
+        try { spawnServer(); } catch (error) { beginStop(error); }
+      } else {
+        preparation = ensurePlaybackWorker(root);
+        void preparation.then(() => { if (!stopping) spawnServer(); }).catch(error => beginStop(error));
+      }
       return startup;
     }
     preparationTimer = setTimeout(() => { beginStop(new Error(`Local server preparation timed out. See ${logPath}`)); void stop(); }, 600000);

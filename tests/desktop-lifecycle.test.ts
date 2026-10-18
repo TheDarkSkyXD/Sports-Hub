@@ -12,7 +12,7 @@ const { DesktopNsisUpdater } = require('../desktop/nsis-updater.cjs');
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 
 async function desktop(options: { stopFailures?: readonly string[]; observerStopGate?: Promise<void>;
-  downloadedUpdate?: boolean; packaged?: boolean; argv?: string[]; env?: NodeJS.ProcessEnv } = {}) {
+  observerStartupFails?: boolean; downloadedUpdate?: boolean; packaged?: boolean; argv?: string[]; env?: NodeJS.ProcessEnv } = {}) {
   const userData = mkdtempSync(path.join(tmpdir(), 'sunday-desktop-lifecycle-'));
   const windows: FakeWindow[] = [];
   const running = new Set(['server', 'sportsurge', 'observer', 'streameast']);
@@ -22,6 +22,8 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
   let exited = false;
   let exitCode: number | undefined;
   let selectedServerMode: string | undefined;
+  let permissionRequest: ((contents:object,name:string,callback:(allowed:boolean)=>void,details:{isMainFrame:boolean;requestingUrl:string})=>void)|undefined;
+  let releaseObserverUi=()=>{};
 
   class FakeWindow extends EventEmitter {
     details: { relaunchCommand: string } | undefined;
@@ -31,6 +33,7 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
     focused = false;
     webContents = Object.assign(new EventEmitter(), {
       mainFrame: { url: '' },
+      isDestroyed: () => this.destroyed,
       setWindowOpenHandler() {},
       send() {},
       executeJavaScript: async () => {},
@@ -56,7 +59,9 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
   }
 
   const app = Object.assign(new EventEmitter(), {
+    commandLine: { appendSwitch() {} },
     isPackaged: options.packaged ?? true,
+    enableSandbox() {}, isReady: () => true,
     setName() {},
     setAppUserModelId() {},
     getPath: () => userData,
@@ -66,7 +71,7 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
     onQuit(handler: (code: number) => void) { app.on('quit', handler); },
     quit() {
       let prevented = false;
-      app.emit('before-quit', { preventDefault() { prevented = true; } });
+      app.emit('before-quit', { get defaultPrevented() { return prevented; }, preventDefault() { prevented = true; } });
       if (prevented) return;
       exited = true;
       exitCode = 0;
@@ -86,6 +91,12 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
       running.delete(name);
     },
   });
+  const observer={...service('observer'),
+    start:async()=>{if(options.observerStartupFails)throw new Error('observer unavailable');return 'http://127.0.0.1:4132';},
+    players:{registerHost(window:FakeWindow,origin:string){releaseObserverUi=require('../desktop/security.cjs').registerTrustedUi(window.webContents,origin);}},
+  };
+  const stopObserver=observer.stop;
+  observer.stop=async()=>{releaseObserverUi();await stopObserver();};
   class FakeUpdater {
     app = app;
     autoInstallOnAppQuit = false;
@@ -95,12 +106,14 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
     _logger = { error() {} };
     constructor() { updaters.push(this); }
     setFeedURL() {}
-    async install() { this.installAttempts++; return true; }
+    async install() { this.quitAndInstallCalled = true; this.installAttempts++; return true; }
     addQuitHandler() { DesktopNsisUpdater.prototype.addQuitHandler.call(this); }
   }
   const dependency = (name: string) => {
     if (name === './closed-stdio.cjs') return {};
+    if (name === './security.cjs') return require('../desktop/security.cjs');
     if (name === 'electron') return {
+      session: { defaultSession: Object.assign(new EventEmitter(), { setPermissionRequestHandler(handler:typeof permissionRequest) {permissionRequest=handler;}, setPermissionCheckHandler() {}, setDevicePermissionHandler() {}, setDisplayMediaRequestHandler() {} }) },
       app, autoUpdater: new EventEmitter(), BrowserWindow: FakeWindow,
       ipcMain: { handle() {} }, shell: { openExternal: async () => {} },
       powerMonitor: new EventEmitter(), Notification: { isSupported: () => false },
@@ -111,7 +124,7 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
       return service('server');
     } };
     if (name === './sportsurge-collector.cjs') return { createSportsurgeCollector: () => service('sportsurge') };
-    if (name === './sportsurge-observer.cjs') return { createSportsurgeObserver: () => service('observer') };
+    if (name === './sportsurge-observer.cjs') return { createSportsurgeObserver: () => observer };
     if (name === './streameast-collector.cjs') return { createStreameastCollector: () => service('streameast') };
     if (name === './nsis-updater.cjs') return { DesktopNsisUpdater: FakeUpdater };
     if (name === './update.cjs') return {
@@ -138,7 +151,9 @@ async function desktop(options: { stopFailures?: readonly string[]; observerStop
   assert.ok(window, 'the production entry point opened a desktop window');
   assert.equal(window.visible, true);
   return {
-    app, window, running, stopAttempts, hasExited: () => exited, exitCode: () => exitCode,
+    app, window, running, stopAttempts, stopObserver:()=>observer.stop(),
+    permission(name:string){let allowed=false;permissionRequest?.(window.webContents,name,value=>{allowed=value;},{isMainFrame:true,requestingUrl:window.webContents.mainFrame.url});return allowed;},
+    hasExited: () => exited, exitCode: () => exitCode,
     installAttempts: () => updaters.at(-1)?.installAttempts,
     selectedServerMode: () => selectedServerMode,
     shutdownLog: () => readFileSync(path.join(userData, 'logs', 'startup.log'), 'utf8'),
@@ -268,7 +283,9 @@ test('permanent local server startup failure shows an error and exits after clea
   let exited = false;
   let windows = 0;
   const app = Object.assign(new EventEmitter(), {
+    commandLine: { appendSwitch() {} },
     isPackaged: true,
+    enableSandbox() {}, isReady: () => true,
     setName() {},
     setAppUserModelId() {},
     getPath: () => userData,
@@ -295,7 +312,9 @@ test('permanent local server startup failure shows an error and exits after clea
   };
   const dependency = (name: string) => {
     if (name === './closed-stdio.cjs') return {};
+    if (name === './security.cjs') return require('../desktop/security.cjs');
     if (name === 'electron') return {
+      session: { defaultSession: Object.assign(new EventEmitter(), { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, setDevicePermissionHandler() {}, setDisplayMediaRequestHandler() {} }) },
       app, autoUpdater: new EventEmitter(), BrowserWindow: Window,
       dialog: { showErrorBox(title: string, message: string) { events.push(`dialog: ${title}: ${message}`); } },
       ipcMain: { handle() {} }, shell: { openExternal: async () => {} },
@@ -327,4 +346,13 @@ test('permanent local server startup failure shows an error and exits after clea
     assert.equal(events.filter(event => event.startsWith('dialog: ')).length, 1);
     assert.match(events.find(event => event.startsWith('dialog: ')) ?? '', /Sunday Room could not start.*server launch failed/i);
   } finally { rmSync(userData, { recursive: true, force: true }); }
+});
+
+for(const observerStartupFails of [false,true])test('room UI permissions survive '+(observerStartupFails?'observer startup failure':'observer shutdown'),async()=>{
+ const room=await desktop({observerStartupFails});
+ try{
+  assert.equal(room.permission('fullscreen'),true);assert.equal(room.permission('clipboard-sanitized-write'),true);
+  await room.stopObserver();assert.equal(room.permission('fullscreen'),true);assert.equal(room.permission('clipboard-sanitized-write'),true);
+  room.window.close();assert.equal(room.permission('fullscreen'),false);assert.equal(room.permission('clipboard-sanitized-write'),false);await settle();
+ }finally{room.dispose();}
 });

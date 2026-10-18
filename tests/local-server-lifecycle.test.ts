@@ -47,14 +47,21 @@ function localServer(options: {
   serverRoot?: string;
   mode?: 'compiled' | 'dev' | 'packaged';
   env?: NodeJS.ProcessEnv;
+  preparePlayback?: (root: string) => Promise<void>;
 }) {
   const logDir = mkdtempSync(path.join(tmpdir(), 'sunday-local-server-test-'));
+  let reportLaunch = () => {};
+  const launched = new Promise<void>(resolve => { reportLaunch = resolve; });
   const wrapper = runInNewContext(`(function(require, __dirname, process, fetch, AbortSignal) { const module = { exports: {} }; ${source}\nreturn module.exports.createLocalServer; })`, {
     setTimeout: options.timers?.setTimeout ?? setTimeout,
     clearTimeout: options.timers?.clearTimeout ?? clearTimeout,
     setInterval, clearInterval,
   });
-  const createLocalServer = wrapper((name: string) => name === 'node:child_process' ? { spawn: options.spawn } :
+  const createLocalServer = wrapper((name: string) => name === 'node:child_process' ? { spawn: (command: string, args: string[], settings: { env: NodeJS.ProcessEnv; cwd: string }) => {
+    const child = options.spawn(command, args, settings);
+    if (command !== 'taskkill.exe') reportLaunch();
+    return child;
+  } } :
     name.startsWith('./') ? require(path.join(root, 'desktop', name)) : require(name),
     path.join(root, 'desktop'), {
       platform: 'win32', execPath: 'node.exe', env: options.env ?? {},
@@ -64,9 +71,10 @@ function localServer(options: {
     userData: logDir, controlToken: 'test-control-token', logDir,
     mode: options.mode ?? 'dev',
     ensureCollector: async () => {},
+    ensurePlaybackWorker: options.preparePlayback ?? (async () => {}),
     onReady: options.onReady ?? (() => {}),
   });
-  return { service, dispose: () => rmSync(logDir, { recursive: true, force: true }) };
+  return { service, launched, dispose: () => rmSync(logDir, { recursive: true, force: true }) };
 }
 
 for (const scenario of [
@@ -138,6 +146,63 @@ test('ordinary unpackaged desktop prepares compiled output instead of launching 
     room.dispose();
     rmSync(serverRoot, { recursive: true, force: true });
   }
+});
+
+for (const mode of ['dev', 'compiled'] satisfies ('dev' | 'compiled')[]) {
+  test(`${mode} startup prepares playback assets before launching Next`, async () => {
+    const serverRoot = nativeRoot('sunday-local-playback-');
+    mkdirSync(path.join(serverRoot, 'node_modules'));
+    const child = new Child();
+    let release = () => {};
+    let prepared = false;
+    let launches = 0;
+    const preparation = new Promise<void>(resolve => { release = resolve; });
+    const room = localServer({ serverRoot, mode,
+      preparePlayback: async passedRoot => { assert.equal(passedRoot, serverRoot); await preparation; prepared = true; },
+      spawn(command) {
+        if (command === 'taskkill.exe') {
+          const killer = new EventEmitter();
+          setImmediate(() => { killer.emit('exit', 0); child.exit(0); });
+          return killer;
+        }
+        assert.equal(prepared, true);
+        launches++;
+        return child;
+      },
+    });
+    try {
+      const ready = room.service.start();
+      const rejected = assert.rejects(ready, /stop/i);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(launches, 0);
+      release(); await room.launched;
+      assert.equal(launches, 1);
+      await within(room.service.stop(), 1000); await rejected;
+    } finally {
+      room.service.beginStop(); room.dispose();
+      rmSync(serverRoot, { recursive: true, force: true });
+    }
+  });
+}
+
+test('packaged startup uses prepared standalone assets without accessing installed HLS', async () => {
+  const child = new Child();
+  let instanceId = '';
+  const room = localServer({ mode: 'packaged',
+    preparePlayback: async () => { assert.fail('packaged startup must use its standalone worker'); },
+    fetch: async () => new Response(null, { status: 204, headers: { 'x-sunday-server-instance-id': instanceId } }),
+    spawn(command, _args, options) {
+      if (command === 'taskkill.exe') {
+        const killer = new EventEmitter();
+        setImmediate(() => { killer.emit('exit', 0); child.exit(0); });
+        return killer;
+      }
+      instanceId = options.env.SUNDAY_ROOM_SERVER_INSTANCE_ID ?? '';
+      return child;
+    },
+  });
+  try { await room.service.start(); }
+  finally { await within(room.service.stop(), 1000); room.dispose(); }
 });
 
 test('a failed compiled build fails startup without serving an older build',
@@ -354,6 +419,7 @@ test('failed Windows tree kill keeps the owned supervisor for a later stop', asy
     return killer;
   } });
   void room.service.start().catch(() => {});
+  await room.launched;
   try {
     await assert.rejects(within(room.service.stop()), /kill|terminat|exit|stop/i);
     assert.equal(child.exitCode, null, 'a failed kill left the owned supervisor alive');
@@ -374,6 +440,7 @@ test('a later stop never targets the PID of a supervisor that exited after faile
     return killer;
   } });
   void room.service.start().catch(() => {});
+  await room.launched;
   try {
     await assert.rejects(within(room.service.stop()), /kill|terminat|exit|stop/i);
     child.exit(0);
@@ -396,6 +463,7 @@ test('a successful tree command and later owned exit complete cleanup without an
     },
   });
   void room.service.start().catch(() => {});
+  await room.launched;
   try {
     await assert.rejects(within(room.service.stop()), /timed out|timeout/i);
     child.exit(0);
@@ -418,6 +486,7 @@ test('a hung Windows tree kill rejects within its deadline and retains ownership
     },
   });
   void room.service.start().catch(() => {});
+  await room.launched;
   try {
     await assert.rejects(within(room.service.stop()), /kill|terminat|timeout|stop/i);
     assert.equal(child.exitCode, null);

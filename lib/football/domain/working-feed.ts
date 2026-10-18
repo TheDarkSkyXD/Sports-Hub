@@ -4,17 +4,18 @@ import { normalizedName } from './matching.ts';
 import { combatListingFeedEligible, feedDateEligible } from './feed-eligibility.ts';
 
 const TeamIdentitySchema = z.object({ id: z.string().optional(), name: z.string().min(1) }).strict();
-const WorkingFeedBase = z.object({
-  identityHash: z.string().regex(/^[a-f0-9]{64}$/), candidate: CandidateSchema.strict(),
-  owner: z.union([
-    z.object({ league: LeagueSchema.exclude(['f1','nascar-cup','nascar-truck','motogp','motorsport','ufc','boxing','wwe','tna']), home: TeamIdentitySchema, away: TeamIdentitySchema,
+export const FeedOwnerSchema=z.union([
+    z.object({ league: LeagueSchema.exclude(['f1','nascar-cup','nascar-truck','motogp','motorsport','ufc','boxing','wwe','tna','aew','wrestling']), home: TeamIdentitySchema, away: TeamIdentitySchema,
       partitionIds: z.array(z.string().min(1)).min(1).max(32) }).strict(),
     z.object({league:LeagueSchema.extract(['f1','nascar-cup','nascar-truck','motogp','motorsport']),
       eventId:z.string(),sessionId:z.string(),session:z.string(),round:z.string(),
       partitionIds:z.array(z.string().min(1)).min(1).max(32)}).strict(),
-    z.object({league:LeagueSchema.extract(['ufc','boxing','wwe','tna']),eventId:z.string().min(1),date:z.string(),
+    z.object({league:LeagueSchema.extract(['ufc','boxing','wwe','tna','aew','wrestling']),eventId:z.string().min(1),date:z.string(),
       partitionIds:z.array(z.string().min(1)).min(1).max(32)}).strict(),
-  ]),
+  ]);
+const WorkingFeedBase = z.object({
+  identityHash: z.string().regex(/^[a-f0-9]{64}$/), candidate: CandidateSchema.strict(),
+  owner: FeedOwnerSchema,
   checkedAt: z.number().int().nonnegative(),
 });
 export const WorkingFeedSchema=z.union([

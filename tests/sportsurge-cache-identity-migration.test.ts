@@ -107,7 +107,7 @@ test('a newly verified catalog retires an active old route and prevents stale au
 });
 
 test('a late old-route media recheck cannot restore proof after verified matchup metadata replaces it',async()=>{
-  const run=fixture({oldCheckedAt:at-301_000});
+  const run=fixture({oldCheckedAt:at-1_801_000});
   let resolveOld!:(result:CandidateProbeResult)=>void;
   run.setProbe(async locator=>locator.provider==='sportsurge-v2'&&locator.expectedMatchup?
     {kind:'unavailable',reason:'invalid-media'}:new Promise<CandidateProbeResult>(resolve=>{resolveOld=resolve;}));

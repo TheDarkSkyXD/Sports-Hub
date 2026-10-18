@@ -45,7 +45,7 @@ test('WNBA uses its ESPN partition, ID, and team identities',async()=>{
   } finally {globalThis.fetch=original;}
 });
 
-test('WNBA PPV and Streamcenter listings bind only to the WNBA schedule game',()=>{
+test('WNBA PPV and StreamCenter API listings bind only to the WNBA schedule game',()=>{
   const ppv=SOURCES.find(item=>item.id==='ppv');
   const streamcenter=SOURCES.find(item=>item.id==='streamcenter-nba');
   assert.ok(ppv&&streamcenter);
@@ -67,8 +67,9 @@ test('WNBA PPV and Streamcenter listings bind only to the WNBA schedule game',()
   const players=compatiblePlayers(wnba.id,ppvResult.observations[0],detail);
   assert.equal(players.length,1);
   assert.equal(players[0].locator.provider,'event-page');
-  const link='/api/stream-link/iframe/event-espn-league-basketball-wnba-401918298/7bd8aeb5-7758-4a38-9487-a7c48f13288e';
-  const listing=`<article class="game-card-row"><p class="game-card-league">WNBA</p><time datetime="${new Date(tipoff).toISOString()}"></time><span class="game-card-team" title="Las Vegas Aces"></span><span class="game-card-team" title="Golden State Valkyries"></span><a class="game-card-open-link" href="${link}">English</a></article>`;
+  const id='event-espn-league-basketball-wnba-401918298';
+  const listing=JSON.stringify([{id,title:'Las Vegas Aces vs Golden State Valkyries',category:'basketball',date:tipoff,
+    teams:{home:{name:'Las Vegas Aces'},away:{name:'Golden State Valkyries'}},sources:[{source:'iframe',id}]}]);
   const streamResult=parseListings(streamcenter,listing,tipoff);
   assert.equal(streamResult.outcome,'parsed');
   assert.equal(streamResult.observations.length,1);

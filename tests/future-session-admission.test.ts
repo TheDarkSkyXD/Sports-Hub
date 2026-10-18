@@ -24,15 +24,15 @@ const observation = (game: Game): Observation => ({
   title: game.name, league: game.league, teams: [game.away.name, game.home.name],
   kickoff: Date.parse(game.date || ''), rawTime: '', observedAt: at, parserVersion: 2,
 });
-async function until(check: () => Promise<boolean> | boolean): Promise<void> {
+async function until(check: () => Promise<boolean> | boolean, message='coordinator did not reach the required state'): Promise<void> {
   for (let index = 0; index < 300; index++) {
     if (await check()) return;
     await new Promise<void>(resolve => setImmediate(resolve));
   }
-  assert.fail('coordinator did not reach the required state');
+  assert.fail(message);
 }
 
-test('live first feeds take priority over future selected alternatives while future work still progresses', async () => {
+test('today first checks finish before tomorrow alternatives while selected viewers keep their routes', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'future-session-admission-'));
   let clock = at;
   let publishLive = false;
@@ -49,7 +49,7 @@ test('live first feeds take priority over future selected alternatives while fut
       league: partition.league, at: clock,
     }),
     readHtml: async () => '<main>fixture</main>',
-    parseListings: () => ({ outcome: 'parsed', observations: [...future, ...(listLive ? live : [])].map(observation) }),
+    parseListings: () => ({ outcome: 'parsed', observations: [...future, ...(listLive ? live : [])].map(game=>({...observation(game),observedAt:clock})) }),
     enrichObservation: value => value,
     compatiblePlayers: (gameId, listing) => [
       ...(!gameId.startsWith('ncaaf') ? [{ id: `direct-${gameId}`, label: 'Direct', locator: { provider: 'gooz' as const, playerId: gameId } }] : []),
@@ -95,7 +95,7 @@ test('live first feeds take priority over future selected alternatives while fut
       if (reply.kind === 'playback') sessions.push(reply.playback.session.id);
     }
     await until(() => admissions.filter(row => row.phase === 'seed').length >= 4);
-    for (let minute = 1; minute <= 5; minute++) {
+    for (let minute = 1; minute <= 30; minute++) {
       clock = at + minute * 60_000;
       for (const sessionId of sessions) {
         const reply = await coordinator.command({ kind: 'session', sessionId, generation: 0, failure: false, retry: false });
@@ -116,15 +116,31 @@ test('live first feeds take priority over future selected alternatives while fut
       return reply.kind === 'sources' && live.every(game =>
         reply.snapshot.games.find(row => row.gameId === game.id)?.freeChoiceCount === 1);
     });
-    for (let expected = 3; expected <= 36; expected++) {
+    for (let expected = 3; expected <= 13; expected++) {
       pending.shift()?.();
-      await until(() => admissions.filter(row => row.phase === 'hold').length >= expected);
+      await until(() => admissions.filter(row => row.phase === 'hold').length >= expected,
+        `Expected held admission ${expected}, after ${admissions.filter(row=>row.phase==='hold').map(row=>row.gameId).join(', ')}`);
+    }
+    for(const release of pending.splice(0))release();
+    for(let expected=14;expected<=36;expected++){
+      if(expected>14)pending.shift()?.();
+      await until(()=>admissions.filter(row=>row.phase==='hold').length>=expected);
     }
     const next = admissions.filter(row => row.phase === 'hold').slice(0, 36).map(row => row.gameId);
     const firstLivePositions = live.map(game => next.indexOf(game.id) + 1);
     assert.deepEqual(firstLivePositions, [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
-    assert.ok(next.slice(13).some(id => future.some(game => game.id === id)),
-      'future alternatives must keep receiving bounded background turns after first live proofs');
+    assert.ok(next.slice(13).every(id=>future.some(game=>game.id===id)),
+      'tomorrow alternatives resume after every today attempt finishes');
+    const snapshot=await coordinator.command({kind:'sources'});assert.equal(snapshot.kind,'sources');
+    if(snapshot.kind==='sources')assert.deepEqual(live.map(game=>snapshot.snapshot.games.find(row=>row.gameId===game.id)?.workingChoiceCount),Array(11).fill(1));
+    for(const [index,sessionId] of sessions.entries()){
+      const reply=await coordinator.command({kind:'session',sessionId,generation:0,failure:false,retry:false});
+      assert.equal(reply.kind,'session');
+      if(reply.kind==='session'){
+        assert.equal(reply.session.candidateId,`direct-${future[index].id}`);
+        assert.equal(reply.session.generation,0);
+      }
+    }
   } finally {
     for (const release of pending) release();
     await coordinator.stop();

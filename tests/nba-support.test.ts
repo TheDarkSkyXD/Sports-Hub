@@ -64,15 +64,13 @@ test('NBA TVApp listing skips its schedule row and matches the NBA game',()=>{
   assert.deepEqual(matchObservation(result.observations[0],[game],tipoff),{kind:'matched',gameId:game.id});
 });
 
-test('NBA Streamcenter card and PPV basketball event retain league identity',()=>{
+test('NBA StreamCenter API and PPV basketball event retain league identity',()=>{
   const streamcenter=SOURCES.find(item=>item.id==='streamcenter-nba');
   const ppv=SOURCES.find(item=>item.id==='ppv');
   assert.ok(streamcenter&&ppv);
-  const html=`<article class="game-card-row"><p class="game-card-league">NBA</p>
-    <time datetime="${new Date(tipoff).toISOString()}"></time>
-    <span class="game-card-team" title="${teams[0]}"></span><span class="game-card-team" title="${teams[1]}"></span>
-    <a class="game-card-open-link" href="/api/stream-link/iframe/event-espn-league-basketball-nba-401914129/5566bee6-9708-490c-9e61-5c64d0b4b3c0">English</a></article>
-    <article class="game-card-row"><p class="game-card-league">NHL</p></article>`;
+  const id='event-espn-league-basketball-nba-401914129';
+  const html=JSON.stringify([{id,title:teams.join(' vs '),category:'basketball',date:tipoff,
+    teams:{home:{name:teams[0]},away:{name:teams[1]}},sources:[{source:'iframe',id}]}]);
   const streamResult=parseListings(streamcenter,html,tipoff);
   assert.equal(streamResult.outcome,'parsed');
   assert.equal(streamResult.observations.length,1);

@@ -87,7 +87,7 @@ test('new decoded proof stays visible while an older probe remains active', asyn
     assert.equal(decoded.kind,'sources');
     if(decoded.kind==='sources')assert.deepEqual(decoded.snapshot.games.find(row=>row.gameId===game.id)?.candidates[0]?.availability,
       {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:100,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4},checkedAt:at});
-    clock+=10*60_000+1;
+    clock+=30*60_000+1;
     await coordinator.refresh(true);
     await until(async()=>{
       const reply=await coordinator.command({kind:'sources'});

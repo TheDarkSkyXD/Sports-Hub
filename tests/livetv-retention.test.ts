@@ -66,10 +66,10 @@ for(const allPlayable of [false,true])test(`LiveTV restores two published feeds 
     clock+=4*60_000;
     await coordinator.refresh(true);
     assert.equal(detailReads,1);
-    clock+=60_000;
+    clock+=26*60_000;
     await coordinator.refresh(true);
-    if(!allPlayable)await until(async()=>detailReads===2,'partial listing retried at five minutes');
-    assert.equal(detailReads,2,'published detail is checked again after five minutes');
+    if(!allPlayable)await until(async()=>detailReads===2,'partial listing retried at thirty minutes');
+    assert.equal(detailReads,2,'published detail is checked again after thirty minutes');
     clock+=31*60_000;
     await coordinator.stop();
     barrier=new Promise<void>(resolve=>{release=resolve;});
@@ -85,8 +85,10 @@ for(const allPlayable of [false,true])test(`LiveTV restores two published feeds 
     await until(async()=>(await choices()).length===2&&
       (await snapshot()).sources[0].links[0]?.evidence.kind==='collected','both published feeds restored');
     assert.equal(detailReads,3,'published detail is checked again after evidence expiry');
+    await until(async()=>probes.filter(channel=>channel==='3081333').length===3&&
+      probes.filter(channel=>channel==='3082009').length===3,'due checks resume after retained outcomes are published');
     assert.equal(probes.filter(channel=>channel==='3081333').length,3);
-    assert.equal(probes.filter(channel=>channel==='3082009').length,allPlayable?3:2);
+    assert.equal(probes.filter(channel=>channel==='3082009').length,3);
   } finally {release?.();await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 

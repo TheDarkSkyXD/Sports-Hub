@@ -1,4 +1,7 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
+import {ProviderCapacityError} from './provider.ts';
+import {publicFetch} from './public-http.ts';
+import verificationPolicy from './verification-policy.json' with {type:'json'};
 
 type Resource='http'|'observer';
 type Progress={kind:'waiting'|'active';since:number};
@@ -9,6 +12,13 @@ class Permits {
   private readonly waiting:Waiter[]=[];
   private readonly limit:number;
   constructor(limit:number) {this.limit=limit;}
+  tryAcquire(signal:AbortSignal):()=>void {
+    signal.throwIfAborted();
+    if(this.active>=this.limit)throw new ProviderCapacityError();
+    this.active++;
+    let released=false;
+    return ()=>{if(released)return;released=true;this.active--;this.drain();};
+  }
   acquire(signal:AbortSignal,onWait:()=>void):Promise<()=>void> {
     if(signal.aborted)return Promise.reject(signal.reason);
     return new Promise((resolve,reject)=>{
@@ -110,6 +120,8 @@ class ProbeScope {
 }
 
 const current=new AsyncLocalStorage<ProbeScope>();
+declare global {var sundayRoomUnscopedObserverPermits:Permits|undefined;}
+const unscopedObservers=globalThis.sundayRoomUnscopedObserverPermits??=new Permits(verificationPolicy.concurrency);
 
 export function createProbeResources(options:{httpLimit:number;observerLimit:number;activeBudgetMs:number}) {
   const pools={http:new Permits(options.httpLimit),observer:new Permits(options.observerLimit)};
@@ -129,7 +141,7 @@ export function createProbeResources(options:{httpLimit:number;observerLimit:num
 
 export async function probeObserverLease(signal:AbortSignal):Promise<()=>void> {
   const scope=current.getStore();
-  return scope?scope.acquire('observer',signal):()=>{};
+  return scope?scope.acquire('observer',signal):unscopedObservers.tryAcquire(signal);
 }
 
 export async function probeHttpResponse(signal:AbortSignal,work:(active:AbortSignal)=>Promise<Response>,
@@ -169,14 +181,15 @@ export async function probeHttpResponse(signal:AbortSignal,work:(active:AbortSig
 }
 
 export function probeFetch(fetcher:typeof fetch,input:RequestInfo|URL,init:RequestInit={},timeoutMs?:number):Promise<Response> {
-  return probeHttpResponse(init.signal || new AbortController().signal,signal=>fetcher(input,{...init,signal}),timeoutMs);
+  return probeHttpResponse(init.signal??(input instanceof Request?input.signal:new AbortController().signal),
+    signal=>fetcher(input,{...init,signal}),timeoutMs);
 }
 
-export const scopedFetch:typeof fetch=(input,init)=>probeFetch(fetch,input,init);
+export const scopedFetch:typeof fetch=(input,init)=>probeFetch(publicFetch,input,init);
 
 export function timedFetch(fetcher:typeof fetch,input:RequestInfo|URL,init:RequestInit,timeoutMs:number):Promise<Response> {
-  if(fetcher===scopedFetch)return probeFetch(fetch,input,init,timeoutMs);
-  const signal=init.signal || new AbortController().signal;
+  if(fetcher===scopedFetch)return probeFetch(publicFetch,input,init,timeoutMs);
+  const signal=init.signal??(input instanceof Request?input.signal:new AbortController().signal);
   return fetcher(input,{...init,signal:AbortSignal.any([signal,AbortSignal.timeout(timeoutMs)])});
 }
 

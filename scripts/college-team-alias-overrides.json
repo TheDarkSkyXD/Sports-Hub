@@ -65,6 +65,17 @@
                        ]
     },
     {
+        "espnId":  "252",
+        "aliases":  [
+                        "Brigham Young",
+                        "Brigham Young Cougars"
+                    ],
+        "sourceUrls":  [
+                           "https://www.byu.edu/about",
+                           "https://www.byu.edu/campus-life"
+                       ]
+    },
+    {
         "espnId":  "301",
         "aliases":  [
                         "USD"
@@ -398,5 +409,205 @@
                            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2900",
                            "https://tommiesports.com/sports/football"
                        ]
+    },
+    {
+        "espnId": "2128",
+        "aliases": [
+            "Charleston Golden Eagles"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401907583",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2128"
+        ]
+    },
+    {
+        "espnId": "2919",
+        "aliases": [
+            "Monmouth Fighting Scots"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401908755",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2919"
+        ]
+    },
+    {
+        "espnId": "129469",
+        "aliases": [
+            "Anderson Trojans"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401907399",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/129469"
+        ]
+    },
+    {
+        "espnId": "2339",
+        "aliases": [
+            "Lincoln Lions"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401906136",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2339"
+        ]
+    },
+    {
+        "espnId": "2403",
+        "aliases": [
+            "Missouri Southern Lions"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401907372",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2403"
+        ]
+    },
+    {
+        "espnId": "2744",
+        "aliases": [
+            "UW Stout Blue Devils"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401907890",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2744"
+        ]
+    },
+    {
+        "espnId": "2745",
+        "aliases": [
+            "UW-Whitewater Warhawks"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401907890",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2745"
+        ]
+    },
+    {
+        "espnId": "2146",
+        "aliases": [
+            "Colorado Mines Orediggers"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401907134",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2146"
+        ]
+    },
+    {
+        "espnId": "2570",
+        "aliases": [
+            "Colorado State Pueblo Thunderwolves"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401907146",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2570"
+        ]
+    },
+    {
+        "espnId": "2333",
+        "aliases": [
+            "Lewis And Clark Pioneers"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401908397",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2333"
+        ]
+    },
+    {
+        "espnId": "205",
+        "aliases": [
+            "Pacific Boxers"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401908424",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/205"
+        ]
+    },
+    {
+        "espnId": "2882",
+        "aliases": [
+            "North Carolina Pembroke Braves"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401906173",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2882"
+        ]
+    },
+    {
+        "espnId": "2733",
+        "aliases": [
+            "Wilmington Quakers"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401908842",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2733"
+        ]
+    },
+    {
+        "espnId": "131",
+        "aliases": [
+            "Wayne State Warriors"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401906885",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/131"
+        ]
+    },
+    {
+        "espnId": "110243",
+        "aliases": [
+            "Texas-Permian Basin Falcons"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401907318",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/110243"
+        ]
+    },
+    {
+        "espnId": "101442",
+        "aliases": [
+            "Centenary Gents"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401908551",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/101442"
+        ]
+    },
+    {
+        "espnId": "2045",
+        "aliases": [
+            "Austin Kangaroos"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401908551",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2045"
+        ]
+    },
+    {
+        "espnId": "2849",
+        "aliases": [
+            "Westminster Titans"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401909036",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2849"
+        ]
+    },
+    {
+        "espnId": "613",
+        "aliases": [
+            "South Dakota Hardrockers"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401907115",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/613"
+        ]
+    },
+    {
+        "espnId": "2094",
+        "aliases": [
+            "California Lutheran Kingsmen"
+        ],
+        "sourceUrls": [
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401908438",
+            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/2094"
+        ]
     }
 ]

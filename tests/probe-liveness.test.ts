@@ -102,7 +102,7 @@ for(const reactsToAbort of [false,true])test(reactsToAbort ?
       const snapshot=await sources(run.coordinator);
       for(const row of snapshot.games.slice(0,2)){
         const availability=row.candidates[0]?.availability;
-        assert.deepEqual(availability,{kind:'checking',progress:{kind:'deferred',since:at+65_000,retryAt:at+365_000}});
+        assert.deepEqual(availability,{kind:'checking',progress:{kind:'deferred',since:at+65_000,retryAt:at+365_000,retryAfterMs:300_000}});
       }
     });
   } finally {

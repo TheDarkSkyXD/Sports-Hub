@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sourceInventory } from '../lib/football/domain/source-inventory.ts';
-import { SourcesSnapshotSchema, type Candidate, type Game, type Observation } from '../lib/football/shared.ts';
+import { SourcesSnapshotSchema, type Candidate, type DetailEvidence, type Game, type Observation } from '../lib/football/shared.ts';
 import { SOURCE_REGISTRY } from '../lib/football/source-registry.ts';
+import {detailIdentity} from '../lib/football/domain/source-policy.ts';
 
 const at=Date.parse('2026-09-26T21:30:00Z');
 const team=(name:string,id:string)=>({id,name,short:name,abbreviation:name.slice(0,3),color:'112233',score:'0'});
@@ -23,6 +24,31 @@ const candidate=(id:string,sourceIds:string[],observedAt=at):Candidate=>({
   id,gameId:florida.id,label:'Primary',sourceIds,observedAt,locator:{provider:'gooz',playerId:'57069'},
 });
 
+test('resolved link evidence stays collected through its settle deadline without extending failed details',()=>{
+  const observation=observed('fixture:one','fixture','https://fixture.example/game',
+    ['Ole Miss Rebels','Florida Gators'],at+60000);
+  const feed=candidate('resolved',['fixture']);
+  const detail:DetailEvidence={outcome:'resolved',observationId:observation.id,generation:'fixture',identity:detailIdentity(observation),
+    at,players:[{id:feed.id,label:feed.label,locator:feed.locator}],nextEligibleAt:at+1800000,event:{gameId:florida.id,date:florida.date??null}};
+  const inspect=(elapsed:number,value:DetailEvidence)=>sourceInventory({at:at+elapsed,revision:1,lastDiscoveryAt:at+60000,browserCollectorsAvailable:false,
+    sources:[{id:'fixture',url:'https://fixture.example/list',family:'fixture',leagues:['ncaaf']}],observations:[observation],games:[florida],
+    candidates:new Map([[florida.id,[feed]]]),candidateEligible:()=>true,availability:()=>({kind:'unknown'}),details:[value],
+    attempts:{fixture:{at:at+60000,outcome:'parsed',count:1,failures:0,nextEligibleAt:at+1860000}},
+    sportsurgeCatalog:{current:null,lastComplete:null,previous:null},streameastCatalog:{current:null,lastComplete:null,previous:null}});
+  for(const [elapsed,expected] of [[1800000,'collected'],[1860000,'collected'],[1860001,'pending']] as const){
+    const snapshot=inspect(elapsed,detail);
+    assert.equal(snapshot.sources[0].scopes[0].read.kind,'complete');
+    assert.equal(snapshot.sources[0].links[0].evidence.kind,expected,`detail age ${elapsed}`);
+    assert.equal(snapshot.games[0].candidates.length,1);
+  }
+  const generation=JSON.stringify([observation.sourceId,observation.url,observation.teams,observation.kickoff,observation.observedAt,observation.parserVersion]);
+  const failed:DetailEvidence={outcome:'failed',observationId:observation.id,generation,at,failures:1,failure:'network-unavailable',nextEligibleAt:at+1800000};
+  assert.equal(inspect(1800000,failed).sources[0].links[0].evidence.kind,'failed');
+  assert.equal(inspect(1800001,failed).sources[0].links[0].evidence.kind,'pending');
+  assert.equal(inspect(1800000,{...detail,at:at+1860001}).sources[0].links[0].evidence.kind,'pending');
+  assert.equal(inspect(1800000,{...detail,identity:'changed-owner'}).sources[0].links[0].evidence.kind,'pending');
+});
+
 test('source league scopes open their public category while retaining collector endpoints',()=>{
   const snapshot=sourceInventory({at,revision:1,lastDiscoveryAt:null,browserCollectorsAvailable:true,
     sources:SOURCE_REGISTRY,observations:[],games:[],candidates:new Map(),attempts:{},
@@ -38,8 +64,8 @@ test('source league scopes open their public category while retaining collector 
     ['tvapp','ncaaf',['https://tvapp1.pk/cfb-streams','https://thetvapp.st/cfb-streams']],
     ['tvapp-nba','nba',['https://tvapp1.pk/nba-streams','https://thetvapp.st/nba-streams']],
     ['tvapp-nba','wnba',['https://tvapp1.pk/','https://thetvapp.st/']],
-    ['ppv','nba',['https://ppv.st/#37']],
-    ['ppv','nhl',['https://ppv.st/#39']],
+    ['ppv','nba',['https://ppv.st/#37','https://ppv.tj/#37','https://ppvs.pk/#37','https://ppv.rw/#37','https://ppv.ms/#37','https://ppv.bi/#37','https://ppv.ug/#37']],
+    ['ppv','nhl',['https://ppv.st/#39','https://ppv.tj/#39','https://ppvs.pk/#39','https://ppv.rw/#39','https://ppv.ms/#39','https://ppv.bi/#39','https://ppv.ug/#39']],
     ['streameast','nfl',['https://v2.streameast.ga/nfl-streams/']],
     ['sportsurge-v2','nba',['https://v2.sportsurge.net/watch-basketball-streams/']],
     ['streamed','ufc',['https://streamed.st/category/fight']],

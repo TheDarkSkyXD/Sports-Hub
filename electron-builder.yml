@@ -14,15 +14,27 @@ files:
   - desktop/**
   - native/collector/bridge.cjs
   - lib/football/source-registry.json
+  - lib/playback/verification-policy.json
   # `!node_modules/**` keeps the dev tree out, which a blanket `node_modules/**` does not:
-  # that ships all 29,000 dev packages. These are electron-updater's transitive graph,
-  # listed explicitly because this app has no other production dependency and there is no
-  # pattern that admits one subtree without naming it.
+  # that ships all 29,000 dev packages. List the runtime dependency graphs explicitly.
   # Verified rather than assumed: `tests/packaged-desktop.mjs` reads the packaged asar and
   # requires electron-updater from inside the running main process. An earlier revision of
   # this file omitted three of these and shipped an app that opened a window titled
   # "Error", which the smoke test could only report as a bare timeout.
   - '!node_modules/**'
+  - node_modules/@ghostery/adblocker/**
+  - node_modules/@ghostery/adblocker-content/**
+  - node_modules/@ghostery/adblocker-extended-selectors/**
+  - node_modules/@ghostery/url-parser/**
+  - node_modules/@remusao/guess-url-type/**
+  - node_modules/@remusao/small/**
+  - node_modules/@remusao/smaz/**
+  - node_modules/@remusao/smaz-compress/**
+  - node_modules/@remusao/smaz-decompress/**
+  - node_modules/@remusao/trie/**
+  - node_modules/tldts-core/**
+  - node_modules/tldts-experimental/**
+  - node_modules/ipaddr.js/**
   - node_modules/electron-updater/**
   - node_modules/builder-util-runtime/**
   - node_modules/fs-extra/**

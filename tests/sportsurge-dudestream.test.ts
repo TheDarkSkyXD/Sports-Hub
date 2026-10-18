@@ -20,7 +20,7 @@ test('NCAA title evidence distinguishes exact, conflicting, and unknown identiti
   assert.equal(publishedFootballMatchup(expectedMatchup,'Troy Trojans vs Kennesaw State Owls'),'conflicting');
   assert.equal(publishedFootballMatchup(expectedMatchup,'Tigers vs Kennesaw State'),'unknown');
   assert.equal(publishedFootballMatchup(undefined,'Jacksonville State vs Kennesaw State'),'unknown');
-  assert.equal(publishedFootballMatchup({league:'nfl',teams:expectedMatchup.teams},'Jacksonville State vs Kennesaw State'),'unknown');
+  assert.equal(publishedFootballMatchup({league:'ufc',teams:expectedMatchup.teams},'Jacksonville State vs Kennesaw State'),'unknown');
   assert.equal(publishedFootballMatchup({league:'ncaaf',teams:['New Mexico State Aggies','Florida International Panthers']},
     'NM State vs FIU – ☆𝘿𝙪𝙙𝙚𝒮𝙩𝙧𝙚𝙖𝙢☆'),'matches');
 });
@@ -102,9 +102,9 @@ test('unknown or incomplete Dudestream identity cannot enter embedded activation
     const nfl={...locator,expectedMatchup:{league:'nfl' as const,teams:['Dallas Cowboys','Tampa Bay Buccaneers'] as const}};
     const page=parentHtml('Jacksonville State vs Kennesaw State',[player]);
     const nested=playerHtml('Jacksonville State vs Kennesaw State');
-    const nflPlayback=await sportsurgeV2Provider(requester(page,nested)).open(nfl,new AbortController().signal);
-    nflPlayback.close();
-    assert.deepEqual(requests.at(-1),{url:source,purpose:'playback'});
+    const before=requests.length;
+    await assert.rejects(sportsurgeV2Provider(requester(page,nested)).open(nfl,new AbortController().signal),/conflicting.*matchup/i);
+    assert.equal(requests.length,before);
     const unavailable=async(url:URL):Promise<Response>=>{
       if(url.href===player)throw new Error('Player page unavailable');
       return requester(page,nested)(url);

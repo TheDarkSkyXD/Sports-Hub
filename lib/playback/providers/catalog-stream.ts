@@ -3,7 +3,7 @@ import type { CandidateLocator } from '../../football/shared.ts';
 import type { PlaybackProvider, ProviderPlayback, ProviderResource } from '../provider.ts';
 import { boundedText } from '../provider.ts';
 import { get, observedPublicPage, publicHttpsRequest, resource, type Requester } from './public-page.ts';
-import { streamApiUrl, streamedEventUrl, validLiveRelay, validStreamReference, validStreamTarget } from './catalog-stream-policy.ts';
+import { CATALOG_API_ORIGINS,streamApiUrl, streamedEventUrl, validLiveRelay, validStreamReference, validStreamTarget } from './catalog-stream-policy.ts';
 
 type Locator=Extract<CandidateLocator,{provider:'catalog-stream'}>;
 type CatalogEvents=z.infer<typeof Event>[];
@@ -12,7 +12,7 @@ type CatalogSnapshot={kind:'ready';events:CatalogEvents;expiresAt:number};
 const Ref=z.object({source:z.string(),id:z.string()});
 const Event=z.object({id:z.string(),title:z.string(),date:z.number().int(),
   teams:z.object({home:z.object({name:z.string()}),away:z.object({name:z.string()})}).nullish(),sources:z.array(Ref)});
-const Stream=z.object({id:z.string(),streamNo:z.number().int().positive(),embedUrl:z.string().url(),source:z.string().optional(),relayUrl:z.string().url().optional()});
+const Stream=z.object({id:z.string(),streamNo:z.number().int().min(1).max(100),embedUrl:z.string().url(),source:z.string().optional(),relayUrl:z.string().url().optional()});
 type Observe=(destination:URL,signal:AbortSignal,purpose:'playback'|'probe')=>Promise<ProviderPlayback|null>;
 
 export function durableCatalogStream(locator:Locator):boolean {
@@ -78,7 +78,7 @@ export function catalogStreamProvider(requester:Requester=(url,signal,headers,ti
   }
   return {provider:'catalog-stream',async open(locator,signal,purpose='playback'){
     if(!durableCatalogStream(locator))throw new Error('Unsupported catalog stream');
-    const catalogUrl=locator.source==='streamed'?'https://streamed.st/api/matches/all':'https://api.kultsport.com/api/matches/all';
+    const catalogUrl=`${CATALOG_API_ORIGINS[locator.source]}/api/matches/all`;
     const matches=(await catalog(catalogUrl,signal,purpose)).filter(event=>event.id===locator.eventId);
     if(matches.length!==1)throw new Error('Catalog stream event changed');
     const event=matches[0],teams=event.teams?[event.teams.home.name,event.teams.away.name]:null;
@@ -87,10 +87,10 @@ export function catalogStreamProvider(requester:Requester=(url,signal,headers,ti
       !event.sources.some(ref=>ref.source===locator.sourceName&&ref.id===locator.sourceId))
       throw new Error('Catalog stream event changed');
     const streamUrl=streamApiUrl(locator.source,locator.sourceName,locator.sourceId);
-    const parsed=z.array(Stream).safeParse(await json(streamUrl,signal));
+    const parsed=z.array(z.unknown()).max(100).safeParse(await json(streamUrl,signal));
     if(!parsed.success)throw new Error('Catalog stream players changed');
-    const selected=parsed.data.filter(stream=>stream.id===locator.sourceId&&stream.streamNo===locator.streamNo&&
-      (locator.source!=='streamed'||stream.source===locator.sourceName)&&
+    const selected=parsed.data.flatMap(value=>{const row=Stream.safeParse(value);return row.success?[row.data]:[];}).filter(stream=>stream.id===locator.sourceId&&stream.streamNo===locator.streamNo&&
+      (locator.source==='livesportpro'||stream.source===locator.sourceName)&&
       validStreamTarget(locator.source,locator.sourceName,locator.sourceId,stream.streamNo,stream.embedUrl));
     if(selected.length!==1)throw new Error('Catalog stream selection changed');
     signal.throwIfAborted();

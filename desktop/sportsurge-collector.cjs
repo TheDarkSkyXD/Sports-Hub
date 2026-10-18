@@ -1,6 +1,7 @@
 const { BrowserWindow, session } = require('electron');
 const { CATEGORY_URLS, MAX_PAGE_BYTES, MAX_CHECKPOINT_BYTES, detailUrl } = require('./sportsurge-catalog.cjs');
 const { runSportsurgeSweep } = require('./sportsurge-sweep.cjs');
+const {createPageNetwork,pinnedAddress}=require('./source-network.cjs');
 
 const ORIGIN = 'https://v2.sportsurge.net';
 const READY_TIMEOUT_MS = 35000;
@@ -38,7 +39,7 @@ async function beforeDeadline(promise, deadline, signal, current) {
   }
 }
 
-function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READY_TIMEOUT_MS }) {
+function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READY_TIMEOUT_MS,resolveAddress=pinnedAddress,createProxy }) {
   let window;
   let active;
   let timer;
@@ -47,13 +48,17 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
   let started = false;
   let requestedPath = '';
   let rateLimitedUntil = 0;
-  let sourceRefreshMs = 5 * 60_000;
+  let nextSweepAt = 0;
+  let heartbeat;
+  let queryingPlan=false;
   const sourceSession = session.fromPartition('sportsurge-catalog');
   sourceSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   sourceSession.setPermissionCheckHandler(() => false);
   sourceSession.on('will-download',event => event.preventDefault());
+  const network=createPageNetwork({session:sourceSession,pinAddress:resolveAddress,createProxy});
 
   function releaseBrowser() {
+    network.end();
     const current = window;
     window = undefined;
     try { if (current && !current.isDestroyed()) current.destroy(); }
@@ -63,10 +68,17 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
   function browser() {
     if (window && !window.isDestroyed()) return window;
     window = new BrowserWindow({ title: 'Sportsurge v2 collector', show: false, webPreferences: {
-      partition: 'sportsurge-catalog', contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true,
+      partition: 'sportsurge-catalog', contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, disableDialogs: true,
     } });
+    window.webContents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
     window.webContents.setAudioMuted(true);
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    window.webContents.on('login',network.login);
+    const created=window;
+    window.webContents.on('frame-created',()=>{
+      if(created.isDestroyed())return;
+      try{network.frames(created.webContents.mainFrame.framesInSubtree.length);}catch{network.frames(Infinity);}
+    });
     for (const name of ['will-navigate','will-redirect']) window.webContents.on(name, (event, target) => {
       try {
         const url = new URL(target);
@@ -94,7 +106,9 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
     const onReady = () => { documentReady = current.webContents.getURL() === url; };
     current.webContents.on('did-frame-navigate',onNavigate);
     current.webContents.on('dom-ready',onReady);
+    network.begin(url,()=>{if(!current.isDestroyed())current.destroy();});
     try {
+      await beforeDeadline(network.ready(),deadline,signal,current);
       void current.loadURL(url).catch(() => {});
       let challenge = false;
       while (Date.now() < deadline) {
@@ -122,6 +136,7 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
       }
       throw new Error(challenge || pageStatus === 403 ? 'blocked' : 'timeout');
     } finally {
+      network.end();
       if (!current.isDestroyed()) {
         current.webContents.off('did-frame-navigate',onNavigate);
         current.webContents.off('dom-ready',onReady);
@@ -144,13 +159,13 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
           const ack = await response.json();
           if (ack?.kind !== 'catalog-ack' || !Array.isArray(ack.skipDetailEventIds) ||
             !ack.skipDetailEventIds.every(id => typeof id === 'string')) throw new Error('parser-changed');
-          if (ack.sourceRefreshMs !== undefined) {
-            if (![60_000,300_000,600_000,900_000].includes(ack.sourceRefreshMs)) throw new Error('parser-changed');
-            sourceRefreshMs = ack.sourceRefreshMs;
+          if (ack.nextSweepAt !== undefined) {
+            if (!Number.isSafeInteger(ack.nextSweepAt)||ack.nextSweepAt<0) throw new Error('parser-changed');
+            nextSweepAt=ack.nextSweepAt;
           }
           if (ack.skipDetailEventUrls !== undefined &&
             (!Array.isArray(ack.skipDetailEventUrls) ||
-              !ack.skipDetailEventUrls.every(url => typeof url === 'string' && catalog.events.some(event => event.url === url))))
+              !ack.skipDetailEventUrls.every(url => typeof url === 'string' && [...catalog.events,...(ack.reuseCategories?.events||[])].some(event => event.url === url))))
             throw new Error('parser-changed');
           if(ack.reuseDetails!==undefined&&
             (ack.reuseDetails?.kind!=='sportsurge-v2'||!Array.isArray(ack.reuseDetails.events)||
@@ -168,6 +183,21 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
       if (attempt === 0) await pause(500, signal);
     }
     throw new Error('unavailable');
+  }
+
+  async function pollPlan() {
+    if(stopped||active||queryingPlan)return;
+    queryingPlan=true;
+    try {
+      const response=await fetch(origin+'/api/internal/sportsurge',{headers:{'x-sunday-control-token':controlToken},signal:AbortSignal.timeout(15000)});
+      if(!response.ok){await response.body?.cancel();return;}
+      const plan=await response.json();
+      if(plan?.kind!=='collector-polling'||!Number.isSafeInteger(plan.nextSweepAt)||plan.nextSweepAt<0)return;
+      nextSweepAt=plan.nextSweepAt;
+      if(timer)clearTimeout(timer);
+      timer=setTimeout(requestSweep,Math.max(0,nextSweepAt-Date.now(),rateLimitedUntil-Date.now()));
+    } catch {}
+    finally {queryingPlan=false;}
   }
 
   function requestSweep() {
@@ -189,16 +219,18 @@ function createSportsurgeCollector({ origin, controlToken, readyTimeoutMs = READ
       }).catch(()=>{}).finally(()=>{
         releaseBrowser();
         active=undefined;controller=undefined;
-        if(started&&!stopped)timer=setTimeout(requestSweep,Math.max(sourceRefreshMs,rateLimitedUntil-Date.now()));
+        if(started&&!stopped)timer=setTimeout(requestSweep,Math.max(nextSweepAt>Date.now()?nextSweepAt-Date.now():5*60_000,rateLimitedUntil-Date.now()));
       });
     return active;
   }
-  function start() {if(stopped||started)return;started=true;requestSweep();}
+  function start() {if(stopped||started)return;started=true;heartbeat=setInterval(pollPlan,30_000);requestSweep();}
   function stop() {
     stopped = true;
+    if(heartbeat)clearInterval(heartbeat);
     if (timer) clearTimeout(timer);
     controller?.abort();
     releaseBrowser();
+    network.stop();
   }
   return { start, requestSweep, stop };
 }

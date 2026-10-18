@@ -1,8 +1,8 @@
 const { net: chromiumNet, session } = require('electron');
-const { randomUUID, timingSafeEqual } = require('node:crypto');
-const http = require('node:http');
-const net = require('node:net');
-const { handleCertificateIssuerRequest } = require('./certificate-issuer-proxy.cjs');
+const { randomUUID } = require('node:crypto');
+const {sourceRequestAllowed,createNetworkBudget,createPinnedProxy}=require('./source-network.cjs');
+const {decodeWrappedMedia,isWrappedMediaPrefix,MAX_INPUT_BYTES}=require('./wrapped-media.cjs');
+const verificationPolicy=require('../lib/playback/verification-policy.json');
 
 const MAX_BYTES = 64 * 1024 * 1024;
 const IDLE_MS = 5 * 60000;
@@ -92,8 +92,8 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     capabilities.delete(id);
     clearTimeout(entry.timer);
     for (const request of entry.requests) request.abort();
-    for (const socket of entry.sockets) socket.destroy();
-    entry.proxy.close(() => {});
+    entry.network.close();
+    entry.proxy.stop();
     beginCleanup(entry.partition, entry.generation);
   }
 
@@ -103,13 +103,13 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     entry.timer.unref();
   }
 
-  async function register({ url, userAgent, origin, requestReferer, mediaCookie }) {
+  async function register({ url, kind, userAgent, origin, requestReferer, mediaCookie }) {
     if (stopped) return null;
     const root = validateUrl(url);
     if (!root) throw new Error('Observed media URL is invalid');
     let partition = partitions.find(item => item.state === 'free');
     if (!partition) {
-      if (partitions.length >= 32) return null;
+      if (partitions.length >= verificationPolicy.concurrency+4) return null;
       partition = { session: sessions.fromPartition(`${partitionPrefix}-${partitions.length}`),
         state: 'free', generation: 0, retryTimer: null, deadlineTimer: null };
       partitions.push(partition);
@@ -117,64 +117,23 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     partition.state = 'leased';
     const generation = ++partition.generation;
     const id = randomUUID();
-    const secret = randomUUID();
-    const authorization = Buffer.from(`Basic ${Buffer.from(`media:${secret}`).toString('base64')}`);
     const mediaSession = partition.session;
-    const entry = { id, partition, generation, cookieOrigin: root.origin,
-      session: mediaSession, sockets: new Set(), requests: new Set(), proxy: null, timer: null, issuerRequests: 0,
+    const entry = { id, partition, generation, cookieOrigin: root.origin,progressiveUrl:kind==='progressive'?root.href:null,
+      session: mediaSession, requests: new Set(), proxy: null, timer: null,
       headers: { 'User-Agent': userAgent, Accept: '*/*', ...(origin ? { Origin: origin } : {}),
-        ...(requestReferer ? { Referer: requestReferer } : {}) }, secret };
+        ...(requestReferer ? { Referer: requestReferer } : {}) } };
     mediaSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     mediaSession.setPermissionCheckHandler(() => false);
     mediaSession.webRequest.onBeforeRequest((details, callback) => {
       const allowed = allowedMediaUrl(details.url, validateUrl);
-      callback({ cancel: !capabilities.has(id) || !allowed });
+      callback({ cancel: !capabilities.has(id) || !allowed ||
+        !sourceRequestAllowed(details,entry.headers.Referer) || !entry.network.request() });
     });
-    const proxy = http.createServer((request, response) => {
-      void handleCertificateIssuerRequest(request,response,{
-        authorization:authorization.toString(),pinAddress,
-        isActive:()=>capabilities.has(id),
-        admit:()=>++entry.issuerRequests<=8,
-      });
-    });
-    entry.proxy = proxy;
-    proxy.on('connect', async (request, client, head) => {
-      client.on('error', () => {});
-      const supplied = Buffer.from(request.headers['proxy-authorization'] || '');
-      if (supplied.length !== authorization.length || !timingSafeEqual(supplied, authorization)) {
-        client.end('HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="observed-media"\r\nConnection: close\r\n\r\n');
-        return;
-      }
-      const target = /^([^:]+):(443|8443)$/.exec(request.url || '');
-      const destination = target && validateUrl(`https://${target[1]}:${target[2]}/`);
-      if (!capabilities.has(id) || !destination || entry.sockets.size >= 32) {
-        client.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
-        return;
-      }
-      entry.sockets.add(client);
-      client.once('close', () => entry.sockets.delete(client));
-      let address;
-      try { address = await pinAddress(destination.hostname, () => capabilities.has(id)); }
-      catch { client.destroy(); return; }
-      if (!capabilities.has(id) || client.destroyed) { client.destroy(); return; }
-      const remote = net.connect({ host: address.address, family: address.family, port: Number(target[2]) });
-      entry.sockets.add(remote);
-      const cleanup = () => { client.destroy(); remote.destroy(); entry.sockets.delete(remote); };
-      remote.on('error', cleanup);
-      remote.once('close', cleanup);
-      client.once('close', cleanup);
-      remote.once('connect', () => {
-        client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
-        if (head.length) remote.write(head);
-        client.pipe(remote);
-        remote.pipe(client);
-      });
-    });
+    entry.network=createNetworkBudget({mode:'playback',onLimit:()=>close(id)});
+    entry.proxy=createPinnedProxy({session:mediaSession,pinAddress,getBudget:()=>capabilities.has(id)?entry.network:null});
     capabilities.set(id, entry);
     try {
-      await new Promise((resolve, reject) => { proxy.once('error', reject); proxy.listen(0, '127.0.0.1', resolve); });
-      if (stopped || !capabilities.has(id)) return null;
-      await mediaSession.setProxy({ mode: 'fixed_servers', proxyRules: `http://127.0.0.1:${proxy.address().port}`, proxyBypassRules: '<-loopback>' });
+      await entry.proxy.start();
       if (stopped || !capabilities.has(id)) return null;
       for (const {name,value} of capturedCookies(mediaCookie)) {
         await mediaSession.cookies.set({url:root.href,name,value,path:'/',secure:true});
@@ -192,6 +151,7 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
       response.writeHead(404); response.end(); return;
     }
     if (entry.requests.size >= 8) { response.writeHead(429); response.end(); return; }
+    const progressive=url.href===entry.progressiveUrl;
     touch(entry);
     const observedOrigin = url.origin === entry.cookieOrigin;
     const request = network.request({ url: url.href, session: entry.session, method: 'GET', redirect: 'manual',
@@ -205,15 +165,19 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     }
     if (range) request.setHeader('Range', range);
     request.on('login', (authInfo, callback) => {
-      if (authInfo.isProxy && authInfo.host === '127.0.0.1') callback('media', entry.secret);
+      if (authInfo.isProxy && authInfo.host === '127.0.0.1') callback(entry.proxy.credentials.username,entry.proxy.credentials.password);
       else callback();
     });
-    const timer = setTimeout(() => request.abort(), 30000);
+    let timer;
+    const armTimer=()=>{clearTimeout(timer);timer=setTimeout(()=>request.abort(),30000);};
+    armTimer();
+    const decoding=new AbortController();
     let finished = false;
     const finish = () => {
       if (finished) return false;
       finished = true;
       clearTimeout(timer);
+      decoding.abort();
       entry.requests.delete(request);
       return true;
     };
@@ -231,21 +195,42 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     });
     request.on('response', incoming => {
       const headers = {};
-      for (const name of ['content-type', 'content-range', 'accept-ranges', 'location']) {
+      for (const name of ['content-type', 'content-range', 'accept-ranges', 'location',...(progressive?['content-length']:[])]) {
         const value = incoming.headers[name];
         if (value) headers[name] = value;
       }
-      response.writeHead(incoming.statusCode, headers);
-      let bytes = 0;
+      let bytes = 0,mode=!progressive&&incoming.statusCode===200&&!range?(/image\/(?:png|webp)/i.test(headers['content-type']||'')?'wrapped':'probe'):'stream';
+      const chunks=[];
+      const forward=chunk=>{
+        if(!response.headersSent)response.writeHead(incoming.statusCode,headers);
+        if(!response.write(chunk)){
+          if(progressive)clearTimeout(timer);
+          incoming.pause();response.once('drain',()=>{if(finished)return;if(progressive)armTimer();incoming.resume();});
+        }else if(progressive)armTimer();
+      };
+      const flush=()=>{for(const chunk of chunks)forward(chunk);chunks.length=0;};
       incoming.on('error', fail);
       incoming.on('data', chunk => {
         if (finished) return;
         bytes += chunk.length;
-        if (bytes > MAX_BYTES) { request.abort(); return; }
+        if (!progressive&&bytes > MAX_BYTES) { request.abort(); return; }
         touch(entry);
-        if (!response.write(chunk)) { incoming.pause(); response.once('drain', () => incoming.resume()); }
+        if(mode==='stream'){forward(chunk);return;}
+        chunks.push(chunk);
+        if(mode==='probe'&&bytes>=12){mode=isWrappedMediaPrefix(Buffer.concat(chunks,bytes))?'wrapped':'stream';if(mode==='stream')flush();}
+        if(mode==='wrapped'&&bytes>MAX_INPUT_BYTES){if(finish()){response.writeHead(422);response.end();request.abort();}}
       });
-      incoming.on('end', () => { if (finish()) response.end(); });
+      incoming.on('end', async() => {
+        if(finished)return;
+        if(mode==='probe'){mode=isWrappedMediaPrefix(Buffer.concat(chunks,bytes))?'wrapped':'stream';if(mode==='stream')flush();}
+        if(mode==='stream'){if(finish()){if(!response.headersSent)response.writeHead(incoming.statusCode,headers);response.end();}return;}
+        try{
+          const body=Buffer.concat(chunks,bytes),decoded=await decodeWrappedMedia(body,decoding.signal);
+          if(finished)return;
+          if(decoded!==body){headers['content-type']='video/mp2t';headers['content-length']=String(decoded.length);delete headers['content-range'];delete headers['accept-ranges'];delete headers['content-encoding'];}
+          if(finish()){response.writeHead(incoming.statusCode,headers);response.end(decoded);}
+        }catch{if(finish()){response.writeHead(422);response.end();request.abort();}}
+      });
     });
     request.end();
   }

@@ -168,7 +168,7 @@ test('partial yesterday coverage keeps saved games and advances current scores',
   const refreshed={...nfl,home:{...nfl.home,score:'14'}};
   const coordinator=createFootballCoordinator(path,{
     now:()=>at+30_000,schedules:[schedules[0]],sources:[],
-    readSchedule:async()=>({games:[refreshed],at:at+30_000,league:'nfl' as const,historyErrors:['20260925:timeout']}),
+    readSchedule:async()=>({games:[refreshed],at:at+30_000,league:'nfl' as const,history:{kind:'failed' as const,day:'20260925',reason:'timeout'}}),
   });
   try {
     await coordinator.refresh(true);
@@ -185,6 +185,56 @@ test('partial yesterday coverage keeps saved games and advances current scores',
   }
 });
 
+test('history loading keeps the last settled failure until history succeeds',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'football-board-history-retry-'));
+  const history=deferred<void>();
+  const future=deferred<void>();
+  const progress=deferred<void>();
+  let reads=0;
+  const prior={...nfl,id:'99',date:'2026-09-25T18:00:00.000Z'};
+  const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
+    now:()=>at,schedules:[schedules[0]],sources:[],
+    readSchedule:async (_source,_now,_signal,onCurrent)=>{
+      if(++reads===1)return {games:[nfl],at,league:'nfl',history:{kind:'failed' as const,day:'20260925',reason:'timeout'}};
+      onCurrent?.({games:[nfl],at,league:'nfl',history:{kind:'loading',day:'20260925'}});
+      await history.promise;
+      onCurrent?.({games:[prior,nfl],at,league:'nfl'});
+      progress.resolve();
+      await future.promise;
+      return {games:[prior,nfl],at,league:'nfl'};
+    },
+  });
+  const board=async()=>{
+    const reply=await coordinator.command({kind:'board'});
+    assert.equal(reply.kind,'board');
+    if(reply.kind!=='board')throw new Error('Expected board');
+    return reply.board;
+  };
+  try {
+    await coordinator.refresh(true);
+    assert.deepEqual((await board()).leagues.nfl.errors,
+      ['NFL recent schedule history is incomplete: 20260925:timeout']);
+    const refreshing=coordinator.refresh(true);
+    const loading=await board();
+    assert.deepEqual(loading.leagues.nfl.errors,
+      ['NFL recent schedule history is incomplete: 20260925:timeout']);
+    const revision=loading.revision;
+    history.resolve();
+    await progress.promise;
+    const settledHistory=await board();
+    assert.deepEqual(settledHistory.games.map(game=>game.id).sort(),['100','99']);
+    assert.deepEqual(settledHistory.leagues.nfl.errors,[]);
+    assert.ok(settledHistory.revision>revision,'clearing only the history warning must publish a board revision');
+    assert.equal(await settled(refreshing),false,'the future horizon must remain pending');
+    future.resolve();
+    await refreshing;
+  } finally {
+    history.resolve();future.resolve();
+    await coordinator.stop();
+    rmSync(dir,{recursive:true,force:true});
+  }
+});
+
 test('unchanged current scores do not rebuild projection for pending history coverage',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'football-board-pending-history-'));
   const history=deferred<void>();
@@ -196,8 +246,8 @@ test('unchanged current scores do not rebuild projection for pending history cov
     readSchedule:async (_source,_now,_signal,onCurrent)=>{
       const read=++reads;
       if(read===1)return {games:[nfl],at:currentTime,league:'nfl'};
-      if(read===3)return {games:[nfl],at:currentTime,league:'nfl',historyErrors:['20260925:timeout']};
-      onCurrent?.({games:[nfl],at:currentTime,league:'nfl',historyErrors:['20260925:pending']});
+      if(read===3)return {games:[nfl],at:currentTime,league:'nfl',history:{kind:'failed' as const,day:'20260925',reason:'timeout'}};
+      onCurrent?.({games:[nfl],at:currentTime,league:'nfl',history:{kind:'loading',day:'20260925'}});
       published.resolve();
       await history.promise;
       return {games:[nfl],at:currentTime,league:'nfl'};
@@ -265,7 +315,7 @@ test('a current result is visible to board and sources while its history read re
   const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
     now:()=>currentTime,schedules:[schedules[0]],sources:[],
     readSchedule:async (_source,_now,_signal,onCurrent)=>{
-      onCurrent?.({games:[scored],at:currentTime,league:'nfl',historyErrors:['20260925:pending']});
+      onCurrent?.({games:[scored],at:currentTime,league:'nfl',history:{kind:'loading',day:'20260925'}});
       await history.promise;
       return {games:[scored],at:currentTime,league:'nfl'};
     },
@@ -274,7 +324,10 @@ test('a current result is visible to board and sources while its history read re
     const refreshing=coordinator.refresh(true);
     const board=await coordinator.command({kind:'board'});
     assert.equal(board.kind,'board');
-    if(board.kind==='board')assert.equal(board.board.games[0]?.home.score,'14');
+    if(board.kind==='board') {
+      assert.equal(board.board.games[0]?.home.score,'14');
+      assert.deepEqual(board.board.leagues.nfl.errors,[]);
+    }
     const sources=await coordinator.command({kind:'sources'});
     assert.equal(sources.kind,'sources');
     if(sources.kind==='sources')assert.equal(sources.snapshot.games[0]?.gameId,'100');
@@ -293,7 +346,7 @@ test('stop discards a queued schedule publication',async()=>{
   const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
     now:()=>at,schedules:[schedules[0]],sources:[],
     readSchedule:async (_source,_now,_signal,onCurrent)=>{
-      onCurrent?.({games:[nfl],at,league:'nfl',historyErrors:['20260925:pending']});
+      onCurrent?.({games:[nfl],at,league:'nfl',history:{kind:'loading',day:'20260925'}});
       await history.promise;
       return {games:[nfl],at,league:'nfl'};
     },

@@ -1,0 +1,118 @@
+{
+  "capturedAt": "2026-10-18T00:22:28.583Z",
+  "game": {
+    "id": "401872996",
+    "league": "nfl",
+    "name": "Houston Texans at Jacksonville Jaguars",
+    "date": "2026-10-18T13:30Z",
+    "home": {
+      "id": "espn:nfl:30",
+      "name": "Jacksonville Jaguars",
+      "short": "Jaguars",
+      "abbreviation": "JAX",
+      "color": "007487",
+      "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/jax.png",
+      "score": "0",
+      "record": "4-1",
+      "aliases": [
+        "Jacksonville Jaguars",
+        "Jacksonville",
+        "Jaguars",
+        "JAX"
+      ]
+    },
+    "away": {
+      "id": "espn:nfl:34",
+      "name": "Houston Texans",
+      "short": "Texans",
+      "abbreviation": "HOU",
+      "color": "021018",
+      "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/hou.png",
+      "score": "0",
+      "record": "1-4",
+      "aliases": [
+        "Houston Texans",
+        "Houston",
+        "Texans",
+        "HOU"
+      ]
+    },
+    "season": 2026,
+    "partitions": [
+      "nfl"
+    ],
+    "detail": "Scheduled",
+    "redzone": false,
+    "venue": "Wembley Stadium",
+    "broadcast": "NFL Net",
+    "status": "pre",
+    "lifecycle": "scheduled"
+  },
+  "observation": {
+    "id": "ppv:30228",
+    "sourceId": "ppv",
+    "url": "https://ppv.st/live/nfl/2026-10-18/hou-jax",
+    "title": "Houston Texans at Jacksonville Jaguars",
+    "league": "nfl",
+    "teams": [
+      "Jacksonville Jaguars",
+      "Houston Texans"
+    ],
+    "kickoff": 1792330200000,
+    "rawTime": "2026-10-18T13:30:00.000Z",
+    "observedAt": 1792282758299,
+    "parserVersion": 2,
+    "endsAt": 1792344600000
+  },
+  "detail": {
+    "outcome": "resolved",
+    "observationId": "ppv:30228",
+    "generation": "[\"ppv\",\"https://ppv.st/live/nfl/2026-10-18/hou-jax\",[\"Jacksonville Jaguars\",\"Houston Texans\"],1792330200000,1792277305812,2]",
+    "identity": "[\"ppv\",\"https://ppv.st/live/nfl/2026-10-18/hou-jax\",\"nfl\",\"Houston Texans at Jacksonville Jaguars\",[\"Jacksonville Jaguars\",\"Houston Texans\"],1792330200000,\"2026-10-18T13:30:00.000Z\",2]",
+    "at": 1792278834514,
+    "players": [
+      {
+        "id": "event-page:b74f73ee778a55ad09ddf773",
+        "label": "PPV · NFL Network",
+        "locator": {
+          "provider": "event-page",
+          "gameId": "401872996",
+          "eventUrl": "https://ppv.st/live/nfl/2026-10-18/hou-jax",
+          "serverUrl": "https://taifood-blog.asia/embed/nfl/2026-10-18/hou-jax"
+        }
+      }
+    ],
+    "nextEligibleAt": 1792296834514,
+    "lastSuccess": {
+      "identity": "[\"ppv\",\"https://ppv.st/live/nfl/2026-10-18/hou-jax\",\"nfl\",\"Houston Texans at Jacksonville Jaguars\",[\"Jacksonville Jaguars\",\"Houston Texans\"],1792330200000,\"2026-10-18T13:30:00.000Z\",2]",
+      "at": 1792278834514,
+      "count": 1,
+      "publication": {
+        "players": [
+          {
+            "id": "event-page:b74f73ee778a55ad09ddf773",
+            "label": "PPV · NFL Network",
+            "locator": {
+              "provider": "event-page",
+              "gameId": "401872996",
+              "eventUrl": "https://ppv.st/live/nfl/2026-10-18/hou-jax",
+              "serverUrl": "https://taifood-blog.asia/embed/nfl/2026-10-18/hou-jax"
+            }
+          }
+        ],
+        "event": {
+          "gameId": "401872996",
+          "date": "2026-10-18T13:30Z"
+        }
+      }
+    },
+    "polling": {
+      "signature": "[\"[\\\"ppv\\\",\\\"https://ppv.st/live/nfl/2026-10-18/hou-jax\\\",\\\"nfl\\\",\\\"Houston Texans at Jacksonville Jaguars\\\",[\\\"Jacksonville Jaguars\\\",\\\"Houston Texans\\\"],1792330200000,\\\"2026-10-18T13:30:00.000Z\\\",2]\",\"401872996\",\"2026-10-18T13:30Z\",[\"{\\\"provider\\\":\\\"event-page\\\",\\\"gameId\\\":\\\"401872996\\\",\\\"eventUrl\\\":\\\"https://ppv.st/live/nfl/2026-10-18/hou-jax\\\",\\\"serverUrl\\\":\\\"https://taifood-blog.asia/embed/nfl/2026-10-18/hou-jax\\\"}\"]]",
+      "unchangedChecks": 3
+    },
+    "event": {
+      "gameId": "401872996",
+      "date": "2026-10-18T13:30Z"
+    }
+  }
+}

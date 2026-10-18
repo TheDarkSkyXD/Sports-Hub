@@ -50,7 +50,7 @@ const team = (id: string, name: string, short: string, abbreviation: string, col
   ({ id, name, short, abbreviation, color, score, record: '2-1' });
 
 export const productBoard: Board = {
-  schemaVersion: 2, revision: 1, updatedAt: new Date(now).toISOString(), scheduleState: 'ready', aliases: {}, finishedGameRetentionMinutes:DEFAULT_FINISHED_GAME_RETENTION_MINUTES, feedCheckIntervalMinutes:5,
+  schemaVersion: 2, revision: 1, updatedAt: new Date(now).toISOString(), scheduleState: 'ready', aliases: {}, finishedGameRetentionMinutes:DEFAULT_FINISHED_GAME_RETENTION_MINUTES,
   leagues: {
     nfl: { week: 4, scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
     ncaaf: { week: 5, scoresAt: new Date(now).toISOString(), sourceAt: new Date(now).toISOString(), errors: [] },
@@ -67,6 +67,8 @@ export const productBoard: Board = {
     boxing: { scoresAt: null, sourceAt: null, errors: [] },
     wwe: { scoresAt: null, sourceAt: null, errors: [] },
     tna: { scoresAt: null, sourceAt: null, errors: [] },
+    aew: { scoresAt: null, sourceAt: null, errors: [] },
+    wrestling: { scoresAt: null, sourceAt: null, errors: [] },
   },
   games: [
     { id: '401', league: 'nfl', lifecycle: 'live', status: 'in', name: 'Green Bay Packers at Chicago Bears',

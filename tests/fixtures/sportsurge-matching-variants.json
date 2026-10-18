@@ -1,0 +1,299 @@
+{
+  "now": 1792274705660,
+  "games": [
+    {
+      "id": "ncaaf-401856809",
+      "league": "ncaaf",
+      "name": "Notre Dame Fighting Irish at BYU Cougars",
+      "date": "2026-10-17T23:30Z",
+      "home": {
+        "id": "espn:ncaaf:252",
+        "name": "BYU Cougars",
+        "short": "BYU",
+        "abbreviation": "BYU",
+        "color": "0047ba",
+        "score": "0",
+        "record": "5-0",
+        "aliases": [
+          "BYU Cougars",
+          "BYU",
+          "BYU",
+          "BYU"
+        ]
+      },
+      "away": {
+        "id": "espn:ncaaf:87",
+        "name": "Notre Dame Fighting Irish",
+        "short": "Notre Dame",
+        "abbreviation": "ND",
+        "color": "062340",
+        "score": "0",
+        "record": "6-0",
+        "aliases": [
+          "Notre Dame Fighting Irish",
+          "Notre Dame",
+          "Notre Dame",
+          "ND"
+        ]
+      },
+      "status": "pre",
+      "lifecycle": "scheduled",
+      "detail": "Scheduled",
+      "redzone": false,
+      "partitions": [
+        "fbs"
+      ]
+    },
+    {
+      "id": "nhl-401892523",
+      "league": "nhl",
+      "name": "New York Islanders at Toronto Maple Leafs",
+      "date": "2026-10-17T23:00Z",
+      "home": {
+        "id": "espn:nhl:21",
+        "name": "Toronto Maple Leafs",
+        "short": "Maple Leafs",
+        "abbreviation": "TOR",
+        "color": "003e7e",
+        "score": "0",
+        "record": "3-3-2",
+        "aliases": [
+          "Toronto Maple Leafs",
+          "Toronto",
+          "Maple Leafs",
+          "TOR"
+        ]
+      },
+      "away": {
+        "id": "espn:nhl:12",
+        "name": "New York Islanders",
+        "short": "Islanders",
+        "abbreviation": "NYI",
+        "color": "00529b",
+        "score": "0",
+        "record": "3-3-1",
+        "aliases": [
+          "New York Islanders",
+          "New York",
+          "Islanders",
+          "NYI"
+        ]
+      },
+      "status": "pre",
+      "lifecycle": "scheduled",
+      "detail": "Scheduled",
+      "redzone": false,
+      "partitions": [
+        "nhl"
+      ]
+    },
+    {
+      "id": "nhl-401892524",
+      "league": "nhl",
+      "name": "Buffalo Sabres at Montreal Canadiens",
+      "date": "2026-10-17T23:00Z",
+      "home": {
+        "id": "espn:nhl:10",
+        "name": "Montreal Canadiens",
+        "short": "Canadiens",
+        "abbreviation": "MTL",
+        "color": "c41230",
+        "score": "0",
+        "record": "3-3-1",
+        "aliases": [
+          "Montreal Canadiens",
+          "Montreal",
+          "Canadiens",
+          "MTL"
+        ]
+      },
+      "away": {
+        "id": "espn:nhl:2",
+        "name": "Buffalo Sabres",
+        "short": "Sabres",
+        "abbreviation": "BUF",
+        "color": "00468b",
+        "score": "0",
+        "record": "4-3-1",
+        "aliases": [
+          "Buffalo Sabres",
+          "Buffalo",
+          "Sabres",
+          "BUF"
+        ]
+      },
+      "status": "pre",
+      "lifecycle": "scheduled",
+      "detail": "Scheduled",
+      "redzone": false,
+      "partitions": [
+        "nhl"
+      ]
+    },
+    {
+      "id": "ufc-600060773",
+      "league": "ufc",
+      "name": "UFC Fight Night: Buckley vs. Malott",
+      "date": "2026-10-17T21:00Z",
+      "status": "in",
+      "lifecycle": "live",
+      "detail": "In Progress",
+      "combat": {
+        "eventId": "600060773"
+      },
+      "partitions": [
+        "ufc"
+      ]
+    },
+    {
+      "id": "boxing-218065792495125",
+      "league": "boxing",
+      "name": "BKFC 95 Newark Herring vs Dodson",
+      "date": "2026-10-18T00:00:00.000Z",
+      "status": "pre",
+      "lifecycle": "scheduled",
+      "detail": "Scheduled",
+      "combat": {
+        "eventId": "218065792495125"
+      },
+      "partitions": [
+        "boxing"
+      ]
+    },
+    {
+      "id": "boxing-26306077464387",
+      "league": "boxing",
+      "name": "Dubois vs. Wardley 2",
+      "date": "2026-10-17T18:00:00.000Z",
+      "status": "in",
+      "lifecycle": "live",
+      "detail": "In progress",
+      "combat": {
+        "eventId": "26306077464387"
+      },
+      "partitions": [
+        "boxing"
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "id": "sportsurgei-nhl:26586a803a0e1f9b2aae84d7",
+      "sourceId": "sportsurgei-nhl",
+      "url": "https://sportsurgei.is/Maple-Leaf-vs-Islanders/73353",
+      "title": "Maple Leaf vs Islanders",
+      "league": "nhl",
+      "teams": [
+        "Maple Leaf",
+        "Islanders"
+      ],
+      "kickoff": 1792278000000,
+      "rawTime": "1792278000000",
+      "observedAt": 1792273808186,
+      "parserVersion": 3
+    },
+    {
+      "id": "sportsurgei-nhl:1b0718f52d214b877d276b80",
+      "sourceId": "sportsurgei-nhl",
+      "url": "https://sportsurgei.is/Canadeins-vs-Sabres/73354",
+      "title": "Canadeins vs Sabres",
+      "league": "nhl",
+      "teams": [
+        "Canadeins",
+        "Sabres"
+      ],
+      "kickoff": 1792278000000,
+      "rawTime": "1792278000000",
+      "observedAt": 1792273808186,
+      "parserVersion": 3
+    },
+    {
+      "id": "sportsurgei-ufc:a9d684960b17c181712ad465",
+      "sourceId": "sportsurgei-ufc",
+      "url": "https://sportsurgei.is/Daniel-Dubois-vs-Fabio-Wardley/76793",
+      "title": "Daniel Dubois vs Fabio Wardley",
+      "league": "boxing",
+      "teams": null,
+      "kickoff": 1792263600000,
+      "rawTime": "1792263600000",
+      "observedAt": 1792273815445,
+      "parserVersion": 3
+    },
+    {
+      "id": "sportsurgei-ufc:eb0cb36fc6479424385f44e7",
+      "sourceId": "sportsurgei-ufc",
+      "url": "https://sportsurgei.is/UFC-Fight-Night-Buckley-vs-Mike-Malott/73982",
+      "title": "UFC Fight Night Buckley vs Mike Malott",
+      "league": "ufc",
+      "teams": null,
+      "kickoff": 1792270800000,
+      "rawTime": "1792270800000",
+      "observedAt": 1792273815445,
+      "parserVersion": 3
+    },
+    {
+      "id": "sportsurgei-boxing:a9d684960b17c181712ad465",
+      "sourceId": "sportsurgei-boxing",
+      "url": "https://sportsurgei.is/Daniel-Dubois-vs-Fabio-Wardley/76793",
+      "title": "Daniel Dubois vs Fabio Wardley",
+      "league": "boxing",
+      "teams": null,
+      "kickoff": 1792263600000,
+      "rawTime": "1792263600000",
+      "observedAt": 1792273832124,
+      "parserVersion": 3
+    },
+    {
+      "id": "sportsurgei-boxing:eb0cb36fc6479424385f44e7",
+      "sourceId": "sportsurgei-boxing",
+      "url": "https://sportsurgei.is/UFC-Fight-Night-Buckley-vs-Mike-Malott/73982",
+      "title": "UFC Fight Night Buckley vs Mike Malott",
+      "league": "ufc",
+      "teams": null,
+      "kickoff": 1792270800000,
+      "rawTime": "1792270800000",
+      "observedAt": 1792273832124,
+      "parserVersion": 3
+    },
+    {
+      "id": "sportsurge:260cd9ee8b6be96f7961a1d5",
+      "sourceId": "sportsurge",
+      "url": "https://isportsurge.ws/watch/cfb/notre-dame-fighting-irish-brigham-young-cougars/448912332",
+      "title": "Brigham Young Cougars vs Notre Dame Fighting Irish",
+      "league": "ncaaf",
+      "teams": [
+        "Brigham Young Cougars",
+        "Notre Dame Fighting Irish"
+      ],
+      "kickoff": null,
+      "rawTime": "",
+      "observedAt": 1792273925230,
+      "parserVersion": 2,
+      "legacyId": "ncaaf-source-448912332"
+    },
+    {
+      "id": "sportsurgei-ufc:0470c14c1587a3144aaaf1fa",
+      "sourceId": "sportsurgei-ufc",
+      "url": "https://sportsurgei.is/Jamel-Herring-vs-John-Dodson/79537",
+      "title": "Jamel Herring vs John Dodson",
+      "league": "boxing",
+      "teams": null,
+      "kickoff": 1792278000000,
+      "rawTime": "1792278000000",
+      "observedAt": 1792273815445,
+      "parserVersion": 3
+    },
+    {
+      "id": "sportsurgei-boxing:0470c14c1587a3144aaaf1fa",
+      "sourceId": "sportsurgei-boxing",
+      "url": "https://sportsurgei.is/Jamel-Herring-vs-John-Dodson/79537",
+      "title": "Jamel Herring vs John Dodson",
+      "league": "boxing",
+      "teams": null,
+      "kickoff": 1792278000000,
+      "rawTime": "1792278000000",
+      "observedAt": 1792273832124,
+      "parserVersion": 3
+    }
+  ]
+}

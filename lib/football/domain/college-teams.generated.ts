@@ -53,7 +53,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Colorado Mesa Mavericks",
       "Colorado Mesa",
-      "COMU"
+      "COMU",
+      "MES"
     ]
   },
   {
@@ -96,7 +97,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Bridgewater State Bears",
       "Bridgewater State",
       "Bridgewater St",
-      "BRIS"
+      "BRIS",
+      "BRI"
     ]
   },
   {
@@ -160,7 +162,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Carroll (WI) Pioneers",
       "Carroll (WI)",
-      "CRU"
+      "CRU",
+      "CAR"
     ]
   },
   {
@@ -168,7 +171,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Colby White Mules",
       "Colby",
-      "CLBY"
+      "CLBY",
+      "Colby College White Mules",
+      "Colby College",
+      "COL"
     ]
   },
   {
@@ -193,7 +199,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Curry Colonels",
       "Curry",
-      "CC"
+      "CC",
+      "Curry College Colonels",
+      "Curry College",
+      "CUR"
     ]
   },
   {
@@ -245,7 +254,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Dubuque Spartans",
       "Dubuque",
-      "DBQ"
+      "DBQ",
+      "DUB"
     ]
   },
   {
@@ -311,7 +321,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Morehouse Maroon Tigers",
       "Morehouse",
-      "MRHO"
+      "MRHO",
+      "Morehouse College Maroon Tigers",
+      "Morehouse College",
+      "MOR"
     ]
   },
   {
@@ -335,7 +348,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Buena Vista Beavers",
       "Buena Vista",
-      "BVU"
+      "BVU",
+      "BUE"
     ]
   },
   {
@@ -343,7 +357,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Grinnell Pioneers",
       "Grinnell",
-      "GRNL"
+      "GRNL",
+      "GRI"
     ]
   },
   {
@@ -359,7 +374,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Luther Norse",
       "Luther",
-      "LUTH"
+      "LUTH",
+      "LUT"
     ]
   },
   {
@@ -384,7 +400,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Elmhurst Bluejays",
       "Elmhurst",
-      "ELMH"
+      "ELMH",
+      "ELM"
     ]
   },
   {
@@ -392,7 +409,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Millikin Big Blue",
       "Millikin",
-      "MILK"
+      "MILK",
+      "MLK"
     ]
   },
   {
@@ -400,7 +418,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "North Park Vikings",
       "North Park",
-      "NPU"
+      "NPU",
+      "NP"
     ]
   },
   {
@@ -433,7 +452,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Springfield Pride",
       "Springfield",
-      "SPR"
+      "SPR",
+      "SPRI"
     ]
   },
   {
@@ -457,7 +477,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Rose Hulman Fightin' Engineers",
       "Rose Hulman",
-      "RHIT"
+      "RHIT",
+      "Rose-Hulman Fightin' Engineers",
+      "Rose-Hulman"
     ]
   },
   {
@@ -473,7 +495,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Wabash Little Giants",
       "Wabash",
-      "WAB"
+      "WAB",
+      "Wabash College Little Giants",
+      "Wabash College"
     ]
   },
   {
@@ -482,7 +506,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Pittsburg State Gorillas",
       "Pittsburg State",
       "Pittsburg St",
-      "PTSU"
+      "PTSU",
+      "PST"
     ]
   },
   {
@@ -539,7 +564,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Eureka Red Devils",
       "Eureka",
-      "ERKA"
+      "ERKA",
+      "Eureka College Red Devils",
+      "Eureka College",
+      "EUR"
     ]
   },
   {
@@ -570,7 +598,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "id": "espn:ncaaf:109",
     "aliases": [
       "MIT Engineers",
-      "MIT"
+      "MIT",
+      "MAS"
     ]
   },
   {
@@ -578,7 +607,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Mass Maritime Buccaneers",
       "Mass Maritime",
-      "MMT"
+      "MMT",
+      "MAS"
     ]
   },
   {
@@ -586,7 +616,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Tufts Jumbos",
       "Tufts",
-      "TUFT"
+      "TUFT",
+      "TUF"
     ]
   },
   {
@@ -604,7 +635,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Fitchburg State Falcons",
       "Fitchburg State",
       "Fitchburg St",
-      "FBSU"
+      "FBSU",
+      "FIT"
     ]
   },
   {
@@ -636,7 +668,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Bates Bobcats",
       "Bates",
-      "BATE"
+      "BATE",
+      "Bates College Bobcats",
+      "Bates College",
+      "BAT"
     ]
   },
   {
@@ -644,7 +679,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Augsburg Auggies",
       "Augsburg",
-      "AUGS"
+      "AUGS",
+      "AUG"
     ]
   },
   {
@@ -653,7 +689,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Grand Valley State Lakers",
       "Grand Valley State",
       "Grand Val St",
-      "GVSU"
+      "GVSU",
+      "GRV"
     ]
   },
   {
@@ -661,7 +698,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Kalamazoo Hornets",
       "Kalamazoo",
-      "KALC"
+      "KALC",
+      "KAL"
     ]
   },
   {
@@ -688,7 +726,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Saginaw Valley State Cardinals",
       "Saginaw Valley State",
       "Saginaw Valley",
-      "SVSU"
+      "SVSU",
+      "SVS"
     ]
   },
   {
@@ -705,7 +744,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wayne State (MI) Warriors",
       "Wayne State (MI)",
       "Wayne St (MI)",
-      "WSMI"
+      "WSMI",
+      "WNST",
+      "Wayne State Warriors"
     ]
   },
   {
@@ -749,7 +790,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Missouri Western Griffons",
       "Missouri Western",
       "MO Western",
-      "MOWE"
+      "MOWE",
+      "MIS"
     ]
   },
   {
@@ -758,7 +800,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Northwest Missouri State Bearcats",
       "Northwest Missouri State",
       "NW Missouri St",
-      "MWMO"
+      "MWMO",
+      "NOR"
     ]
   },
   {
@@ -775,7 +818,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Washington St. Louis Bears",
       "Washington St. Louis",
       "Wash St Louis",
-      "WUMO"
+      "WUMO",
+      "Washington University-St. Louis Bears",
+      "Washington University-St. Louis",
+      "WSTL"
     ]
   },
   {
@@ -791,7 +837,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Grove City Wolverines",
       "Grove City",
-      "GRO"
+      "GRO",
+      "Grove City College Wolverines",
+      "Grove City College"
     ]
   },
   {
@@ -893,7 +941,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Hamline Pipers",
       "Hamline",
-      "HMLN"
+      "HMLN",
+      "HAM"
     ]
   },
   {
@@ -951,7 +1000,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Hartwick Hawks",
       "Hartwick",
-      "HRTW"
+      "HRTW",
+      "HARW"
     ]
   },
   {
@@ -983,7 +1033,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Rochester (NY) Yellow Jackets",
       "Rochester (NY)",
-      "URNY"
+      "URNY",
+      "University of Rochester (NY) Yellow Jackets",
+      "University of Rochester (NY)",
+      "ROC"
     ]
   },
   {
@@ -992,7 +1045,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Baldwin Wallace Yellow Jackets",
       "Baldwin Wallace",
       "Baldwin Wall",
-      "BW"
+      "BW",
+      "BALW"
     ]
   },
   {
@@ -1017,7 +1071,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Heidelberg Student Princes",
       "Heidelberg",
-      "HDBG"
+      "HDBG",
+      "HEI"
     ]
   },
   {
@@ -1051,7 +1106,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Northeastern State RiverHawks",
       "Northeastern State",
       "NE State",
-      "NESU"
+      "NESU",
+      "NEOS"
     ]
   },
   {
@@ -1069,7 +1125,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Southeastern Oklahoma State Savage Storm",
       "Southeastern Oklahoma State",
       "SE Oklahoma St",
-      "SEOK"
+      "SEOK",
+      "SEOS"
     ]
   },
   {
@@ -1078,7 +1135,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Southern Nazarene Crimson Storm",
       "Southern Nazarene",
       "S Nazarene",
-      "SNU"
+      "SNU",
+      "SN"
     ]
   },
   {
@@ -1102,7 +1160,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Linfield Wildcats",
       "Linfield",
-      "LINF"
+      "LINF",
+      "LIN"
     ]
   },
   {
@@ -1119,7 +1178,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Pacific (OR) Boxers",
       "Pacific (OR)",
-      "PCOR"
+      "PCOR",
+      "PACO",
+      "Pacific Boxers"
     ]
   },
   {
@@ -1135,7 +1196,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Millersville Marauders",
       "Millersville",
-      "MILL"
+      "MILL",
+      "MLR"
     ]
   },
   {
@@ -1151,7 +1213,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Slippery Rock The Rock",
       "Slippery Rock",
-      "SRU"
+      "SRU",
+      "SLI"
     ]
   },
   {
@@ -1159,7 +1222,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Susquehanna River Hawks",
       "Susquehanna",
-      "SUSQ"
+      "SUSQ",
+      "SUS"
     ]
   },
   {
@@ -1201,7 +1265,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "West Chester Golden Rams",
       "West Chester",
-      "WCHT"
+      "WCHT",
+      "WES"
     ]
   },
   {
@@ -1266,7 +1331,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Union Garnet Chargers",
       "Union",
-      "UNNY"
+      "UNNY",
+      "Union (NY) Garnet Chargers",
+      "Union (NY)"
     ]
   },
   {
@@ -1290,7 +1357,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "McMurry War Hawks",
       "McMurry",
-      "MCM"
+      "MCM",
+      "MMR"
     ]
   },
   {
@@ -1322,7 +1390,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "King's Monarchs",
       "King's",
-      "KNGS"
+      "KNGS",
+      "King's College (PA) Monarchs",
+      "King's College (PA)",
+      "KIN"
     ]
   },
   {
@@ -1353,7 +1424,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "id": "espn:ncaaf:252",
     "aliases": [
       "BYU Cougars",
-      "BYU"
+      "BYU",
+      "Brigham Young",
+      "Brigham Young Cougars"
     ]
   },
   {
@@ -1377,7 +1450,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Knox Prairie Fire",
       "Knox",
-      "KNOX"
+      "KNOX",
+      "Knox College Prairie Fire",
+      "Knox College",
+      "KNO"
     ]
   },
   {
@@ -1417,7 +1493,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lake Forest Foresters",
       "Lake Forest",
-      "LFC"
+      "LFC",
+      "LAK"
     ]
   },
   {
@@ -1425,7 +1502,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Loras Duhawks",
       "Loras",
-      "LOR"
+      "LOR",
+      "Loras College Duhawks",
+      "Loras College"
     ]
   },
   {
@@ -1450,7 +1529,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Beloit Buccaneers",
       "Beloit",
-      "BELO"
+      "BELO",
+      "Beloit College Buccaneers",
+      "Beloit College",
+      "BEL"
     ]
   },
   {
@@ -1466,7 +1548,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lawrence Vikings",
       "Lawrence",
-      "LAW"
+      "LAW",
+      "Lawrence University Vikings",
+      "Lawrence University"
     ]
   },
   {
@@ -1475,7 +1559,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wisconsin Oshkosh Titans",
       "Wisconsin Oshkosh",
       "UW-Oshkosh",
-      "UWO"
+      "UWO",
+      "Wisconsin-Oshkosh Titans",
+      "Wisconsin-Oshkosh",
+      "WISO"
     ]
   },
   {
@@ -1484,7 +1571,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wisconsin Platteville Pioneers",
       "Wisconsin Platteville",
       "UW-Platteville",
-      "UWP"
+      "UWP",
+      "Wisconsin-Platteville Pioneers",
+      "Wisconsin-Platteville",
+      "WIPL"
     ]
   },
   {
@@ -1492,7 +1582,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Maine Maritime Mariners",
       "Maine Maritime",
-      "UMMA"
+      "UMMA",
+      "MAI"
     ]
   },
   {
@@ -1568,7 +1659,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Methodist Monarchs",
       "Methodist",
-      "MU"
+      "MU",
+      "MET"
     ]
   },
   {
@@ -1586,7 +1678,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Vermont State Castleton Spartans",
       "Vermont State Castleton",
       "VTSU Castleton",
-      "VTSC"
+      "VTSC",
+      "Castleton Spartans",
+      "Castleton",
+      "CAS"
     ]
   },
   {
@@ -1602,7 +1697,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Hampden Sydney Tigers",
       "Hampden Sydney",
-      "HSC"
+      "HSC",
+      "Hampden-Sydney Tigers",
+      "Hampden-Sydney",
+      "HAC"
     ]
   },
   {
@@ -1640,7 +1738,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Illinois Wesleyan Titans",
       "Illinois Wesleyan",
       "IL Wesleyan",
-      "ILWU"
+      "ILWU",
+      "ILW"
     ]
   },
   {
@@ -1681,7 +1780,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Marietta Pioneers",
       "Marietta",
-      "MRTT"
+      "MRTT",
+      "MAR"
     ]
   },
   {
@@ -1690,7 +1790,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Oklahoma Baptist Bison",
       "Oklahoma Baptist",
       "OK Baptist",
-      "OKBU"
+      "OKBU",
+      "OKB"
     ]
   },
   {
@@ -1741,7 +1842,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Virginia State Trojans",
       "Virginia State",
       "Virginia St",
-      "VSU"
+      "VSU",
+      "VIR"
     ]
   },
   {
@@ -1758,7 +1860,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Muskingum Fighting Muskies",
       "Muskingum",
-      "MSK"
+      "MSK",
+      "MUS"
     ]
   },
   {
@@ -1774,7 +1877,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Wesleyan (CT) Cardinals",
       "Wesleyan (CT)",
-      "WSCT"
+      "WSCT",
+      "Wesleyan University (CT) Cardinals",
+      "Wesleyan University (CT)",
+      "WCT"
     ]
   },
   {
@@ -1800,7 +1906,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Frostburg State Bobcats",
       "Frostburg State",
       "Frostburg St",
-      "FSTU"
+      "FSTU",
+      "FRO"
     ]
   },
   {
@@ -1833,7 +1940,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Wingate Bulldogs",
       "Wingate",
-      "WINU"
+      "WINU",
+      "WIN"
     ]
   },
   {
@@ -1841,7 +1949,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Kenyon Owls",
       "Kenyon",
-      "KNY"
+      "KNY",
+      "KEN"
     ]
   },
   {
@@ -1849,7 +1958,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Olivet Comets",
       "Olivet",
-      "UOO"
+      "UOO",
+      "Olivet College Comets",
+      "Olivet College",
+      "OLI"
     ]
   },
   {
@@ -1865,7 +1977,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Otterbein Cardinals",
       "Otterbein",
-      "OTTB"
+      "OTTB",
+      "OTT"
     ]
   },
   {
@@ -1873,7 +1986,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Alfred Saxons",
       "Alfred",
-      "ALFR"
+      "ALFR",
+      "ALF"
     ]
   },
   {
@@ -1881,7 +1995,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Ferrum Panthers",
       "Ferrum",
-      "FC"
+      "FC",
+      "FER"
     ]
   },
   {
@@ -1889,7 +2004,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Gannon Golden Knights",
       "Gannon",
-      "GANN"
+      "GANN",
+      "GAN"
     ]
   },
   {
@@ -1898,7 +2014,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "St. John Fisher Cardinals",
       "St. John Fisher",
       "St John Fisher",
-      "STJF"
+      "STJF",
+      "St. John Fisher University Cardinals",
+      "St. John Fisher University",
+      "SJFU"
     ]
   },
   {
@@ -1907,7 +2026,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "St. Scholastica Saints",
       "St. Scholastica",
       "St Scholastica",
-      "CSS"
+      "CSS",
+      "STS"
     ]
   },
   {
@@ -1924,7 +2044,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Trinity (TX) Tigers",
       "Trinity (TX)",
-      "TUTX"
+      "TUTX",
+      "TRI"
     ]
   },
   {
@@ -1932,7 +2053,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lebanon Valley Flying Dutchmen",
       "Lebanon Valley",
-      "LVC"
+      "LVC",
+      "LEB"
     ]
   },
   {
@@ -1940,7 +2062,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Upper Iowa Peacocks",
       "Upper Iowa",
-      "UIU"
+      "UIU",
+      "UPP"
     ]
   },
   {
@@ -1948,7 +2071,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Utica Pioneers",
       "Utica",
-      "UTIC"
+      "UTIC",
+      "UTI"
     ]
   },
   {
@@ -1964,7 +2088,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Wheaton (IL) Thunder",
       "Wheaton (IL)",
-      "WCIL"
+      "WCIL",
+      "Wheaton Thunder",
+      "Wheaton",
+      "WHE"
     ]
   },
   {
@@ -1972,7 +2099,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Wilkes Colonels",
       "Wilkes",
-      "WILK"
+      "WILK",
+      "Wilkes University Colonels",
+      "Wilkes University",
+      "WIL"
     ]
   },
   {
@@ -1994,7 +2124,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Worcester State Lancers",
       "Worcester State",
       "Worcester St",
-      "WORC"
+      "WORC",
+      "Worcester State College Lancers",
+      "Worcester State College",
+      "WOR"
     ]
   },
   {
@@ -2002,7 +2135,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Concordia (WI) Falcons",
       "Concordia (WI)",
-      "CUW"
+      "CUW",
+      "Concordia-Wisconsin Falcons",
+      "Concordia-Wisconsin",
+      "CONW"
     ]
   },
   {
@@ -2018,7 +2154,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "George Fox Bruins",
       "George Fox",
-      "GFU"
+      "GFU",
+      "GFX"
     ]
   },
   {
@@ -2026,7 +2163,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Gallaudet Bison",
       "Gallaudet",
-      "GLDT"
+      "GLDT",
+      "GAL"
     ]
   },
   {
@@ -2034,7 +2172,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Hendrix Warriors",
       "Hendrix",
-      "HDX"
+      "HDX",
+      "Hendrix College Warriors",
+      "Hendrix College",
+      "HEN"
     ]
   },
   {
@@ -2042,7 +2183,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Capital Comets",
       "Capital",
-      "CAPU"
+      "CAPU",
+      "CAP"
     ]
   },
   {
@@ -2060,7 +2202,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Mount Union Purple Raiders",
       "Mount Union",
       "Mt Union",
-      "UMU"
+      "UMU",
+      "MOU"
     ]
   },
   {
@@ -2068,7 +2211,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Ohio Northern Polar Bears",
       "Ohio Northern",
-      "OHNU"
+      "OHNU",
+      "ON"
     ]
   },
   {
@@ -2077,7 +2221,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Westminster (MO) Blue Jays",
       "Westminster (MO)",
       "Westminster MO",
-      "WCMO"
+      "WCMO",
+      "WMO"
     ]
   },
   {
@@ -2085,7 +2230,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lake Erie Storm",
       "Lake Erie",
-      "LKER"
+      "LKER",
+      "LKE"
     ]
   },
   {
@@ -2093,7 +2239,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Martin Luther Knights",
       "Martin Luther",
-      "MLC"
+      "MLC",
+      "MAR"
     ]
   },
   {
@@ -2101,7 +2248,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Endicott Gulls",
       "Endicott",
-      "ENDC"
+      "ENDC",
+      "Endicott College Gulls",
+      "Endicott College",
+      "END"
     ]
   },
   {
@@ -2110,7 +2260,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "West Virginia Wesleyan Bobcats",
       "West Virginia Wesleyan",
       "WV Wesleyan",
-      "WVWC"
+      "WVWC",
+      "WES"
     ]
   },
   {
@@ -2118,7 +2269,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Stevenson Mustangs",
       "Stevenson",
-      "STVS"
+      "STVS",
+      "STEV"
     ]
   },
   {
@@ -2169,7 +2321,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Crown Polars",
       "Crown",
-      "CRWN"
+      "CRWN",
+      "Crown College Polars",
+      "Crown College",
+      "CROWN"
     ]
   },
   {
@@ -2248,7 +2403,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "LaGrange Panthers",
       "LaGrange",
-      "LGC"
+      "LGC",
+      "LaGrange College Panthers",
+      "LaGrange College",
+      "LAG"
     ]
   },
   {
@@ -2283,7 +2441,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Minot State Beavers",
       "Minot State",
       "Minot St",
-      "MINS"
+      "MINS",
+      "MNT"
     ]
   },
   {
@@ -2292,7 +2451,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Northwestern (MN) Eagles",
       "Northwestern (MN)",
       "N'Western (MN)",
-      "UNW"
+      "UNW",
+      "NMN"
     ]
   },
   {
@@ -2308,7 +2468,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Seton Hill Griffins",
       "Seton Hill",
-      "SEHI"
+      "SEHI",
+      "SH"
     ]
   },
   {
@@ -2317,7 +2478,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "South Dakota Mines Hardrockers",
       "South Dakota Mines",
       "SD Mines",
-      "SDMT"
+      "SDMT",
+      "SDM",
+      "South Dakota Hardrockers"
     ]
   },
   {
@@ -2378,7 +2541,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Adams State Grizzlies",
       "Adams State",
       "Adams St",
-      "ADSU"
+      "ADSU",
+      "ADA"
     ]
   },
   {
@@ -2429,7 +2593,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Albany State Golden Rams",
       "Albany State",
       "Albany St",
-      "ABSU"
+      "ABSU",
+      "ALBS"
     ]
   },
   {
@@ -2437,7 +2602,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Albright Lions",
       "Albright",
-      "ALBR"
+      "ALBR",
+      "ALB"
     ]
   },
   {
@@ -2454,7 +2620,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Allegheny Gators",
       "Allegheny",
-      "ALLG"
+      "ALLG",
+      "ALL"
     ]
   },
   {
@@ -2462,7 +2629,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Allen Yellow Jackets",
       "Allen",
-      "ALNU"
+      "ALNU",
+      "ALN"
     ]
   },
   {
@@ -2479,7 +2647,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Anderson (IN) Ravens",
       "Anderson (IN)",
-      "ANIN"
+      "ANIN",
+      "AND"
     ]
   },
   {
@@ -2488,7 +2657,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Angelo State Rams",
       "Angelo State",
       "Angelo St",
-      "AGSU"
+      "AGSU",
+      "ANG"
     ]
   },
   {
@@ -2509,7 +2679,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Arkansas Monticello Boll Weevils",
       "Arkansas Monticello",
       "UA Monticello",
-      "UAM"
+      "UAM",
+      "Arkansas-Monticello Boll Weevils",
+      "Arkansas-Monticello",
+      "ARK"
     ]
   },
   {
@@ -2535,7 +2708,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Arkansas Tech Wonder Boys",
       "Arkansas Tech",
-      "ARTE"
+      "ARTE",
+      "ARK"
     ]
   },
   {
@@ -2575,7 +2749,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Austin 'Roos",
       "Austin",
-      "AUS"
+      "AUS",
+      "Austin Kangaroos"
     ]
   },
   {
@@ -2591,7 +2766,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Averett Cougars",
       "Averett",
-      "AVER"
+      "AVER",
+      "AVE"
     ]
   },
   {
@@ -2624,7 +2800,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Belhaven Blazers",
       "Belhaven",
-      "BELH"
+      "BELH",
+      "BEL"
     ]
   },
   {
@@ -2640,7 +2817,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Bethany (WV) Bison",
       "Bethany (WV)",
-      "BCWV"
+      "BCWV",
+      "BET"
     ]
   },
   {
@@ -2666,7 +2844,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Black Hills State Yellow Jackets",
       "Black Hills State",
       "Black Hills St",
-      "BHSU"
+      "BHSU",
+      "BHS"
     ]
   },
   {
@@ -2674,7 +2853,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Bloomsburg Huskies",
       "Bloomsburg",
-      "BBU"
+      "BBU",
+      "BLOM"
     ]
   },
   {
@@ -2682,7 +2862,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Bluffton Beavers",
       "Bluffton",
-      "BLF"
+      "BLF",
+      "BLU"
     ]
   },
   {
@@ -2691,7 +2872,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Bowie State Bulldogs",
       "Bowie State",
       "Bowie St",
-      "BOWE"
+      "BOWE",
+      "BSU"
     ]
   },
   {
@@ -2699,7 +2881,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Bridgewater Eagles",
       "Bridgewater",
-      "BRI"
+      "BRI",
+      "Bridgewater (VA) Eagles",
+      "Bridgewater (VA)"
     ]
   },
   {
@@ -2734,7 +2918,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Buffalo State Bengals",
       "Buffalo State",
       "Buffalo St",
-      "BSU"
+      "BSU",
+      "BUF"
     ]
   },
   {
@@ -2750,7 +2935,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Cal Lutheran Kingsmen",
       "Cal Lutheran",
-      "CLU"
+      "CLU",
+      "California Lutheran Kingsmen"
     ]
   },
   {
@@ -2774,7 +2960,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Carleton Knights",
       "Carleton",
-      "CAR"
+      "CAR",
+      "Carleton College Knights",
+      "Carleton College"
     ]
   },
   {
@@ -2783,7 +2971,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Carnegie Mellon Tartans",
       "Carnegie Mellon",
       "Carn Mellon",
-      "CGMU"
+      "CGMU",
+      "CAR"
     ]
   },
   {
@@ -2791,7 +2980,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Carson Newman Eagles",
       "Carson Newman",
-      "CN"
+      "CN",
+      "Carson-Newman Eagles",
+      "Carson-Newman",
+      "CAR"
     ]
   },
   {
@@ -2799,7 +2991,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Carthage Firebirds",
       "Carthage",
-      "CCW"
+      "CCW",
+      "CAR"
     ]
   },
   {
@@ -2815,7 +3008,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Catholic Cardinals",
       "Catholic",
-      "CATH"
+      "CATH",
+      "CAT"
     ]
   },
   {
@@ -2858,7 +3052,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Central Missouri Mules",
       "Central Missouri",
       "C Missouri",
-      "UCM"
+      "UCM",
+      "CENM"
     ]
   },
   {
@@ -2867,7 +3062,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Central State Marauders",
       "Central State",
       "Central St",
-      "CNSU"
+      "CNSU",
+      "Central State (OH) Marauders",
+      "Central State (OH)",
+      "CEN"
     ]
   },
   {
@@ -2876,7 +3074,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Central Washington Wildcats",
       "Central Washington",
       "C Washington",
-      "CWAU"
+      "CWAU",
+      "CEN"
     ]
   },
   {
@@ -2884,7 +3083,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Centre Colonels",
       "Centre",
-      "CCO"
+      "CCO",
+      "Centre College Colonels",
+      "Centre College",
+      "CEN"
     ]
   },
   {
@@ -2893,7 +3095,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Central Oklahoma Bronchos",
       "Central Oklahoma",
       "C Oklahoma",
-      "UCO"
+      "UCO",
+      "CENO"
     ]
   },
   {
@@ -2902,7 +3105,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Chadron State Eagles",
       "Chadron State",
       "Chadron St",
-      "CHAD"
+      "CHAD",
+      "CHA"
     ]
   },
   {
@@ -2920,7 +3124,11 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Charleston (WV) Golden Eagles",
       "Charleston (WV)",
       "Charleston WV",
-      "UCWV"
+      "UCWV",
+      "University Of Charleston (WV) Golden Eagles",
+      "University Of Charleston (WV)",
+      "CHWV",
+      "Charleston Golden Eagles"
     ]
   },
   {
@@ -2945,7 +3153,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Clarion Golden Eagles",
       "Clarion",
-      "CLRN"
+      "CLRN",
+      "CLA"
     ]
   },
   {
@@ -2953,7 +3162,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Coe Kohawks",
       "Coe",
-      "COE"
+      "COE",
+      "Coe College Kohawks",
+      "Coe College"
     ]
   },
   {
@@ -2970,7 +3181,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Colorado School of Mines Orediggers",
       "Colorado School of Mines",
       "Colorado Mines",
-      "CMIN"
+      "CMIN",
+      "COL",
+      "Colorado Mines Orediggers"
     ]
   },
   {
@@ -2978,7 +3191,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Concord Mountain Lions",
       "Concord",
-      "CONC"
+      "CONC",
+      "CON"
     ]
   },
   {
@@ -2987,7 +3201,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Concordia Chicago Cougars",
       "Concordia Chicago",
       "Concordia Chi",
-      "CUC"
+      "CUC",
+      "Concordia-Chicago Cougars",
+      "Concordia-Chicago",
+      "CON"
     ]
   },
   {
@@ -2995,7 +3212,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Concordia (MN) Cobbers",
       "Concordia (MN)",
-      "CCMN"
+      "CCMN",
+      "Concordia-Moorhead Cobbers",
+      "Concordia-Moorhead",
+      "CON"
     ]
   },
   {
@@ -3046,7 +3266,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Delta State Statesmen",
       "Delta State",
       "Delta St",
-      "DLST"
+      "DLST",
+      "DELT"
     ]
   },
   {
@@ -3054,7 +3275,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Denison Big Red",
       "Denison",
-      "DSN"
+      "DSN",
+      "DEN"
     ]
   },
   {
@@ -3062,7 +3284,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Dickinson Red Devils",
       "Dickinson",
-      "DKSN"
+      "DKSN",
+      "Dickinson (PA) Red Devils",
+      "Dickinson (PA)",
+      "DCK"
     ]
   },
   {
@@ -3087,7 +3312,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "East Stroudsburg Warriors",
       "East Stroudsburg",
       "E Stroudsburg",
-      "ESU"
+      "ESU",
+      "EAS"
     ]
   },
   {
@@ -3095,7 +3321,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "East Central Tigers",
       "East Central",
-      "ECNU"
+      "ECNU",
+      "East Central (OK) Tigers",
+      "East Central (OK)",
+      "EAS"
     ]
   },
   {
@@ -3112,7 +3341,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "East Texas Baptist Tigers",
       "East Texas Baptist",
       "E TX Baptist",
-      "ETBU"
+      "ETBU",
+      "EAS"
     ]
   },
   {
@@ -3148,7 +3378,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Eastern New Mexico Greyhounds",
       "Eastern New Mexico",
       "Eastern NM",
-      "ENMU"
+      "ENMU",
+      "EAS"
     ]
   },
   {
@@ -3164,7 +3395,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Edinboro Fighting Scots",
       "Edinboro",
-      "EDBR"
+      "EDBR",
+      "EDI"
     ]
   },
   {
@@ -3172,7 +3404,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Edward Waters Tigers",
       "Edward Waters",
-      "EDW"
+      "EDW",
+      "EAU"
     ]
   },
   {
@@ -3181,7 +3414,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Elizabeth City State Vikings",
       "Elizabeth City State",
       "Elizabeth City",
-      "ECSU"
+      "ECSU",
+      "ELIZ"
     ]
   },
   {
@@ -3197,7 +3431,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Emory & Henry Wasps",
       "Emory & Henry",
-      "EHC"
+      "EHC",
+      "Emory & Henry College Wasps",
+      "Emory & Henry College",
+      "EMO"
     ]
   },
   {
@@ -3206,7 +3443,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Emporia State Hornets",
       "Emporia State",
       "Emporia St",
-      "EMSU"
+      "EMSU",
+      "EMP"
     ]
   },
   {
@@ -3224,7 +3462,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Fayetteville State Broncos",
       "Fayetteville State",
       "Fay'ville St",
-      "FAYU"
+      "FAYU",
+      "FAY"
     ]
   },
   {
@@ -3232,7 +3471,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "FDU Florham Devils",
       "FDU Florham",
-      "FDUF"
+      "FDUF",
+      "FDU-Florham Devils",
+      "FDU-Florham",
+      "FDU"
     ]
   },
   {
@@ -3249,7 +3491,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Findlay Oilers",
       "Findlay",
-      "UF"
+      "UF",
+      "FIN"
     ]
   },
   {
@@ -3285,7 +3528,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Fort Hays Tigers",
       "Fort Hays",
-      "FHSU"
+      "FHSU",
+      "Fort Hays State Tigers",
+      "Fort Hays State"
     ]
   },
   {
@@ -3294,7 +3539,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Fort Valley State Wildcats",
       "Fort Valley State",
       "Fort Valley St",
-      "FVSU"
+      "FVSU",
+      "FVS"
     ]
   },
   {
@@ -3302,7 +3548,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Franklin Grizzlies",
       "Franklin",
-      "FRKL"
+      "FRKL",
+      "FRNK"
     ]
   },
   {
@@ -3311,7 +3558,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Franklin & Marshall Diplomats",
       "Franklin & Marshall",
       "Franklin Marsh",
-      "FMC"
+      "FMC",
+      "FR&M"
     ]
   },
   {
@@ -3319,7 +3567,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Fort Lewis Skyhawks",
       "Fort Lewis",
-      "FLWC"
+      "FLWC",
+      "LEW"
     ]
   },
   {
@@ -3370,7 +3619,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Gettysburg Bullets",
       "Gettysburg",
-      "GTYB"
+      "GTYB",
+      "GET"
     ]
   },
   {
@@ -3379,7 +3629,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Glenville State Pioneers",
       "Glenville State",
       "Glenville St",
-      "GVLS"
+      "GVLS",
+      "GLN"
     ]
   },
   {
@@ -3396,7 +3647,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Greensboro Pride",
       "Greensboro",
-      "GRNB"
+      "GRNB",
+      "Greensboro College Pride",
+      "Greensboro College",
+      "GRE"
     ]
   },
   {
@@ -3404,7 +3658,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Greenville Panthers",
       "Greenville",
-      "GRNV"
+      "GRNV",
+      "GRE"
     ]
   },
   {
@@ -3412,7 +3667,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Guilford Quakers",
       "Guilford",
-      "GLFD"
+      "GLFD",
+      "GUI"
     ]
   },
   {
@@ -3428,7 +3684,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Hanover Panthers",
       "Hanover",
-      "HNVR"
+      "HNVR",
+      "HAN"
     ]
   },
   {
@@ -3436,7 +3693,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Harding Bisons",
       "Harding",
-      "HARD"
+      "HARD",
+      "Harding University Bisons",
+      "Harding University",
+      "HAR"
     ]
   },
   {
@@ -3445,7 +3705,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Henderson State Reddies",
       "Henderson State",
       "Henderson St",
-      "HSTU"
+      "HSTU",
+      "HEN"
     ]
   },
   {
@@ -3453,7 +3714,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Hillsdale Chargers",
       "Hillsdale",
-      "HLDL"
+      "HLDL",
+      "HIL"
     ]
   },
   {
@@ -3461,7 +3723,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Hiram Terriers",
       "Hiram",
-      "HIRM"
+      "HIRM",
+      "Hiram College Terriers",
+      "Hiram College",
+      "HIR"
     ]
   },
   {
@@ -3482,7 +3747,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Husson Eagles",
       "Husson",
-      "HUSS"
+      "HUSS",
+      "HUS"
     ]
   },
   {
@@ -3491,7 +3757,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Benedictine (IL) Eagles",
       "Benedictine (IL)",
       "Benedictine IL",
-      "BNIL"
+      "BNIL",
+      "Benedictine University (IL) Eagles",
+      "Benedictine University (IL)",
+      "BENC"
     ]
   },
   {
@@ -3500,7 +3769,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Illinois College Blueboys",
       "Illinois College",
       "Illinois Col",
-      "ILLC"
+      "ILLC",
+      "ILL"
     ]
   },
   {
@@ -3518,7 +3788,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "IU Pennsylvania Crimson Hawks",
       "IU Pennsylvania",
       "IU Penn",
-      "IUP"
+      "IUP",
+      "Indiana-Pennsylvania Crimson Hawks",
+      "Indiana-Pennsylvania"
     ]
   },
   {
@@ -3526,7 +3798,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Indianapolis Greyhounds",
       "Indianapolis",
-      "INDY"
+      "INDY",
+      "IND"
     ]
   },
   {
@@ -3551,7 +3824,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "John Carroll Blue Streaks",
       "John Carroll",
-      "JCU"
+      "JCU",
+      "JOH"
     ]
   },
   {
@@ -3560,7 +3834,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Johnson C. Smith Golden Bulls",
       "Johnson C. Smith",
       "Johnson C Smth",
-      "JCSU"
+      "JCSU",
+      "Johnson C Smith Golden Bulls",
+      "Johnson C Smith",
+      "JOH"
     ]
   },
   {
@@ -3594,7 +3871,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Kentucky State Thorobreds",
       "Kentucky State",
       "Kentucky St",
-      "KYSU"
+      "KYSU",
+      "KYST"
     ]
   },
   {
@@ -3602,7 +3880,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Kutztown Golden Bears",
       "Kutztown",
-      "KUTZ"
+      "KUTZ",
+      "KUT"
     ]
   },
   {
@@ -3611,7 +3890,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Kentucky Wesleyan Panthers",
       "Kentucky Wesleyan",
       "KY Wesleyan",
-      "KWC"
+      "KWC",
+      "KYW"
     ]
   },
   {
@@ -3635,7 +3915,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lane College Dragons",
       "Lane College",
-      "LANE"
+      "LANE",
+      "Lane Dragons",
+      "Lane",
+      "LAC"
     ]
   },
   {
@@ -3659,7 +3942,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lenoir Rhyne Bears",
       "Lenoir Rhyne",
-      "LENR"
+      "LENR",
+      "Lenoir-Rhyne Bears",
+      "Lenoir-Rhyne",
+      "LEN"
     ]
   },
   {
@@ -3667,7 +3953,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lewis & Clark River Otters",
       "Lewis & Clark",
-      "LC"
+      "LC",
+      "LEW",
+      "Lewis And Clark Pioneers"
     ]
   },
   {
@@ -3683,7 +3971,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lincoln (PA) Lions",
       "Lincoln (PA)",
-      "LNPA"
+      "LNPA",
+      "LINP",
+      "Lincoln Lions"
     ]
   },
   {
@@ -3719,7 +4009,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lycoming Warriors",
       "Lycoming",
-      "LYCO"
+      "LYCO",
+      "LYC"
     ]
   },
   {
@@ -3753,7 +4044,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Minnesota State Mavericks",
       "Minnesota State",
       "Minnesota St",
-      "MNST"
+      "MNST",
+      "Minnesota State Mankato Mavericks",
+      "Minnesota State Mankato"
     ]
   },
   {
@@ -3767,7 +4060,7 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
   {
     "id": "espn:ncaaf:2366",
     "aliases": [
-      "Marian (IN) MARIAN",
+      "Marian (IN) Knights",
       "Marian (IN)",
       "MUIN"
     ]
@@ -3785,7 +4078,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Mars Hill Lions",
       "Mars Hill",
-      "MHU"
+      "MHU",
+      "MH"
     ]
   },
   {
@@ -3794,7 +4088,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Mary Hardin Baylor Crusaders",
       "Mary Hardin Baylor",
       "Mary Hardin",
-      "MHB"
+      "MHB",
+      "Mary Hardin-Baylor Crusaders",
+      "Mary Hardin-Baylor",
+      "MAR"
     ]
   },
   {
@@ -3802,7 +4099,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Maryville (TN) Scots",
       "Maryville (TN)",
-      "MCTN"
+      "MCTN",
+      "Maryville College (TN) Scots",
+      "Maryville College (TN)",
+      "MVTN"
     ]
   },
   {
@@ -3831,7 +4131,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Merchant Marine Mariners",
       "Merchant Marine",
       "Merch Marine",
-      "MMA"
+      "MMA",
+      "MER"
     ]
   },
   {
@@ -3871,7 +4172,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Middlebury Panthers",
       "Middlebury",
-      "MIDB"
+      "MIDB",
+      "MID"
     ]
   },
   {
@@ -3880,7 +4182,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Midwestern State Mustangs",
       "Midwestern State",
       "Midwestern St",
-      "MWSU"
+      "MWSU",
+      "MID"
     ]
   },
   {
@@ -3888,7 +4191,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Miles Golden Bears",
       "Miles",
-      "MILE"
+      "MILE",
+      "Miles College Golden Bears",
+      "Miles College",
+      "MIL"
     ]
   },
   {
@@ -3905,7 +4211,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Minnesota Morris Cougars",
       "Minnesota Morris",
       "Minn Morris",
-      "MNMO"
+      "MNMO",
+      "MINM"
     ]
   },
   {
@@ -3931,7 +4238,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Missouri Southern State Lions",
       "Missouri Southern State",
       "Missouri So St",
-      "MSSU"
+      "MSSU",
+      "MOS",
+      "Missouri Southern Lions"
     ]
   },
   {
@@ -3974,7 +4283,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Mount St Joseph Lions",
       "Mount St Joseph",
       "Mt St Joseph",
-      "MSJ"
+      "MSJ",
+      "Mount St. Joseph Lions",
+      "Mount St. Joseph"
     ]
   },
   {
@@ -3982,7 +4293,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Muhlenberg Mules",
       "Muhlenberg",
-      "MUHL"
+      "MUHL",
+      "MUH"
     ]
   },
   {
@@ -3991,7 +4303,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "New Mexico Highlands Cowboys",
       "New Mexico Highlands",
       "NM Highlands",
-      "NMHU"
+      "NMHU",
+      "NMH"
     ]
   },
   {
@@ -4037,7 +4350,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Nebraska Kearney Lopers",
       "Nebraska Kearney",
       "NE Kearney",
-      "NEBK"
+      "NEBK",
+      "Nebraska-Kearney Lopers",
+      "Nebraska-Kearney",
+      "NK"
     ]
   },
   {
@@ -4078,7 +4394,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Newberry Wolves",
       "Newberry",
-      "NBRY"
+      "NBRY",
+      "NBR"
     ]
   },
   {
@@ -4182,7 +4499,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Norwich Cadets",
       "Norwich",
-      "NWCH"
+      "NWCH",
+      "NOR"
     ]
   },
   {
@@ -4190,7 +4508,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Ohio Dominican Panthers",
       "Ohio Dominican",
-      "OHDU"
+      "OHDU",
+      "OHDM"
     ]
   },
   {
@@ -4207,7 +4526,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Pacific Lutheran Lutes",
       "Pacific Lutheran",
       "Pac Lutheran",
-      "PCLT"
+      "PCLT",
+      "PL"
     ]
   },
   {
@@ -4215,7 +4535,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Pace Setters",
       "Pace",
-      "PACE"
+      "PACE",
+      "PAC"
     ]
   },
   {
@@ -4268,7 +4589,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Randolph Macon Yellow Jackets",
       "Randolph Macon",
-      "RMC"
+      "RMC",
+      "Randolph-Macon Yellow Jackets",
+      "Randolph-Macon",
+      "RAN"
     ]
   },
   {
@@ -4276,7 +4600,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Rhodes Lynx",
       "Rhodes",
-      "RHDS"
+      "RHDS",
+      "Rhodes College Lynx",
+      "Rhodes College",
+      "RHO"
     ]
   },
   {
@@ -4292,7 +4619,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Rockford Regents",
       "Rockford",
-      "RFU"
+      "RFU",
+      "ROCK"
     ]
   },
   {
@@ -4316,7 +4644,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Salisbury Sea Gulls",
       "Salisbury",
-      "SAL"
+      "SAL",
+      "Salisbury University Sea Gulls",
+      "Salisbury University"
     ]
   },
   {
@@ -4385,7 +4715,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Sewanee Tigers",
       "Sewanee",
-      "SEWA"
+      "SEWA",
+      "SEW"
     ]
   },
   {
@@ -4393,7 +4724,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Coast Guard Bears",
       "Coast Guard",
-      "USCG"
+      "USCG",
+      "CGA"
     ]
   },
   {
@@ -4409,7 +4741,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Shorter Hawks",
       "Shorter",
-      "SHOU"
+      "SHOU",
+      "SHOR"
     ]
   },
   {
@@ -4425,7 +4758,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Simpson (IA) Storm",
       "Simpson (IA)",
-      "SCIA"
+      "SCIA",
+      "Simpson College (IA) Storm",
+      "Simpson College (IA)"
     ]
   },
   {
@@ -4445,7 +4780,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Southern Arkansas Muleriders",
       "Southern Arkansas",
       "S Arkansas",
-      "SAR"
+      "SAR",
+      "SA"
     ]
   },
   {
@@ -4462,7 +4798,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "CSU Pueblo ThunderWolves",
       "CSU Pueblo",
-      "CSUP"
+      "CSUP",
+      "Colorado State Pueblo Thunderwolves"
     ]
   },
   {
@@ -4513,7 +4850,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Southern Connecticut State Owls",
       "Southern Connecticut State",
       "S Conn St",
-      "SCTS"
+      "SCTS",
+      "SCSU"
     ]
   },
   {
@@ -4531,7 +4869,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Southwest Baptist Bearcats",
       "Southwest Baptist",
       "SW Baptist",
-      "SWBU"
+      "SWBU",
+      "SWB"
     ]
   },
   {
@@ -4540,7 +4879,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Southwest Minnesota State Mustangs",
       "Southwest Minnesota State",
       "SW Minn St",
-      "SWMS"
+      "SWMS",
+      "SWMN"
     ]
   },
   {
@@ -4549,7 +4889,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Southwestern U Pirates",
       "Southwestern U",
       "Southwestern",
-      "SWU"
+      "SWU",
+      "Southwestern University Pirates",
+      "Southwestern University",
+      "SU"
     ]
   },
   {
@@ -4584,7 +4927,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Saint John's (MN) Johnnies",
       "Saint John's (MN)",
       "St Johns (MN)",
-      "STJM"
+      "STJM",
+      "SJMN"
     ]
   },
   {
@@ -4592,7 +4936,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Saint Vincent Bearcats",
       "Saint Vincent",
-      "SVC"
+      "SVC",
+      "STVN"
     ]
   },
   {
@@ -4709,7 +5054,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Texas Lutheran Bulldogs",
       "Texas Lutheran",
-      "TXLU"
+      "TXLU",
+      "TXL"
     ]
   },
   {
@@ -4742,7 +5088,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Thiel Tomcats",
       "Thiel",
-      "THI"
+      "THI",
+      "THL"
     ]
   },
   {
@@ -4750,7 +5097,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Thomas More Saints",
       "Thomas More",
-      "TMOR"
+      "TMOR",
+      "Thomas More College Saints",
+      "Thomas More College",
+      "THO"
     ]
   },
   {
@@ -4766,7 +5116,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Trine Thunder",
       "Trine",
-      "TRNE"
+      "TRNE",
+      "Trine University Thunder",
+      "Trine University",
+      "TRI"
     ]
   },
   {
@@ -4783,7 +5136,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Truman State Bulldogs",
       "Truman State",
       "Truman St",
-      "TRST"
+      "TRST",
+      "TRUM"
     ]
   },
   {
@@ -4808,7 +5162,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Texas A&M-Kingsville Javelinas",
       "Texas A&M-Kingsville",
       "TAMU-Kingsvlle",
-      "TAMK"
+      "TAMK",
+      "TXKI"
     ]
   },
   {
@@ -4816,7 +5171,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Ursinus Bears",
       "Ursinus",
-      "URSN"
+      "URSN",
+      "URS"
     ]
   },
   {
@@ -4825,7 +5181,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Valdosta State Blazers",
       "Valdosta State",
       "Valdosta St",
-      "VALD"
+      "VALD",
+      "VAL"
     ]
   },
   {
@@ -4841,7 +5198,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Virginia Union Panthers",
       "Virginia Union",
-      "VUU"
+      "VUU",
+      "VU"
     ]
   },
   {
@@ -4867,7 +5225,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Walsh Cavaliers",
       "Walsh",
-      "WLSH"
+      "WLSH",
+      "WAL"
     ]
   },
   {
@@ -4883,7 +5242,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Wartburg Knights",
       "Wartburg",
-      "WTBG"
+      "WTBG",
+      "Wartburg College Knights",
+      "Wartburg College",
+      "WAR"
     ]
   },
   {
@@ -4892,7 +5254,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Washington & Jefferson Presidents",
       "Washington & Jefferson",
       "Wash & Jeff",
-      "W&J"
+      "W&J",
+      "WJC"
     ]
   },
   {
@@ -4900,7 +5263,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Washburn Ichabods",
       "Washburn",
-      "WSBN"
+      "WSBN",
+      "WASH"
     ]
   },
   {
@@ -4909,7 +5273,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Washington and Lee Generals",
       "Washington and Lee",
       "Wash and Lee",
-      "W&L"
+      "W&L",
+      "WLEE"
     ]
   },
   {
@@ -4935,7 +5300,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "West Alabama Tigers",
       "West Alabama",
-      "UWA"
+      "UWA",
+      "WES"
     ]
   },
   {
@@ -4952,7 +5318,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "West Liberty Hilltoppers",
       "West Liberty",
-      "WLU"
+      "WLU",
+      "WLIB"
     ]
   },
   {
@@ -4960,7 +5327,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "McDaniel Green Terror",
       "McDaniel",
-      "MCD"
+      "MCD",
+      "McDaniel College Green Terror",
+      "McDaniel College"
     ]
   },
   {
@@ -4987,7 +5356,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Western New Mexico Mustangs",
       "Western New Mexico",
       "Western NM",
-      "WNMU"
+      "WNMU",
+      "WES"
     ]
   },
   {
@@ -4995,7 +5365,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "West Texas Buffaloes",
       "West Texas",
-      "WTAM"
+      "WTAM",
+      "West Texas A&M Buffaloes",
+      "West Texas A&M"
     ]
   },
   {
@@ -5012,7 +5384,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "West Virginia State Yellow Jackets",
       "West Virginia State",
       "W Virginia St",
-      "WVSU"
+      "WVSU",
+      "WVST"
     ]
   },
   {
@@ -5056,7 +5429,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Whitworth Pirates",
       "Whitworth",
-      "WHIW"
+      "WHIW",
+      "WHIT"
     ]
   },
   {
@@ -5065,7 +5439,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wisconsin River Falls Falcons",
       "Wisconsin River Falls",
       "UW-River Falls",
-      "UWRF"
+      "UWRF",
+      "Wisconsin-River Falls Falcons",
+      "Wisconsin-River Falls",
+      "WIRF"
     ]
   },
   {
@@ -5073,7 +5450,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Widener Pride",
       "Widener",
-      "WIDE"
+      "WIDE",
+      "WID"
     ]
   },
   {
@@ -5092,7 +5470,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Williams Ephs",
       "Williams",
-      "WLM"
+      "WLM",
+      "WILL"
     ]
   },
   {
@@ -5101,7 +5480,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wilmington (OH) Fightin' Quakers",
       "Wilmington (OH)",
       "Wilmington OH",
-      "WCOH"
+      "WCOH",
+      "WILM",
+      "Wilmington Quakers"
     ]
   },
   {
@@ -5110,7 +5491,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Winston-Salem State Rams",
       "Winston-Salem State",
       "Winston-Salem",
-      "WSSU"
+      "WSSU",
+      "Winston-Salem Rams",
+      "WNSL"
     ]
   },
   {
@@ -5119,7 +5502,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wisconsin Eau Claire Blugolds",
       "Wisconsin Eau Claire",
       "UW-Eau Claire",
-      "UWEC"
+      "UWEC",
+      "Wisconsin-Eau Claire Blugolds",
+      "Wisconsin-Eau Claire",
+      "WISE"
     ]
   },
   {
@@ -5128,7 +5514,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wisconsin La Crosse Eagles",
       "Wisconsin La Crosse",
       "UW-La Crosse",
-      "UWL"
+      "UWL",
+      "Wisconsin-Lacrosse Eagles",
+      "Wisconsin-Lacrosse",
+      "WISL"
     ]
   },
   {
@@ -5137,7 +5526,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wisconsin Lutheran Warriors",
       "Wisconsin Lutheran",
       "Wisc Lutheran",
-      "WLC"
+      "WLC",
+      "WIS"
     ]
   },
   {
@@ -5146,7 +5536,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wisconsin Stevens Point Pointers",
       "Wisconsin Stevens Point",
       "UW-Stevens Pt",
-      "UWSP"
+      "UWSP",
+      "Wisconsin-Stevens Pt Pointers",
+      "Wisconsin-Stevens Pt",
+      "WISP"
     ]
   },
   {
@@ -5155,7 +5548,11 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wisconsin Stout Blue Devils",
       "Wisconsin Stout",
       "UW-Stout",
-      "UWST"
+      "UWST",
+      "Wisconsin-Stout Blue Devils",
+      "Wisconsin-Stout",
+      "WISS",
+      "UW Stout Blue Devils"
     ]
   },
   {
@@ -5164,7 +5561,11 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wisconsin Whitewater Warhawks",
       "Wisconsin Whitewater",
       "UW-Whitewater",
-      "UWW"
+      "UWW",
+      "Wisconsin-Whitewater Warhawks",
+      "Wisconsin-Whitewater",
+      "WISW",
+      "UW-Whitewater Warhawks"
     ]
   },
   {
@@ -5172,7 +5573,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Wittenberg Tigers",
       "Wittenberg",
-      "WITT"
+      "WITT",
+      "WIT"
     ]
   },
   {
@@ -5232,7 +5634,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Berry Vikings",
       "Berry",
-      "BERR"
+      "BERR",
+      "Berry College Vikings",
+      "Berry College",
+      "BER"
     ]
   },
   {
@@ -5240,7 +5645,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Howard Payne Yellow Jackets",
       "Howard Payne",
-      "HWPU"
+      "HWPU",
+      "HOWP"
     ]
   },
   {
@@ -5264,7 +5670,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Salve Regina Seahawks",
       "Salve Regina",
-      "SALV"
+      "SALV",
+      "SAL"
     ]
   },
   {
@@ -5281,7 +5688,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Brockport Golden Eagles",
       "Brockport",
-      "BRO"
+      "BRO",
+      "THE"
     ]
   },
   {
@@ -5289,7 +5697,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "SUNY Cortland Red Dragons",
       "SUNY Cortland",
-      "NYCL"
+      "NYCL",
+      "Cortland Red Dragons",
+      "Cortland",
+      "COR"
     ]
   },
   {
@@ -5305,7 +5716,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Alma Scots",
       "Alma",
-      "ALMA"
+      "ALMA",
+      "Alma College Scots",
+      "Alma College",
+      "ALM"
     ]
   },
   {
@@ -5313,7 +5727,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Bethel (MN) Royals",
       "Bethel (MN)",
-      "BUMN"
+      "BUMN",
+      "BET"
     ]
   },
   {
@@ -5329,7 +5744,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Chowan Hawks",
       "Chowan",
-      "CWAN"
+      "CWAN",
+      "CHO"
     ]
   },
   {
@@ -5338,7 +5754,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Clark Atlanta Panthers",
       "Clark Atlanta",
       "Clark (GA)",
-      "CKGA"
+      "CKGA",
+      "CLA"
     ]
   },
   {
@@ -5347,7 +5764,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Delaware Valley Aggies",
       "Delaware Valley",
       "Del Val",
-      "DVU"
+      "DVU",
+      "DEL"
     ]
   },
   {
@@ -5355,7 +5773,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Hardin Simmons Cowboys",
       "Hardin Simmons",
-      "HSU"
+      "HSU",
+      "Hardin-Simmons Cowboys",
+      "Hardin-Simmons",
+      "HAR"
     ]
   },
   {
@@ -5363,7 +5784,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Hope Flying Dutchmen",
       "Hope",
-      "HOPE"
+      "HOPE",
+      "HOP"
     ]
   },
   {
@@ -5388,7 +5810,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Minnesota St Moorhead Dragons",
       "Minnesota St Moorhead",
       "Minn Moorhead",
-      "MSUM"
+      "MSUM",
+      "Minnesota State Moorhead Dragons",
+      "Minnesota State Moorhead",
+      "MNST"
     ]
   },
   {
@@ -5397,7 +5822,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Montclair State Red Hawks",
       "Montclair State",
       "Montclair",
-      "MCST"
+      "MCST",
+      "MON"
     ]
   },
   {
@@ -5406,7 +5832,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "North Greenville Trailblazers",
       "North Greenville",
       "N Greenville",
-      "NGU"
+      "NGU",
+      "NG"
     ]
   },
   {
@@ -5415,13 +5842,16 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Northwestern (OK) Rangers",
       "Northwestern (OK)",
       "N'Western (OK)",
-      "NWOK"
+      "NWOK",
+      "Northwestern Oklahoma State Rangers",
+      "Northwestern Oklahoma State",
+      "NWOS"
     ]
   },
   {
     "id": "espn:ncaaf:2824",
     "aliases": [
-      "Oklahoma Panhandle OK PANHANDLE ST",
+      "Oklahoma Panhandle Aggies",
       "Oklahoma Panhandle",
       "OK Panhandle",
       "OPSU"
@@ -5456,7 +5886,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Saint Anselm Hawks",
       "Saint Anselm",
-      "SANS"
+      "SANS",
+      "St. Anselm Hawks",
+      "St. Anselm",
+      "STA"
     ]
   },
   {
@@ -5474,7 +5907,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "St. Norbert Green Knights",
       "St. Norbert",
       "St Norbert",
-      "STNC"
+      "STNC",
+      "STNO"
     ]
   },
   {
@@ -5483,7 +5917,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Sul Ross State Lobos",
       "Sul Ross State",
       "Sul Ross St",
-      "SRST"
+      "SRST",
+      "SROS"
     ]
   },
   {
@@ -5531,7 +5966,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Western Connecticut State Wolves",
       "Western Connecticut State",
       "WestConn",
-      "WCSU"
+      "WCSU",
+      "WES"
     ]
   },
   {
@@ -5540,7 +5976,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Wayne State (NE) Wildcats",
       "Wayne State (NE)",
       "Wayne St (NE)",
-      "WSNE"
+      "WSNE",
+      "WNST"
     ]
   },
   {
@@ -5557,7 +5994,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Western Oregon Wolves",
       "Western Oregon",
       "West Oregon",
-      "WORU"
+      "WORU",
+      "WOR"
     ]
   },
   {
@@ -5566,7 +6004,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Westminster (PA) Titans",
       "Westminster (PA)",
       "Westminster PA",
-      "WCPA"
+      "WCPA",
+      "WPA",
+      "Westminster Titans"
     ]
   },
   {
@@ -5574,7 +6014,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Whittier Poets",
       "Whittier",
-      "WHTR"
+      "WHTR",
+      "Whittier College Poets",
+      "Whittier College",
+      "WHI"
     ]
   },
   {
@@ -5583,7 +6026,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Winona State Warriors",
       "Winona State",
       "Winona St",
-      "WNST"
+      "WNST",
+      "WIN"
     ]
   },
   {
@@ -5592,7 +6036,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "California (PA) Vulcans",
       "California (PA)",
       "Cal (PA)",
-      "CAPA"
+      "CAPA",
+      "PWC"
     ]
   },
   {
@@ -5618,7 +6063,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Kean Cougars",
       "Kean",
-      "KEAN"
+      "KEAN",
+      "KEA"
     ]
   },
   {
@@ -5626,7 +6072,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lincoln (MO) Blue Tigers",
       "Lincoln (MO)",
-      "LNMO"
+      "LNMO",
+      "LIMO"
     ]
   },
   {
@@ -5651,7 +6098,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "UNC Pembroke Braves",
       "UNC Pembroke",
-      "UNCP"
+      "UNCP",
+      "North Carolina Pembroke Braves"
     ]
   },
   {
@@ -5659,7 +6107,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Nichols Bison",
       "Nichols",
-      "NICC"
+      "NICC",
+      "Nichols College Bison",
+      "Nichols College",
+      "NIC"
     ]
   },
   {
@@ -5667,7 +6118,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Northwood Timberwolves",
       "Northwood",
-      "NWD"
+      "NWD",
+      "Northwood (MI) Timberwolves",
+      "Northwood (MI)",
+      "NAR"
     ]
   },
   {
@@ -5700,7 +6154,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Sioux Falls Cougars",
       "Sioux Falls",
-      "SFU"
+      "SFU",
+      "SIO"
     ]
   },
   {
@@ -5709,7 +6164,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Southern Virginia Knights",
       "Southern Virginia",
       "S Virginia",
-      "SOVA"
+      "SOVA",
+      "SV"
     ]
   },
   {
@@ -5743,7 +6199,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Westfield State Owls",
       "Westfield State",
       "Westfield St",
-      "WFST"
+      "WFST",
+      "WSTF"
     ]
   },
   {
@@ -5767,7 +6224,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Brevard Tornados",
       "Brevard",
-      "BRE"
+      "BRE",
+      "Brevard College Tornados",
+      "Brevard College"
     ]
   },
   {
@@ -5783,7 +6242,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Monmouth (IL) Fighting Scots",
       "Monmouth (IL)",
-      "MNIL"
+      "MNIL",
+      "MNM",
+      "Monmouth Fighting Scots"
     ]
   },
   {
@@ -5800,7 +6261,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Southwestern Oklahoma State Bulldogs",
       "Southwestern Oklahoma State",
       "SW Oklahoma St",
-      "SOSU"
+      "SOSU",
+      "SWOK"
     ]
   },
   {
@@ -5808,7 +6270,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Willamette Bearcats",
       "Willamette",
-      "WLMT"
+      "WLMT",
+      "WLME"
     ]
   },
   {
@@ -5816,7 +6279,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Huntingdon Hawks",
       "Huntingdon",
-      "HNTC"
+      "HNTC",
+      "Huntingdon College (AL) Hawks",
+      "Huntingdon College (AL)",
+      "HUNT"
     ]
   },
   {
@@ -5824,7 +6290,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Jamestown Jimmies",
       "Jamestown",
-      "UJ"
+      "UJ",
+      "JAM"
     ]
   },
   {
@@ -5840,7 +6307,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "SUNY Maritime Privateers",
       "SUNY Maritime",
-      "NYMT"
+      "NYMT",
+      "SUNY"
     ]
   },
   {
@@ -5849,7 +6317,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Case Western Reserve Spartans",
       "Case Western Reserve",
       "Case Western",
-      "CWRU"
+      "CWRU",
+      "CAS"
     ]
   },
   {
@@ -5858,7 +6327,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Central College Dutch",
       "Central College",
       "Central Col",
-      "CNTC"
+      "CNTC",
+      "CEN"
     ]
   },
   {
@@ -5867,7 +6337,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Framingham State Rams",
       "Framingham State",
       "Framingham St",
-      "FRSU"
+      "FRSU",
+      "FRA"
     ]
   },
   {
@@ -5876,7 +6347,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Gustavus Adolphus Golden Gusties",
       "Gustavus Adolphus",
       "Gustavus",
-      "GAC"
+      "GAC",
+      "GUS"
     ]
   },
   {
@@ -5884,7 +6356,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Misericordia Cougars",
       "Misericordia",
-      "MISE"
+      "MISE",
+      "MIS"
     ]
   },
   {
@@ -5893,7 +6366,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "William Paterson Pioneers",
       "William Paterson",
       "Wm Paterson",
-      "WPU"
+      "WPU",
+      "WLPT"
     ]
   },
   {
@@ -5902,7 +6376,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Plymouth State Panthers",
       "Plymouth State",
       "Plymouth St",
-      "PLYM"
+      "PLYM",
+      "PLY"
     ]
   },
   {
@@ -5918,7 +6393,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Trinity (CT) Bantams",
       "Trinity (CT)",
-      "TCCT"
+      "TCCT",
+      "TRIN"
     ]
   },
   {
@@ -5926,7 +6402,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Ohio Wesleyan Battling Bishops",
       "Ohio Wesleyan",
-      "OWU"
+      "OWU",
+      "OW"
     ]
   },
   {
@@ -5944,7 +6421,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Fairmont State Falcons",
       "Fairmont State",
       "Fairmont St",
-      "FMSU"
+      "FMSU",
+      "FAI"
     ]
   },
   {
@@ -5953,7 +6431,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Concordia St. Paul Golden Bears",
       "Concordia St. Paul",
       "Concordia St P",
-      "CSP"
+      "CSP",
+      "Concordia-St. Paul Golden Bears",
+      "Concordia-St. Paul",
+      "CON"
     ]
   },
   {
@@ -5962,7 +6443,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "North Central College Cardinals",
       "North Central College",
       "N Central (IL)",
-      "NCC"
+      "NCC",
+      "NOR"
     ]
   },
   {
@@ -6004,7 +6486,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "SUNY Morrisville Mustangs",
       "SUNY Morrisville",
       "SUNY Morrisvle",
-      "NYMS"
+      "NYMS",
+      "MOR"
     ]
   },
   {
@@ -6022,7 +6505,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Christopher Newport Captains",
       "Christopher Newport",
       "Chris Newport",
-      "CNU"
+      "CNU",
+      "CHR"
     ]
   },
   {
@@ -6080,7 +6564,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Alfred State Pioneers",
       "Alfred State",
       "Alfred St",
-      "AFST"
+      "AFST",
+      "Alfred State College Pioneers",
+      "Alfred State College",
+      "ALF"
     ]
   },
   {
@@ -6215,7 +6702,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lakeland Muskies",
       "Lakeland",
-      "LKLD"
+      "LKLD",
+      "Lakeland University Muskies",
+      "Lakeland University",
+      "LAKE"
     ]
   },
   {
@@ -6224,7 +6714,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Nebraska Wesleyan Prairie Wolves",
       "Nebraska Wesleyan",
       "NE Wesleyan",
-      "NWU"
+      "NWU",
+      "NEBW"
     ]
   },
   {
@@ -6241,7 +6732,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Lyon Scots",
       "Lyon",
-      "LYON"
+      "LYON",
+      "Lyon College Scots",
+      "Lyon College"
     ]
   },
   {
@@ -6249,7 +6742,11 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Centenary (LA) Gentlemen",
       "Centenary (LA)",
-      "CTLA"
+      "CTLA",
+      "Centenary Gentlemen",
+      "Centenary",
+      "CEN",
+      "Centenary Gents"
     ]
   },
   {
@@ -6257,7 +6754,16 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Erskine Flying Fleet",
       "Erskine",
-      "ERSK"
+      "ERSK",
+      "ERS"
+    ]
+  },
+  {
+    "id": "espn:ncaaf:102549",
+    "aliases": [
+      "Schreiner Mountaineers",
+      "Schreiner",
+      "SCH"
     ]
   },
   {
@@ -6300,7 +6806,16 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "UT Permian Basin Falcons",
       "UT Permian Basin",
       "UT Prmian Basn",
-      "UTPB"
+      "UTPB",
+      "Texas-Permian Basin Falcons"
+    ]
+  },
+  {
+    "id": "espn:ncaaf:110254",
+    "aliases": [
+      "Davenport Panthers",
+      "Davenport",
+      "DAV"
     ]
   },
   {
@@ -6308,7 +6823,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Dean Bulldogs",
       "Dean",
-      "DEAN"
+      "DEAN",
+      "Dean College Bulldogs",
+      "Dean College",
+      "DEA"
     ]
   },
   {
@@ -6325,7 +6843,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Alvernia Golden Wolves",
       "Alvernia",
-      "ALVR"
+      "ALVR",
+      "ALV"
     ]
   },
   {
@@ -6333,7 +6852,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "New England Nor'easters",
       "New England",
-      "UNE"
+      "UNE",
+      "University of New England Nor'easters",
+      "University of New England"
     ]
   },
   {
@@ -6358,7 +6879,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Wheeling Cardinals",
       "Wheeling",
-      "WHLG"
+      "WHLG",
+      "WHEE"
     ]
   },
   {
@@ -6378,7 +6900,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Barton Bulldogs",
       "Barton",
-      "BART"
+      "BART",
+      "BAR"
     ]
   },
   {
@@ -6386,7 +6909,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Keystone Giants",
       "Keystone",
-      "KYSN"
+      "KYSN",
+      "KYSTN"
     ]
   },
   {
@@ -6421,7 +6945,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Bluefield State Big Blue",
       "Bluefield State",
       "Bluefield St",
-      "BLUS"
+      "BLUS",
+      "Bluefield State University Big Blue",
+      "Bluefield State University",
+      "BLST"
     ]
   },
   {
@@ -6461,7 +6988,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Hilbert Hawks",
       "Hilbert",
-      "HLBT"
+      "HLBT",
+      "Hilbert College Hawks",
+      "Hilbert College",
+      "HIL"
     ]
   },
   {
@@ -6469,7 +6999,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Post Eagles",
       "Post",
-      "POST"
+      "POST",
+      "Post University Eagles",
+      "Post University",
+      "POS"
     ]
   },
   {
@@ -6484,7 +7017,7 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
   {
     "id": "espn:ncaaf:126146",
     "aliases": [
-      "MADONNA",
+      "Madonna Crusaders",
       "Madonna",
       "MDNN"
     ]
@@ -6494,7 +7027,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Eastern Eagles",
       "Eastern",
-      "EU"
+      "EU",
+      "Eastern University Eagles",
+      "Eastern University",
+      "EASTE"
     ]
   },
   {
@@ -6502,7 +7038,8 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Roosevelt Lakers",
       "Roosevelt",
-      "RSVT"
+      "RSVT",
+      "RSWT"
     ]
   },
   {
@@ -6510,7 +7047,9 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Anderson (SC) Trojans",
       "Anderson (SC)",
-      "ANSC"
+      "ANSC",
+      "AND",
+      "Anderson Trojans"
     ]
   },
   {
@@ -6518,7 +7057,10 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
     "aliases": [
       "Calvin Knights",
       "Calvin",
-      "CALU"
+      "CALU",
+      "Calvin University Knights",
+      "Calvin University",
+      "CAL"
     ]
   },
   {
@@ -6535,6 +7077,40 @@ export const COLLEGE_TEAM_CATALOG: readonly { readonly id: string; readonly alia
       "Simpson (CA) Red Hawks",
       "Simpson (CA)",
       "SUCA"
+    ]
+  },
+  {
+    "id": "espn:ncaaf:131108",
+    "aliases": [
+      "New England College Pilgrims",
+      "New England College",
+      "N England Col",
+      "NEW"
+    ]
+  },
+  {
+    "id": "espn:ncaaf:131109",
+    "aliases": [
+      "Roanoke College Maroons",
+      "Roanoke College",
+      "Roanoke",
+      "ROA"
+    ]
+  },
+  {
+    "id": "espn:ncaaf:132714",
+    "aliases": [
+      "Lackawanna Falcons",
+      "Lackawanna",
+      "LACK"
+    ]
+  },
+  {
+    "id": "espn:ncaaf:133688",
+    "aliases": [
+      "Mount Mercy Mustangs",
+      "Mount Mercy",
+      "MOU"
     ]
   },
   {

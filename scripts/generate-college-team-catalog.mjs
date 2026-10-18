@@ -38,11 +38,16 @@ function parseTeam(value) {
   return { id:`espn:ncaaf:${teamId}`, aliases:[...new Set(aliases)] };
 }
 
-export function buildCatalog({ season, fbs, fcs, bulkTeams, coreTeams, overrides, expectedBulkCount }) {
+export function buildCatalog({ season, fbs, fcs, d2d3, bulkTeams, coreTeams, overrides, expectedBulkCount }) {
   if (!Number.isInteger(season) || season < 2000 || season > 2100) throw new Error('invalid-season');
   const fbsIds = parseMembership(fbs, season, 80);
   const fcsIds = parseMembership(fcs, season, 81);
-  for (const teamId of fbsIds) if (fcsIds.has(teamId)) throw new Error(`membership-overlap-${teamId}`);
+  const d2d3Ids = parseMembership(d2d3, season, 35);
+  const allMembers = new Set();
+  for (const group of [fbsIds,fcsIds,d2d3Ids]) for (const teamId of group) {
+    if (allMembers.has(teamId)) throw new Error(`membership-overlap-${teamId}`);
+    allMembers.add(teamId);
+  }
   if (!Array.isArray(bulkTeams) || !Array.isArray(coreTeams) || !Array.isArray(overrides)) throw new Error('catalog-invalid-input');
   if (!Number.isInteger(expectedBulkCount) || expectedBulkCount < 1 || bulkTeams.length !== expectedBulkCount || bulkTeams.length >= 1000) throw new Error('bulk-incomplete');
   const teams = new Map();
@@ -51,7 +56,7 @@ export function buildCatalog({ season, fbs, fcs, bulkTeams, coreTeams, overrides
     if (teams.has(team.id)) throw new Error(`catalog-duplicate-${team.id}`);
     teams.set(team.id, team);
   }
-  const memberIds = new Set([...fbsIds, ...fcsIds].map(teamId => `espn:ncaaf:${teamId}`));
+  const memberIds = new Set([...allMembers].map(teamId => `espn:ncaaf:${teamId}`));
   const coreIds = new Set();
   for (const item of coreTeams) {
     const team = parseTeam(item);
@@ -75,7 +80,7 @@ export function buildCatalog({ season, fbs, fcs, bulkTeams, coreTeams, overrides
   const sorted = [...teams.values()].sort((a,b) => numeric(a.id.split(':')[2],b.id.split(':')[2]));
   const missing = [...memberIds].filter(memberId => !teams.has(memberId));
   if (missing.length) throw new Error(`membership-missing-${missing.join(',')}`);
-  const report = { season, sources:{ bulk, fbs:`${core}/seasons/${season}/types/2/groups/80/teams?limit=1000`, fcs:`${core}/seasons/${season}/types/2/groups/81/teams?limit=1000`, coreTeam:`${core}/seasons/${season}/teams/{id}` }, fbs:fbsIds.size, fcs:fcsIds.size, members:memberIds.size, bulk:bulkTeams.length, core:coreIds.size, catalog:sorted.length, memberIds:[...memberIds].sort((a,b) => numeric(a.split(':')[2],b.split(':')[2])), missingMemberIds:missing };
+  const report = { season, sources:{ bulk, fbs:`${core}/seasons/${season}/types/2/groups/80/teams?limit=1000`, fcs:`${core}/seasons/${season}/types/2/groups/81/teams?limit=1000`, d2d3:`${core}/seasons/${season}/types/2/groups/35/teams?limit=1000`, coreTeam:`${core}/seasons/${season}/teams/{id}` }, fbs:fbsIds.size, fcs:fcsIds.size, d2d3:d2d3Ids.size, members:memberIds.size, bulk:bulkTeams.length, core:coreIds.size, catalog:sorted.length, memberIds:[...memberIds].sort((a,b) => numeric(a.split(':')[2],b.split(':')[2])), missingMemberIds:missing };
   return { teams:sorted, report };
 }
 
@@ -119,17 +124,18 @@ async function main() {
   const season = seasonArg ? Number(seasonArg.slice(9)) : 2026;
   if (!Number.isInteger(season) || season < 2000 || season > 2100) throw new Error('invalid-season');
   const expectedBulkCount = countArg ? Number(countArg.slice(13)) : season === 2026 ? 762 : null;
-  const [fbs,fcs,directory,overrides] = await Promise.all([
+  const [fbs,fcs,d2d3,directory,overrides] = await Promise.all([
     json(`${core}/seasons/${season}/types/2/groups/80/teams?limit=1000`),
     json(`${core}/seasons/${season}/types/2/groups/81/teams?limit=1000`),
+    json(`${core}/seasons/${season}/types/2/groups/35/teams?limit=1000`),
     json(bulk),
     readFile(overlayPath,'utf8').then(JSON.parse),
   ]);
-  const fbsIds = parseMembership(fbs,season,80), fcsIds = parseMembership(fcs,season,81);
-  const members = [...new Set([...fbsIds,...fcsIds])].sort(numeric);
+  const fbsIds = parseMembership(fbs,season,80), fcsIds = parseMembership(fcs,season,81), d2d3Ids = parseMembership(d2d3,season,35);
+  const members = [...new Set([...fbsIds,...fcsIds,...d2d3Ids])].sort(numeric);
   const coreTeams = await boundedMap(members,6,teamId => json(`${core}/seasons/${season}/teams/${teamId}`));
   const bulkTeams = record(directory)?.sports?.[0]?.leagues?.[0]?.teams;
-  const result = render(buildCatalog({season,fbs,fcs,bulkTeams,coreTeams,overrides,expectedBulkCount}));
+  const result = render(buildCatalog({season,fbs,fcs,d2d3,bulkTeams,coreTeams,overrides,expectedBulkCount}));
   if (check) {
     const [catalog,coverage] = await Promise.all([readFile(catalogPath,'utf8'),readFile(reportPath,'utf8')]);
     if (catalog !== result.catalog || coverage !== result.coverage) throw new Error('catalog-out-of-date');
@@ -137,7 +143,7 @@ async function main() {
     await publish(catalogPath,result.catalog);
     await publish(reportPath,result.coverage);
   }
-  process.stdout.write(`${check ? 'Checked' : 'Generated'} ${members.length} FBS/FCS members and ${result.catalog.match(/"id":/g)?.length || 0} catalog teams for ${season}.\n`);
+  process.stdout.write(`${check ? 'Checked' : 'Generated'} ${members.length} FBS/FCS/DII/III members and ${result.catalog.match(/"id":/g)?.length || 0} catalog teams for ${season}.\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(error => { console.error(error); process.exitCode = 1; });

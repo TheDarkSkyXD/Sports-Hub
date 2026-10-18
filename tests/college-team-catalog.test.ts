@@ -24,13 +24,12 @@ test('Albany matches UAlbany against Delaware State without matching Albany Stat
   assert.deepEqual(matchObservation(observation('Albany State','Delaware State'),[ualbany],now),{kind:'unmatched',reason:'unknown-teams',possibleGameIds:[]});
 });
 
-test('every 2026 FBS/FCS member and official catalog alias resolves to its owner or fails closed on collision', () => {
+test('every 2026 college member and official catalog alias resolves to its owner or fails closed on collision', () => {
   const coverage = JSON.parse(readFileSync(new URL('../lib/football/domain/college-teams.coverage.json',import.meta.url),'utf8'));
-  assert.equal(coverage.fbs,148);
-  assert.equal(coverage.fcs,130);
-  assert.equal(coverage.members,278);
-  assert.equal(coverage.catalog,775);
-  assert.equal(COLLEGE_TEAM_CATALOG.length,775);
+  const official=JSON.parse(readFileSync(new URL('./fixtures/espn-college-divisions-20261017.json',import.meta.url),'utf8'));
+  const expected=Object.values(official.memberships).flat().map(id=>`espn:ncaaf:${id}`);
+  assert.deepEqual(new Set(coverage.memberIds),new Set(expected));
+  for(const id of ['102549','110254','131108','131109','132714','133688'])assert.ok(coverage.memberIds.includes(`espn:ncaaf:${id}`));
   const byId = new Map(COLLEGE_TEAM_CATALOG.map(entry => [entry.id,entry]));
   for (const id of coverage.memberIds) assert.ok(byId.has(id),`missing membership ${id}`);
   const owners = new Map<string,Set<string>>();
@@ -107,12 +106,18 @@ test('generator refuses partial membership, duplicate IDs, and a short bulk resp
   const ref = (id: string) => ({$ref:`https://sports.core.api.espn.com/v2/sports/football/leagues/college-football/seasons/2026/teams/${id}`});
   const membership = (ids: string[]) => ({count:ids.length,pageCount:1,pageIndex:1,items:ids.map(ref)});
   const meta = (id: string, abbreviation: string) => ({id,displayName:`School ${id} Wildcats`,location:`School ${id}`,shortDisplayName:`School ${id}`,abbreviation});
-  const input = {season:2026,fbs:membership(['1']),fcs:membership(['2']),bulkTeams:[{team:meta('1','OLD')}],coreTeams:[meta('1','NEW'),meta('2','TWO')],overrides:[],expectedBulkCount:1};
+  const input = {season:2026,fbs:membership(['1']),fcs:membership(['2']),d2d3:membership(['3']),bulkTeams:[{team:meta('1','OLD')}],coreTeams:[meta('1','NEW'),meta('2','TWO'),meta('3','THREE')],overrides:[],expectedBulkCount:1};
   const result = buildCatalog(input);
   assert.deepEqual(result.teams[0].aliases,['School 1 Wildcats','School 1','OLD','NEW']);
-  assert.equal(result.report.members,2);
+  assert.equal(result.report.members,3);
+  assert.equal(result.report.d2d3,1);
+  assert.deepEqual(result.teams[2],{id:'espn:ncaaf:3',aliases:['School 3 Wildcats','School 3','THREE']});
   assert.throws(() => buildCatalog({...input,fbs:{...input.fbs,count:2}}),/membership-incomplete/);
   assert.throws(() => buildCatalog({...input,fcs:membership(['1'])}),/membership-overlap/);
+  assert.throws(() => buildCatalog({...input,d2d3:{...input.d2d3,pageCount:2}}),/membership-incomplete/);
+  assert.throws(() => buildCatalog({...input,d2d3:membership(['2'])}),/membership-overlap/);
+  assert.throws(() => buildCatalog({...input,d2d3:membership(['3','3'])}),/membership-invalid-ref/);
+  assert.throws(() => buildCatalog({...input,coreTeams:input.coreTeams.slice(0,2)}),/membership-missing-core/);
   assert.throws(() => buildCatalog({...input,coreTeams:[meta('1','NEW')]}),/membership-missing-core/);
   assert.throws(() => buildCatalog({...input,coreTeams:[...input.coreTeams,meta('2','TWO')]}),/core-unexpected-or-duplicate/);
   assert.throws(() => buildCatalog({...input,bulkTeams:[]}),/bulk-incomplete/);

@@ -1,6 +1,7 @@
 import type { CandidateLocator } from '../../football/shared.ts';
 import { boundedText, sanitizedRead, type PlaybackProvider, type ProviderPlayback, type ProviderResource, type ResourceKind } from '../provider.ts';
 import {scopedFetch,timedFetch} from '../probe-capacity.ts';
+import {observedPublicPage} from './public-page.ts';
 
 type GoozLocator = Extract<CandidateLocator,{provider:'gooz'}>;
 const VARIANT_HOSTS = new Set(['red.redirector1.space','pl.kamfir5.space','pl.goozekhar2.space','pl.playlist3.space','pl.playlist4.space','pl.playlist5.space','pl.playlist6.space']);
@@ -89,14 +90,15 @@ export function goozResource(url: string, playerId: string, kind: ResourceKind, 
 
 export const goozProvider: PlaybackProvider<GoozLocator> = {
   provider:'gooz',
-  async open(locator,signal): Promise<ProviderPlayback> {
+  async open(locator,signal,purpose='playback'): Promise<ProviderPlayback> {
     const {playerId}=locator;
     if (!/^\d{1,20}$/.test(playerId)) throw new Error('Unsupported Gooz player');
     const response=await timedFetch(scopedFetch,`https://gooz.aapmains.net/new-stream-embed/${playerId}`,
       {cache:'no-store',redirect:'manual',signal,headers},10000);
     const source=goozSourceFromEmbed(await boundedText(response),playerId);
     const root=source && goozResource(source,playerId,'playlist');
-    if (!root) throw new Error('Gooz player did not publish supported HLS');
-    return {root,close() {}};
+    const player={url:`https://gooz.aapmains.net/new-stream-embed/${playerId}`,referer:'https://gooz.aapmains.net/'};
+    if(!root){const observed=await observedPublicPage(new URL(player.url),signal,purpose);if(observed)return observed;throw new Error('Gooz player did not publish supported HLS');}
+    return {root,player,close() {}};
   },
 };

@@ -19,6 +19,7 @@ function fixture(probe: FootballDependencies['probeCandidate'], aliases = false,
   const directory = mkdtempSync(join(tmpdir(), 'probe-source-fairness-'));
   let clock = at;
   let ppvListed = options.ppvListed ?? true;
+  let catalogCount = options.catalogCount ?? 4;
   const sourceIds = aliases ? ['catalog', 'ppv', 'alias'] : ['catalog', 'ppv'];
   const coordinator = createFootballCoordinator(join(directory, 'state.sqlite'), {
     now: () => clock, schedules: [{ id: 'nfl', league: 'nfl', path: '/fixture', group: null }],
@@ -29,7 +30,7 @@ function fixture(probe: FootballDependencies['probeCandidate'], aliases = false,
       url: `https://fixture.example/${source.id}/event`, title: game.name, teams: ['Away', 'Home'], league: 'nfl',
       kickoff: at, rawTime: game.date ?? '', observedAt: clock, parserVersion: 1 } satisfies Observation] }),
     enrichObservation: value => value,
-    compatiblePlayers: (_gameId, observation) => (observation.sourceId === 'catalog' ? Array.from({ length: options.catalogCount ?? 4 }, (_, index) => index + 1) :
+    compatiblePlayers: (_gameId, observation) => (observation.sourceId === 'catalog' ? Array.from({ length: catalogCount }, (_, index) => index + 1) :
       observation.sourceId === 'alias' ? [1, 5] : [9]).map(playerId => ({
       id: `${observation.sourceId === 'ppv' ? 'z' : observation.sourceId === 'alias' ? 'b' : 'a'}-${observation.sourceId}-${playerId}`,
       label: `Server ${playerId}`, locator: { provider: 'gooz', playerId: String(playerId) },
@@ -37,6 +38,7 @@ function fixture(probe: FootballDependencies['probeCandidate'], aliases = false,
     probeCandidate: probe,
   });
   return { coordinator, publishPpv(elapsed: number) { clock = at + elapsed; ppvListed = true; },
+    publishCatalog(elapsed: number, count: number) { clock = at + elapsed; catalogCount = count; },
     async stop() { await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); } };
 }
 
@@ -74,6 +76,54 @@ test('a PPV first check finishes before redundant catalog siblings occupy the ga
   } finally { blocked.release({ kind: 'unavailable', reason: 'invalid-media' }); await run.stop(); }
 });
 
+for (const queued of [false, true]) test(`a new catalog sibling takes the next slot before remaining working-feed rechecks${queued ? ' and retains its observer wait' : ''}`, async () => {
+  const calls: string[] = [];
+  const pending = new Map<string, ReturnType<typeof hold>>();
+  let rechecking = false;
+  const run = fixture(async (locator, _signal, onProgress) => {
+    assert.equal(locator.provider, 'gooz');
+    if (locator.provider !== 'gooz') throw new Error('Unexpected provider');
+    calls.push(locator.playerId);
+    onProgress({ kind: queued && locator.playerId === '7' ? 'queued' : 'active' });
+    if (!rechecking || locator.playerId === '7' && !queued) return { kind: 'playable', proof };
+    const blocked = hold();
+    pending.set(locator.playerId, blocked);
+    return blocked.promise;
+  }, false, { catalogCount: 6, ppvListed: false });
+  try {
+    await run.coordinator.refresh(true);
+    await until(() => calls.length === 6);
+    calls.length = 0;
+    rechecking = true;
+    run.publishCatalog(30*60_000, 7);
+    await run.coordinator.refresh(true);
+    await until(() => calls.length === 2);
+    assert.deepEqual(calls, ['1', '2']);
+    pending.get('1')?.release({ kind: 'playable', proof });
+    await until(() => calls.length >= 3);
+    assert.equal(calls[2], '7');
+    pending.get('2')?.release({ kind: 'playable', proof });
+    assert.deepEqual(calls.slice(0, 3), ['1', '2', '7']);
+    if (queued) {
+      await run.coordinator.refresh(true);
+      const reply = await run.coordinator.command({ kind: 'sources' });
+      assert.equal(reply.kind, 'sources');
+      if (reply.kind !== 'sources') throw new Error('Expected sources');
+      assert.equal(reply.snapshot.games[0].candidates.find(candidate => candidate.id === 'a-catalog-7')?.availability.kind, 'checking');
+      assert.equal(calls.filter(id => id === '7').length, 1);
+      pending.get('7')?.release({ kind: 'playable', proof });
+    }
+    await until(async () => {
+      const reply = await run.coordinator.command({ kind: 'sources' });
+      return reply.kind === 'sources' && reply.snapshot.games[0].candidates.some(candidate =>
+        candidate.id === 'a-catalog-7' && candidate.availability.kind === 'playable');
+    });
+  } finally {
+    for (const blocked of pending.values()) blocked.release({ kind: 'unavailable', reason: 'invalid-media' });
+    await run.stop();
+  }
+});
+
 for (const aliases of [false, true]) test(`a demanded game admits distinct source checks together${aliases ? ' without duplicate alias probes' : ''}`, async () => {
   const blocked = hold();
   const calls: string[] = [];
@@ -95,7 +145,7 @@ for (const aliases of [false, true]) test(`a demanded game admits distinct sourc
   } finally { blocked.release({ kind: 'unavailable', reason: 'invalid-media' }); await run.stop(); }
 });
 
-for (const queued of [false, true]) test(`a new PPV source gets the lower-priority turn after three same-game working-feed rechecks${queued ? ' and retains its observer wait' : ''}`, async () => {
+for (const queued of [false, true]) test(`a new PPV source takes the next slot before remaining working-feed rechecks${queued ? ' and retains its observer wait' : ''}`, async () => {
   const calls: string[] = [];
   const pending = new Map<string, ReturnType<typeof hold>>();
   let rechecking = false;
@@ -114,16 +164,15 @@ for (const queued of [false, true]) test(`a new PPV source gets the lower-priori
     await until(() => calls.length === 6);
     calls.length = 0;
     rechecking = true;
-    run.publishPpv(300_000);
+    run.publishPpv(30*60_000);
     await run.coordinator.refresh(true);
     await until(() => calls.length === 2);
     assert.deepEqual(calls, ['1', '2']);
     pending.get('1')?.release({ kind: 'playable', proof });
-    await until(() => calls.length === 3);
-    assert.equal(calls[2], '3');
+    await until(() => calls.length >= 3);
+    assert.equal(calls[2], '9');
     pending.get('2')?.release({ kind: 'playable', proof });
-    await until(() => calls.length >= 4);
-    assert.equal(calls[3], '9');
+    assert.deepEqual(calls.slice(0, 3), ['1', '2', '9']);
     if (queued) {
       await run.coordinator.refresh(true);
       const reply = await run.coordinator.command({ kind: 'sources' });

@@ -4,6 +4,8 @@ import { CatalogStreamLocatorSchema, EventPageLocatorSchema, GoozLocatorSchema, 
   ObservationSchema, ResolvedPlayerSchema, StreamcenterLocatorSchema, SwacLocatorSchema, TvappLocatorSchema,
   type MissingPlayerReason, type Observation, type ResolvedPlayer } from '../shared.ts';
 import { PartialListingReadError, type ListingResult, type ListingSource } from '../domain/ports.ts';
+import {readBrowserSourcePage} from './browser-source-page.ts';
+import { combatCardTitle } from '../domain/combat-card.ts';
 
 export { SOURCE_REGISTRY as SOURCES } from '../source-registry.ts';
 
@@ -65,6 +67,11 @@ function players(value: string): ResolvedPlayer[] {
   return decode(value, z.array(NativePlayerSchema));
 }
 
+function labelUfcPlayers(observation:Observation,values:ResolvedPlayer[]):ResolvedPlayer[] {
+  const segment=observation.league==='ufc'?combatCardTitle(observation.title).segment:null;
+  return segment?values.map(player=>({...player,label:`${player.label} · ${segment}`})):values;
+}
+
 type ResolveReadResult = { kind: 'read-ok'; body: string } |
   { kind: 'read-failed'; error: { name: string; message: string; readErrorId: number } };
 
@@ -79,6 +86,11 @@ function collectorFacade(native: NativeCollector) {
       const outcome = decode(await native.readHtml(id, url), ReadOutcomeSchema);
       signal.throwIfAborted();
       if (outcome.kind === 'complete') return outcome.body;
+      if(outcome.kind==='failed'&&outcome.failure.message==='http-403') {
+        const page=await readBrowserSourcePage(url,signal);
+        signal.throwIfAborted();
+        if(page!==null)return page;
+      }
       const failure = readFailure(outcome.failure);
       if (outcome.kind === 'partial')
         throw new PartialListingReadError(outcome.body, failure, outcome.failure.retryAfterMs ?? 0);
@@ -96,7 +108,7 @@ function collectorFacade(native: NativeCollector) {
     return decode(native.enrichObservation(JSON.stringify(observation), html), ObservationSchema);
   }
   function compatiblePlayers(gameId: string, observation: Observation, html: string): ResolvedPlayer[] {
-    return players(native.compatiblePlayers(gameId, JSON.stringify(observation), html));
+    return labelUfcPlayers(observation,players(native.compatiblePlayers(gameId, JSON.stringify(observation), html)));
   }
   function missingPlayerReason(observation: Observation, html: string): MissingPlayerReason {
     return decode(native.missingPlayerReason(JSON.stringify(observation), html), MissingPlayerReasonSchema);
@@ -138,7 +150,7 @@ function collectorFacade(native: NativeCollector) {
         signal.throwIfAborted();
         action = decode(native.advanceResolve(begin.id, JSON.stringify(responses)), ResolveActionSchema);
       }
-      if (action.type === 'done') return action.players;
+      if (action.type === 'done') return labelUfcPlayers(observation,action.players);
       const original = action.error.readErrorId === undefined ? undefined : readErrors.get(action.error.readErrorId);
       if (original) throw original;
       const error = new Error(action.error.message);

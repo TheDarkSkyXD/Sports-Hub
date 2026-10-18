@@ -12,6 +12,22 @@ test('pre-game timing decrements through zero and waits for the feed', () => {
   assert.deepEqual(gameTiming({ date: start, status: 'in' }, before + 2000), { kind: 'scheduled', start: Date.parse(start) });
 });
 
+test('motorsports timing leaves live and finished progress to the schedule status',()=>{
+  for(const league of ['f1','nascar-cup','nascar-truck','motogp','motorsport'] as const){
+    const game={date:start,status:'in' as const,league};
+    for(const now of [null,Date.parse(start)-1000,Date.parse(start)+1_221_900]){
+      assert.deepEqual(gameTiming(game,now),{kind:'scheduled',start:Date.parse(start)});
+      assert.deepEqual(gameTiming({...game,status:'post'},now),{kind:'scheduled',start:Date.parse(start)});
+    }
+    assert.deepEqual(gameTiming({...game,status:'pre'},Date.parse(start)+1000),
+      {kind:'awaiting',start:Date.parse(start)});
+    assert.deepEqual(gameTiming({...game,status:'unknown'},Date.parse(start)+1000),
+      {kind:'scheduled',start:Date.parse(start)});
+  }
+  const football={date:start,status:'in' as const,league:'nfl' as const};
+  assert.deepEqual(gameTiming(football,Date.parse(start)+1000),{kind:'scheduled',start:Date.parse(start)});
+});
+
 test('only valid absolute dates count down', () => {
   assert.deepEqual(gameTiming({ status: 'pre' }, before), { kind: 'unavailable' });
   assert.deepEqual(gameTiming({ date: '1 hour from now', status: 'pre' }, before), { kind: 'unavailable' });

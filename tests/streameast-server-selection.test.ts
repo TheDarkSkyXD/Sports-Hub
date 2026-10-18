@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 import type { CandidateLocator } from '../lib/football/shared.ts';
+import { StreameastEventSchema } from '../lib/football/shared.ts';
+import { streameastCandidates } from '../lib/football/domain/streameast-catalog.ts';
 import { persistableLocator } from '../lib/playback/persistent-locator.ts';
 import { streameastServerUrl } from '../lib/playback/providers/streameast-server.ts';
 import { observedStreameastServerPage } from '../lib/playback/providers/public-page.ts';
@@ -9,6 +11,41 @@ import { observedStreameastServerPage } from '../lib/playback/providers/public-p
 const require = createRequire(import.meta.url);
 const { belongsToSelectedStreameastPlayer, allowsSelectedStreameastNavigation } =
   require('../desktop/sportsurge-observer.cjs');
+
+test('a published free-page server retains a generic track event bound to a NASCAR race', () => {
+  const event = StreameastEventSchema.parse({
+    id: 'motorsport:46620', league: 'motorsport', title: 'Charlotte Motor Speedway', teams: null,
+    kickoff: 1791745200000, espnEventId: null,
+    url: 'https://v2.streameast.ga/other-events/charlotte-motor-speedway-1791745200/',
+    detail: { kind: 'collected', at: 1791739500000, servers: [{
+      id: '1', label: 'Stream 1', availability: { kind: 'free-page' },
+      url: 'https://v2.streameast.ga/other-events/charlotte-motor-speedway-1791745200/1',
+    }] },
+  });
+  for (const gameId of ['nascar-cup-202610110021', 'nascar-truck-202610110022']) {
+    const [candidate] = streameastCandidates(event, gameId);
+    assert.ok(candidate);
+    assert.equal(candidate.locator.provider, 'streameast-server');
+    if (candidate.locator.provider !== 'streameast-server') assert.fail('Expected the published server choice');
+    const locator = candidate.locator;
+    assert.equal(streameastServerUrl(locator)?.href, `${event.url}1`);
+    assert.equal(persistableLocator(locator), true);
+    for (const changed of [
+      { gameId: 'f1-202610110021' },
+      { gameId: 'nascar-xfinity-202610110021' },
+      { gameId: 'nascar-cup-bad' },
+      { gameId: '' },
+      { sourceEventId: 'nascar-cup:46620' },
+      { sourceEventId: 'motorsport:bad' },
+      { eventUrl: event.url.replace('/other-events/', '/nfl/') },
+      { eventUrl: event.url.replace('-1791745200/', '/') },
+      { eventUrl: event.url.replace('-1791745200/', '-1791745200000/') },
+      { eventUrl: event.url.replace('v2.streameast.ga', 'v2.streameast.ga.evil.test') },
+      { eventUrl: `${event.url}?date=1791831600` },
+      { eventUrl: `${event.url}#player` },
+    ]) assert.equal(streameastServerUrl({ ...locator, ...changed }), null, JSON.stringify(changed));
+  }
+});
 
 test('StreamEast server locators persist only exact public game and numeric choice identities', () => {
   const original: Extract<CandidateLocator, { provider: 'streameast-server' }> = {

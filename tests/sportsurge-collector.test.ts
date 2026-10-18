@@ -13,13 +13,13 @@ test('a 403 challenge stays blocked and a 429 cools down even if the checkpoint 
   let title='Just a moment...';
   let sweeps=0;
   const sourceSession={
-    setPermissionRequestHandler(){},setPermissionCheckHandler(){},on(){},
+    setPermissionRequestHandler(){},setPermissionCheckHandler(){},on(){},setProxy:async()=>{},webRequest:{onBeforeRequest(){}},
   };
   function BrowserWindow(){
     const contents=new EventEmitter();
     let url='';
     Object.assign(contents,{
-      setAudioMuted(){},setWindowOpenHandler(){},getURL(){return url;},getTitle(){return title;},
+      setWebRTCIPHandlingPolicy() {}, setAudioMuted(){},setWindowOpenHandler(){},getURL(){return url;},getTitle(){return title;},
       stop(){},executeJavaScript(){return new Promise(()=>{});},
     });
     let destroyed=false;

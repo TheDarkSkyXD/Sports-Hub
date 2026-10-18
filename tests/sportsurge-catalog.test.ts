@@ -1,3 +1,7 @@
+function pollingAck(reply:Awaited<ReturnType<import('../lib/football/runtime/coordinator.ts').FootballCoordinator['command']>>) {
+  if(reply.kind!=='catalog-ack')return reply;
+  const result={...reply};delete result.nextSweepAt;delete result.reuseCategories;return result;
+}
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
@@ -262,8 +266,8 @@ test('an accepted v2 checkpoint opens and authorizes a custom-player session',as
   try {
     const catalog:SportsurgeCatalog={runId,sequence:0,startedAt:at,state:{kind:'complete',at},
       categories:{ncaaf:{kind:'collected',at},nfl:{kind:'collected',at}},events:[event,otherEvent],rejectedGames:[],catalogIssues:[]};
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
+    assert.deepEqual(pollingAck(await coordinator.command({kind:'sportsurge-catalog',catalog})),{kind:'catalog-ack',skipDetailEventIds:[]});
+    assert.deepEqual(pollingAck(await coordinator.command({kind:'sportsurge-catalog',catalog})),{kind:'catalog-ack',skipDetailEventIds:[]});
     clock=at+89_000;
     const freshInventory=await coordinator.command({kind:'sources'});
     assert.equal(freshInventory.kind,'sources');
@@ -360,7 +364,7 @@ test('an obsolete saved game does not block checks for a listed game',async()=>{
   let probes=0;
   const {dir,coordinator,game,catalog}=probeFixture(async()=>{probes++;return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};});
   try {
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
+    assert.deepEqual(pollingAck(await coordinator.command({kind:'sportsurge-catalog',catalog})),{kind:'catalog-ack',skipDetailEventIds:[]});
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:['obsolete-game',game.id],retry:false}),{kind:'ok'});
     await new Promise<void>(resolve=>setImmediate(resolve));
     const sources=await coordinator.command({kind:'sources'});
@@ -381,15 +385,17 @@ test('an obsolete saved game does not block checks for a listed game',async()=>{
 test('availability gates open and switch while expired proof requires re-verification',async()=>{
   let resolveFirst!:(result:CandidateProbeResult)=>void;
   const firstProbe=new Promise<CandidateProbeResult>(resolve=>{resolveFirst=resolve;});
-  let calls=0;
+  let calls=0;const callTimes:number[]=[];
   const setup=probeFixture(async locator=>{
     if(locator.provider!=='sportsurge-v2')return {kind:'unavailable',reason:'unsupported'};
     if(locator.providerId!==setup.event.detail.providers[0].id)return {kind:'unavailable',reason:'invalid-media'};
+    callTimes.push(setup.clock.value);
     return ++calls===1?firstProbe:{kind:'deferred',retryAfterMs:60_000};
   });
   const {coordinator,clock,game,catalog,dir}=setup;
+  const initialAt=clock.value;
   try {
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
+    assert.deepEqual(pollingAck(await coordinator.command({kind:'sportsurge-catalog',catalog})),{kind:'catalog-ack',skipDetailEventIds:[]});
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[game.id],retry:false}),{kind:'ok'});
     await new Promise<void>(resolve=>setImmediate(resolve));
     const checking=await coordinator.command({kind:'sources'});
@@ -416,9 +422,10 @@ test('availability gates open and switch while expired proof requires re-verific
     const switchRejected=await coordinator.command({kind:'session',sessionId:opened.playback.session.id,generation:0,
       candidateId:rejected!.id,failure:false,retry:false});
     assert.equal(switchRejected.kind,'error');
-    for(let minute=0;minute<9;minute++) {
+    for(let minute=0;minute<34;minute++) {
       clock.value+=60_000;
       await coordinator.refresh(true);
+      if(minute<29)assert.equal(calls,1,'fresh playable proof is not rechecked before thirty minutes');
       assert.equal((await coordinator.command({kind:'authorize',sessionId:opened.playback.session.id,candidateId:playable.id,generation:0})).kind,'authorized');
     }
     clock.value+=59_999;
@@ -431,7 +438,8 @@ test('availability gates open and switch while expired proof requires re-verific
     const retained=await coordinator.command({kind:'sources'});
     assert.equal(retained.kind,'sources');
     if(retained.kind==='sources')assert.equal(retained.snapshot.games.find(row=>row.gameId===game.id)?.candidates.find(row=>row.id===playable.id)?.availability.kind,'checking');
-    assert.equal(calls,3,'the playable route is rechecked at each five-minute deadline');
+    assert.equal(calls,5);
+    assert.deepEqual(callTimes,[0,30,31,32,34].map(minute=>initialAt+minute*60_000),'playable proof first waits thirty minutes; incomplete rechecks back off while honoring the reported one-minute minimum');
     assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false})).kind,'error');
     assert.equal((await coordinator.command({kind:'authorize',sessionId:opened.playback.session.id,candidateId:playable.id,generation:0})).kind,'authorized');
   } finally {await coordinator.stop();rmSync(dir,{recursive:true,force:true});}
@@ -449,7 +457,7 @@ test('a replaced catalog cancels its probe and ignores a late playable result',a
     const empty:SportsurgeCatalog={...catalog,runId:'22222222-2222-4222-8222-222222222222',startedAt:at+60_000,
       sequence:0,state:{kind:'complete',at:at+60_000},
       categories:{ncaaf:{kind:'collected',at:at+60_000},nfl:{kind:'collected',at:at+60_000}},events:[]};
-    assert.deepEqual(await coordinator.command({kind:'sportsurge-catalog',catalog:empty}),{kind:'catalog-ack',sourceRefreshMs:300_000,skipDetailEventIds:[]});
+    assert.deepEqual(pollingAck(await coordinator.command({kind:'sportsurge-catalog',catalog:empty})),{kind:'catalog-ack',skipDetailEventIds:[]});
     resolveProbe({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}});
     await new Promise<void>(resolve=>setImmediate(resolve));
     const sources=await coordinator.command({kind:'sources'});

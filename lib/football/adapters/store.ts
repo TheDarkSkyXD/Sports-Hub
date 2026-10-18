@@ -1,12 +1,13 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { LeagueSchema, DEFAULT_FEED_CHECK_INTERVAL_MINUTES, DEFAULT_FINISHED_GAME_RETENTION_MINUTES, FeedCheckIntervalMinutesSchema, FinishedGameRetentionMinutesSchema, DetailEvidenceSchema, GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema, SourceEventBindingSchema, StoredSportsurgeCatalogSchema, StoredStreameastCatalogSchema } from '../shared.ts';
+import { LeagueSchema, DEFAULT_FINISHED_GAME_RETENTION_MINUTES, FinishedGameRetentionMinutesSchema, DetailEvidenceSchema, GameSchema, ObservationSchema, SeasonMembershipSchema, SourceAttemptSchema, SourceEventBindingSchema, StoredSportsurgeCatalogSchema, StoredStreameastCatalogSchema } from '../shared.ts';
 import type { CollectionAttempt, DetailEvidence, Game, Match, Observation, SeasonMembership, SourceAttempt, SourceEventBinding, StoredSportsurgeCatalog, StoredStreameastCatalog } from '../shared.ts';
 import { recordFinal } from '../domain/lifecycle.ts';
 import { createFinishedGameMatcher } from '../domain/matching.ts';
-import { SOURCE_REFRESH_MS, rebaseRetryDeadline, retryDeadline } from '../domain/source-policy.ts';
+import { SOURCE_REFRESH_MS, ACTIVE_DISCOVERY_MS, IDLE_DISCOVERY_MS, retryDeadline, sourceFailure } from '../domain/source-policy.ts';
 import { WorkingFeedSchema, type WorkingFeed } from '../domain/working-feed.ts';
+import {FEED_CHECK_RETENTION_MS,FeedCheckSchema,type FeedCheck} from '../domain/feed-check.ts';
 
 const PartitionSchema = z.object({games:z.array(GameSchema),at:z.number(),week:z.number().optional()});
 export type Partition = z.infer<typeof PartitionSchema>;
@@ -48,6 +49,7 @@ export class FootballStore {
       CREATE TABLE IF NOT EXISTS details (observation_id TEXT PRIMARY KEY, payload TEXT NOT NULL, at INTEGER NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS working_feeds (game_id TEXT NOT NULL, candidate_id TEXT NOT NULL, identity_hash TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(game_id,candidate_id)) STRICT;
       CREATE INDEX IF NOT EXISTS working_identity ON working_feeds(game_id,identity_hash);
+      CREATE TABLE IF NOT EXISTS feed_checks (game_id TEXT NOT NULL, identity_hash TEXT NOT NULL, payload TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(game_id,identity_hash)) STRICT;
       CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, payload TEXT NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS source_catalogs (id TEXT PRIMARY KEY, current_payload TEXT NOT NULL, complete_payload TEXT, previous_payload TEXT) STRICT;
       CREATE TABLE IF NOT EXISTS catalog_attempts (source_id TEXT NOT NULL, league TEXT NOT NULL, at INTEGER NOT NULL, outcome TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(source_id,league,at,outcome)) STRICT;
@@ -61,51 +63,6 @@ export class FootballStore {
       this.db.exec('ALTER TABLE source_catalogs ADD COLUMN previous_payload TEXT');
     if (!this.db.prepare("SELECT id FROM settings WHERE id='finishedGameRetentionMinutes'").get())
       this.setFinishedGameRetentionMinutes(DEFAULT_FINISHED_GAME_RETENTION_MINUTES);
-    this.db.prepare("INSERT OR IGNORE INTO settings VALUES ('feedCheckIntervalMinutes',?)")
-      .run(JSON.stringify(DEFAULT_FEED_CHECK_INTERVAL_MINUTES));
-  }
-  feedCheckIntervalMinutes():number {
-    const row=this.db.prepare("SELECT payload FROM settings WHERE id='feedCheckIntervalMinutes'").get();
-    return FeedCheckIntervalMinutesSchema.parse(typeof row?.payload==='string'?JSON.parse(row.payload):DEFAULT_FEED_CHECK_INTERVAL_MINUTES);
-  }
-  setFeedCheckIntervalMinutes(value:number):void {
-    const minutes=FeedCheckIntervalMinutesSchema.parse(value);
-    const previous=this.feedCheckIntervalMinutes();
-    if(previous===minutes)return;
-    const previousMs=previous*60_000;
-    const nextMs=minutes*60_000;
-    this.db.exec('BEGIN IMMEDIATE');
-    try {
-      const rebaseAttempt=(table:'sources'|'catalog_attempts',key:'id'|'rowid')=>{
-        const update=this.db.prepare(`UPDATE ${table} SET payload=? WHERE ${key}=?`);
-        for(const row of this.db.prepare(`SELECT ${key},payload FROM ${table}`).all()) {
-          if(typeof row.payload!=='string'||(typeof row[key]!=='string'&&typeof row[key]!=='number'))continue;
-          const payload=JSON.parse(row.payload);
-          const parsed=SourceAttemptSchema.safeParse(payload);
-          if(!parsed.success||parsed.data.nextEligibleAt===undefined||parsed.data.outcome==='unsupported')continue;
-          const attempt=parsed.data;
-          const currentDeadline=attempt.nextEligibleAt;
-          if(currentDeadline===undefined)continue;
-          const nextEligibleAt=rebaseRetryDeadline(attempt.at,currentDeadline,previousMs,nextMs,attempt.failure==='rate-limited');
-          update.run(JSON.stringify({...payload,nextEligibleAt}),row[key]);
-        }
-      };
-      rebaseAttempt('sources','id');
-      rebaseAttempt('catalog_attempts','rowid');
-      const updateDetail=this.db.prepare('UPDATE details SET payload=? WHERE observation_id=?');
-      for(const row of this.db.prepare('SELECT observation_id,payload FROM details').all()) {
-        if(typeof row.observation_id!=='string'||typeof row.payload!=='string')continue;
-        const parsed=DetailEvidenceSchema.safeParse(JSON.parse(row.payload));
-        if(!parsed.success)continue;
-        const detail=parsed.data;
-        const nextEligibleAt=rebaseRetryDeadline(detail.at,detail.nextEligibleAt,previousMs,nextMs,
-          detail.outcome==='failed'&&detail.failure==='rate-limited');
-        updateDetail.run(JSON.stringify({...detail,nextEligibleAt}),row.observation_id);
-      }
-      this.db.prepare("INSERT INTO settings VALUES ('feedCheckIntervalMinutes',?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload")
-        .run(JSON.stringify(minutes));
-      this.db.exec('COMMIT');
-    } catch(error) {this.db.exec('ROLLBACK');throw error;}
   }
   finishedGameRetentionMinutes():number {
     const row=this.db.prepare("SELECT payload FROM settings WHERE id='finishedGameRetentionMinutes'").get();
@@ -194,10 +151,7 @@ export class FootballStore {
         if (result.data.outcome!=='failed') return [[row.id,{at:result.data.at,outcome:result.data.outcome,failures:0,nextEligibleAt:0}]];
         const raw=payload && typeof payload==='object' && 'error' in payload ? payload.error : null;
         const error=typeof raw==='string' ? raw : '';
-        const failure:NonNullable<SourceAttempt['failure']>=error==='http-404'?'not-found':error==='http-429'?'rate-limited':
-          /timeout|timed out/i.test(error)?'timed-out':error==='fetch failed'?'network-unavailable':
-          error==='unsupported-discovery-address'?'unsupported-address':
-          /^(?:empty-response|response-too-large|redirect-without-location|redirect-limit)$/.test(error)?'invalid-response':'upstream-error';
+        const failure=sourceFailure(new Error(error));
         return [[row.id,{at:result.data.at,outcome:'failed',failure,failures:0,nextEligibleAt:0}]];
       } catch {return [];}
     }));
@@ -225,6 +179,29 @@ export class FootballStore {
     }
     return feeds;
   }
+  feedChecks(now:number):FeedCheck[] {
+    return this.db.prepare('SELECT game_id,identity_hash,payload,at FROM feed_checks WHERE at > ? AND at <= ? ORDER BY at DESC LIMIT 10000')
+      .all(now-FEED_CHECK_RETENTION_MS,now+60000).flatMap(row=>{
+        try{
+          const parsed=FeedCheckSchema.safeParse(typeof row.payload==='string'?JSON.parse(row.payload):null);
+          return parsed.success&&parsed.data.gameId===row.game_id&&parsed.data.identityHash===row.identity_hash&&
+            parsed.data.outcome.checkedAt===row.at?[parsed.data]:[];
+        }catch{return [];}
+      });
+  }
+  saveFeedCheck(check:FeedCheck):void {
+    const parsed=FeedCheckSchema.parse(check);
+    this.db.exec('BEGIN IMMEDIATE');
+    try{
+      this.db.prepare('INSERT INTO feed_checks VALUES (?,?,?,?) ON CONFLICT(game_id,identity_hash) DO UPDATE SET payload=excluded.payload,at=excluded.at')
+        .run(parsed.gameId,parsed.identityHash,JSON.stringify(parsed),parsed.outcome.checkedAt);
+      if(parsed.outcome.kind==='unavailable')this.db.prepare('DELETE FROM working_feeds WHERE game_id=? AND identity_hash=?').run(parsed.gameId,parsed.identityHash);
+      this.db.exec('COMMIT');
+    }catch(error){this.db.exec('ROLLBACK');throw error;}
+  }
+  removeFeedCheck(gameId:string,identityHash:string):void {
+    this.db.prepare('DELETE FROM feed_checks WHERE game_id=? AND identity_hash=?').run(gameId,identityHash);
+  }
   replaceWorkingIdentity(gameId:string,identityHash:string,feeds:readonly WorkingFeed[]):void {
     const parsed=feeds.map(feed=>WorkingFeedSchema.parse(feed));
     if(parsed.some(feed=>feed.candidate.gameId!==gameId||feed.identityHash!==identityHash))throw new Error('working-feed-identity-mismatch');
@@ -233,6 +210,8 @@ export class FootballStore {
     if(previous.length===payloads.length&&previous.every((row,index)=>row.payload===payloads[index]))return;
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      if(parsed.length)this.db.prepare('DELETE FROM feed_checks WHERE game_id=? AND identity_hash=? AND at <= ?')
+        .run(gameId,identityHash,Math.max(...parsed.map(feed=>feed.checkedAt)));
       this.db.prepare('DELETE FROM working_feeds WHERE game_id=? AND identity_hash=?').run(gameId,identityHash);
       const save=this.db.prepare('INSERT INTO working_feeds VALUES (?,?,?,?) ON CONFLICT(game_id,candidate_id) DO UPDATE SET identity_hash=excluded.identity_hash,payload=excluded.payload');
       for(const [index,feed] of parsed.entries())save.run(gameId,feed.candidate.id,identityHash,payloads[index]);
@@ -306,14 +285,15 @@ export class FootballStore {
   }
   private recordCatalogAttempts(sourceId:string, catalog:{categories:Record<string,
     {kind:'pending'}|{kind:'collected';at:number}|{kind:'failed';at:number;reason:string}>;
-    events:{league:string}[]}):void {
+    events:{league:string}[];rejectedGames:{league:string}[];catalogIssues?:{league:string}[]}):void {
     const insert=this.db.prepare('INSERT OR IGNORE INTO catalog_attempts VALUES (?,?,?,?,?)');
     const diagnostic=this.db.prepare('INSERT INTO diagnostics (source_id,at,outcome,count,error) VALUES (?,?,?,?,?)');
     for(const league of Object.keys(catalog.categories)) {
       const category=catalog.categories[league];
       if(category.kind==='pending')continue;
       const count=category.kind==='collected'?catalog.events.filter(event=>event.league===league).length:0;
-      const outcome=category.kind==='collected'?'parsed':category.reason==='parser-changed'?'parser-changed':'failed';
+      const partial=catalog.rejectedGames.some(event=>event.league===league)||catalog.catalogIssues?.some(issue=>issue.league===league);
+      const outcome=category.kind==='collected'?(partial?'parser-changed':count?'parsed':'empty'):category.reason==='parser-changed'?'parser-changed':'failed';
       const failure=category.kind==='failed'&&outcome==='failed'?(category.reason==='timeout'?'timed-out':category.reason==='blocked'?'blocked':category.reason==='rate-limited'?'rate-limited':'upstream-error'):undefined;
       const prior=this.db.prepare('SELECT payload FROM catalog_attempts WHERE source_id=? AND league=? ORDER BY at DESC LIMIT 1').get(sourceId,league);
       let failures=0;
@@ -321,9 +301,9 @@ export class FootballStore {
         try {const parsed=SourceAttemptSchema.safeParse(JSON.parse(prior.payload));if(parsed.success)failures=parsed.data.failures||0;}
         catch {}
       }
-      failures=outcome==='parsed'?0:failures+1;
+      failures=outcome==='parsed'||outcome==='empty'?0:failures+1;
       const attempt=SourceAttemptSchema.parse({at:category.at,outcome,count,failure,failures,
-        nextEligibleAt:retryDeadline(category.at,failure==='rate-limited'?SOURCE_REFRESH_MS:0,this.feedCheckIntervalMinutes()*60_000)});
+        nextEligibleAt:retryDeadline(category.at,failure==='rate-limited'?SOURCE_REFRESH_MS:0,category.kind==='collected'&&!partial?(count?ACTIVE_DISCOVERY_MS:IDLE_DISCOVERY_MS):SOURCE_REFRESH_MS)});
       const payload=JSON.stringify({...attempt,catalogReason:category.kind==='failed'?category.reason:undefined});
       if(insert.run(sourceId,league,category.at,outcome,payload).changes)
         diagnostic.run(`${sourceId}:${league}`,category.at,outcome,count,category.kind==='failed'?category.reason:null);
@@ -455,6 +435,8 @@ export class FootballStore {
     this.removeFinalEvidence(this.finals().filter(game=>game.graceEndsAt!==undefined&&game.graceEndsAt<=now).map(game=>game.id),now);
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      this.db.prepare('DELETE FROM feed_checks WHERE at <= ? OR game_id IN (SELECT id FROM finals WHERE json_extract(payload,\'$.graceEndsAt\') <= ?)').run(now-FEED_CHECK_RETENTION_MS,now);
+      this.db.exec('DELETE FROM feed_checks WHERE rowid IN (SELECT rowid FROM feed_checks ORDER BY at DESC LIMIT -1 OFFSET 10000)');
       this.db.prepare('DELETE FROM observations WHERE at < ?').run(now-7*24*3600000);
       this.db.prepare('DELETE FROM source_event_bindings WHERE at < ?').run(now-7*24*3600000);
       this.db.exec('DELETE FROM source_event_bindings WHERE rowid IN (SELECT rowid FROM source_event_bindings ORDER BY at DESC LIMIT -1 OFFSET 10000)');

@@ -67,11 +67,11 @@ export function tvappStreams(value:unknown,source:string,sourceId:string):z.infe
   const seen=new Set<number>();
   for(const item of value){
     const parsed=TvappStream.safeParse(item);
-    if(!parsed.success)return null;
+    if(!parsed.success)continue;
     const row=parsed.data;
     if(row.source!==source||row.id!==sourceId||
       row.embedUrl!==`https://embed.st/embed/${source}/${sourceId}/${row.streamNo}`||
-      seen.has(row.streamNo))return null;
+      seen.has(row.streamNo))continue;
     seen.add(row.streamNo);
     rows.push(row);
   }

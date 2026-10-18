@@ -18,6 +18,7 @@ const sportsurgeCategories=[
   'https://isportsurge.ws/nfl/livestreams3','https://isportsurge.ws/cfb/livestreams2',
   'https://isportsurge.ws/nba/livestreams3','https://isportsurge.ws/nhl/livestreams3',
   'https://isportsurge.ws/mlb/livestreams2',
+  'https://isportsurge.ws/f1/livestreams2',
 ];
 
 test('source times require explicit timezone evidence and handle DST and epochs', () => {
@@ -277,29 +278,27 @@ test('PPV catalog admits college and NFL games, excludes CFL and channels, and i
   assert.equal(parseListings(source,JSON.stringify({success:true,streams:[{category:'American Football',streams:[{...event,starts_at:0}]}]}),now).outcome,'empty');
 });
 
-test('Streamcenter published game cards create exact ESPN-bound source locators',()=>{
+test('StreamCenter published JSON events create exact ESPN-bound source locators',()=>{
   const source=SOURCES.find(item=>item.id==='streamcenter');
   assert.ok(source);
-  const link='/api/stream-link/iframe/event-espn-league-football-college-football-401856699/aef974e2-5ef2-412c-b65e-e6905af1edfa';
-  const html=`<article class="game-card-row"><p class="game-card-league">NCAA Football</p>
-    <time dateTime="2026-09-26T19:30:00.000Z"></time>
-    <span class="game-card-team" title="Ole Miss Rebels"></span><span class="game-card-team" title="Florida Gators"></span>
-    <a class="game-card-open-link" href="${link}">English</a></article>
-    <article class="game-card-row"><a class="game-card-open-link" href="/api/stream-link/iframe/custom-channel/abc">Channel</a></article>`;
-  const result=parseListings(source,html,now);
+  const id='event-espn-league-football-college-football-401856699';
+  const event={id,title:'Ole Miss Rebels vs Florida Gators',category:'football',date:Date.parse('2026-09-26T19:30:00.000Z'),
+    teams:{home:{name:'Ole Miss Rebels'},away:{name:'Florida Gators'}},sources:[{source:'iframe',id}]};
+  const result=parseListings(source,JSON.stringify([event]),now);
   assert.equal(result.outcome,'parsed');
   assert.equal(result.observations.length,1);
   assert.deepEqual(result.observations[0].teams,['Ole Miss Rebels','Florida Gators']);
-  assert.equal(result.observations[0].kickoff,Date.parse('2026-09-26T19:30:00.000Z'));
-  assert.equal(result.observations[0].url,`https://streamcenter.st${link}`);
-  const detail='<iframe src="//streame.center/embed/hls.php?stream=lmdsjkfgv52"></iframe>';
+  assert.equal(result.observations[0].kickoff,event.date);
+  const watch='https://streamcenter.st/watch/'+id;
+  assert.equal(result.observations[0].url,watch);
+  const stream={id:'aef974e2-5ef2-412c-b65e-e6905af1edfa',streamNo:1,source:'iframe',webUrl:watch,embedUrl:'https://streame.center/embed/ch52.php'};
+  const detail=JSON.stringify({event,streams:[stream]});
   const candidates=compatiblePlayers('ncaaf-401856699',result.observations[0],detail);
   assert.equal(candidates.length,1);
-  assert.deepEqual(candidates[0].locator,{provider:'streamcenter',eventId:'401856699',linkId:'aef974e2-5ef2-412c-b65e-e6905af1edfa'});
+  assert.deepEqual(candidates[0].locator,{provider:'streamcenter',eventId:'401856699',linkId:stream.id});
   assert.deepEqual(compatiblePlayers('ncaaf-401856700',result.observations[0],detail),[]);
-  assert.deepEqual(compatiblePlayers('ncaaf-401856699',result.observations[0],'<iframe src="https://attacker.test/embed/hls.php?stream=lmdsjkfgv52"></iframe>'),[]);
-  assert.equal(compatiblePlayers('ncaaf-401856699',result.observations[0],
-    '<iframe src="//streame.center/embed/hls2.php?stream=jkhfsgqghjqsd85"></iframe>').length,1);
+  assert.deepEqual(compatiblePlayers('ncaaf-401856699',result.observations[0],JSON.stringify({event,streams:[{...stream,embedUrl:'https://attacker.test/embed/ch52.php'}]})),[]);
+  assert.equal(compatiblePlayers('ncaaf-401856699',result.observations[0],JSON.stringify({event,streams:[{...stream,webUrl:watch+'-other'}]})).length,0);
 });
 
 test('matching rejects ambiguous aliases, stale rows, uncertain times, and final games', () => {
@@ -393,7 +392,7 @@ test('native source backoff ignores an empty Retry-After and caps a future HTTP 
     error instanceof SourceFetchError&&error.message==='http-429'&&error.retryAfterMs===86_400_000);
 });
 
-test('SportsFeed24 all-failed catalog keeps the first category error and no synthesized retry',async()=>{
+test('SportsFeed24 all-failed catalog retains a later rate limit and its retry delay',async()=>{
   const collector=createFixtureCollector();
   const source=SOURCES.find(item=>item.id==='sportsfeed24');
   assert.ok(source);
@@ -403,7 +402,7 @@ test('SportsFeed24 all-failed catalog keeps the first category error and no synt
     ...(index===1?{headers:{'retry-after':'9'}}:{}),
   });
   await assert.rejects(collector.readHtml(source.url,new AbortController().signal),error=>
-    error instanceof SourceFetchError&&error.message==='http-503'&&error.retryAfterMs===undefined);
+    error instanceof SourceFetchError&&error.message==='http-429'&&error.retryAfterMs===9000);
   assert.equal(collector.fixtureRequests().length,9);
 });
 
@@ -437,15 +436,15 @@ test('Sportsurge discards partial results when its parent request is canceled',a
   for(const url of sportsurgeCategories)collector.enqueueFixture({url,...(url.includes('/nfl/')?{pending:true}:
     {body:'<html><body><a href="/watch/cfb/indiana-purdue/2">Indiana vs Purdue</a></body></html>'})});
   const read=collector.readHtml(SOURCES[0].url,controller.signal);
-  for(let attempt=0;attempt<100 && collector.fixtureRequests().length<5;attempt++)
+  for(let attempt=0;attempt<100 && collector.fixtureRequests().length<sportsurgeCategories.length;attempt++)
     await new Promise(resolve=>setTimeout(resolve,1));
-  assert.equal(collector.fixtureRequests().length,5);
+  assert.equal(collector.fixtureRequests().length,sportsurgeCategories.length);
   controller.abort(new DOMException('Canceled','AbortError'));
   await assert.rejects(read,error=>error instanceof DOMException&&error.name==='AbortError');
   assert.ok(collector.fixtureCancels().includes('https://isportsurge.ws/nfl/livestreams3'));
 });
 
-test('schedule requests both college groups and rejects partial event parsing', async () => {
+test('schedule requests all college groups and rejects partial event parsing', async () => {
   const original = globalThis.fetch;
   const urls: string[] = [];
   const event = {id:'401858236',date:'2026-09-26T16:00:00Z',competitions:[{competitors:[
@@ -460,11 +459,12 @@ test('schedule requests both college groups and rejects partial event parsing', 
     const college = await Promise.all(SCHEDULES.filter(partition=>partition.league==='ncaaf').map(partition => readSchedule(partition,now,new AbortController().signal)));
     assert.equal(urls.filter(value => new URL(value).searchParams.get('groups') === '80').length,9);
     assert.equal(urls.filter(value => new URL(value).searchParams.get('groups') === '81').length,9);
+    assert.equal(urls.filter(value => new URL(value).searchParams.get('groups') === '35').length,9);
     assert.ok(urls.every(value => /^\d{8}$/.test(new URL(value).searchParams.get('dates') || '')));
     assert.ok(urls.every(value => new URL(value).searchParams.get('limit') === '200'));
     assert.equal(new URL(urls[0]).searchParams.get('dates'),'20260926');
     assert.ok(urls.some(value=>new URL(value).searchParams.get('dates')==='20261003'));
-    assert.deepEqual(mergeSchedulePartitions(college.map(result => result.games))[0].partitions,['fbs','fcs']);
+    assert.deepEqual(mergeSchedulePartitions(college.map(result => result.games))[0].partitions,['fbs','fcs','d2-d3']);
     globalThis.fetch = async () => Response.json({events:[event,{id:'broken'}]});
     await assert.rejects(readSchedule(SCHEDULES[1],now,new AbortController().signal),/schedule-incomplete-or-duplicate/);
   } finally { globalThis.fetch = original; }
@@ -473,10 +473,10 @@ test('schedule requests both college groups and rejects partial event parsing', 
 test('season membership parses complete ESPN Core group refs and rejects overlap', async () => {
   const original = globalThis.fetch;
   const ref = (id: string) => ({'$ref':`http://sports.core.api.espn.com/v2/sports/football/leagues/college-football/seasons/2026/teams/${id}?lang=en&region=us`});
-  globalThis.fetch = async input => Response.json({count:1,pageCount:1,pageIndex:1,items:[ref(String(input).includes('/groups/80/') ? '221' : '2083')]});
+  globalThis.fetch = async input => Response.json({count:1,pageCount:1,pageIndex:1,items:[ref(String(input).includes('/groups/80/') ? '221' : String(input).includes('/groups/81/') ? '2083' : '2013')]});
   try {
     const membership = await readSeasonMembership(2026,new AbortController().signal);
-    assert.deepEqual(membership.teams,{'221':'fbs','2083':'fcs'});
+    assert.deepEqual(membership.teams,{'221':'fbs','2083':'fcs','2013':'d2-d3'});
     globalThis.fetch = async () => Response.json({count:1,pageCount:1,pageIndex:1,items:[ref('221')]});
     await assert.rejects(readSeasonMembership(2026,new AbortController().signal),/membership-overlapping-groups/);
     globalThis.fetch = async () => Response.json({count:2,pageCount:1,pageIndex:1,items:[ref('221')]});

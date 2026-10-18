@@ -2,6 +2,7 @@ import type { CandidateLocator } from '../../football/shared.ts';
 import {scopedFetch,timedFetch} from '../probe-capacity.ts';
 import { boundedText, type PlaybackProvider, type ProviderPlayback } from '../provider.ts';
 import { edgestreamResource, publishedManifest } from './edgestream.ts';
+import {observedPublicPage} from './public-page.ts';
 
 type StreameastLocator=Extract<CandidateLocator,{provider:'streameast'}>;
 
@@ -15,20 +16,20 @@ export function parseStreameastPlayer(html:string):{stream:string;url:string}|nu
 }
 
 export function streameastProvider(fetcher:typeof fetch=scopedFetch):PlaybackProvider<StreameastLocator> {
-  return {provider:'streameast',async open(locator,signal):Promise<ProviderPlayback> {
+  return {provider:'streameast',async open(locator,signal,purpose='playback'):Promise<ProviderPlayback> {
     const player=`https://streame.center/stream-east/ch${locator.channelId}.php`;
     const playerResponse=await timedFetch(fetcher,player,{cache:'no-store',redirect:'manual',signal,headers:{Accept:'text/html'}},10000);
     const playerHtml=await boundedText(playerResponse);
     const published=parseStreameastPlayer(playerHtml);
-    if(!published)throw new Error('StreamEast player did not publish supported HLS');
+    if(!published){const observed=await observedPublicPage(new URL(player),signal,purpose);if(observed)return observed;throw new Error('StreamEast player did not publish supported HLS');}
     const hlsResponse=await timedFetch(fetcher,published.url,{cache:'no-store',redirect:'manual',signal,
       headers:{Accept:'text/html',Referer:player}},10000);
     const hlsHtml=await boundedText(hlsResponse);
     const manifest=publishedManifest(hlsHtml);
-    if(!manifest)throw new Error('StreamEast HLS source changed');
+    if(!manifest){const observed=await observedPublicPage(new URL(published.url),signal,purpose);if(observed)return observed;throw new Error('StreamEast HLS source changed');}
     const address=new URL(manifest);
     const root=edgestreamResource(manifest,{stream:published.stream,host:address.hostname,referer:published.url,fetcher},'playlist');
     if(!root)throw new Error('StreamEast HLS source is unsupported');
-    return {root,close(){}};
+    return {root,player:{url:published.url,referer:player},close(){}};
   }};
 }

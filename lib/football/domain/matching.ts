@@ -3,6 +3,7 @@ import { wrestlingEventKey, wrestlingShowKey } from './wrestling-events.ts';
 import { COLLEGE_TEAM_CATALOG } from './college-teams.generated.ts';
 import { feedEligible } from './feed-eligibility.ts';
 import { sourceCoverage } from '../source-registry.ts';
+import { combatCardTitle } from './combat-card.ts';
 
 export function normalizedName(value: string): string {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\band\b/g, '&').replace(/[^a-z0-9]/g, '');
@@ -10,6 +11,9 @@ export function normalizedName(value: string): string {
 
 const collegeAliases = new Map<string, readonly string[]>();
 const collegeOwners = new Map<string, Set<string>>();
+const nhlSourceAliases=new Map<string,readonly string[]>([
+  ['espn:nhl:21',['Maple Leaf']],['espn:nhl:10',['Canadeins']],
+]);
 for (const team of COLLEGE_TEAM_CATALOG) {
   const aliases = [...new Set(team.aliases.map(normalizedName).filter(Boolean))];
   collegeAliases.set(team.id,aliases);
@@ -20,9 +24,9 @@ for (const team of COLLEGE_TEAM_CATALOG) {
   }
 }
 
-export function createObservationMatcher(games: readonly Game[], mode: 'current' | 'inventory-live' = 'current'): (observation: Observation, now: number) => Match {
+export function createObservationMatcher(games: readonly Game[], mode: 'current' | 'inventory-live' = 'current',freshness?:(observation:Observation)=>number|undefined): (observation: Observation, now: number) => Match {
   const identity = (game: MatchupGame, team: MatchupGame['home']) => `${game.league}:${team.id || normalizedName(team.name)}`;
-  const aliases = (game: MatchupGame, team: MatchupGame['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || [])].map(normalizedName).filter(Boolean)]);
+  const aliases = (game: MatchupGame, team: MatchupGame['home']) => new Set([...(game.league === 'ncaaf' ? collegeAliases.get(team.id || '') || [] : []), ...[team.name, team.short, team.abbreviation, ...(team.aliases || []),...(game.league==='nhl'?nhlSourceAliases.get(team.id||'')||[]:[])].map(normalizedName).filter(Boolean)]);
   const matchups=games.filter(isMatchupGame);
   const races=games.filter(isRaceGame);
   const combat=games.filter(isCombatGame);
@@ -64,11 +68,11 @@ export function createObservationMatcher(games: readonly Game[], mode: 'current'
     }
   }
   return (observation,now) => {
-    if(observation.league&&isMotorsportsLeague(observation.league))return matchRaceObservation(observation,races,now,mode);
-    if(observation.league==='ufc'||observation.league==='boxing')return matchCombatObservation(observation,combat,now,mode);
-    if(observation.league&&isWrestlingLeague(observation.league))return matchWrestlingObservation(observation,wrestling,now,mode);
+    if(observation.league&&isMotorsportsLeague(observation.league))return matchRaceObservation(observation,races,now,mode,freshness?.(observation));
+    if(observation.league==='ufc'||observation.league==='boxing')return matchCombatObservation(observation,combat,now,mode,freshness?.(observation));
+    if(observation.league&&isWrestlingLeague(observation.league))return matchWrestlingObservation(observation,wrestling,now,mode,freshness?.(observation));
     if (!observation.teams) return {kind:'unmatched',reason:'not-a-matchup',possibleGameIds:[]};
-    const stale=now-observation.observedAt>30*60_000;
+    const stale=now>Math.max(observation.observedAt+30*60_000,freshness?.(observation)??0);
     if (observation.observedAt > now + 60_000 || stale && mode==='current')
       return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[]};
     const [first,second]=observation.teams.map(normalizedName);
@@ -106,8 +110,8 @@ export function createObservationMatcher(games: readonly Game[], mode: 'current'
   };
 }
 function matchWrestlingObservation(observation:Observation,games:WrestlingGame[],now:number,
-  mode:'current'|'inventory-live'):Match {
-  const stale=now-observation.observedAt>30*60_000;
+  mode:'current'|'inventory-live',freshUntil?:number):Match {
+  const stale=now>Math.max(observation.observedAt+30*60_000,freshUntil??0);
   if(observation.observedAt>now+60_000||stale&&mode==='current')
     return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[]};
   if(observation.teams||observation.kickoff===null||!observation.league||!isWrestlingLeague(observation.league))
@@ -130,22 +134,46 @@ function matchWrestlingObservation(observation:Observation,games:WrestlingGame[]
   return {kind:'matched',gameId:game.id};
 }
 function combatTitle(value:string):string {
-  return normalizedName(value.replace(/\s+vs\s+live$/i,'').replace(/\s+(?:watch\s+)?(?:live\s+stream|live)$/i,''));
+  return normalizedName(combatCardTitle(value).title);
+}
+function contenderSeriesCard(value:string) {
+  const identity=/^danawhitescontenderseries(?:season(\d{1,3}))?(?:week(\d{1,3}))?$/.exec(combatTitle(value));
+  return identity?{season:identity[1],week:identity[2]}:null;
+}
+function combatFighters(value:string){
+  const title=combatCardTitle(value).title;
+  const card=/^(UFC\s+(?:Fight\s+Night|\d{1,4})|BKFC\s+\d{1,4})\s*[:\-]?\s+/i.exec(title);
+  const pair=/^(.+?)\s+vs?\.?\s+(.+?)(?:\s+(\d{1,2}))?$/i.exec(card?title.slice(card[0].length):title);
+  if(!pair)return null;
+  const first=pair[1].trim().split(/\s+/),second=pair[2].trim().split(/\s+/);
+  if(![...first,...second].every(word=>/^[\p{L}\p{M}'’.-]+$/u.test(word)))return null;
+  return {card:card?normalizedName(card[1]):null,rematch:pair[3],
+    first:(card&&/^BKFC\b/i.test(card[1])?first.slice(-1):first).map(normalizedName),second:second.map(normalizedName)};
 }
 function combatTitlesMatch(observed:string,scheduled:string):boolean {
   if(combatTitle(observed)===combatTitle(scheduled))return true;
-  const abbreviation=/^ufc\s+(\d{1,4})(?:\s+(?:watch\s+)?(?:live\s+stream|live))?$/i.exec(observed.trim().replace(/\s+vs\s+live$/i,''));
+  const contender=contenderSeriesCard(observed),scheduledContender=contenderSeriesCard(scheduled);
+  if(contender&&scheduledContender)return (contender.season===undefined||contender.season===scheduledContender.season)&&
+    (contender.week===undefined||contender.week===scheduledContender.week);
+  const abbreviation=/^ufc\s+(\d{1,4})$/i.exec(combatCardTitle(observed).title);
   const scheduledNumber=/^ufc\s+(\d{1,4})\b/i.exec(scheduled.trim());
-  return !!abbreviation&&!!scheduledNumber&&abbreviation[1]===scheduledNumber[1];
+  if(abbreviation&&scheduledNumber)return abbreviation[1]===scheduledNumber[1];
+  const left=combatFighters(observed),right=combatFighters(scheduled);
+  if(!left||!right||left.card&&left.card!==right.card||left.rematch&&left.rematch!==right.rematch)return false;
+  const same=(a:string[],b:string[])=>a.join('')===b.join('')||a.length===1&&a[0]===b.at(-1)||b.length===1&&b[0]===a.at(-1);
+  return same(left.first,right.first)&&same(left.second,right.second)||same(left.first,right.second)&&same(left.second,right.first);
 }
-function matchCombatObservation(observation:Observation,games:CombatGame[],now:number,mode:'current'|'inventory-live'):Match {
-  const stale=now-observation.observedAt>30*60_000;
+function matchCombatObservation(observation:Observation,games:CombatGame[],now:number,mode:'current'|'inventory-live',freshUntil?:number):Match {
+  const stale=now>Math.max(observation.observedAt+30*60_000,freshUntil??0);
   if(observation.observedAt>now+60_000||stale&&mode==='current')return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[]};
   const kickoff=observation.kickoff;
   if(kickoff===null)return {kind:'unmatched',reason:'unverified-kickoff',possibleGameIds:[]};
-  const window=observation.league==='ufc'?3*60*60_000:90*60_000;
   const sameTitle=games.filter(game=>game.league===observation.league&&combatTitlesMatch(observation.title,game.name));
-  const dated=sameTitle.filter(game=>Math.abs(Date.parse(game.date)-kickoff)<=window);
+  const segment=combatCardTitle(observation.title).segment;
+  const dated=sameTitle.filter(game=>{
+    const window=observation.league==='ufc'?(segment||combatCardTitle(game.name).segment?4:3)*60*60_000:90*60_000;
+    return Math.abs(Date.parse(game.date)-kickoff)<=window;
+  });
   if(dated.length!==1)return {kind:'unmatched',reason:dated.length?'ambiguous-matchup':sameTitle.length?'conflicting-date':'unknown-teams',
     possibleGameIds:(dated.length?dated:sameTitle).map(game=>game.id)};
   const game=dated[0];
@@ -169,16 +197,32 @@ function raceSessionInTitle(title:string,session:RaceGame['race']['session'],lea
   return !/\b(?:practice|qualifying|quali|sprint|fp[123])\b/.test(value)&&
     (league!=='f1'||/\brace\b/.test(value));
 }
-function matchRaceObservation(observation:Observation,games:RaceGame[],now:number,mode:'current'|'inventory-live'):Match {
-  const stale=now-observation.observedAt>30*60_000;
+function matchRaceObservation(observation:Observation,games:RaceGame[],now:number,mode:'current'|'inventory-live',freshUntil?:number):Match {
+  const stale=now>Math.max(observation.observedAt+30*60_000,freshUntil??0);
   if(observation.observedAt>now+60_000||stale&&mode==='current')return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[]};
-  if(observation.teams||observation.kickoff===null)return {kind:'unmatched',reason:'unverified-race',possibleGameIds:[]};
+  if(observation.teams)return {kind:'unmatched',reason:'unverified-race',possibleGameIds:[]};
+  const conflictingSeries=observation.league==='nascar-cup'
+    ? /\b(?:nascar\s+(?:truck|xfinity)\s+series|motogp|formula\s*1|f1)\b/i
+    : observation.league==='nascar-truck'
+      ? /\b(?:nascar\s+(?:cup|xfinity)\s+series|motogp|formula\s*1|f1)\b/i:null;
+  if(conflictingSeries?.test(observation.title))return {kind:'unmatched',reason:'unknown-race',possibleGameIds:[]};
   const kickoff=observation.kickoff;
   const title=normalizedName(observation.title);
-  const dated=games.filter(game=>game.league===observation.league&&
-    title.includes(normalizedName(game.race.round))&&
-    raceSessionInTitle(observation.title,game.race.session,game.league)&&
-    Math.abs(Date.parse(game.date)-kickoff)<=(game.league==='nascar-cup'||game.league==='nascar-truck'?90:20)*60_000);
+  const trackTitle=observation.league==='motorsport'
+    ?normalizedName(observation.title.replace(/\s+vs\s+live$/i,'')):null;
+  const possible=games.filter(game=>{
+    const nascar=game.league==='nascar-cup'||game.league==='nascar-truck';
+    const unspecifiedNascar=nascar&&trackTitle!==null&&['Motor Speedway','Raceway'].some(track=>
+      trackTitle===normalizedName(`NASCAR ${game.race.round} ${track}`)||
+      trackTitle===normalizedName(`${game.race.round} ${track}`));
+    return (game.league===observation.league||unspecifiedNascar)&&
+      title.includes(normalizedName(game.race.round))&&
+      raceSessionInTitle(observation.title,game.race.session,game.league);
+  });
+  if(kickoff===null)return {kind:'unmatched',reason:'unverified-race',possibleGameIds:
+    observation.league==='nascar-cup'||observation.league==='nascar-truck'?possible.map(game=>game.id):[]};
+  const dated=possible.filter(game=>Math.abs(Date.parse(game.date)-kickoff)<=
+    (game.league==='nascar-cup'||game.league==='nascar-truck'?90:20)*60_000);
   if(dated.length!==1)return {kind:'unmatched',reason:dated.length?'ambiguous-race':'unknown-race',possibleGameIds:dated.map(game=>game.id)};
   const game=dated[0];
   if(stale&&game.lifecycle!=='live')return {kind:'unmatched',reason:'stale-observation',possibleGameIds:[game.id]};
@@ -192,7 +236,7 @@ export function matchObservation(observation: Observation, games: Game[], now: n
 
 export function detailCandidateGameIds(result:Match):readonly string[] {
   if(result.kind==='matched')return [result.gameId];
-  return result.reason==='unverified-kickoff'||result.reason==='unverified-contextual-kickoff'
+  return result.reason==='unverified-kickoff'||result.reason==='unverified-contextual-kickoff'||result.reason==='unverified-race'
     ?result.possibleGameIds:[];
 }
 
@@ -206,7 +250,7 @@ export type SourceEventDecision =
   | {kind:'possible';gameIds:string[];reason:string;match:Extract<Match,{kind:'unmatched'}>}
   | {kind:'rejected';reason:string;match:Extract<Match,{kind:'unmatched'}>};
 
-export function createSourceEventMatcher(games:readonly Game[],mode:'current'|'inventory-live'='current') {
+export function createSourceEventMatcher(games:readonly Game[],mode:'current'|'inventory-live'='current',freshness?:(observation:Observation)=>number|undefined) {
   const prepared=new Map<string,ReturnType<typeof createObservationMatcher>>();
   const byId=new Map(games.map(game=>[game.id,game]));
   return (observation:Observation,evidence:SourceEventEvidence,now:number):SourceEventDecision=>{
@@ -216,11 +260,12 @@ export function createSourceEventMatcher(games:readonly Game[],mode:'current'|'i
     const key=[...leagues].sort().join(',');
     let match=prepared.get(key);
     if(!match){
-      match=createObservationMatcher(games.filter(game=>leagues.includes(game.league)),mode);
+      match=createObservationMatcher(games.filter(game=>leagues.includes(game.league)),mode,freshness);
       prepared.set(key,match);
     }
     let result=match(observation,now);
-    const fresh=now-observation.observedAt<30*60_000&&observation.observedAt<=now+60_000;
+    const freshUntil=freshness?.(observation);
+    const fresh=(now-observation.observedAt<30*60_000||freshUntil!==undefined&&now<=freshUntil)&&observation.observedAt<=now+60_000;
     if(result.kind==='unmatched'&&observation.kickoff===null&&
       result.reason==='unverified-kickoff'&&result.possibleGameIds.length===1&&
       (evidence.undated==='retained-live-detail'||fresh)){

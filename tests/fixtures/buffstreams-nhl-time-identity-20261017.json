@@ -1,0 +1,115 @@
+{
+  "capturedAt": "2026-10-17T23:26:04.050Z",
+  "game": {
+    "id": "nhl-401892524",
+    "league": "nhl",
+    "name": "Buffalo Sabres at Montreal Canadiens",
+    "date": "2026-10-17T23:00Z",
+    "home": {
+      "id": "espn:nhl:10",
+      "name": "Montreal Canadiens",
+      "short": "Canadiens",
+      "abbreviation": "MTL",
+      "color": "c41230",
+      "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/mtl.png",
+      "score": "0",
+      "record": "3-3-1",
+      "aliases": [
+        "Montreal Canadiens",
+        "Montreal",
+        "Canadiens",
+        "MTL"
+      ]
+    },
+    "away": {
+      "id": "espn:nhl:2",
+      "name": "Buffalo Sabres",
+      "short": "Sabres",
+      "abbreviation": "BUF",
+      "color": "00468b",
+      "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/buf.png",
+      "score": "0",
+      "record": "4-3-1",
+      "aliases": [
+        "Buffalo Sabres",
+        "Buffalo",
+        "Sabres",
+        "BUF"
+      ]
+    },
+    "season": 2027,
+    "partitions": [
+      "nhl"
+    ],
+    "detail": "12:20 - 1st",
+    "redzone": false,
+    "lastPlay": "Zachary Bolduc shot blocked by Owen Power",
+    "venue": "Bell Centre",
+    "broadcast": "NHL Net",
+    "sourceUrl": "/play/nhl-401892524",
+    "status": "in",
+    "lifecycle": "live"
+  },
+  "observation": {
+    "id": "buffstreams:a0752639ae14f887ac430146",
+    "sourceId": "buffstreams",
+    "url": "https://buffstreams.ch/event/m-buffalo-sabres-vs-montreal-canadiens-1017",
+    "title": "Buffalo Sabres vs Montreal Canadiens",
+    "league": "nhl",
+    "teams": [
+      "Buffalo Sabres",
+      "Montreal Canadiens"
+    ],
+    "kickoff": 1792278000000,
+    "rawTime": "2026-10-17T23:00:00Z",
+    "observedAt": 1792279332862,
+    "parserVersion": 3
+  },
+  "detail": {
+    "outcome": "resolved",
+    "observationId": "buffstreams:a0752639ae14f887ac430146",
+    "generation": "[\"buffstreams\",\"https://buffstreams.ch/event/m-buffalo-sabres-vs-montreal-canadiens-1017\",[\"Buffalo Sabres\",\"Montreal Canadiens\"],1792278000000,1792279332862,3]",
+    "identity": "[\"buffstreams\",\"https://buffstreams.ch/event/m-buffalo-sabres-vs-montreal-canadiens-1017\",\"nhl\",\"Buffalo Sabres vs Montreal Canadiens\",[\"Buffalo Sabres\",\"Montreal Canadiens\"],1792278000000,\"2026-10-17T23:00:00Z\",3]",
+    "at": 1792279345487,
+    "players": [
+      {
+        "id": "event-page:ed56154876aa326cfa0f2fa0",
+        "label": "Buffstreams · Server 1",
+        "locator": {
+          "provider": "event-page",
+          "gameId": "nhl-401892524",
+          "eventUrl": "https://buffstreams.ch/event/m-buffalo-sabres-vs-montreal-canadiens-1017",
+          "serverUrl": "https://foxiy.st/event/m-buffalo-sabres-vs-montreal-canadiens-1017"
+        }
+      }
+    ],
+    "nextEligibleAt": 1792281145487,
+    "event": {
+      "gameId": "nhl-401892524",
+      "date": "2026-10-17T23:00Z"
+    },
+    "lastSuccess": {
+      "identity": "[\"buffstreams\",\"https://buffstreams.ch/event/m-buffalo-sabres-vs-montreal-canadiens-1017\",\"nhl\",\"Buffalo Sabres vs Montreal Canadiens\",[\"Buffalo Sabres\",\"Montreal Canadiens\"],1792278000000,\"2026-10-17T23:00:00Z\",3]",
+      "at": 1792279345487,
+      "count": 1,
+      "publication": {
+        "players": [
+          {
+            "id": "event-page:ed56154876aa326cfa0f2fa0",
+            "label": "Buffstreams · Server 1",
+            "locator": {
+              "provider": "event-page",
+              "gameId": "nhl-401892524",
+              "eventUrl": "https://buffstreams.ch/event/m-buffalo-sabres-vs-montreal-canadiens-1017",
+              "serverUrl": "https://foxiy.st/event/m-buffalo-sabres-vs-montreal-canadiens-1017"
+            }
+          }
+        ],
+        "event": {
+          "gameId": "nhl-401892524",
+          "date": "2026-10-17T23:00Z"
+        }
+      }
+    }
+  }
+}

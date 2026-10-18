@@ -10,6 +10,7 @@ export function wrestlingPromotion(title:string):WrestlingLeague|null {
   const value=cleanTitle(title);
   if(/^(?:wwe [a-z0-9]|nxt(?: [a-z0-9]|$))/.test(value))return 'wwe';
   if(/^(?:tna [a-z0-9]|impact wrestling(?: [a-z0-9]|$))/.test(value))return 'tna';
+  if(/^(?:aew|all elite wrestling) [a-z0-9]/.test(value))return 'aew';
   return null;
 }
 
@@ -21,10 +22,14 @@ export function wrestlingShowKey(league:WrestlingLeague,title:string):string|nul
     if(/^(?:wwe )?nxt$/.test(value))return 'nxt';
     if(/^(?:wwe )?nxt [a-z0-9]/.test(value))return value.replace(/^(?:wwe )?nxt /,'nxt ');
     if(/^wwe [a-z0-9]/.test(value))return value.slice(4);
-  }else{
+  }else if(league==='tna'){
     if(/^(?:tna )?impact(?: wrestling)?$/.test(value))return 'impact';
     if(/^impact wrestling [a-z0-9]/.test(value))return value.slice('impact wrestling '.length);
     if(/^tna [a-z0-9]/.test(value))return value.slice(4).replace(/^impact wrestling /,'');
+  }else if(league==='aew'){
+    if(/^(?:aew|all elite wrestling) [a-z0-9]/.test(value))return value.replace(/^(?:aew|all elite wrestling) /,'');
+  }else{
+    return value||null;
   }
   return null;
 }

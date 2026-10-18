@@ -1,64 +1,28 @@
 const { BrowserWindow, session, webFrameMain } = require('electron');
 const { randomUUID, timingSafeEqual } = require('node:crypto');
-const { lookup } = require('node:dns/promises');
 const http = require('node:http');
-const net = require('node:net');
 const { createObservedMedia } = require('./observed-media.cjs');
 const { createPlaybackVerifier } = require('./playback-verifier.cjs');
-const { handleCertificateIssuerRequest } = require('./certificate-issuer-proxy.cjs');
+const {createSourcePageReader}=require('./source-page-reader.cjs');
+const {playerDocument}=require('./player-document.cjs');
+const {createIsolatedPlayers}=require('./isolated-player.cjs');
+const {publicUrl,publicNetworkUrl,pinnedAddress,sourceRequestAllowed,createNetworkBudget,createPinnedProxy}=require('./source-network.cjs');
 const { eventUrl:streameastEventUrl,serverUrl:streameastServerUrl,publishedFreePlayer,CATEGORIES:STREAMEAST_CATEGORIES } = require('./streameast-catalog.cjs');
+const verificationPolicy=require('../lib/playback/verification-policy.json');
 
 const OBSERVE_MS = 20000;
-const OBSERVER_SLOTS = 4;
-const MAX_REQUESTS = 300;
-const MAX_CONNECTS = 100;
+const OBSERVER_SLOTS = verificationPolicy.concurrency;
 const MAX_FRAMES = 32;
 const SPORTSPATRIKA_MAX_FRAMES = 64;
 const NFLSTREAMS_MAX_FRAMES = 64;
 const TVAPP_EMBED_MAX_FRAMES = 64;
 const FXTREND_PPV_MAX_FRAMES = 64;
-const MAX_BYTES = 24 * 1024 * 1024;
 const incomplete = (phase, reason) => ({kind:'incomplete',phase,reason,retryAfterMs:30000});
 const noFeed = (phase, reason) => ({kind:'no-feed',phase,reason});
-const blockedV4 = [
-  [0x00000000,8],[0x0a000000,8],[0x64400000,10],[0x7f000000,8],
-  [0xa9fe0000,16],[0xac100000,12],[0xc0000000,24],[0xc0000200,24],
-  [0xc0586300,24],[0xc0a80000,16],[0xc6120000,15],[0xc6336400,24],
-  [0xcb007100,24],[0xe0000000,4],[0xf0000000,4],
-];
-
-function publicAddress(address) {
-  const family = net.isIP(address);
-  if (family === 4) {
-    const parts = address.split('.').map(Number);
-    const value = ((parts[0] * 0x1000000) + (parts[1] << 16) + (parts[2] << 8) + parts[3]) >>> 0;
-    return !blockedV4.some(([base,bits]) => (value >>> (32-bits)) === (base >>> (32-bits)));
-  }
-  if (family === 6) return /^[23][0-9a-f]{0,3}:/.test(address.toLowerCase()) &&
-    !/^2001:(?:db8|0):/i.test(address) && !/^2002:/i.test(address);
-  return false;
-}
-
-function publicUrl(value) {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '8443') || url.hash ||
-      url.href.length > 2048 || net.isIP(url.hostname) || !url.hostname.includes('.') ||
-      url.hostname.endsWith('.') || /(?:^|\.)(?:localhost|local|internal)$/.test(url.hostname)) return null;
-    return url;
-  } catch { return null; }
-}
-
-function publicNetworkUrl(value) {
-  if (typeof value !== 'string' || value.length > 2048) return null;
-  const transport = value.split('#',1)[0];
-  if (transport.startsWith('wss://')) return publicUrl(`https://${transport.slice(6)}`);
-  return publicUrl(transport);
-}
-
 function isOfflinePlayerState(state) {
-  return state.readyState !== 'loading' && !state.hasVideo && state.title === 'Stream is Offline' &&
-    state.status === 'Offline' && state.description.startsWith('The stream is currently offline.');
+  return state.readyState !== 'loading' && !state.hasVideo && state.status === 'Offline' &&
+    (state.title === 'Stream is Offline' && state.description.startsWith('The stream is currently offline.') ||
+      state.title === 'Stream Player - Offline' && state.description === 'Stream is currently offline');
 }
 
 function isNetworkErrorPlayerState(state) {
@@ -70,6 +34,8 @@ function isNetworkErrorPlayerState(state) {
 function liveFramesInSubtree(mainFrame) {
   return mainFrame.framesInSubtree.filter(frame => frame && !frame.isDestroyed());
 }
+
+const {selectedPlayerEvidence}=require('./player-evidence.cjs');
 
 function dudestreamCfbEmbeddedPair(event,server) {
   return !!event && !!server && event.origin === 'https://dudestream1.com' && !event.search &&
@@ -101,7 +67,8 @@ function offlinePlayerFrame(source, frames, embeddedEventUrl) {
       const url = new URL(frame.url);
       const owned = !embeddedEventUrl || (dudestream ? belongsToDudestreamPage(frame,source,embeddedEventUrl) :
         belongsToEmbeddedServer(frame,source));
-      return url.protocol === 'https:' && url.pathname === playerPath &&
+      return url.protocol === 'https:' && (url.pathname === playerPath ||
+        playerPath==='/sd0embed/NFL'&&url.pathname==='/sd0embed/american-football') &&
         ['fallafar.me','posamari.me','dervlin.me','ninguno.cc','lonpapil.eu'].includes(url.hostname) &&
         owned;
     }
@@ -220,7 +187,7 @@ function tvappEmbedEntry(value) {
 
 function fxtrendPpvEntry(value) {
   const url = publicUrl(value);
-  return !!url && url.origin === 'https://fxtrend.st' && !url.search && !url.port &&
+  return !!url && ['https://fxtrend.st','https://foxiy.st'].includes(url.origin) && !url.search && !url.port &&
     /^\/event\/ppv-[a-z0-9]+(?:-[a-z0-9]+)*-vs-[a-z0-9]+(?:-[a-z0-9]+)*\/(?:core|vector|vertex|hotel)\/[1-9][0-9]{0,2}$/.test(url.pathname);
 }
 
@@ -228,11 +195,6 @@ function aianimalvibesPlayer(value) {
   const url = publicUrl(value);
   return !!url && url.origin === 'https://ch.aianimalvibes.com' &&
     /^\/(?:football|cfb)\/[0-9]{1,10}$/.test(url.pathname) && !url.search && !url.port;
-}
-
-function isSourceAdvertisement({ url, resourceType }) {
-  return resourceType === 'subFrame' && url.protocol === 'https:' &&
-    url.hostname === 'embed.st' && !url.port && url.pathname === '/ad.html';
 }
 
 function createNavigationPolicy(value,allowStreameastServer=false) {
@@ -286,18 +248,6 @@ function createNavigationPolicy(value,allowStreameastServer=false) {
   };
 }
 
-async function pinnedAddress(host,isActive = () => true) {
-  if (!isActive()) throw new Error('dns-inactive');
-  const addresses = await Promise.race([
-    lookup(host,{all:true}),
-    new Promise((_,reject) => setTimeout(() => reject(new Error('dns-timeout')),3000)),
-  ]);
-  if (!isActive()) throw new Error('dns-inactive');
-  if (!addresses.length || addresses.some(item => item.family !== net.isIP(item.address) || !publicAddress(item.address)))
-    throw new Error('private-address');
-  return addresses.find(item => item.family === 4) || addresses[0];
-}
-
 function authorized(value, expected) {
   if (typeof value !== 'string') return false;
   const left = Buffer.from(value);
@@ -307,95 +257,60 @@ function authorized(value, expected) {
 
 function createObserverSlot(index, resolveAddress = pinnedAddress) {
   const debug = (...parts) => { if (process.env.SUNDAY_ROOM_OBSERVER_DEBUG === '1') console.error('[observer]',index,...parts); };
-  const proxySecret = randomUUID();
-  const proxyAuthorization = `Basic ${Buffer.from(`observer:${proxySecret}`).toString('base64')}`;
   const partition = `sportsurge-observer-${index}-${randomUUID()}`;
-  const sourceSession = session.fromPartition(partition);
+  const sourceSession = session.fromPartition(partition,{cache:false});
   sourceSession.setPermissionRequestHandler((_contents,_permission,callback) => callback(false));
   sourceSession.setPermissionCheckHandler(() => false);
   sourceSession.on('will-download',event => event.preventDefault());
   let active;
-  let proxy;
+  const proxy=createPinnedProxy({session:sourceSession,getBudget:()=>active?.network,pinAddress:resolveAddress});
   const requests = new Map();
   const owners = new Map();
 
   function endActive(current,result) {
     if (active !== current) return;
     active = undefined;
-    debug('finished',result?.kind || (result ? 'media found' : 'canceled'),current.requests,current.proxyRequests,current.bytes);
+    debug('finished',result?.kind || (result ? 'media found' : 'canceled'));
     requests.clear();
     owners.clear();
     clearTimeout(current.timer);
+    clearTimeout(current.fallbackTimer);
     clearInterval(current.playerTimer);
     for (const timer of current.probeTimers) clearTimeout(timer);
-    for (const socket of current.sockets) socket.destroy();
+    current.network.close();
     if (!current.window.isDestroyed()) current.window.destroy();
     current.resolve(result);
   }
 
-  proxy = http.createServer((request,response) => {
-    const current = active;
-    void handleCertificateIssuerRequest(request,response,{
-      authorization:proxyAuthorization,pinAddress:resolveAddress,
-      isActive:()=>!!current && active===current,
-      admit:()=>++current.issuerRequests<=8,
-    });
-  });
-  proxy.on('connect',async (request,client,head) => {
-    client.on('error',() => {});
-    const current = active;
-    if (!current || !authorized(request.headers['proxy-authorization'],proxyAuthorization)) {
-      debug('proxy auth required',request.url);
-      if (!client.destroyed) client.end('HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="sportsurge-observer"\r\nConnection: close\r\n\r\n');
-      return;
-    }
-    const match = /^([^:]+):(443|8443)$/.exec(request.url || '');
-    const url = match && publicUrl(`https://${match[1]}:${match[2]}/`);
-    if (!url || current.tunnels >= 64 || ++current.proxyRequests > MAX_CONNECTS) {
-      debug('proxy rejected',request.url,current.tunnels,current.proxyRequests);
-      if (!client.destroyed) client.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
-      return;
-    }
-    current.tunnels++;
-    current.sockets.add(client);
-    let released = false;
-    const release = () => {
-      if (released) return;
-      released = true;
-      current.tunnels--;
-      current.sockets.delete(client);
-    };
-    client.once('close',release);
-    let address;
-    try { address = await resolveAddress(url.hostname,() => active === current); }
-    catch (error) { debug('dns rejected',url.hostname,error?.message); if (!client.destroyed) client.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return; }
-    if (active !== current || client.destroyed) { client.destroy(); return; }
-    const remote = net.connect({ host: address.address, port: Number(match[2]), family: address.family });
-    current.sockets.add(remote);
-    let cleaned = false;
-    const cleanup = () => {
-      if (cleaned) return;
-      cleaned = true;
-      release();
-      current.sockets.delete(remote);
-      client.destroy();
-      remote.destroy();
-    };
-    client.once('error',cleanup);
-    remote.once('error',error => { debug('connect failed',url.hostname,error?.message); cleanup(); });
-    client.once('close',cleanup);
-    remote.once('close',cleanup);
-    remote.once('connect',() => {
-      client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
-      if (head.length) remote.write(head);
-      client.pipe(remote);
-      remote.pipe(client);
-    });
-    remote.on('data',chunk => {
-      current.bytes += chunk.length;
-      if (current.bytes > MAX_BYTES) endActive(current,incomplete('capture','byte-budget'));
-    });
-  });
+  async function selectedDocument(current){
+    try{
+      const main=current.window.webContents.mainFrame,edges=[];
+      let frame=main;
+      for(let depth=0;depth<8;depth++){
+        const url=frame.url,evidence=await frame.executeJavaScript(`(${selectedPlayerEvidence.toString()})()`);
+        if(active!==current||frame.isDestroyed()||frame.url!==url)return null;
+        if(evidence?.kind==='media'){
+          if(!playerDocument(url)||current.selection&&!belongsToSelectedStreameastPlayer(frame,current)||
+            current.embeddedEventUrl&&!belongsToEmbeddedServer(frame,current.url))return null;
+          if(!edges.every(edge=>!edge.parent.isDestroyed()&&!edge.child.isDestroyed()&&edge.child.parent===edge.parent&&
+            edge.parent.url===edge.parentUrl&&edge.child.url===edge.url))return null;
+          const referer=frame.parent?.url||current.embeddedEventUrl||current.url;
+          return publicUrl(referer)?{url,referer}:null;
+        }
+        if(evidence?.kind!=='frame')return null;
+        const children=liveFramesInSubtree(main).filter(child=>child.parent===frame&&child.url===evidence.url);
+        if(children.length!==1)return null;
+        edges.push({parent:frame,child:children[0],parentUrl:url,url:children[0].url});frame=children[0];
+      }
+    }catch{}
+    return null;
+  }
+
+  async function captureDeadline(current){
+    current.fallbackTimer=setTimeout(()=>endActive(current,incomplete(current.mediaObserved?'ownership':'capture','deadline')),1000);
+    const player=await selectedDocument(current);
+    endActive(current,{...incomplete(current.mediaObserved?'ownership':'capture','deadline'),...(player?{player}:{})});
+  }
 
   sourceSession.webRequest.onBeforeRequest((details,callback) => {
     const current = active;
@@ -423,13 +338,9 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
     if (!current || !url && !localPdfObject ||
       (details.url.startsWith('wss://') && details.resourceType !== 'webSocket') ||
       ['image','font','ping','cspReport'].includes(details.resourceType) ||
-      (details.resourceType === 'mainFrame' && !current.navigation(details.url)) || ++current.requests > MAX_REQUESTS) {
+      (details.resourceType === 'mainFrame' && !current.navigation(details.url)) ||
+      url && !sourceRequestAllowed(details,current.url) || !current.network.request()) {
       if (current && details.resourceType === 'mainFrame' && url) debug('main frame rejected',url.origin,url.pathname);
-      callback({ cancel: true });
-      if (current && current.requests > MAX_REQUESTS) endActive(current,incomplete('capture','request-budget'));
-      return;
-    }
-    if (url && isSourceAdvertisement({ url, resourceType: details.resourceType })) {
       callback({ cancel: true });
       return;
     }
@@ -455,7 +366,9 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
     owners.delete(details.id);
     const contentType = Object.entries(details.responseHeaders || {}).find(([name]) => name.toLowerCase() === 'content-type')?.[1]?.[0] || '';
     const isHls = /\.m3u8(?:$|[?#])/i.test(details.url) || /(?:application\/(?:vnd\.apple\.mpegurl|x-mpegurl)|audio\/(?:mpegurl|x-mpegurl))/i.test(contentType);
-    if (active && candidate?.operation===active && details.statusCode >= 200 && details.statusCode < 300 && isHls) {
+    const progressive=!isHls&&/^video\/(?:mp4|webm)(?:;|$)/i.test(contentType);
+    const failedManifest=active?.purpose==='probe'&&isHls&&details.statusCode>=400&&details.statusCode<=599;
+    if (active && candidate?.operation===active && (details.statusCode >= 200 && details.statusCode < 300 || failedManifest) && (isHls||progressive)) {
       const current = active;
       current.mediaObserved = true;
       if(current.selection&&!belongsToSelectedStreameastPlayer(candidate.frame,current)){
@@ -494,12 +407,28 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
                 try { return new URL(item.url).origin === origin; } catch { return false; }
               });
             const urls = frames.map(item => item.url);
-            const results = await Promise.allSettled(frames.map(item => item.executeJavaScript(`Array.from(document.querySelectorAll('video')).some(video => {
-              const rect = video.getBoundingClientRect();
-              const style = getComputedStyle(video);
-              return rect.width >= 240 && rect.height >= 135 && style.display !== 'none' && style.visibility !== 'hidden';
-            })`)));
+            const results=await Promise.allSettled(frames.map(async item=>{
+              const ancestry=[];
+              for(let child=item;child.parent;child=child.parent){
+                const parent=child.parent,childUrl=child.url,parentUrl=parent.url;
+                if(parent.isDestroyed())return null;
+                if(subtree.filter(sibling=>sibling.parent===parent&&sibling.url===childUrl).length!==1)return null;
+                const evidence=await parent.executeJavaScript(`(${selectedPlayerEvidence.toString()})()`);
+                if(evidence?.kind!=='frame'||evidence.url!==childUrl)return null;
+                ancestry.push({child,parent,childUrl,parentUrl});
+              }
+              const evidence=await item.executeJavaScript(`(${selectedPlayerEvidence.toString()})()`);
+              if(!ancestry.every(edge=>!edge.child.isDestroyed()&&!edge.parent.isDestroyed()&&
+                edge.child.parent===edge.parent&&edge.child.url===edge.childUrl&&edge.parent.url===edge.parentUrl))return null;
+              if(evidence?.kind!=='media'||!Array.isArray(evidence.sources))return null;
+              const pixel=recognizedDlivePixelTransport({playerUrl:current.selection?.playerUrl,
+                frameUrl:item.url,jwSource:evidence.jwSource,observedUrl:candidate.url,loaderConfigured:evidence.loaderConfigured});
+              return evidence.sources.includes(candidate.url)||pixel?{transport:pixel?'dlive-pixel-gzip-ts':undefined}:null;
+            }));
             if (active !== current) return;
+            if(results.length&&results.every(result=>result.status==='rejected')){
+              endActive(current,incomplete('ownership','script-failed'));return;
+            }
             const visible = frames.filter((frame,index) => results[index]?.status === 'fulfilled' && results[index].value &&
               !frames[index].isDestroyed() && frames[index].url === urls[index] &&
               current.window.webContents.mainFrame.framesInSubtree.includes(frames[index]) &&
@@ -508,22 +437,8 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
             if (visible.length === 1) {
               const playerFrame = visible[0];
               const playerUrl = playerFrame.url;
-              let transport;
-              if (current.selection?.playerUrl?.startsWith('https://dlive.sx/stream/')) {
-                try {
-                  const jw = await playerFrame.executeJavaScript(`(() => {
-                    if (typeof window.jwplayer !== 'function') return null;
-                    const player = window.jwplayer();
-                    const config = player?.getConfig?.();
-                    const item = player?.getPlaylistItem?.();
-                    return { jwSource: typeof config?.file === 'string' && config.file === item?.file ? config.file : null,
-                      loaderConfigured: typeof LiveLoader === 'function' && config?.hlsjsConfig?.loader === LiveLoader };
-                  })()`);
-                  if (recognizedDlivePixelTransport({playerUrl:current.selection.playerUrl,
-                    frameUrl:playerFrame.url,jwSource:jw?.jwSource,observedUrl:candidate.url,
-                    loaderConfigured:jw?.loaderConfigured})) transport='dlive-pixel-gzip-ts';
-                } catch {}
-              }
+              const evidence=results[frames.indexOf(playerFrame)];
+              const transport=evidence.status==='fulfilled'?evidence.value?.transport:undefined;
               let stillOwned = false;
               try {
                 stillOwned = active === current && !playerFrame.isDestroyed() && playerFrame.url === playerUrl &&
@@ -532,7 +447,10 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
                   (!current.embeddedEventUrl || belongsToEmbeddedServer(playerFrame,current.url));
               } catch {}
               if (!stillOwned) return;
+              if(failedManifest){endActive(current,incomplete('capture','upstream-http'));return;}
               endActive(current,{ url: candidate.url, referer: refererUrl.href,
+                ...(progressive?{kind:'progressive'}:{}),
+                ...(playerDocument(playerUrl)?{player:{url:playerUrl,referer:playerFrame.parent?.url||current.embeddedEventUrl||current.url}}:{}),
                 userAgent: candidate.userAgent,requestReferer:candidate.requestReferer,origin:candidate.origin,
                 ...(typeof candidate.mediaCookie === 'string' && /^[\x20-\x7e]{1,8192}$/.test(candidate.mediaCookie)
                   ? {mediaCookie:candidate.mediaCookie} : {}),
@@ -558,8 +476,9 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
     if (active) return null;
     const window = new BrowserWindow({ show: false, webPreferences: {
       partition, contextIsolation: true, sandbox: true,
-      nodeIntegration: false, webSecurity: true, backgroundThrottling: false,
+      nodeIntegration: false, webSecurity: true, disableDialogs: true, backgroundThrottling: false,
     } });
+    window.webContents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
     window.webContents.setAudioMuted(true);
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     const navigation = createNavigationPolicy(embeddedEventUrl||url,!!selection);
@@ -578,18 +497,18 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
       debug('login',authInfo.isProxy,authInfo.host);
       if (!authInfo.isProxy || authInfo.host !== '127.0.0.1') return;
       event.preventDefault();
-      callback('observer',proxySecret);
+      callback(proxy.credentials.username,proxy.credentials.password);
     });
     let current;
     const promise = new Promise(resolve => {
-      current = { window, url, embeddedEventUrl, selection, navigation, purpose, resolve, sockets: new Set(), requests: 0, proxyRequests: 0, tunnels: 0, bytes: 0,
-        issuerRequests:0,
+      current = { window, url, embeddedEventUrl, selection, navigation, purpose, resolve,
         frameLimit:embeddedEventUrl && new URL(embeddedEventUrl).hostname==='nflstreams.org' ? NFLSTREAMS_MAX_FRAMES :
           sportspatrikaEntry(url) ? SPORTSPATRIKA_MAX_FRAMES :
             tvappEmbedEntry(url) ? TVAPP_EMBED_MAX_FRAMES :
               fxtrendPpvEntry(url) ? FXTREND_PPV_MAX_FRAMES : MAX_FRAMES,
         deadline: Date.now()+OBSERVE_MS, probeKeys: new Set(), probeTimers: new Set(),
-        timer: setTimeout(() => endActive(current,incomplete(current.mediaObserved ? 'ownership' : 'capture','deadline')),OBSERVE_MS) };
+        timer: setTimeout(() => void captureDeadline(current),OBSERVE_MS) };
+      current.network=createNetworkBudget({frames:current.frameLimit,onLimit:reason=>endActive(current,incomplete('capture',reason))});
       active = current;
       current.playerTimer = setInterval(() => {
         if (active !== current || current.playerActivated) return;
@@ -601,8 +520,8 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
           const frame = offline, url = frame.url;
           void frame.executeJavaScript(`({title:document.title,readyState:document.readyState,
             hasVideo:!!document.querySelector('video'),
-            status:document.querySelector('.banner-container .status-text')?.textContent.trim() || '',
-            description:document.querySelector('.banner-container .description')?.textContent.trim() || '',
+            status:document.querySelector('.banner-container .status-text, .banner-container .status-badge span')?.textContent.trim() || '',
+            description:document.querySelector('.banner-container .description, .banner-container .overlay-msg')?.textContent.trim() || '',
             errorVisible:(()=>{const error=document.querySelector('.error-state');if(!error)return false;
               const rect=error.getBoundingClientRect(),style=getComputedStyle(error);
               return rect.width>0&&rect.height>0&&style.display!=='none'&&style.visibility!=='hidden';})(),
@@ -691,7 +610,7 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
         let frames;
         try { frames = window.webContents.mainFrame.framesInSubtree.length; }
         catch { endActive(current,incomplete('ownership','frame-detached')); return; }
-        if (frames > current.frameLimit) { debug('too many frames',frames); endActive(current,incomplete('capture','frame-budget')); }
+        current.network.frames(frames);
       });
       if(selection)window.webContents.on('did-frame-navigate',(_event,navigatedUrl,_code,_status,isMainFrame,processId,routingId)=>{
         if(active!==current||isMainFrame||!current.selection.playerUrl||
@@ -769,17 +688,10 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
       start: () => { if (active === current) void window.loadURL(embeddedEventUrl||url).catch(() => {}); } };
   }
 
-  async function start() {
-    await new Promise((resolve,reject) => {
-      proxy.once('error',reject);
-      proxy.listen(0,'127.0.0.1',resolve);
-    });
-    const proxyPort = proxy.address().port;
-    await sourceSession.setProxy({ mode:'fixed_servers', proxyRules:`http://127.0.0.1:${proxyPort}`, proxyBypassRules:'<-loopback>' });
-  }
+  const start=()=>proxy.start();
   function stop() {
     if (active) endActive(active,null);
-    if (proxy.listening) proxy.close();
+    proxy.stop();
   }
   return { start, stop, observe, busy: () => !!active,
     preemptProbe: () => {
@@ -792,12 +704,19 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
 function createSportsurgeObserver({ controlToken, port = 0, resolveAddress = pinnedAddress }) {
   const slots = Array.from({ length: OBSERVER_SLOTS },(_,index) => createObserverSlot(index,resolveAddress));
   const media = createObservedMedia({ pinAddress:resolveAddress,validateUrl:publicUrl });
-  const verifier=createPlaybackVerifier();
+  let appOrigin;
+  const players=createIsolatedPlayers({pinAddress:resolveAddress,authorizeTarget:async target=>{
+    if(!appOrigin)return false;
+    try{return (await fetch(`${appOrigin}/api/internal/player`,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(45_000),
+      headers:{'Content-Type':'application/json','x-sunday-control-token':controlToken},body:JSON.stringify(target)})).status===204;}catch{return false;}
+  }});
+  const verifier=createPlaybackVerifier({registerHost:window=>players.registerHost(window,appOrigin,'verification')});
+  const sourcePages=createSourcePageReader({BrowserWindow,session,resolveAddress});
   const service = http.createServer(async (request,response) => {
-    const release = request.method === 'DELETE' && /^\/media\/([a-f0-9-]{36})$/.exec(request.url || '');
-    if (!release && (request.method !== 'POST' || !['/observe','/media','/verify'].includes(request.url))) { response.writeHead(404); response.end(); return; }
+    const release = request.method === 'DELETE' && /^\/(media|player)\/([a-f0-9-]{36})$/.exec(request.url || '');
+    if (!release && (request.method !== 'POST' || !['/observe','/media','/verify','/source-page','/player'].includes(request.url))) { response.writeHead(404); response.end(); return; }
     if (!authorized(request.headers['x-sunday-control-token'],controlToken)) { response.writeHead(401); response.end(); return; }
-    if (release) { media.close(release[1]); response.writeHead(204); response.end(); return; }
+    if (release) {if(release[1]==='media')media.close(release[2]);else await players.revoke(release[2]); response.writeHead(204); response.end(); return; }
     let operation;
     let closed = false;
     const onClose = () => { closed = true; operation?.cancel(); };
@@ -809,11 +728,29 @@ function createSportsurgeObserver({ controlToken, port = 0, resolveAddress = pin
         if (Buffer.byteLength(body) > 4096) { response.writeHead(413); response.end(); return; }
       }
       const input = JSON.parse(body);
+      if(request.url==='/player'){
+        const capability=await players.offer(input);
+        if(closed){players.revoke(capability);return;}
+        response.off('close',onClose);response.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});
+        response.end(JSON.stringify({capability}));return;
+      }
+      if(request.url==='/source-page') {
+        if(!input||typeof input.url!=='string'||Object.keys(input).some(key=>key!=='url')) {response.writeHead(400);response.end();return;}
+        const controller=new AbortController();
+        operation={cancel:()=>controller.abort()};
+        const result=await sourcePages.read(input.url,controller.signal);
+        response.off('close',onClose);
+        if(closed)return;
+        response.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+        response.end(JSON.stringify(result));
+        return;
+      }
       if(request.url==='/verify'){
         if(!input||typeof input.sessionId!=='string'||!/^[a-f0-9-]{36}$/i.test(input.sessionId)||
           typeof input.gameId!=='string'||input.gameId.length<1||input.gameId.length>100||
           typeof input.candidateId!=='string'||input.candidateId.length<1||input.candidateId.length>100||
-          input.generation!==0){response.writeHead(400);response.end();return;}
+          input.generation!==0||input.gameDay!==undefined&&!Number.isSafeInteger(input.gameDay)){
+          response.writeHead(400);response.end();return;}
         operation=verifier.verify(input,AbortSignal.timeout(65_000));
         if(!operation){response.writeHead(429);response.end();return;}
         const result=await operation.result;
@@ -882,6 +819,8 @@ function createSportsurgeObserver({ controlToken, port = 0, resolveAddress = pin
       if (response.destroyed) { media.close(capability); return; }
       response.writeHead(200,{ 'content-type':'application/json', 'cache-control':'no-store' });
       response.end(JSON.stringify({url:result.url,referer:result.referer,userAgent:result.userAgent,capability,
+        ...(result.kind==='progressive'?{kind:'progressive'}:{}),
+        ...(result.player?{player:result.player}:{}),
         ...(result.transport ? {transport:result.transport} : {})}));
     } catch {
       operation?.cancel();
@@ -901,12 +840,15 @@ function createSportsurgeObserver({ controlToken, port = 0, resolveAddress = pin
     } catch (error) { stop(); throw error; }
   }
   function stop() {
+    const cleanup=players.stop();
     verifier.stop();
+    sourcePages.stop();
     media.stop();
     if (service.listening) service.close();
     for (const slot of slots) slot.stop();
+    return cleanup;
   }
-  return { start, stop, configureVerifier:verifier.configure };
+  return { start, stop,players,configureVerifier(value){appOrigin=value;verifier.configure(value);} };
 }
 
-module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedJwVideo, aianimalvibesPlayer, belongsToSelectedStreameastPlayer, selectedWikisportJwFrame, allowsSelectedStreameastNavigation, recognizedDlivePixelTransport };
+module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedJwVideo, aianimalvibesPlayer, belongsToSelectedStreameastPlayer, selectedWikisportJwFrame, allowsSelectedStreameastNavigation, recognizedDlivePixelTransport, selectedPlayerEvidence };

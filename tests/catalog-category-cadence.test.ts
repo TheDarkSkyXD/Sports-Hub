@@ -7,7 +7,7 @@ import test from 'node:test';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 import { CommandSchema } from '../lib/football/shared.ts';
 
-for(const sourceId of ['sportsurge-v2','streameast'])test(`${sourceId} stores five-minute category eligibility without stretching repeated failures`,async()=>{
+for(const sourceId of ['sportsurge-v2','streameast'])test(`${sourceId} keeps five-minute failures and sleeps recognized empty categories for five hours`,async()=>{
   const directory=mkdtempSync(join(tmpdir(),'catalog-category-cadence-'));
   let clock=Date.parse('2026-10-04T17:00:00Z');
   const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{
@@ -27,9 +27,9 @@ for(const sourceId of ['sportsurge-v2','streameast'])test(`${sourceId} stores fi
       assert.equal(snapshot.kind,'sources');
       if(snapshot.kind==='sources'){
         const stored=snapshot.snapshot.sources[0].lastAttempt;
-        assert.equal(stored?.nextEligibleAt,clock+300000);
+        assert.equal(stored?.nextEligibleAt,clock+(attempt<4?300000:5*60*60_000));
         assert.equal(stored?.failures,attempt<4?attempt:0);
-        assert.equal(stored?.outcome,attempt<4?'failed':'parsed');
+        assert.equal(stored?.outcome,attempt<4?'failed':'empty');
       }
     }
   }finally{await coordinator.stop();rmSync(directory,{recursive:true,force:true});}

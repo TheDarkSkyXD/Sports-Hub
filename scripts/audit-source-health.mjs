@@ -36,5 +36,5 @@ const games=board.games.filter(game=>feedEligible(game,snapshot.at)).map(game=>{
   };
 });
 process.stdout.write(`${JSON.stringify({capturedAt:new Date(snapshot.at).toISOString(),origin:origin.origin,
-  feedCheckIntervalMinutes:board.feedCheckIntervalMinutes,sourceCount:sources.length,
+  sourceCount:sources.length,
   sources,games,limits:'Playback results describe the latest check. An empty catalog or an offline upstream feed is not proof of an app defect. Shared candidates may belong to several sources.'},null,2)}\n`);

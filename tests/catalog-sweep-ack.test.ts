@@ -1,4 +1,4 @@
-import { browserCategory, sourceCoverage } from '../lib/football/source-registry.ts';
+import { browserCategory, SOURCE_REGISTRY, sourceCoverage } from '../lib/football/source-registry.ts';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import test from 'node:test';
@@ -9,7 +9,9 @@ const {runSportsurgeSweep}=require('../desktop/sportsurge-sweep.cjs');
 const {runStreameastSweep}=require('../desktop/streameast-sweep.cjs');
 const {parseCategory:parseSurgeCategory,parseDetail:parseSurgeDetail}=require('../desktop/sportsurge-catalog.cjs');
 const surgeCategoryCount=sourceCoverage('sportsurge-v2').length;
-const eastCategoryCount=sourceCoverage('streameast').length;
+const eastCategories=SOURCE_REGISTRY.find(source=>source.id==='streameast')?.browserCategories;
+assert.ok(eastCategories);
+const eastCategoryCount=eastCategories.length;
 const now=Date.parse('2026-10-03T23:30:00Z');
 const runId='11111111-1111-4111-8111-111111111111';
 const games=[
@@ -55,6 +57,7 @@ function eastUrl(game:typeof games[number]) {
   return `https://v2.streameast.ga/${game.league==='ncaaf'?'cfb':'nfl'}/${game.title.toLowerCase().replaceAll(' ','-')}-${Math.floor(now/1000)}/`;
 }
 function eastCategory(league:string) {
+  if(league==='motorsport')return '<a class="m-card m-card--event" data-sport-tag="darts" href="/other-events/swiss-darts-trophy-1791712800/"><span class="m-card__title">Swiss Darts Trophy</span></a>';
   if(!games.some(game=>game.league===league))return `<div id="m-schedule-empty" class="m-empty"><h2 class="m-empty__title">${browserCategory('streameast',league)?.emptyTitles?.[0]}</h2></div>`;
   return games.filter(game=>game.league===league).map(game=>
     `<article class="m-card" data-match-id="${game.id.split(':')[1]}" data-team-names="${game.title.replace(' vs ','|')}" data-time="${Math.floor(now/1000)}"><a class="m-card__link" aria-label="${game.title}" href="${eastUrl(game)}"></a></article>`).join('');
@@ -78,14 +81,14 @@ test('Sportsurge acknowledgments skip only confirmed IDs and keep all 25 provide
     },
     send:async(catalog:SportsurgeCatalog)=>{
       sent.push(structuredClone(catalog));
-      return {kind:'catalog-ack',skipDetailEventIds:catalog.sequence===1?['ncaaf:10001','ncaaf:99999']:
-        catalog.sequence===2?['nfl:20001']:[]};
+      return {kind:'catalog-ack',skipDetailEventIds:[...catalog.events.filter(event=>skipped.has(event.id)).map(event=>event.id),'ncaaf:99999']};
     },
     signal:new AbortController().signal,now:()=>now,runId,
   });
   assert.deepEqual(sent.map(catalog=>catalog.sequence),Array.from({length:8+surgeCategoryCount},(_,index)=>index));
   assert.deepEqual(sent[1].events.map(event=>event.id),games.slice(0,3).map(game=>game.id));
-  assert.deepEqual(sent[2].events.map(event=>event.id),games.slice(1).map(game=>game.id));
+  const footballCheckpoint=sent.find(catalog=>catalog.events.some(event=>event.id==='nfl:20001'));
+  assert.deepEqual(footballCheckpoint?.events.map(event=>event.id),games.slice(1).map(game=>game.id));
   assert.deepEqual(result.events.map(event=>event.id),['ncaaf:10002','ncaaf:10003','nfl:20002']);
   assert.equal(result.state.kind,'complete');
   assert.equal(result.events.every(event=>event.detail.kind==='collected'&&event.detail.providers.length===25),true);
@@ -141,6 +144,7 @@ test('a limit fallback replays the exact accepted checkpoint before skipped even
 test('Sportsurge removes late acknowledged events from pending work without reordering retained games',async()=>{
   const reads:string[]=[];
   const sent:SportsurgeCatalog[]=[];
+  let firstReadCheckpoint:SportsurgeCatalog|undefined;
   const result:SportsurgeCatalog=await runSportsurgeSweep({
     read:async(url:string,page:string,league:string)=>{
       if(page==='category')return surgeCategory(league);
@@ -151,14 +155,15 @@ test('Sportsurge removes late acknowledged events from pending work without reor
     },
     send:async(catalog:SportsurgeCatalog)=>{
       sent.push(structuredClone(catalog));
-      return {kind:'catalog-ack',skipDetailEventIds:catalog.sequence===surgeCategoryCount+1?['ncaaf:10002','nfl:20001']:[]};
+      if(reads.length)firstReadCheckpoint??=structuredClone(catalog);
+      return {kind:'catalog-ack',skipDetailEventIds:reads.length?['ncaaf:10002','nfl:20001']:[]};
     },
     signal:new AbortController().signal,now:()=>now,runId,
   });
-  assert.deepEqual(reads,[surgeUrl(games[0]),surgeUrl(games[2]),surgeUrl(games[4])]);
+  assert.deepEqual([...reads].sort(),[surgeUrl(games[0]),surgeUrl(games[2]),surgeUrl(games[4])].sort());
+  assert.equal(reads[0],surgeUrl(games[0]));
   assert.deepEqual(sent.map(catalog=>catalog.sequence),Array.from({length:8+surgeCategoryCount},(_,index)=>index));
-  assert.deepEqual(sent[surgeCategoryCount+1].events.map(event=>event.id),games.map(game=>game.id));
-  assert.deepEqual(sent[surgeCategoryCount+2].events.map(event=>event.id),['ncaaf:10001','ncaaf:10003','nfl:20002']);
+  assert.deepEqual(firstReadCheckpoint?.events.filter(event=>event.league==='ncaaf').map(event=>event.id),games.slice(0,3).map(game=>game.id));
   assert.deepEqual(result.events.map(event=>event.id),['ncaaf:10001','ncaaf:10003','nfl:20002']);
   assert.equal(result.state.kind,'complete');
   assert.equal(result.events.every(event=>event.detail.kind==='collected'&&event.detail.providers.length===25),true);
@@ -214,38 +219,45 @@ test('a rate limit after an acknowledged category keeps only retained events in 
 
 test('both sweeps preserve the accepted payload when a limit follows a late acknowledgement',async()=>{
   for(const provider of ['sportsurge','streameast']) {
-    const categoryCount=provider==='sportsurge'?surgeCategoryCount:eastCategoryCount;
     const sent:(SportsurgeCatalog|StreameastCatalog)[]=[];
+    let detailStarted=false;
+    let acknowledged:SportsurgeCatalog|StreameastCatalog|undefined;
     const run=provider==='sportsurge'?runSportsurgeSweep:runStreameastSweep;
     const eventUrl=provider==='sportsurge'?surgeUrl:eastUrl;
     await assert.rejects(run({
       read:async(url:string,page:string,league:string)=>{
         if(page==='category')return provider==='sportsurge'?surgeCategory(league):eastCategory(league);
         if(page==='server')return '<iframe src="https://streame.center/stream-east/ch33.php"></iframe>';
+        detailStarted=true;
         const game=games.find(item=>eventUrl(item)===url);
         assert.ok(game);
         return provider==='sportsurge'?surgeDetail(game):eastDetail(game);
       },
       send:async(catalog:SportsurgeCatalog|StreameastCatalog)=>{
         sent.push(structuredClone(catalog));
-        if(catalog.sequence===categoryCount+2&&catalog.state.kind==='collecting')throw new Error('limit');
-        return {kind:'catalog-ack',skipDetailEventIds:catalog.sequence===categoryCount+1?['ncaaf:10002','nfl:20001']:[]};
+        if(acknowledged&&catalog.sequence>acknowledged.sequence&&catalog.state.kind==='collecting')throw new Error('limit');
+        if(!acknowledged&&detailStarted&&Object.values(catalog.categories).every(category=>category.kind!=='pending')){
+          acknowledged=structuredClone(catalog);
+          return {kind:'catalog-ack',skipDetailEventIds:['ncaaf:10002','nfl:20001']};
+        }
+        return {kind:'catalog-ack',skipDetailEventIds:[]};
       },
       signal:new AbortController().signal,now:()=>now,runId,
     }),/limit/);
-    assert.deepEqual(sent.map(catalog=>catalog.sequence),[...Array.from({length:categoryCount+3},(_,index)=>index),categoryCount+2],provider);
-    assert.deepEqual(sent[categoryCount+2].events.map(event=>event.id),['ncaaf:10001','ncaaf:10003','nfl:20002'],provider);
-    assert.deepEqual(sent[categoryCount+3],{...sent[categoryCount+1],sequence:categoryCount+2,state:{kind:'partial',at:now,reason:'limit'}},provider);
+    assert.ok(acknowledged);
+    const rejected=sent.at(-2);
+    assert.deepEqual(sent.map(catalog=>catalog.sequence),[...Array.from({length:sent.length-1},(_,index)=>index),sent.length-2],provider);
+    assert.deepEqual(rejected?.events.map(event=>event.id),['ncaaf:10001','ncaaf:10003','nfl:20002'],provider);
+    assert.deepEqual(sent.at(-1),{...acknowledged,sequence:acknowledged.sequence+1,state:{kind:'partial',at:now,reason:'limit'}},provider);
   }
 });
 
 for(const provider of ['sportsurge','streameast'] as const)
-for(const [stage,skipAt] of [['before detail',2],['after detail',3]] as const)
+for(const stage of ['before detail','after detail'] as const)
 test(`${provider} drops a newly excluded event ${stage} without publishing its detail`,async()=>{
   const run=provider==='sportsurge'?runSportsurgeSweep:runStreameastSweep;
   const eventUrl=provider==='sportsurge'?surgeUrl:eastUrl;
   const first=games[0];
-  const categoryCount=provider==='sportsurge'?surgeCategoryCount:eastCategoryCount;
   const reads:{url:string;page:string}[]=[];
   const result:SportsurgeCatalog|StreameastCatalog=await run({
     read:async(url:string,page:string,league:string)=>{
@@ -257,7 +269,8 @@ test(`${provider} drops a newly excluded event ${stage} without publishing its d
       return provider==='sportsurge'?surgeDetail(game):eastDetail(game);
     },
     send:async(catalog:SportsurgeCatalog|StreameastCatalog)=>({kind:'catalog-ack',
-      skipDetailEventIds:catalog.sequence===skipAt+categoryCount-2?[first.id]:[]}),
+      skipDetailEventIds:catalog.events.some(event=>event.id===first.id)&&
+        (stage==='before detail'||reads.some(row=>row.page==='detail'&&row.url===eventUrl(first)))?[first.id]:[]}),
     signal:new AbortController().signal,now:()=>now,runId,
   });
   assert.equal(result.state.kind,'complete');

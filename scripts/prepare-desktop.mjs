@@ -1,6 +1,7 @@
-import { cp, mkdir, readdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, realpath, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { activeCollectorAddon } from './build-rust-collector.mjs';
+import { preparePlaybackWorker } from './prepare-playback-worker.mjs';
 
 const distDir = process.argv[2] ?? '.next';
 if (distDir !== '.next' && !/^\.desktop-runtime\/local-builds\/[a-f0-9-]+$/.test(distDir))
@@ -13,6 +14,16 @@ const staticFiles = path.resolve(distDir, 'static');
 
 await stat(server);
 const addon = await activeCollectorAddon(path.resolve('.'));
+for (const relative of [path.join('.desktop-runtime', 'rust-collector-addon'), path.join('native', 'collector')]) {
+  const directory = await realpath(path.join(standalone, relative)).catch(error => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (!directory) continue;
+  if (path.relative(standalone, directory) !== relative)
+    throw new Error('Collector staging directory leaves its standalone output');
+  await rm(directory, { recursive: true, force: true });
+}
 const collectorDirectory = path.join(standalone, 'native', 'collector');
 await mkdir(collectorDirectory, { recursive: true });
 await cp(addon.binary, path.join(collectorDirectory, addon.filename));
@@ -37,6 +48,7 @@ if (distDir === '.next') {
 await stat(staticFiles);
 await mkdir(path.join(standalone, distDir), { recursive: true });
 await cp(staticFiles, path.join(standalone, distDir, 'static'), { recursive: true, force: true });
+await preparePlaybackWorker();
 await cp(path.resolve('public'), path.join(standalone, 'public'), { recursive: true, force: true });
 
 const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));
@@ -80,6 +92,7 @@ if (distDir !== '.next') {
   const aliases = path.join(standalone, distDir, 'node_modules');
   const sourceModules = await realpath('node_modules');
   const served = await realpath(standalone);
+  const bundledModules=await realpath(path.join(standalone,'node_modules'));
   async function materialize(directory) {
     const entries = await readdir(directory, { withFileTypes: true }).catch(error => {
       if (error.code === 'ENOENT') return [];
@@ -92,7 +105,9 @@ if (distDir !== '.next') {
         continue;
       }
       if (!entry.isSymbolicLink()) continue;
-      const relative = path.relative(sourceModules, await realpath(alias));
+      const target=await realpath(alias);
+      let relative=path.relative(sourceModules,target);
+      if(relative.startsWith('..')||path.isAbsolute(relative))relative=path.relative(bundledModules,target);
       const parts = relative.split(path.sep);
       if (relative.startsWith('..') || path.isAbsolute(relative) ||
           !(parts.length === 1 || (parts.length === 2 && parts[0].startsWith('@'))) ||
@@ -120,6 +135,7 @@ await stat(path.join(standalone, 'native/collector', addon.filename));
 for (const name of ['catalog-stream', 'catalog-stream-policy'])
   await stat(path.join(standalone, `lib/playback/providers/${name}.ts`));
 await stat(path.join(standalone, 'lib/playback/probe.ts'));
+await stat(path.join(standalone, 'lib/playback/verification-policy.json'));
 await stat(path.join(standalone, 'lib/sunday.ts'));
 await stat(path.join(standalone, 'lib/game-timing.ts'));
 console.log(`Prepared standalone worker and ${copied.size} runtime package trees.`);

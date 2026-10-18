@@ -5,9 +5,16 @@ import { openProvider } from './playback/provider-registry.ts';
 import type { ProviderPlayback, ProviderResource, ResourceKind } from './playback/provider.ts';
 
 export type StreamGrant = {sessionId:string; candidateId:string; generation:number; gameId:string; purpose?:'verification'};
+
+export class StreamPlaylistError extends Error {
+  readonly reason:'invalid-media'|'unsupported';
+  constructor(reason:'invalid-media'|'unsupported',message:string){super(message);this.name='StreamPlaylistError';this.reason=reason;}
+}
 type Resource = StreamGrant & {kind:ResourceKind; identity:string; resource:ProviderResource; usedAt:number};
 type PlaybackState = {locator:CandidateLocator; opening?:Promise<ProviderPlayback>; openingController?:AbortController;
-  waiters:number; playback?:ProviderPlayback; deadlineTimer?:ReturnType<typeof setTimeout>};
+  waiters:number; playback?:ProviderPlayback; deadlineTimer?:ReturnType<typeof setTimeout>;
+  playerOpening?:Promise<PlayerCapability>;player?:PlayerCapability};
+export type PlayerCapability={capability:string;close():void};
 type Registry = {
   byToken:Map<string,Resource>; byResource:Map<string,string>;
   controllers:Map<string,AbortController>; controllerUsedAt:Map<string,number>;
@@ -42,6 +49,7 @@ function closePlayback(id:string):void {
   if(state?.deadlineTimer)clearTimeout(state.deadlineTimer);
   state?.openingController?.abort();
   state?.playback?.close();
+  state?.player?.close();
 }
 
 export function streamSignal(grant:StreamGrant):AbortSignal {
@@ -71,8 +79,10 @@ export async function openGeneration(grant:StreamGrant,locator:CandidateLocator,
   if (!state.opening) {
     const owned=state;
     owned.openingController=new AbortController();
-    const signal=AbortSignal.any([generationSignal,owned.openingController.signal]);
-    owned.opening=Promise.resolve().then(()=>opener(locator,signal,purpose)).then(playback=>{
+    const signal=AbortSignal.any([generationSignal,owned.openingController.signal,AbortSignal.timeout(35000)]);
+    const started=Date.now();
+    owned.opening=Promise.resolve().then(()=>opener(locator,signal,purpose)).then(opened=>{
+      const playback={...opened,timings:{...opened.timings,resolutionMs:Math.min(300000,Math.max(0,Date.now()-started))},close:()=>opened.close()};
       if (signal.aborted || registry.playbacks.get(id)!==owned) {playback.close();throw new Error('Stream generation ended');}
       owned.playback=playback;
       owned.opening=undefined;
@@ -101,6 +111,17 @@ export async function openGeneration(grant:StreamGrant,locator:CandidateLocator,
       owned.openingController?.abort();
     }
   }
+}
+
+export function retainGenerationPlayer(grant:StreamGrant,create:()=>Promise<PlayerCapability>):Promise<PlayerCapability>{
+  const id=grantKey(grant),state=registry.playbacks.get(id);
+  if(!state||!state.playback||streamSignal(grant).aborted)return Promise.reject(new Error('Stream generation ended'));
+  if(state.player)return Promise.resolve(state.player);
+  state.playerOpening??=create().then(player=>{
+    if(registry.playbacks.get(id)!==state||streamSignal(grant).aborted){player.close();throw new Error('Stream generation ended');}
+    state.player=player;return player;
+  }).catch(error=>{state.playerOpening=undefined;throw error;});
+  return state.playerOpening;
 }
 
 export function touchStreamSession(sessionId:string,generation:number,now=Date.now()):void {
@@ -175,7 +196,7 @@ export function registeredResource(token:string):Resource | null {
 }
 
 export function rewritePlaylist(body:string,source:ProviderResource,grant:StreamGrant):string {
-  if (!body.startsWith('#EXTM3U')) throw new Error('Invalid HLS playlist');
+  if (!body.startsWith('#EXTM3U')) throw new StreamPlaylistError('invalid-media','Invalid HLS playlist');
   let nextIsPlaylist=false;
   let sequence:bigint | undefined;
   let byteRange=false;
@@ -185,13 +206,13 @@ export function rewritePlaylist(body:string,source:ProviderResource,grant:Stream
       if (line.startsWith('#EXT-X-BYTERANGE:')) byteRange=true;
       if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
         const value=line.slice(line.indexOf(':')+1).trim();
-        if (!/^\d+$/.test(value)) throw new Error('Invalid media sequence');
+        if (!/^\d+$/.test(value)) throw new StreamPlaylistError('invalid-media','Invalid media sequence');
         sequence=BigInt(value);
       }
       return line.replace(/URI="([^"]+)"/g,(_attribute,value:string)=>{
         const kind:ResourceKind=/^(#EXT-X-MEDIA|#EXT-X-I-FRAME-STREAM-INF|#EXT-X-RENDITION-REPORT)/.test(line)?'playlist':'media';
         const child=source.resolve(value,kind);
-        if (!child) throw new Error('Unsupported stream resource');
+        if (!child) throw new StreamPlaylistError('unsupported','Unsupported stream resource');
         return `URI="/api/stream/media/${registerResource(grant,child)}"`;
       });
     }
@@ -199,7 +220,7 @@ export function rewritePlaylist(body:string,source:ProviderResource,grant:Stream
     const kind:ResourceKind=nextIsPlaylist?'playlist':'media';
     nextIsPlaylist=false;
     const child=source.resolve(line.trim(),kind);
-    if (!child) throw new Error('Unsupported stream resource');
+    if (!child) throw new StreamPlaylistError('unsupported','Unsupported stream resource');
     const identity=kind==='media' && sequence!==undefined && !byteRange ?
       JSON.stringify([source.identity,'segment',String(sequence),child.identity]) : child.identity;
     if (kind==='media' && sequence!==undefined) sequence++;

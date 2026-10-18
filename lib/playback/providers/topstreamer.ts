@@ -127,13 +127,14 @@ function nestedPlayer(html: string): URL | null {
 export async function publishedTopstreamerVideo(server: URL, parent: URL, signal: AbortSignal,
   requester: Requester = (url,active,headers,timeoutMs) => publicHttpsRequest(url,active,headers,undefined,timeoutMs)): Promise<ProviderPlayback | null> {
   signal.throwIfAborted();
+  const basePath = server.pathname.replace(/\/(?:core|vector|vertex|foxtrot|main|hotel)\/[1-9]\d{0,2}$/, '');
+  if (basePath !== parent.pathname) return null;
   const serverHtml = await readPage(server,parent,signal,requester);
   const $ = load(serverHtml);
   const canonical = $('link[rel="canonical"]');
   const frame = $('.player-embed-wrap iframe[src]');
-  const basePath = server.pathname.replace(/\/(?:core|vector|vertex|foxtrot|main|hotel)\/[1-9]\d{0,2}$/, '');
   const eventBase = new URL(basePath,server.origin);
-  if (basePath !== parent.pathname || canonical.length !== 1 || canonical.attr('href') !== eventBase.href ||
+  if (canonical.length !== 1 || canonical.attr('href') !== eventBase.href ||
     frame.length !== 1) return null;
   const middle = exactHost(frame.attr('src') || '', 'trendy48.site');
   if (!middle || !/^\/top\/[a-z0-9-]{1,64}$/.test(middle.pathname)) return null;

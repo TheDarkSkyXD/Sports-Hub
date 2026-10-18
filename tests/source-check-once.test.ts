@@ -101,7 +101,7 @@ test('slow browser choices qualify across the game frontier and remain selectabl
       'failed routes make progress alongside working rechecks');
     const checksAt45 = run.calls.length;
     assert.ok(checksAt45 > 30);
-    await run.refresh(50 * 60_000);
+    await run.refresh(75 * 60_000);
     assert.ok(run.calls.length > checksAt45, 'due maintenance keeps checking after initial qualification');
   } finally { await run.stop(); }
 });
@@ -112,14 +112,14 @@ test('new published choices are discovered while working proof is refreshed at t
     await run.refresh();
     const before = (await run.snapshot()).games[0].candidates[0].availability;
     run.setCount(2);
-    await run.refresh(299_999);
+    await run.refresh(30*60_000-30_001);
     assert.equal((await run.snapshot()).games[0].candidates.length, 1);
-    await run.refresh(300_001);
+    await run.refresh(30*60_000);
     const after = (await run.snapshot()).games[0].candidates;
     assert.equal(after.length, 2);
     assert.deepEqual(before, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     assert.deepEqual(after.find(row => row.id === 'route-000')?.availability,
-      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 300_001 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 30*60_000 });
     assert.equal(run.calls.length, 3);
   } finally { await run.stop(); }
 });
@@ -134,18 +134,18 @@ test('automatic working rechecks and manual failed-feed retries use their own ca
     assert.deepEqual(before.find(row => row.id === 'route-000')?.availability,
       { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     assert.deepEqual(after.find(row => row.id === 'route-000')?.availability,
-      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 11 * 60_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     assert.equal(after.find(row => row.id === 'route-001')?.availability.kind, 'unavailable');
-    assert.equal(run.calls.length, 4);
+    assert.equal(run.calls.length, 3);
     assert.equal((await run.coordinator.command({ kind: 'open', gameId: game.id, manual: false })).kind, 'playback');
     await run.coordinator.command({ kind: 'check-sources', gameIds: [game.id], retry: true });
     await drain();
-    assert.equal(run.calls.length, 5);
-    assert.equal(run.calls[4].provider === 'gooz' && run.calls[4].playerId, '11');
+    assert.equal(run.calls.length, 4);
+    assert.equal(run.calls[3].provider === 'gooz' && run.calls[3].playerId, '11');
     await run.refresh(31 * 60_000);
     assert.deepEqual((await run.snapshot()).games[0].candidates.find(row => row.id === 'route-000')?.availability,
       { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 31 * 60_000 });
-    assert.equal(run.calls.length, 7);
+    assert.equal(run.calls.length, 6);
   } finally { await run.stop(); }
 });
 
@@ -157,13 +157,13 @@ test('a returning failed feed retries after its cooldown while a changed locator
     await run.refresh(31 * 60_000);
     assert.equal((await run.snapshot()).games.flatMap(row => row.candidates).length, 0);
     run.setVisible(true);
-    await run.refresh(36 * 60_000);
+    await run.refresh(61 * 60_000);
     assert.equal((await run.snapshot()).games[0].candidates.find(row => row.id === 'route-001')?.availability.kind, 'unavailable');
-    assert.equal(run.calls.length, 4, 'a returning failed feed must recover after its check cooldown');
+    assert.equal(run.calls.length, 6, 'returning feeds retry after the earlier maintenance checks');
     run.change();
-    await run.refresh(41 * 60_000);
-    assert.equal(run.calls.length, 8);
-    assert.deepEqual(run.calls.slice(4).map(row => row.provider === 'gooz' && row.playerId).sort(), ['10', '11', '20', '21']);
+    await run.refresh(91 * 60_000);
+    assert.equal(run.calls.length, 10);
+    assert.deepEqual(run.calls.slice(6).map(row => row.provider === 'gooz' && row.playerId).sort(), ['10', '11', '20', '21']);
   } finally { await run.stop(); }
 });
 
@@ -186,7 +186,7 @@ test('a never-checked feed gets the next game slot ahead of failed retries', asy
     await run.refresh(300_000);
     assert.equal(run.calls.length, 10);
     run.setCount(9);
-    run.setClock(600_000);
+    run.setClock(30*60_000);
     await run.coordinator.refresh(true);
     await drain();
     const discovered = (await run.snapshot()).games[0].candidates;
@@ -201,18 +201,16 @@ test('a never-checked feed gets the next game slot ahead of failed retries', asy
   } finally { await run.stop(); }
 });
 
-test('source refresh setting does not postpone admitted media retries', async () => {
+test('automatic discovery does not postpone admitted media retries', async () => {
   const run = fixture({ count: 8, allFail: true, holdRetries: true, recoverFailures: true });
   try {
     await run.refresh();
-    await run.coordinator.command({ kind: 'set-feed-check-interval', minutes: 1 });
     await drain();
     await run.refresh(300_000);
     const admitted = (await run.snapshot()).games[0].candidates;
     assert.equal(admitted.filter(row => row.availability.kind === 'checking' && row.availability.progress.kind === 'active').length, 2);
     assert.equal(run.calls.length, 10);
 
-    await run.coordinator.command({ kind: 'set-feed-check-interval', minutes: 15 });
     await drain();
     for(const elapsed of [320_000,340_000,360_000,380_000])await run.refresh(elapsed);
     assert.equal(run.calls.length, 16);

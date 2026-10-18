@@ -17,7 +17,7 @@ async function drain() {
   for (let i = 0; i < 60; i++) await new Promise<void>(resolve => setImmediate(resolve));
 }
 
-for (const missing of [true, false]) test(missing ? 'missing player details retry at five minutes' : 'unavailable media retries automatically at five minutes', async () => {
+for (const missing of [true, false]) test(missing ? 'missing player details retry at thirty minutes' : 'unavailable media retries automatically at five minutes', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'source-minute-retry-'));
   let clock = at, details = 0, probes = 0;
   const coordinator = createFootballCoordinator(join(directory, 'state.sqlite'), {
@@ -33,13 +33,14 @@ for (const missing of [true, false]) test(missing ? 'missing player details retr
   });
   const refresh = async () => { await coordinator.refresh(); await drain(); };
   const count = () => missing ? details : probes;
+  const retryAt = missing ? 1_800_000 : 300_000;
   try {
     await refresh();
     assert.equal(count(), 1);
-    clock = at + 299999;
+    clock = at + retryAt - 1;
     await coordinator.command({ kind: 'sources' });
     assert.equal(count(), 1);
-    clock = at + 300000;
+    clock = at + retryAt;
     await coordinator.refresh();
     await drain();
     assert.equal(count(), 2);
@@ -75,12 +76,13 @@ test(`a 429 pauses same-host listings and details for ${cooldown}ms with Retry-A
     probeCandidate: async () => ({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} }),
   });
   const refresh = async (time: number) => { clock = time; await coordinator.refresh(true); await drain(); };
+  const nextSourceCheck = at + 1_800_000;
   try {
     await refresh(at);
     const initialReads = reads.length;
     assert.equal(initialReads, 4);
     limited = true;
-    await refresh(at + 300000);
+    await refresh(nextSourceCheck);
     assert.deepEqual(reads.slice(initialReads), [sources[0].url]);
     const snapshot = await coordinator.command({ kind: 'sources' });
     assert.equal(snapshot.kind, 'sources');
@@ -90,9 +92,9 @@ test(`a 429 pauses same-host listings and details for ${cooldown}ms with Retry-A
       assert.equal(snapshot.snapshot.sources.find(source => source.id === 'two')?.lastAttempt?.failures, 0);
     }
     limited = false;
-    await refresh(at + 300000 + cooldown - 1);
+    await refresh(nextSourceCheck + cooldown - 1);
     assert.equal(reads.length, initialReads + 1);
-    await refresh(at + 300000 + cooldown);
+    await refresh(nextSourceCheck + cooldown);
     assert.ok(reads.slice(initialReads + 1).includes(sources[1].url));
     assert.ok(reads.slice(initialReads + 1).includes('https://fixture.example/detail-two'));
   } finally { await coordinator.stop(); rmSync(directory, { recursive: true, force: true }); }
@@ -181,12 +183,12 @@ test('NFLStreams retries old unsupported evidence without waking another version
   }finally{await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 
-test('a source completing after the scan starts is admitted on the first local poll after its five-minute deadline',async()=>{
+test('an empty source completing after the scan starts is admitted on the first local poll after its five-hour deadline',async()=>{
   const directory=mkdtempSync(join(tmpdir(),'source-completion-cadence-'));
   let clock=at,reads=0;
   const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{
     now:()=>clock,sources:[{id:'fixture',url:'https://fixture.example/list',family:'fixture'}],
-    readSchedule:async source=>({games:source.id==='nfl'?[game]:[],league:source.league,at:clock}),
+    readSchedule:async source=>({games:[],league:source.league,at:clock}),
     readHtml:async()=>{reads++;clock+=1000;return '<main>empty</main>';},
     parseListings:()=>({outcome:'empty',observations:[]}),
   });
@@ -196,10 +198,10 @@ test('a source completing after the scan starts is admitted on the first local p
     assert.equal(reads,1);
     const initial=await coordinator.command({kind:'sources'});
     assert.equal(initial.kind,'sources');
-    if(initial.kind==='sources')assert.equal(initial.snapshot.sources[0].lastAttempt?.nextEligibleAt,at+301000);
-    await refresh(at+300000);
-    assert.equal(reads,1,'the network request must wait until five minutes after completion');
-    await refresh(at+330000);
-    assert.equal(reads,2,'a skipped admission poll must not add another five-minute delay');
+    if(initial.kind==='sources')assert.equal(initial.snapshot.sources[0].lastAttempt?.nextEligibleAt,at+18_001_000);
+    await refresh(at+18_000_000);
+    assert.equal(reads,1,'the network request must wait until five hours after completion');
+    await refresh(at+18_030_000);
+    assert.equal(reads,2,'a skipped admission poll must not add another five-hour delay');
   }finally{await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });

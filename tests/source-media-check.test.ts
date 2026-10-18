@@ -67,7 +67,7 @@ function fixture(options: { extraServers: boolean; secondGame: boolean; fifthSer
     readSchedule: async partition => ({ games: partition.id === 'nfl' ? [game, ...(options.secondGame ? [otherGame] : [])] : [],
       league: partition.league, at: clock }),
     readHtml: async () => '<main>Published servers</main>',
-    parseListings: source => ({ outcome: 'parsed', observations: listings.filter(listing => listing.sourceId === source.id) }),
+    parseListings: source => ({ outcome: 'parsed', observations: listings.filter(listing => listing.sourceId === source.id).map(listing=>({...listing,observedAt:clock})) }),
     enrichObservation: value => value,
     compatiblePlayers: (gameId, listing) => {
       if (listing.sourceId === 'crack' && !crackVisible) return [];
@@ -189,7 +189,7 @@ test('source health reports queued, active, and deferred media-check progress wi
       return value?.kind === 'checking' && value.progress.kind === 'deferred';
     });
     assert.deepEqual(await availability(deferredId), {
-      kind: 'checking', progress: { kind: 'deferred', since: at + 2000, retryAt: at + 302_000 },
+      kind: 'checking', progress: { kind: 'deferred', since: at + 2000, retryAt: at + 32_000, retryAfterMs: 30_000 },
     });
   } finally {
     await run.stop();
@@ -222,7 +222,7 @@ test('removing the chosen event page rechecks a surviving alias without acceptin
       run.pending.some(job => job.locator.provider === 'event-page' && job.locator.eventUrl === crackPage));
     const shared = run.pending.find(job => job.locator.provider === 'event-page' && job.locator.eventUrl === crackPage);
     assert.ok(shared);
-    run.setClock(at + 300_001);
+    run.setClock(at + 1_800_001);
     run.setCrackVisible(false);
     await run.coordinator.refresh(true);
     await until(async () => (await run.candidates()).length === 1);
@@ -272,7 +272,7 @@ test('opening an unverified game requests its queued media check before older ba
     readSchedule: async partition => ({ games: partition.id === 'nfl' ? [background, requested] : [], league: partition.league, at: clock }),
     readHtml: async () => '<main>Published servers</main>',
     parseListings: source => ({ outcome: 'parsed', observations: listings.filter(listing =>
-      listing.sourceId === source.id && (listing.sourceId !== 'requested' || requestedVisible)) }),
+      listing.sourceId === source.id && (listing.sourceId !== 'requested' || requestedVisible)).map(listing=>({...listing,observedAt:clock})) }),
     enrichObservation: value => value,
     compatiblePlayers: (gameId, listing) => (gameId === requested.id ? [requestedServer] : backgroundServers)
       .map((serverUrl, index) => ({ id: `${listing.sourceId}-${index}`, label: `Server ${index + 1}`,
@@ -287,21 +287,22 @@ test('opening an unverified game requests its queued media check before older ba
     await until(async () => {
       const reply = await coordinator.command({ kind: 'sources' });
       return reply.kind === 'sources' && reply.snapshot.games.find(row => row.gameId === background.id)?.candidates.length === 6 &&
-        pending.length === 1;
+        pending.length === 2;
     });
     assert.equal(pending.every(job => job.locator.provider === 'event-page' && job.locator.gameId === background.id), true);
     requestedVisible = true;
-    clock = at + 300_001;
+    clock = at + 1_800_001;
     await coordinator.refresh(true);
     await until(async () => {
       const reply = await coordinator.command({ kind: 'sources' });
       return reply.kind === 'sources' && reply.snapshot.games.find(row => row.gameId === requested.id)?.candidates.length === 1;
     });
-    await until(()=>pending.length===2);
-    assert.equal(pending[1].locator.provider === 'event-page' ? pending[1].locator.gameId : '', requested.id);
     const opened = await coordinator.command({ kind: 'open', gameId: requested.id, manual: false });
     assert.equal(opened.kind, 'error');
     if (opened.kind === 'error') assert.equal(opened.status, 404);
+    pending[0].resolve({kind:'unavailable',reason:'invalid-media'});
+    await until(()=>pending.length>=3);
+    assert.equal(pending[2].locator.provider === 'event-page' ? pending[2].locator.gameId : '', requested.id);
     assert.equal(pending[0].locator.provider === 'event-page' ? pending[0].locator.gameId : '', background.id);
   } finally {
     for (const job of pending) job.resolve({ kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4} });

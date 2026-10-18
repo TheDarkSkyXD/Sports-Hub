@@ -1,12 +1,12 @@
 import { Worker } from 'node:worker_threads';
 import { join } from 'node:path';
-import type { ScheduleResult, ScheduleSource } from '../domain/ports.ts';
+import type { ScheduleProgress, ScheduleResult, ScheduleSource } from '../domain/ports.ts';
 
 type WorkerEvent =
-  | {kind:'current';id:number;result:ScheduleResult}
+  | {kind:'current';id:number;result:ScheduleProgress}
   | {kind:'complete';id:number;result:ScheduleResult}
   | {kind:'failed';id:number;failure:{code:string;message:string}};
-type Pending={signal:AbortSignal;onCurrent?: (result:ScheduleResult)=>void;
+type Pending={signal:AbortSignal;onCurrent?: (result:ScheduleProgress)=>void;
   resolve:(result:ScheduleResult)=>void;reject:(error:Error)=>void;onAbort:()=>void};
 
 export class ScheduleWorkerClient {
@@ -37,7 +37,7 @@ export class ScheduleWorkerClient {
     worker.on('error',failed);
     worker.on('exit',failed);
   }
-  readSchedule(partition:ScheduleSource,now:number,signal:AbortSignal,onCurrent?: (result:ScheduleResult)=>void):Promise<ScheduleResult> {
+  readSchedule(partition:ScheduleSource,now:number,signal:AbortSignal,onCurrent?: (result:ScheduleProgress)=>void):Promise<ScheduleResult> {
     if(signal.aborted)return Promise.reject(signal.reason);
     this.open();
     if(!this.worker)return Promise.reject(new Error('schedule-worker-unavailable'));

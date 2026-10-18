@@ -1,5 +1,5 @@
 require('./closed-stdio.cjs');
-const { app, autoUpdater, BrowserWindow, dialog, ipcMain, shell, powerMonitor, Notification } = require('electron');
+const { app, autoUpdater, BrowserWindow, dialog, ipcMain, shell, powerMonitor, Notification, session } = require('electron');
 const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -8,8 +8,12 @@ const { createLocalServer } = require('./local-server.cjs');
 const { createSportsurgeCollector } = require('./sportsurge-collector.cjs');
 const { createSportsurgeObserver } = require('./sportsurge-observer.cjs');
 const { createStreameastCollector } = require('./streameast-collector.cjs');
-const { CH, createUpdateService, selectUpdateFeedUrl } = require('./update.cjs');
+const { CH, createUpdateService, selectUpdateFeedUrl, defaultUpdateFeedUrl } = require('./update.cjs');
 const { DesktopNsisUpdater } = require('./nsis-updater.cjs');
+const {installSessionSecurity,allowedProjectLink,registerTrustedUi}=require('./security.cjs');
+
+app.commandLine.appendSwitch('ignore-connections-limit','127.0.0.1,localhost');
+installSessionSecurity({app,session});
 
 app.setName('Sunday Room');
 const appId = app.isPackaged ? 'com.sundayroom.desktop' : 'com.sundayroom.desktop.dev';
@@ -140,7 +144,7 @@ app.whenReady().then(async () => {
     title:'Sunday Room',width:1500,height:1060,minWidth:900,minHeight:650,
     backgroundColor:'#101114',autoHideMenuBar:true,show:true,
     icon:path.join(__dirname,'icons','sunday-room.png'),
-    webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,webSecurity:true,backgroundThrottling:false},
+    webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,webSecurity:true,disableDialogs:true,backgroundThrottling:false},
   });
   if (process.platform === 'win32') {
     const quote = value => `"${value}"`;
@@ -154,7 +158,7 @@ app.whenReady().then(async () => {
   win.show();
   win.focus();
   win.webContents.setWindowOpenHandler(({url}) => {
-    try { if (new URL(url).protocol === 'https:') void shell.openExternal(url); } catch {}
+    if(allowedProjectLink(url,[defaultUpdateFeedUrl,update?.snapshot().source?.url]))void shell.openExternal(url).catch(()=>{});
     return {action:'deny'};
   });
   win.webContents.on('will-navigate',(event,url) => { if (new URL(url).origin !== origin) event.preventDefault(); });
@@ -163,6 +167,13 @@ app.whenReady().then(async () => {
   });
   win.on('close', event => {
     if (update?.snapshot().state?.kind === 'installing' && runtimeStop.kind !== 'exiting') event.preventDefault();
+  });
+  sportsurgeObserver?.players.registerHost(win,origin,'viewing');
+  win.once('closed',registerTrustedUi(win.webContents,origin));
+  for(const action of ['mount','update','control','release'])ipcMain.handle(`sunday-player:${action}`,async(event,value)=>{
+    if(!sportsurgeObserver)throw new Error('Player is unavailable');
+    try{const result=await sportsurgeObserver.players[action](event,value);return action==='control'?result:{kind:'ready'};}
+    catch(error){if(error.name==='PlayerCapacityError')return {kind:'capacity'};throw new Error('Player is unavailable');}
   });
   win.on('closed',() => { win=undefined; app.quit(); });
   powerMonitor.on('resume',() => { if (runtimeStop.kind === 'running') { void localServer?.checkNow(); sportsurgeCollector?.requestSweep(); streameastCollector?.requestSweep(); } });

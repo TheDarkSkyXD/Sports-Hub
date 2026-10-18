@@ -23,7 +23,7 @@ test('a destroyed Sportsurge window settles its deadline and the next sweep crea
     webContents = Object.assign(new EventEmitter(), {
       getURL: () => this.loadedUrl,
       getTitle: () => '',
-      setAudioMuted() {},
+      setWebRTCIPHandlingPolicy() {}, setAudioMuted() {},
       setWindowOpenHandler() {},
       stop: () => {
         if (this.destroyed && !this.stopFailed) {
@@ -50,7 +50,7 @@ test('a destroyed Sportsurge window settles its deadline and the next sweep crea
       return Promise.resolve();
     }
   }
-  const sourceSession = { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} };
+  const sourceSession = { setPermissionRequestHandler() {}, setPermissionCheckHandler(){},on(){},setProxy:async()=>{},webRequest:{onBeforeRequest(){}} };
   const exported = { exports: {} };
   const categoryUrl = nativeRequire('./sportsurge-catalog.cjs').CATEGORY_URLS.nfl;
   let attempts = 0;

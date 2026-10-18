@@ -40,7 +40,7 @@ fn identity(teams: &[String; 2]) -> String {
     names.join("|")
 }
 
-fn event_page(
+pub(crate) fn event_page(
     game_id: &str,
     event_url: &str,
     server_url: &str,
@@ -138,8 +138,85 @@ fn vipbox_kickoff(config: &str) -> Option<(String, i64)> {
     Some((raw.clone(), parse_kickoff(&raw)?))
 }
 
+fn isportsurge_nascar_detail(row: &Observation, doc: &HtmlDoc) -> Option<(String, i64)> {
+    let url = Url::parse(&row.url).ok()?;
+    if row.teams.is_some()
+        || row.url != url.as_str()
+        || url.scheme() != "https"
+        || url.host_str() != Some("isportsurge.ws")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
+    let path = cached_regex!(r"^/event/(nascar|nascar-cup-series)/([a-z0-9]+(?:-[a-z0-9]+)*)-live-streaming-links$")
+        .unwrap()
+        .captures(url.path())?;
+    let headings = doc.select("h1");
+    if headings.len() != 1 {
+        return None;
+    }
+    let title = clean_text(headings[0]);
+    if normalized(&title.to_lowercase()) != normalized(&row.title.to_lowercase())
+        || slug(&title) != path[2]
+        || pattern!(r"(?i)\b(?:xfinity|motogp|formula\s*1|f1)\b", &title)
+    {
+        return None;
+    }
+    let cup = pattern!(r"(?i)\bnascar cup series\b", &title);
+    let truck = pattern!(r"(?i)\b(?:nascar truck series|truck playoff)\b", &title);
+    let expected = match (row.league, cup, truck) {
+        (Some(League::NascarCup), true, false) => "nascar cup series",
+        (Some(League::NascarTruck), false, true) if &path[1] == "nascar" => "nascar truck series",
+        _ => return None,
+    };
+    let mut date: Option<(String, i64)> = None;
+    let mut league = false;
+    for list in doc.select("dl") {
+        for pair in select(list, "dt,dd").windows(2) {
+            if pair[0].value().name() != "dt" || pair[1].value().name() != "dd" {
+                continue;
+            }
+            let label = clean_text(pair[0]);
+            let value = clean_text(pair[1]);
+            if label == "Date:" {
+                let kickoff = parse_kickoff(&value)?;
+                if date.as_ref().is_some_and(|(_, prior)| *prior != kickoff)
+                    || row.kickoff.is_some_and(|prior| prior != kickoff)
+                {
+                    return None;
+                }
+                date = Some((value, kickoff));
+            } else if label == "League:" {
+                let value = normalized(&value.to_lowercase());
+                if value != "nascar" && value != expected {
+                    return None;
+                }
+                league = true;
+            }
+        }
+    }
+    league.then_some(date).flatten()
+}
+
 fn generic_enrichment(row: &Observation, body: &str) -> Observation {
     let doc = HtmlDoc::parse(body);
+    if row.source_id == "sportsurge"
+        && matches!(row.league, Some(League::NascarCup | League::NascarTruck))
+    {
+        let mut enriched = row.clone();
+        if let Some((raw, kickoff)) = isportsurge_nascar_detail(row, &doc) {
+            enriched.raw_time = raw;
+            enriched.kickoff = Some(kickoff);
+        } else {
+            enriched.raw_time.clear();
+            enriched.kickoff = None;
+        }
+        return enriched;
+    }
     if vipbox_source(row)
         && first_attr(&doc, "meta[property='og:url']", "content").as_deref() == Some(&row.url)
     {
@@ -192,6 +269,13 @@ pub fn enrich_html_observation(row: &Observation, body: &str) -> Option<Observat
                 | "tvapp-nhl"
                 | "tvapp-mlb"
                 | "swac"
+                | "streamed"
+                | "livesportpro"
+                | "sportsbite"
+                | "sportsfeed24"
+                | "foxtrend"
+                | "buffstreams-f1"
+                | "methstreams-vg-f1"
         )
     {
         return Some(row.clone());
@@ -252,6 +336,23 @@ fn generic_missing(row: &Observation, body: &str) -> MissingPlayerReason {
 }
 
 pub fn missing_html_reason(row: &Observation, body: &str) -> Option<MissingPlayerReason> {
+    if row.source_id == "foxtrend" {
+        let doc = HtmlDoc::parse(body);
+        let pending = row.kickoff.is_some_and(|kickoff| {
+            doc.select("#ftGate.ft-gate[data-start][data-open][data-kind='RACE DAY']")
+                .iter()
+                .any(|gate| {
+                    attr(*gate, "data-start").and_then(parse_kickoff) == Some(kickoff)
+                        && attr(*gate, "data-open").and_then(parse_kickoff)
+                            .is_some_and(|opens| row.observed_at < opens && opens <= kickoff)
+                })
+        });
+        return Some(if pending {
+            MissingPlayerReason::NotYetPublished
+        } else {
+            MissingPlayerReason::NoCompatibleMedia
+        });
+    }
     if row.source_id == "crichd" {
         return Some(crichd_missing(row, body));
     }
@@ -264,6 +365,8 @@ pub fn missing_html_reason(row: &Observation, body: &str) -> Option<MissingPlaye
             | "methstreams-nhl"
             | "methstreams-mlb"
             | "methstreams-f1"
+            | "methstreams-vg-f1"
+            | "buffstreams-f1"
             | "crackstreams-st"
             | "crackstreams-nba"
             | "crackstreams-nhl"
@@ -282,18 +385,34 @@ pub fn compatible_html_players(
     registry: &SourceRegistry,
 ) -> Option<Vec<ResolvedPlayer>> {
     let source = row.source_id.as_str();
-    let players = if source == "livetv" {
+    let players = if registry.get(source).is_some_and(|source|matches!(source.family.as_str(),"published-events"|"linked-cards"|"microdata"|"wordpress")) {
+        let name=registry.get(source).and_then(|source|source.name.as_deref()).unwrap_or(source);
+        crate::published::players(game_id,row,body,name)
+    } else if source == "sportsurge"
+        && matches!(row.league, Some(League::NascarCup | League::NascarTruck))
+    {
+        if row.kickoff.is_some()
+            && isportsurge_nascar_detail(row, &HtmlDoc::parse(body)).is_some()
+        {
+            gooz_players(body)
+        } else {
+            Vec::new()
+        }
+    } else if source == "foxtrend" {
+        Vec::new()
+    } else if source == "livetv" {
         livetv_players(game_id, row, body)
     } else if source == "nflstreams" {
         nflstreams_players(game_id, row, body)
-    } else if source.starts_with("buffstream-") || source == "crackstreams-cfb" {
+    } else if source.starts_with("buffstream-") || source == "crackstreams-cfb"
+        || registry.get(source).is_some_and(|source|source.family=="legacy-schedule") {
         buffstream_players(game_id, row, body)
     } else if matches!(
         source,
         "streamcenter" | "streamcenter-nba" | "streamcenter-nhl" | "streamcenter-mlb"
     ) {
         streamcenter_players(game_id, row, body)
-    } else if source.starts_with("methstreams") || source.starts_with("crackstreams") {
+    } else if source.starts_with("methstreams") || source.starts_with("crackstreams") || source == "buffstreams-f1" {
         channel_players(game_id, row, body)
     } else if vipbox_source(row) {
         vipbox_players(game_id, row, body, registry)
@@ -466,28 +585,52 @@ fn slug(value: &str) -> String {
 }
 
 fn buffstream_players(game_id: &str, row: &Observation, body: &str) -> Vec<ResolvedPlayer> {
-    let league = match (&*row.source_id, row.league) {
-        ("buffstream-nfl", Some(League::Nfl)) => "NFL",
-        ("buffstream-cfb" | "crackstreams-cfb", Some(League::Ncaaf)) => "CFB",
-        ("buffstream-nba", Some(League::Nba)) => "NBA",
-        ("buffstream-nhl", Some(League::Nhl)) => "NHL",
-        ("buffstream-mlb", Some(League::Mlb)) => "MLB",
+    let league = match row.league {
+        Some(League::Nfl) => "NFL",
+        Some(League::Ncaaf) => "CFB",
+        Some(League::Nba) => "NBA",
+        Some(League::Nhl) => "NHL",
+        Some(League::Mlb) => "MLB",
+        Some(League::Ufc) => "UFC",
+        Some(League::Boxing) => "Boxing",
+        Some(League::Wwe) => "WWE",
+        Some(League::Tna) => "TNA",
+        Some(League::Aew) => "AEW",
+        Some(League::Wrestling) => "Wrestling",
+        Some(League::F1) => "F1",
+        Some(League::Motogp) => "MotoGP",
+        Some(League::Motorsport) => "Motorsport",
         _ => return vec![],
     };
-    let Some(teams) = row.teams.as_ref() else {
-        return vec![];
-    };
-    if !row.url.starts_with(&format!(
-        "https://ms.buffstream.io/{}-streams/",
-        league.to_lowercase()
-    )) {
-        return vec![];
-    }
+    let Ok(event_url)=Url::parse(&row.url) else {return vec![];};
+    let Some(host)=event_url.host_str().filter(|host|matches!(*host,"ms.buffstream.io"|"streameasthd.app")) else {return vec![];};
     let doc = HtmlDoc::parse(body);
     let canonical = first_attr(&doc, "link[rel=canonical]", "href");
     if canonical.as_deref() != Some(&row.url)
         && canonical.as_deref() != Some(&row.url.replacen("https:", "http:", 1))
     {
+        return vec![];
+    }
+    if matches!(row.league,Some(League::Ufc|League::Boxing|League::Wwe|League::Tna|League::Aew|League::Wrestling|League::F1|League::Motogp|League::Motorsport)) {
+        let mut players=Vec::new();
+        let mut seen=HashSet::new();
+        for frame in doc.select("iframe[src]") {
+            let Some(server)=attr(frame,"src") else {continue;};
+            if row.league==Some(League::Boxing) {
+                let Ok(url)=Url::parse(server) else {continue;};
+                let Some(found)=cached_regex!(r"^/boxing/([a-z0-9]+(?:-[a-z0-9]+)*)-stream-[12]$").unwrap().captures(url.path()) else {continue;};
+                if found[1].replace('-',"")!=slug(&row.title).replace('-',"") {continue;}
+            }
+            if let Some(player)=event_page(game_id,&row.url,server,format!("{} {league} · Server {}",if host=="streameasthd.app" {"StreamEast HD"} else {"Buffstream"},players.len()+1)) {
+                if seen.insert(server) {players.push(player);}
+            }
+        }
+        return players;
+    }
+    let Some(teams) = row.teams.as_ref() else {
+        return vec![];
+    };
+    if !row.url.starts_with(&format!("https://{host}/{}-streams/",league.to_lowercase())) {
         return vec![];
     }
     let names = teams.clone().map(|name| slug(&name));
@@ -516,7 +659,7 @@ fn buffstream_players(game_id: &str, row: &Observation, body: &str) -> Vec<Resol
             game_id,
             &row.url,
             server,
-            format!("Buffstream {league} · Server {}", &found[2]),
+            format!("{} {league} · Server {}",if host=="streameasthd.app" {"StreamEast HD"} else {"Buffstream"},&found[2]),
         ) {
             if let Some(index) = keys.get(server) {
                 players[*index] = player;
@@ -867,10 +1010,11 @@ fn valid_channel_event(event: &ChannelEvent) -> bool {
 }
 
 fn channel_players(game_id: &str, row: &Observation, body: &str) -> Vec<ResolvedPlayer> {
-    let host = if row.source_id.starts_with("methstreams") {
-        "methstreams.st"
-    } else {
-        "crackstreams.st"
+    let host = match row.source_id.as_str() {
+        "buffstreams-f1" => "buffstreams.ch",
+        "methstreams-vg-f1" => "methstreams.vg",
+        source if source.starts_with("methstreams") => "methstreams.st",
+        _ => "crackstreams.st",
     };
     let Ok(event_url) = Url::parse(&row.url) else {
         return vec![];
@@ -970,15 +1114,36 @@ fn channel_players(game_id: &str, row: &Observation, body: &str) -> Vec<Resolved
         if label.is_empty()
             || !attr(link, "aria-label").is_some_and(|value| {
                 value.starts_with(&format!("Watch {} on {label} ", event.name))
+                    || value == format!("Watch {} on {label}, opens the player in a new tab", event.name)
             })
         {
             continue;
         }
         let url = attr(link, "href").unwrap_or("");
-        let name = if row.source_id.starts_with("methstreams") {
-            "Methstreams"
-        } else {
-            "Crackstreams"
+        if url.starts_with("https://foxiy.st/event/")
+            && let Some(relay) = cached_regex!(r"-nascar-cup-series-[0-9]{10}/hotel/([1-9][0-9]{0,2})$")
+                .unwrap()
+                .captures(url)
+            && (row.league != Some(League::NascarCup)
+                || row.teams.is_some()
+                || !row.kickoff.is_some_and(|kickoff| {
+                    kickoff % 1000 == 0
+                        && url
+                            == format!(
+                                "https://foxiy.st{}-nascar-cup-series-{}/hotel/{}",
+                                event_url.path(),
+                                kickoff / 1000,
+                                &relay[1]
+                            )
+                }))
+        {
+            continue;
+        }
+        let name = match row.source_id.as_str() {
+            "buffstreams-f1" => "Buffstreams",
+            "methstreams-vg-f1" => "Methstreams VG",
+            source if source.starts_with("methstreams") => "Methstreams",
+            _ => "Crackstreams",
         };
         if let Some(player) = event_page(game_id, &row.url, url, format!("{name} · {label}")) {
             if let Some(index) = keys.get(url) {
