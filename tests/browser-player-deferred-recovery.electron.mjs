@@ -18,7 +18,7 @@ await build({stdin:{contents:`
   import {BrowserProviderPlayer} from './components/browser-provider-player';
   function Fixture(){
     const [playing,setPlaying]=useState(true),[audible,setAudible]=useState(false),[volume,setVolume]=useState(50);
-    return <BrowserProviderPlayer gameId={location.pathname.slice(1)} focused={true} audible={audible} volume={volume}
+    return <BrowserProviderPlayer gameId={location.pathname.slice(1)} focused={location.pathname!=='/direct-game'} audible={audible} volume={volume}
       defaultQuality="auto" playing={playing} onPlayingChange={setPlaying} onAudibleChange={setAudible} onVolumeChange={setVolume}/>;
   }
   createRoot(document.getElementById('root')).render(<Fixture/>);
@@ -47,8 +47,8 @@ async function verify(root,directory){
   }
   async function runScenario(kind){
     const own=session.fromPartition('deferred-recovery-'+kind+'-'+randomUUID()),origin='http://127.0.0.1:9000';
-    const sessionId=randomUUID(),gameId=kind==='revoked'?'nascar-cup-202610180053':kind==='upstream'?'upstream-game':'capacity-game',failures=[],evidence=[];
-    let generation=0,candidateId=kind!=='capacity'?'failed-feed':'capacity-feed',retryAt=null,recoveryPolls=0,earlyRetry=false,recoveryUI=null;
+    const sessionId=randomUUID(),gameId=kind==='revoked'?'nascar-cup-202610180053':kind+'-game',failures=[],evidence=[];
+    let generation=0,candidateId=kind!=='capacity'?'failed-feed':'capacity-feed',retryAt=null,recoveryPolls=0,earlyRetry=false,recoveryUI=null,interrupted=false;
     const playable={kind:'playable',checkedAt:Date.now(),proof};
     const candidates=kind!=='capacity'?[
     {
@@ -72,7 +72,7 @@ async function verify(root,directory){
             return Response.json({error:'Checking the next available stream.',retryAfter:retryAt},{status:503});
           }
           generation++;
-          if(kind==='revoked')candidateId='verified-alternative';
+          if(kind==='revoked'||kind==='direct')candidateId='verified-alternative';
         }
         if(retryAt!==null){
           earlyRetry ||= Date.now()<retryAt;recoveryPolls++;
@@ -84,7 +84,7 @@ async function verify(root,directory){
       if(url.pathname==='/api/playback'&&request.method==='DELETE')return Response.json({kind:'ok'});
       if(url.pathname.endsWith('/presentation')){
         const selected=url.searchParams.get('candidate');
-        if(selected==='verified-alternative')return Response.json({kind:'progressive',url:'/api/stream/media/'+'a'.repeat(48)});
+        if(selected==='verified-alternative'||kind==='direct')return Response.json({kind:'progressive',url:'/api/stream/media/'+'a'.repeat(48)});
         if(selected==='capacity-feed')return Response.json({kind:'isolated-embed',capability:capabilities.capacity});
         if(kind==='revoked')return Response.json({kind:'isolated-embed',capability:capabilities.revoked});
         return Response.json({kind:'isolated-embed',capability:generation===0?capabilities.first:capabilities.second});
@@ -97,12 +97,21 @@ async function verify(root,directory){
       await host.loadURL(origin+'/'+gameId);host.showInactive();
       const deadline=Date.now()+9000;
       while(Date.now()<deadline&&!evidence.some(value=>value.candidateId==='verified-alternative')){
+        if(kind==='direct'&&!interrupted&&evidence.some(value=>value.candidateId==='failed-feed')){
+          interrupted=true;
+          await host.webContents.executeJavaScript(`(()=>{
+            const video=document.querySelector('video'),play=video.play.bind(video);let attempts=0;
+            video.play=()=>++attempts===1?Promise.reject(new DOMException('Playback interrupted','NotSupportedError')):play();
+            video.pause();
+          })()`);
+        }
         if(kind==='capacity'&&await host.webContents.executeJavaScript(`document.querySelector('.player-message strong')?.textContent==='Connection delayed'`))break;
         if(retryAt!==null)recoveryUI=await host.webContents.executeJavaScript(`({label:document.querySelector('.player-message strong')?.textContent,manualPrompt:[...document.querySelectorAll('.player-message button')].some(button=>button.textContent.includes('Try again'))})`);
         await wait(100);
       }
       await wait(300);
       return {failures,evidence,selected:candidateId,generation,recovery:{polls:recoveryPolls,earlyRetry,...recoveryUI},
+        ...(kind==='direct'?{interrupted,player:await host.webContents.executeJavaScript(`(()=>{const video=document.querySelector('video');return {playing:!!video&&!video.paused&&video.currentTime>0,gesture:!!document.querySelector('.gesture'),focused:!!document.querySelector('.player-focused')};})()`)}:{}),
         label:await host.webContents.executeJavaScript(`document.querySelector('.player-message strong')?.textContent??null`),
         cursor:await host.webContents.executeJavaScript(`(()=>{const message=document.querySelector('.player-message');return message?getComputedStyle(message).cursor:null})()`)};
     }finally{host.destroy();own.protocol.unhandle('http');}
@@ -125,6 +134,7 @@ async function verify(root,directory){
   ipcMain.handle('deferred-recovery:update',async()=>({kind:'ready'}));
   ipcMain.handle('deferred-recovery:release',async()=>({kind:'ready'}));
   try{
+    results.direct=await runScenario('direct');
     results.upstream=await runScenario('upstream');
     results.revoked=await runScenario('revoked');
     results.capacity=await runScenario('capacity');
@@ -147,6 +157,11 @@ try{
   const output=resolve(process.argv[2]??'.desktop-runtime/cold-start-20261017/viewer-deferred-recovery-red.json');
   await writeFile(output,JSON.stringify(result,null,2)+'\n');
   console.log(JSON.stringify(result));
+  assert.equal(result.direct.interrupted,true,'The unfocused stream must play before its resume fails');
+  assert.equal(result.direct.selected,'verified-alternative','A rejected resume must automatically switch to a working stream');
+  assert.deepEqual(result.direct.failures,[{candidateId:'failed-feed',generation:0}]);
+  assert.deepEqual(result.direct.evidence.map(value=>value.candidateId),['failed-feed','verified-alternative']);
+  assert.deepEqual(result.direct.player,{playing:true,gesture:false,focused:false},'The recovered unfocused stream must advance without a Play prompt');
   assert.equal(result.revoked.selected,'verified-alternative','A previously decoded native view that ends must recover instead of staying black');
   assert.deepEqual(result.revoked.failures,[{candidateId:'failed-feed',generation:0}]);
   assert.deepEqual(result.revoked.evidence.map(value=>value.candidateId),['failed-feed','verified-alternative']);

@@ -18,8 +18,41 @@ const expect=(condition,message)=>{if(!condition)throw new Error(message);};
 async function until(read,message,timeout=5000){const deadline=performance.now()+timeout;while(performance.now()<deadline){if(read())return;await wait(50);}throw new Error(message);}
 window.runPlayerPauseProbe=async media=>{
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host);let proofs=0,failures=0;const mediaBlob=URL.createObjectURL(new Blob([Uint8Array.from(atob(media.split(',')[1]),c=>c.charCodeAt(0))],{type:'video/mp4'}));
+ const rejections=[];
+ async function checkRejection(names,{unmuted=false}={}){
+  const container=document.createElement('div');host.append(container);const player=createRoot(container);let decoded=0,attempts=0;const outcomes=[];
+  try{
+   player.render(<GamePlayer feed={{url:mediaBlob,label:'Unfocused playback fixture'}} focused={false} audible={false} volume={0} defaultQuality="auto" playing onPlayingChange={()=>{}} onAudibleChange={()=>{}} onVolumeChange={()=>{}} onDecoded={()=>decoded++} onFatal={(_url,reason,phase)=>outcomes.push({reason,phase})}/>);
+   await until(()=>decoded>0,'Unfocused video must advance before its interruption',10000);
+   const video=container.querySelector('video');video.loop=true;video.muted=!unmuted;
+   const play=video.play.bind(video),before=video.currentTime;
+   video.play=()=>{const name=names[attempts++];return name?Promise.reject(new DOMException('Playback fixture rejection',name)):play();};
+   video.pause();
+   const terminal=names.some(name=>name!=='AbortError'&&name!=='NotAllowedError');
+   if(terminal){
+    await until(()=>outcomes.length>0,'Media rejection must reach automatic feed recovery instead of a Play prompt');
+    expect(JSON.stringify(outcomes)===JSON.stringify([{reason:names.includes('NotSupportedError')?'unsupported':'playback',phase:'decode'}]),'Media rejection must report its cause once');
+    await wait(700);expect(outcomes.length===1,'Media rejection must not repeatedly restart feed recovery');
+    expect(!container.querySelector('.gesture'),'Media rejection must not ask an unfocused viewer to press Play');
+   }else if(names.length===1&&names[0]==='NotAllowedError'&&!unmuted){
+    await until(()=>container.querySelector('.gesture'),'A real autoplay restriction must still offer Play');
+    expect(outcomes.length===0,'Autoplay restrictions must not mark the feed failed');
+   }else{
+    await until(()=>!video.paused&&video.currentTime>before+0.25,'A transient play rejection must recover without user input');
+    expect(outcomes.length===0&&!container.querySelector('.gesture'),'Recoverable interruptions must preserve the feed');
+    if(unmuted)expect(video.muted,'Autoplay audio restrictions must retry muted');
+   }
+   rejections.push({names,unmuted,outcomes,paused:video.paused,gesture:!!container.querySelector('.gesture'),attempts});
+  }finally{player.unmount();container.remove();}
+ }
  function Player(){const [playing,setPlaying]=useState(true);return <GamePlayer feed={{url:mediaBlob,label:'Playback fixture'}} focused audible={false} volume={0} defaultQuality="auto" playing={playing} onPlayingChange={setPlaying} onAudibleChange={()=>{}} onVolumeChange={()=>{}} onDecoded={()=>{proofs++;}} onFatal={()=>{failures++;}}/>;}
  try{
+  await checkRejection(['NotSupportedError']);
+  await checkRejection(['NetworkError']);
+  await checkRejection(['AbortError']);
+  await checkRejection(['NotAllowedError']);
+  await checkRejection(['NotAllowedError'],{unmuted:true});
+  await checkRejection(['NotAllowedError','NotSupportedError'],{unmuted:true});
   root.render(<Player/>);
   await until(()=>host.querySelector('video'),'The actual GamePlayer must mount');
   const video=host.querySelector('video');video.loop=true;
@@ -46,7 +79,7 @@ window.runPlayerPauseProbe=async media=>{
   const frozenQuality=video.getVideoPlaybackQuality();
   Object.defineProperty(video,'getVideoPlaybackQuality',{configurable:true,value:()=>frozenQuality});
   await until(()=>failures===1,'Frozen video frames must trigger recovery even when media time advances',22000);
-  return {frameFreezeDetected:true,recovered,intentionalPausePreserved:true,pendingRecoveryCancelled:true,visibilityRecovery:true,pictureInPictureIntentPreserved:true};
+  return {rejections,frameFreezeDetected:true,recovered,intentionalPausePreserved:true,pendingRecoveryCancelled:true,visibilityRecovery:true,pictureInPictureIntentPreserved:true};
  }finally{root.unmount();host.remove();URL.revokeObjectURL(mediaBlob);}
 };
 `;
@@ -66,7 +99,7 @@ socket.addEventListener('message',event=>{
   else entry.resolve(message.result.result.value);
 });
 const evaluate=expression=>new Promise((resolve,reject)=>{
-  const id=++sequence,timer=setTimeout(()=>{pending.delete(id);reject(new Error('Electron Home probe timed out'));},45000);
+  const id=++sequence,timer=setTimeout(()=>{pending.delete(id);reject(new Error('Electron Home probe timed out'));},75000);
   pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression,awaitPromise:true,returnByValue:true}}));
 });
 try{
