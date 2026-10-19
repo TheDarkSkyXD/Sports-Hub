@@ -51,6 +51,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
   const liveRef = useRef(false);
   const playingRef = useRef(playing);
   const wasPlayingRef = useRef(playing);
+  const playbackFailure = useRef<(reason:MediaFailureReason)=>void>(()=>{});
   const [status, setStatus] = useState<Status>('loading');
   const [retry, setRetry] = useState(0);
   const [qualities, setQualities] = useState<Quality[]>([]);
@@ -108,9 +109,9 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       canSample: () => active && !failed && canRecover() && !needsGesture.current,
       onProof: proof => { startupState='proved'; callbacks.current.onDecoded?.(feed.url, proof,{decodeMs:proof.startupMs}); },
     });
-    const fail = (reason:MediaFailureReason,phase:MediaPhase='decode') => {
+    const fail = (reason:MediaFailureReason,phase:MediaPhase='decode',trigger:'media'|'play-rejection'='media') => {
       if (!active || failed) return;
-      if (!canRecover() || (hasLoaded && video.paused) || performance.now() - lastTick > 6000) {
+      if (!canRecover() || (trigger==='media' && hasLoaded && video.paused) || performance.now() - lastTick > 6000) {
         deferredFailure = true;
         if (playingRef.current) setStatus('buffering');
         return;
@@ -119,6 +120,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       setStatus('error');
       callbacks.current.onFatal?.(feed.url,reason,phase);
     };
+    playbackFailure.current=reason=>fail(reason,'decode','play-rejection');
     const error = () => fail(video.error?.code===3?'invalid-media':video.error?.code===4?'unsupported':video.error?.code===2?'upstream':'playback');
     const ended = () => { if (active) { setStatus('ended'); callbacks.current.onEnded?.(feed.url); } };
     const waiting = () => { if (active) setStatus(current => current === 'ready' ? 'buffering' : current); };
@@ -285,6 +287,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     }
     return () => {
       active = false;
+      playbackFailure.current=()=>{};
       controller.abort();dashRef.current=null;
       evidence.stop();
       sourceGeneration.current += 1;
@@ -317,21 +320,28 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     if (!video) return;
     let active = true;
     let recovery: ReturnType<typeof setTimeout> | undefined;
+    const rejected = (reason:unknown) => {
+      if (!active || !playingRef.current) return;
+      const name=reason instanceof Error?reason.name:'';
+      if (name==='AbortError') { recover(); return; }
+      if (name==='NotAllowedError') {
+        needsGesture.current=true;
+        setStatus(current=>current==='error'?current:'gesture');
+      }else{
+        playbackFailure.current(name==='NotSupportedError'?'unsupported':'playback');
+      }
+    };
     const sync = () => {
       if (!playing) { video.pause(); return; }
       if (!wasPlayingRef.current) syncToLive(true);
-      void video.play().catch(async reason => {
-        if (!active || reason?.name === 'AbortError') return;
-        if (reason?.name === 'NotAllowedError' && !video.muted) {
-          needsGesture.current = true;
+      void video.play().catch(async (reason:unknown) => {
+        if (!active || !playingRef.current) return;
+        if (reason instanceof Error && reason.name === 'NotAllowedError' && !video.muted) {
           video.muted = true;
-          try { await video.play(); if (active) setStatus('audio-gesture'); return; }
-          catch (again) { if (!active || (again instanceof Error && again.name === 'AbortError')) return; }
+          try { await video.play(); if (active) { needsGesture.current=true; setStatus('audio-gesture'); } return; }
+          catch (again) { rejected(again); return; }
         }
-        if (active) {
-          needsGesture.current = true;
-          setStatus(current => current === 'error' ? current : 'gesture');
-        }
+        rejected(reason);
       });
     };
     const canResume = () => active && playingRef.current && video.paused && !video.ended && !video.error && !needsGesture.current && !document.hidden && document.pictureInPictureElement !== video;
