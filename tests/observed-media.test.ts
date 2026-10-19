@@ -42,6 +42,7 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
   type FixtureCookie={url:string;name:string;value:string;path:string;secure:boolean};
   let connectionsClosed = 0;
   let sessionsCreated = 0;
+  const sessionOptions: Array<{cache?:boolean}|undefined> = [];
   let authCachesCleared = 0;
   let cookieStoresCleared = 0;
   const transport = createObservedMedia({
@@ -56,7 +57,7 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
       requests.push(request);
       return request;
     } },
-    sessions: { fromPartition: () => { sessionsCreated++; const cookieJar:FixtureCookie[]=[]; return {
+    sessions: { fromPartition: (_partition:string,options?:{cache?:boolean}) => { sessionOptions.push(options); sessionsCreated++; const cookieJar:FixtureCookie[]=[]; return {
       cookieJar,cookies:{async set(value:FixtureCookie){cookieJar.push(value);}},
       setPermissionRequestHandler() {}, setPermissionCheckHandler() {},
       webRequest: { onBeforeRequest() {} },
@@ -142,6 +143,7 @@ test('observed media preserves captured headers, ranges, cross-origin children, 
       await new Promise(resolve => setImmediate(resolve));
     }
     assert.equal(sessionsCreated, 1);
+    assert.deepEqual(sessionOptions, [{cache:false}], 'Reused media sessions must disable Chromium HTTP caching');
     assert.equal(authCachesCleared, 42);
     assert.equal(cookieStoresCleared, 42);
   } finally {
@@ -268,7 +270,7 @@ test('a timed out native cleanup stays quarantined after its late completion', a
   }
 });
 
-test('only the browser-owned progressive root streams beyond finite replay limits',async context=>{
+for(const kind of ['progressive','flv','mpegts'])test(`only the browser-owned ${kind} root streams beyond finite replay limits`,async context=>{
   context.mock.timers.enable({apis:['Date','setTimeout']});
   const requests:{request:EventEmitter&{aborted:boolean};incoming:PassThrough&{statusCode:number;headers:object}}[]=[];
   const transport=createObservedMedia({validateUrl:sportsurgeUrl,pinAddress:async()=>({address:'8.8.8.8',family:4}),
@@ -277,7 +279,7 @@ test('only the browser-owned progressive root streams beyond finite replay limit
       const request=Object.assign(new EventEmitter(),{aborted:false,setHeader(){},end(){this.emit('response',incoming);},abort(){if(!this.aborted){this.aborted=true;this.emit('abort');}}});
       requests.push({request,incoming});return request;
     }},sessions:{fromPartition:()=>({cookies:{async set(){}},setPermissionRequestHandler(){},setPermissionCheckHandler(){},webRequest:{onBeforeRequest(){}},async setProxy(){},async closeAllConnections(){},async clearAuthCache(){},async clearStorageData(){}})}});
-  const capability=await transport.register({url:'https://media.example/game.mp4',kind:'progressive',userAgent:'Captured Chromium'});
+  const capability=await transport.register({url:'https://media.example/game.mp4',kind,userAgent:'Captured Chromium'});
   const output=()=>Object.assign(new EventEmitter(),{headersSent:false,bytes:0,status:0,destroyed:false,
     writeHead(status:number){this.headersSent=true;this.status=status;},write(value:Buffer){this.bytes+=value.length;return true;},end(){},destroy(){this.destroyed=true;}});
   try{

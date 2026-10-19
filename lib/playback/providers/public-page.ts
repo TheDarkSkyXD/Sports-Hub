@@ -87,7 +87,7 @@ export function resource(value: URL, referer: URL, kind: ResourceKind, requester
         await result.response.body?.cancel();
         throw new Error('Provider did not return HLS');
       }
-      return sanitizedRead(result.response);
+      return {...sanitizedRead(result.response),url:current.href};
     },
     resolve(reference, expected) {
       try {
@@ -180,7 +180,9 @@ async function observedPublicRequest(request:PublicObservation, signal: AbortSig
     throw new Error('Browser observation transport was invalid');
   const capability = value.capability;
   const progressive='kind'in value&&value.kind==='progressive';
-  if('kind'in value&&!progressive)throw new Error('Browser observation media kind was invalid');
+  const dash='kind'in value&&value.kind==='dash';
+  const container='kind'in value&&(value.kind==='flv'||value.kind==='mpegts')?value.kind:null;
+  if('kind'in value&&!progressive&&!dash&&!container)throw new Error('Browser observation media kind was invalid');
   let closed = false;
   const requester:Requester = async (url, active, headers, timeoutMs,continuous) => {
     if (closed) throw new Error('Observed media session is closed');
@@ -190,7 +192,7 @@ async function observedPublicRequest(request:PublicObservation, signal: AbortSig
       body:JSON.stringify({capability,url:url.href,range:headers.get('range') ?? undefined}),
     },continuous?undefined:timeoutMs);
   };
-  const root = resource(media,referer,progressive?'media':'playlist',requester,value.userAgent,progressive?'progressive':'finite');
+  const root = resource(media,referer,progressive?'media':dash?'dash':container??'playlist',requester,value.userAgent,progressive||container?'progressive':'finite');
   transferred=true;
   return {root:transport === 'dlive-pixel-gzip-ts' ? wrapDlivePixelResource(root) : root,
     timings:{captureMs:Math.min(300000,Date.now()-captureStarted)},

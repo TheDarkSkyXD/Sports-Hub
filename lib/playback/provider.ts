@@ -1,6 +1,6 @@
 import type { CandidateLocator, MediaPhase,MediaTimings,MediaDeferralReason } from '../football/shared.ts';
 
-export type ResourceKind = 'playlist' | 'media';
+export type ResourceKind = 'playlist' | 'dash' | 'flv' | 'mpegts' | 'media';
 export type ProviderReadResult = {
   status: 200 | 206 | 416;
   body: ReadableStream<Uint8Array> | null;
@@ -8,6 +8,7 @@ export type ProviderReadResult = {
   contentLength?: string;
   contentRange?: string;
   acceptRanges?: string;
+  url?: string;
 };
 export interface ProviderResource {
   readonly kind: ResourceKind;

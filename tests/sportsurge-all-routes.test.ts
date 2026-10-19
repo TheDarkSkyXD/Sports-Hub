@@ -205,12 +205,12 @@ test('Sportsurge retains working feeds for thirty minutes while failed feeds ret
     await publish(latest);
     assert.equal((await row()).workingChoiceCount, 3);
     assert.deepEqual(callCounts(), [1, 2, 3], 'replays and inventory reads must preserve completed checks');
-    advance(31 * 60_000 - 1);
+    advance(26 * 60_000 - 1);
     await publish(checkpoint(3, clock));
-    assert.deepEqual(callCounts(), [1, 2, 3], 'all working feeds retain their individual thirty-minute intervals');
-    advance(31 * 60_000);
+    assert.deepEqual(callCounts(), [1, 2, 3], 'all working feeds keep their individual renewal intervals');
+    advance(26 * 60_000);
     await publish(checkpoint(4, clock));
-    assert.deepEqual(callCounts(), [2, 2, 3], 'only the first working feed is due at its exact thirty-minute boundary');
+    assert.deepEqual(callCounts(), [2, 2, 3], 'only the first working feed is due at its exact twenty-five-minute renewal boundary');
   } finally {
     await coordinator.stop();
     rmSync(dir, { recursive: true, force: true });

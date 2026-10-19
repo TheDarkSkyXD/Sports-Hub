@@ -3,6 +3,7 @@
 import {useEffect,useRef,useState,type ComponentProps} from 'react';
 import {AlertCircle,LoaderCircle} from 'lucide-react';
 import {GamePlayer} from './game-player';
+import {monitorPlayerLayout} from './player-layout-monitor';
 import {readPresentation,type PresentationResult} from '@/lib/playback/presentation';
 import {PlayerStateSchema,PlayerUiActionSchema,type PlayerLayout,type PlayerPresentation,type QualitySelection} from '@/lib/desktop-player';
 import {chooseDefaultLevel} from '@/lib/playback-quality';
@@ -90,7 +91,7 @@ function ResolvedPlayer(props:Props){
   if(presentation.kind==='isolated-embed')return null;
   const fallbackUrl=presentation.fallbackUrl;
   const url=new URL(presentation.url,new URL(props.feed.url,location.href)).href;
-  return <GamePlayer {...props} feed={{...props.feed,url}} startupTimeoutMs={remaining}
+  return <GamePlayer {...props} format={presentation.kind} feed={{...props.feed,url}} startupTimeoutMs={remaining}
     noProgressTimeoutMs={fallbackUrl?Math.min(12000,remaining/2):undefined}
     onDecoded={(_url,proof,mediaTimings)=>{decoded.current=true;props.onDecoded?.(props.feed.url,proof,{...timings,...mediaTimings,path:presentation.kind});}}
     onFatal={(_url,reason,phase)=>{if(fallbackUrl)activateFallback.current(fallbackUrl);else props.onFatal?.(props.feed.url,reason,phase);}}
@@ -149,7 +150,7 @@ function IsolatedPlayer(props:Props&{capability:string;timings:MediaTimings}){
   },[capability]);
   useEffect(()=>{
     const bridge=window.sundayPlayer;
-    let active=true,proved=false,ended=false,mounted=false,released=false,scheduled=0,last='';
+    let active=true,proved=false,ended=false,mounted=false,released=false,last='';
     const release=()=>{if(released)return;released=true;void bridge?.release({capability}).catch(()=>{});};
     const fail=(reason:'upstream'|'playback'='playback')=>{
       if(!active||ended)return;ended=true;release();setFailed(true);
@@ -179,10 +180,9 @@ function IsolatedPlayer(props:Props&{capability:string;timings:MediaTimings}){
       else if(parsed.data.kind==='failed')fail(parsed.data.reason);
       else if(parsed.data.kind==='ended')fail('upstream');
     });
-    const sync=()=>{
-      scheduled=0;if(!active||ended||!mounted||!slot.current)return;
+    const sync=(overlay:boolean)=>{
+      if(!active||ended||!mounted||!slot.current)return;
       const rect=slot.current.getBoundingClientRect(),current=callbacks.current;
-      const overlay=document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]');
       const covered=[
         [rect.left+1,rect.top+1],[rect.right-1,rect.top+1],[rect.left+1,rect.bottom-1],[rect.right-1,rect.bottom-1],
         [(rect.left+rect.right)/2,(rect.top+rect.bottom)/2],
@@ -195,21 +195,15 @@ function IsolatedPlayer(props:Props&{capability:string;timings:MediaTimings}){
       const signature=JSON.stringify(layout);if(signature===last)return;last=signature;
       void bridge.update(layout).catch(()=>fail('upstream'));
     };
-    const schedule=()=>{if(!scheduled)scheduled=requestAnimationFrame(sync);};
-    const observer=new ResizeObserver(schedule),mutations=new MutationObserver(schedule);
-    if(slot.current)observer.observe(slot.current);
-    mutations.observe(document.body,{attributes:true,childList:true,subtree:true,attributeFilter:['class','style','open','data-state','aria-hidden']});
-    for(const event of ['scroll','resize','fullscreenchange','visibilitychange','focusin','focusout','pointerdown','pointerup','change','keyup'])window.addEventListener(event,schedule,true);
+    const monitor=slot.current?monitorPlayerLayout(slot.current,sync):null;
     void bridge.mount({capability}).then(result=>{
       if(!active||ended){release();return;}
       if(result.kind==='capacity'){ended=true;release();setDeferred(true);setFailed(true);callbacks.current.onDeferred?.(callbacks.current.feed.url,'capacity',{phase:'activation',retryAfterMs:2000});return;}
-      mounted=true;schedule();
+      mounted=true;monitor?.schedule();
     },()=>fail('upstream'));
     const timer=setTimeout(()=>{if(!proved)fail();},props.startupTimeoutMs??20000);
-    const control=setInterval(schedule,500);
     return()=>{
-      active=false;clearTimeout(timer);clearInterval(control);cancelAnimationFrame(scheduled);unsubscribe();observer.disconnect();mutations.disconnect();
-      for(const event of ['scroll','resize','fullscreenchange','visibilitychange','focusin','focusout','pointerdown','pointerup','change','keyup'])window.removeEventListener(event,schedule,true);
+      active=false;clearTimeout(timer);unsubscribe();monitor?.dispose();
       release();
     };
   },[capability,props.startupTimeoutMs]);

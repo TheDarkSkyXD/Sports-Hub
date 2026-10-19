@@ -105,10 +105,26 @@ async function verifyPlayer(root, fixture) {
       return { pointerTargetsPlayer: document.querySelector('#player').contains(document.elementFromPoint(160, 100)),
         keyboardTargetsVideo: document.activeElement === video };
     })()`);
+    const interrupted = await frame.executeJavaScript(`(() => {
+      const video=document.querySelector('video');video.pause();return {paused:video.paused,time:video.currentTime};
+    })()`);
+    const resumeDeadline=Date.now()+3000;
+    let recovered=await sample();
+    while((recovered.paused||recovered.time-interrupted.time<0.5)&&Date.now()<resumeDeadline){
+      await wait(100);recovered=await sample();
+    }
     await factory.update(event, { capability, playing: false }); await wait(700);
     const paused = await sample();
+    await wait(700);
+    const stillPaused=await sample();
+    await frame.executeJavaScript(`(() => {
+      const video=document.querySelector('video'),play=video.play.bind(video);let attempts=0;
+      window.__fixturePlayAttempts=()=>attempts;
+      video.play=()=>++attempts===1?Promise.reject(new DOMException('Fixture play interrupted','AbortError')):play();
+    })()`);
     await factory.update(event, { capability, playing: true }); await wait(2200);
     const resumed = await sample();
+    const playAttempts=await frame.executeJavaScript('window.__fixturePlayAttempts()');
     await factory.update(event, { capability, visible: false });
     const hidden = { visible: view.getVisible(), muted: contents.isAudioMuted() };
     await factory.update(event, { capability, visible: true });
@@ -152,10 +168,23 @@ async function verifyPlayer(root, fixture) {
     const storageAfter = await nextFrame.executeJavaScript(`(async()=>({cookie:document.cookie,local:localStorage.getItem('previousPlayer'),workers:(await navigator.serviceWorker.getRegistrations()).length}))()`);
     storageAfter.cookieJar=(await sessions.at(-1).cookies.get({url:'https://media-fixture.example'})).map(cookie=>({name:cookie.name,value:cookie.value}));
     const pool = { sessionAllocations: sessions.length, viewAllocations: views.length };
+    const proofDeadline=Date.now()+12000;
+    while(!states.some(state=>state.capability===next&&state.kind==='decoded')&&Date.now()<proofDeadline)await wait(100);
+    const freezeProved=states.some(state=>state.capability===next&&state.kind==='decoded');
+    if(!freezeProved)throw new Error('Native freeze fixture requires advancing-video proof');
+    const frozen=await nextFrame.executeJavaScript(`(() => {
+      const video=document.querySelector('video');video.playbackRate=0;
+      return {paused:video.paused,rate:video.playbackRate,time:video.currentTime,frames:video.getVideoPlaybackQuality().totalVideoFrames};
+    })()`);
+    const freezeStarted=Date.now(),freezeDeadline=freezeStarted+18000;
+    while(!states.some(state=>state.capability===next&&state.kind==='failed')&&Date.now()<freezeDeadline)await wait(100);
+    const freeze={proved:freezeProved,frozen,elapsedMs:Date.now()-freezeStarted,
+      failures:states.filter(state=>state.capability===next&&state.kind==='failed').map(state=>({kind:state.kind,reason:state.reason})),
+      closed:nextContents.isDestroyed(),viewAllocations:views.length};
     factory.revoke(next);
-    return { dormant, untrustedRejected, before, interaction, paused, resumed, hidden, restored, clipped, hostSize: size,
+    return { dormant, untrustedRejected, before, interaction, interrupted, recovered, paused, stillPaused, resumed, playAttempts, hidden, restored, clipped, hostSize: size,
       popup, navigation, otherHidden, permission, downloads, closed, staleRejected,
-      storageBefore, storageAfter, pool,
+      storageBefore, storageAfter, pool,freeze,
       states: states.map(state => ({ kind: state.kind, ...(state.proof ? { proof: state.proof } : {}),
         ...(state.reason ? { reason: state.reason } : {}) })), requests };
   } catch (error) {
@@ -172,7 +201,7 @@ try {
     socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true });
   });
   const result = await new Promise((resolveResult, reject) => {
-    const timer = setTimeout(() => reject(new Error('Native isolated-player verification timed out')), 40_000);
+    const timer = setTimeout(() => reject(new Error('Native isolated-player verification timed out')), 60_000);
     socket.addEventListener('message', event => {
       const message = JSON.parse(event.data); if (message.id !== 1) return;
       clearTimeout(timer);
@@ -196,7 +225,13 @@ try {
   assert.equal(result.before.providerControlsVisible, false, 'Provider controls must stay hidden');
   assert.ok(result.before.currentSrc.startsWith('blob:')); assert.equal(result.before.exposedHls, 'undefined');
   for (const name of ['node', 'process', 'appBridge', 'verifierBridge']) assert.equal(result.before[name], 'undefined');
+  assert.equal(result.interrupted.paused,true);
+  assert.equal(result.recovered.paused,false,'A native provider pause must resume without switching feeds');
+  assert.ok(result.recovered.time-result.interrupted.time>=0.5,'Recovered native video must advance');
+  assert.equal(result.stillPaused.paused,true,'An explicit pause must survive automatic reconciliation');
+  assert.ok(Math.abs(result.stillPaused.time-result.paused.time)<0.1);
   assert.equal(result.paused.paused, true); assert.equal(result.resumed.paused, false);
+  assert.equal(result.playAttempts,2,'An interrupted native play must retry without another layout command');
   assert.ok(result.resumed.time - result.paused.time >= 1.8 && result.resumed.frames > result.paused.frames);
   assert.equal(result.resumed.volume, 0.4);
   assert.deepEqual(result.hidden, { visible: false, muted: true }); assert.deepEqual(result.restored, { visible: true, muted: false });
@@ -210,4 +245,10 @@ try {
   assert.equal(result.storageBefore.local, 'fixture'); assert.equal(result.storageBefore.workers, 1);
   assert.deepEqual(result.storageAfter, { cookie: '', local: null, workers: 0, cookieJar: [] });
   assert.deepEqual(result.pool, { sessionAllocations: 1, viewAllocations: 2 });
+  assert.equal(result.freeze.proved,true);
+  assert.equal(result.freeze.frozen.paused,false,'The freeze fixture must retain playing intent');
+  assert.equal(result.freeze.frozen.rate,0);
+  assert.deepEqual(result.freeze.failures,[{kind:'failed',reason:'upstream'}],'A sustained native freeze must enter existing feed recovery once');
+  assert.equal(result.freeze.closed,true);
+  assert.equal(result.freeze.viewAllocations,2,'Native recovery must not allocate an independent replacement player');
 } finally { socket.close(); }

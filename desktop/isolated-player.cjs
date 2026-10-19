@@ -8,6 +8,7 @@ const {registerTrustedUi}=require('./security.cjs');
 const {publicUrl,publicNetworkUrl,sourceRequestAllowed,createNetworkBudget,createPinnedProxy,pinnedAddress}=require('./source-network.cjs');
 const verificationPolicy=require('../lib/playback/verification-policy.json');
 const VERIFICATION_NO_PROGRESS_MS=12_000;
+const VIEWING_NO_PROGRESS_MS=15_000;
 
 function createIsolatedPlayers({authorizeTarget,createSession=()=>session.fromPartition(`isolated-player-${randomUUID()}`,{cache:false}),
   createView=webPreferences=>new WebContentsView({webPreferences}),createProxy=createPinnedProxy,pinAddress=pinnedAddress}){
@@ -136,6 +137,11 @@ function createIsolatedPlayers({authorizeTarget,createSession=()=>session.fromPa
   }
   function publishPresentation(offer,runtime,presentation){
     if(!presentation)return;
+    if(presentation.pip.kind==='available'&&presentation.pip.active||
+      runtime.playerPresentation?.pip.kind==='available'&&runtime.playerPresentation.pip.active){
+      if(presentation.playing!==offer.layout?.playing)runtime.pipPlaying=presentation.playing;
+      else delete runtime.pipPlaying;
+    }
     const signature=JSON.stringify(presentation);
     if(signature===runtime.presentation)return;
     runtime.presentation=signature;runtime.playerPresentation=presentation;publish(offer,{kind:'presentation',presentation});layout(offer);
@@ -171,12 +177,26 @@ function createIsolatedPlayers({authorizeTarget,createSession=()=>session.fromPa
       }
       const playing=offer.pendingPlaying;
       const result=await selected(offer,runtime,{...(typeof playing==='boolean'?{playing}:{}),
+        resume:typeof playing!=='boolean'&&offer.layout?.playing===true&&runtime.pipPlaying===undefined&&
+          !(runtime.playerPresentation?.pip.kind==='available'&&runtime.playerPresentation.pip.active),
         audible:offer.host.purpose==='viewing'&&offer.layout?.audible===true,volume:offer.layout?.volume??0,isolate:true});
       if(!result)return;
       const {value}=result;
       if(value?.kind==='video'&&offer.pendingPlaying===playing)delete offer.pendingPlaying;
       publishPresentation(offer,runtime,value?.presentation);
       const now=Date.now();
+      if(runtime.proved&&offer.host.purpose==='viewing'){
+        const previous=runtime.viewerProgress;
+        if(value?.kind!=='video'||value.ended||value.seeking||!Number.isFinite(value.time)||!Number.isFinite(value.frames)||
+          !runtime.visible||offer.layout?.playing!==true||runtime.pipPlaying!==undefined||
+          runtime.playerPresentation?.pip.kind==='available'&&runtime.playerPresentation.pip.active||
+          value.frames<0)runtime.viewerProgress=undefined;
+        else{
+          const progressAt=!previous||now<previous.at||now-previous.at>6000||value.time>previous.time&&value.frames>previous.frames?now:previous.progressAt;
+          runtime.viewerProgress={at:now,time:value.time,frames:value.frames,progressAt};
+          if(now-progressAt>=VIEWING_NO_PROGRESS_MS){publish(offer,{kind:'failed',reason:'upstream'});revoke(offer.capability);return;}
+        }
+      }
       if(value?.kind!=='video'||!value.playing||value.width<=0||value.height<=0||!Number.isFinite(value.time)||!Number.isFinite(value.frames)||value.frames<1){runtime.first=null;runtime.previous=null;return;}
       const previous=runtime.previous;
       const implausible=previous&&(now-previous.at>6000||value.time<=previous.time||value.frames<=previous.frames||
@@ -187,6 +207,7 @@ function createIsolatedPlayers({authorizeTarget,createSession=()=>session.fromPa
       const observed=now-runtime.first.at,advance=(value.time-runtime.first.time)*1000,frames=value.frames-runtime.first.frames+1;
       if(observed>=2000&&advance>=2000&&frames>=3&&now>=runtime.nextProof){
         runtime.proved=true;clearTimeout(runtime.noProgressTimer);runtime.noProgressTimer=null;runtime.nextProof=now+60_000;
+        if(offer.host.purpose==='viewing')runtime.viewerProgress={at:now,time:value.time,frames:value.frames,progressAt:now};
         publish(offer,{kind:'decoded',proof:{kind:'advancing-video',version:1,startupMs:now-runtime.startedAt,
           observedMs:Math.round(observed),mediaAdvanceMs:Math.round(advance),presentedFrames:frames}});
         runtime.first=null;
@@ -271,6 +292,7 @@ function createIsolatedPlayers({authorizeTarget,createSession=()=>session.fromPa
       controls!==undefined&&controls!==null&&(typeof controls.label!=='string'||controls.label.length>160||typeof controls.fullscreen!=='boolean'||
         Object.keys(controls).some(key=>!['label','fullscreen'].includes(key))))throw invalid();
     if(typeof playing==='boolean'&&playing!==offer.layout?.playing)offer.pendingPlaying=playing;
+    if(offer.runtime&&typeof playing==='boolean'&&playing===offer.runtime.pipPlaying)delete offer.runtime.pipPlaying;
     const transfer=focused===true&&offer.layout?.focused!==true;
     if(focused===true&&host.focusedOffer!==offer){chrome.hide(host);host.focusedOffer=offer;}
     else if(focused===false&&host.focusedOffer===offer)host.focusedOffer=null;

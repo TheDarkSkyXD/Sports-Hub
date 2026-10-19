@@ -67,6 +67,14 @@ test('a fast listing publishes a working live choice while another listing is pe
     const reply=await coordinator.command({kind:'sources'});
     assert.equal(reply.kind,'sources');
     if(reply.kind==='sources')assert.equal(reply.snapshot.sources.find(row=>row.id==='slow')?.lastAttempt,null);
+    const room=await coordinator.command({kind:'room-sources'});
+    assert.equal(room.kind,'room-sources');
+    if(room.kind==='room-sources') {
+      const event=room.snapshot.games.find(row=>row.gameId===live.id);
+      assert.equal(event?.pending,false);
+      assert.equal(event?.candidates[0]?.availability.kind,'playable');
+      assert.equal('sources' in room.snapshot,false);
+    }
   } finally {slow.release();await close();}
 });
 

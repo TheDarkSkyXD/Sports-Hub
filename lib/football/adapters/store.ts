@@ -20,6 +20,7 @@ export class FootballStore {
   private db: DatabaseSync;
   private ownerToken: string;
   private partitionCache = new Map<string, Partition | undefined>();
+  private sourceAttemptCache: {version:number;attempts:Record<string,SourceAttempt>} | undefined;
   constructor(path: string, options: {ownerToken?:string;reclaimToken?:string} = {}) {
     this.ownerToken = options.ownerToken || randomUUID();
     this.db = new DatabaseSync(path);
@@ -141,6 +142,9 @@ export class FootballStore {
     return result.success?result.data:null;
   }
   sourceAttempts(): Record<string,SourceAttempt> {
+    const version=this.db.prepare('PRAGMA data_version').get()?.data_version;
+    if(typeof version!=='number')throw new Error('Invalid SQLite data version');
+    if(this.sourceAttemptCache?.version===version)return structuredClone(this.sourceAttemptCache.attempts);
     const attempts=Object.fromEntries(this.db.prepare('SELECT id,payload FROM sources').all().flatMap<[string,SourceAttempt]>(row => {
       if (typeof row.id !== 'string' || typeof row.payload !== 'string') return [];
       try {
@@ -155,14 +159,28 @@ export class FootballStore {
         return [[row.id,{at:result.data.at,outcome:'failed',failure,failures:0,nextEligibleAt:0}]];
       } catch {return [];}
     }));
-    for(const row of this.db.prepare('SELECT source_id,payload FROM catalog_attempts ORDER BY at DESC').all()) {
-      if(typeof row.source_id!=='string'||typeof row.payload!=='string')continue;
-      try {
-        const parsed=SourceAttemptSchema.safeParse(JSON.parse(row.payload));
-        if(parsed.success&&(!attempts[row.source_id]||parsed.data.at>attempts[row.source_id].at))attempts[row.source_id]=parsed.data;
-      } catch {}
+    const latest=this.db.prepare(`SELECT payload FROM catalog_attempts WHERE source_id=? AND json_valid(payload)
+      ORDER BY CASE WHEN instr(payload,char(92))=0 AND
+        instr(substr(payload,instr(payload,'"at"')+4),'"at"')=0
+        THEN CAST(json_extract(payload,'$.at') AS REAL)
+        ELSE (SELECT CASE WHEN type IN ('integer','real') THEN CAST(value AS REAL) END
+          FROM json_each(payload) WHERE key='at' ORDER BY id DESC LIMIT 1)
+        END DESC,at DESC,rowid ASC`);
+    for(const source of this.db.prepare('SELECT DISTINCT source_id FROM catalog_attempts').all()) {
+      if(typeof source.source_id!=='string')continue;
+      for(const row of latest.iterate(source.source_id)) {
+        if(typeof row.payload!=='string')continue;
+        try {
+          const payload:unknown=JSON.parse(row.payload);
+          if(attempts[source.source_id]&&payload&&typeof payload==='object'&&'at' in payload&&
+            typeof payload.at==='number'&&payload.at<=attempts[source.source_id].at)break;
+          const parsed=SourceAttemptSchema.safeParse(payload);
+          if(parsed.success) {attempts[source.source_id]=parsed.data;break;}
+        } catch {}
+      }
     }
-    return attempts;
+    this.sourceAttemptCache={version,attempts};
+    return structuredClone(attempts);
   }
   workingFeeds(): WorkingFeed[] {
     const feeds:WorkingFeed[]=[];
@@ -324,6 +342,7 @@ export class FootballStore {
         bind.run(parsed.sourceId,parsed.eventId,parsed.url,JSON.stringify(parsed),parsed.observedAt);}
       this.db.prepare('INSERT INTO diagnostics (source_id,at,outcome,count,error) VALUES (?,?,?,?,?)').run(id,attempt.at,attempt.outcome,attempt.count||0,attempt.failure||null);
       this.db.exec('COMMIT');
+      this.sourceAttemptCache=undefined;
     } catch(error) {this.db.exec('ROLLBACK');throw error;}
   }
   detailEvidence():DetailEvidence[] {
@@ -376,6 +395,7 @@ export class FootballStore {
         bind.run(parsedBinding.sourceId,parsedBinding.eventId,parsedBinding.url,JSON.stringify(parsedBinding),parsedBinding.observedAt);}
       this.recordCatalogAttempts('sportsurge-v2',parsed.catalog);
       this.db.exec('COMMIT');
+      this.sourceAttemptCache=undefined;
     } catch(error) { this.db.exec('ROLLBACK'); throw error; }
   }
   streameastCatalog(): {current:StoredStreameastCatalog|null;lastComplete:StoredStreameastCatalog|null;previous:StoredStreameastCatalog|null} {
@@ -406,6 +426,7 @@ export class FootballStore {
       }
       this.recordCatalogAttempts('streameast',parsed.catalog);
       this.db.exec('COMMIT');
+      this.sourceAttemptCache=undefined;
     } catch(error) {this.db.exec('ROLLBACK');throw error;}
   }
   membership(season: number): SeasonMembership | undefined {
@@ -451,11 +472,13 @@ export class FootballStore {
       this.db.prepare('DELETE FROM memberships WHERE season < ?').run(new Date(now).getUTCFullYear()-2);
       this.db.exec('DELETE FROM diagnostics WHERE id IN (SELECT id FROM diagnostics ORDER BY at DESC LIMIT -1 OFFSET 10000)');
       this.db.exec('COMMIT');
+      this.sourceAttemptCache=undefined;
     } catch(error) { this.db.exec('ROLLBACK'); throw error; }
   }
   close(): void {
     this.db.prepare('DELETE FROM owner WHERE slot=1 AND token=?').run(this.ownerToken);
     this.db.close();
     this.partitionCache.clear();
+    this.sourceAttemptCache=undefined;
   }
 }

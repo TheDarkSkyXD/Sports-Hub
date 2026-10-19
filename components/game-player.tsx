@@ -11,6 +11,7 @@ import type { MediaFailureReason,MediaPhase,MediaDeferralReason,MediaTimings } f
 import {relayOutcome} from '@/lib/playback/presentation';
 import {PlayerControlsSurface,type PlayerControlsQuality} from './player-controls-surface';
 import {QualityLevelIdSchema,type PlayerUiResult,type QualitySelection} from '@/lib/desktop-player';
+import type {DashPlayback} from './dash-playback';
 
 type Status = 'loading' | 'ready' | 'buffering' | 'error' | 'gesture' | 'audio-gesture' | 'ended';
 type Quality = { index: number; label: string };
@@ -34,12 +35,14 @@ type Props = {
   startupTimeoutMs?: number;
   noProgressTimeoutMs?: number;
   purpose?: 'viewing'|'verification';
+  format?:'hls'|'dash'|'progressive'|'flv'|'mpegts';
 };
 
-export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onDeferred, onDecoded, onEnded, onRetry, errorHint, startupTimeoutMs = 20000, noProgressTimeoutMs, purpose='viewing' }: Props) {
+export function GamePlayer({ feed, focused, audible, volume, defaultQuality, playing, onPlayingChange, onAudibleChange, onVolumeChange, onFatal, onDeferred, onDecoded, onEnded, onRetry, errorHint, startupTimeoutMs = 20000, noProgressTimeoutMs, purpose='viewing',format }: Props) {
   const shell = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const dashRef=useRef<DashPlayback|null>(null);
   const preferenceRef = useRef(defaultQuality);
   const applyDefaultRef = useRef<(() => void) | null>(null);
   const manualQualityRef = useRef(false);
@@ -70,19 +73,20 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
 
   const syncToLive = useCallback((force = false) => {
     const video = ref.current;
-    if (!video || !playingRef.current || !force && (video.paused || hlsRef.current) || !(liveRef.current || !hlsRef.current && video.duration === Infinity) || !video.seekable.length) return;
+    if (!video || !playingRef.current || !force && (video.paused || hlsRef.current || format==='dash'||format==='flv'||format==='mpegts') || !(liveRef.current || !hlsRef.current && video.duration === Infinity) || !video.seekable.length) return;
     const start = video.seekable.start(video.seekable.length - 1);
     const end = video.seekable.end(video.seekable.length - 1);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
     const sync = hlsRef.current?.liveSyncPosition;
     const target = sync != null && Number.isFinite(sync) && sync >= start && sync <= end ? sync : Math.max(start, end - 3);
     if (force ? Math.abs(video.currentTime - target) > 0.5 : video.currentTime < target - 8 || video.currentTime > end) video.currentTime = target;
-  }, []);
+  }, [format]);
 
   useEffect(() => {
     const video = ref.current;
     if (!video) return;
     let active = true;
+    const controller=new AbortController();
     sourceGeneration.current += 1;
     let failed = false;
     let hasLoaded = false;
@@ -94,7 +98,8 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     let lastTick = performance.now();
     needsGesture.current = false;
     liveRef.current = false;
-    const native = /\.m3u8(?:\?|$)/i.test(feed.url) && !Hls.isSupported();
+    const isHls=format==='hls'||format===undefined&&/\.m3u8(?:\?|$)/i.test(feed.url);
+    const native = isHls && !Hls.isSupported();
     const reset = window.setTimeout(() => { if (!active) return; setStatus('loading'); if (!manifestParsed) { setQualities([]); setQuality(-1); setUsesHls(false); } if (!metadataLoaded) setNativeHeight(null); if (!liveRef.current && video.duration !== Infinity) setLive(false); setNativeHls(native); }, 0);
     const ready = () => { if (active) { hasLoaded = true; setStatus(needsGesture.current ? 'audio-gesture' : 'ready'); syncToLive(); } };
     const loaded = () => { if (!active) return; hasLoaded = true; if (!playingRef.current) setStatus('ready'); syncToLive(); };
@@ -137,6 +142,8 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     video.addEventListener('durationchange', durationChanged);
     video.addEventListener('progress', progressed);
     let lastPosition = video.currentTime;
+    const initialQuality = video.getVideoPlaybackQuality?.();
+    let lastFrames = initialQuality ? initialQuality.totalVideoFrames - initialQuality.droppedVideoFrames : undefined;
     let lastProgress = performance.now();
     const stallCheck = window.setInterval(() => {
       const now = performance.now();
@@ -144,6 +151,8 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       const slept = elapsed > 6000;
       lastTick = now;
       const position = video.currentTime;
+      const quality = video.getVideoPlaybackQuality?.();
+      const frames = quality ? quality.totalVideoFrames - quality.droppedVideoFrames : undefined;
       if (deferredFailure && !slept && canRecover()) { deferredFailure = false; setRetry(value => value + 1); return; }
       const forwardMs=(position-lastPosition)*1000;
       if(startupState==='waiting'&&!slept&&hasLoaded&&canRecover()&&!video.paused&&!video.ended&&!video.seeking&&video.readyState>=2&&
@@ -155,10 +164,15 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       }
       if (slept || !hasLoaded || !canRecover() || video.paused || video.ended || purpose==='verification'&&startupState!=='proved') {
         lastPosition = position;
+        lastFrames = frames;
         lastProgress = now;
         return;
       }
-      if (Math.abs(position - lastPosition) >= 0.25) { lastPosition = position; lastProgress = now; }
+      const framesReset = frames !== undefined && lastFrames !== undefined && frames < lastFrames;
+      const framesAdvance = frames === undefined || lastFrames === undefined || frames > lastFrames;
+      if (framesReset || Math.abs(position - lastPosition) >= 0.25 && framesAdvance) {
+        lastPosition = position; lastFrames = frames; lastProgress = now;
+      }
       else if (now - lastProgress >= 15000) error();
     }, 2000);
     let hls: Hls | null = null;
@@ -166,9 +180,10 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     let qualityLevels: QualityLevel[] = [];
     manualQualityRef.current = false;
     const applyDefault = () => {
-      if (!active || !hls || manualQualityRef.current || qualityLevels.length === 0) return;
+      if (!active || !hls&&!dashRef.current || manualQualityRef.current || qualityLevels.length === 0) return;
       const index = chooseDefaultLevel({ preference: preferenceRef.current, levels: qualityLevels });
-      hls.nextLevel = index;
+      if(hls)hls.nextLevel = index;
+      else dashRef.current?.chooseQuality(index);
       setQuality(index);
     };
     applyDefaultRef.current = applyDefault;
@@ -198,7 +213,31 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     };
     video.addEventListener('loadedmetadata', onVideoDimensions);
     video.addEventListener('resize', onVideoDimensions);
-    if (/\.m3u8(?:\?|$)/i.test(feed.url) && Hls.isSupported()) {
+    if(format==='dash'){
+      void import('./dash-playback').then(({loadDashPlayback})=>loadDashPlayback({video,url:feed.url,signal:controller.signal,purpose,
+        onFailure:outcome=>{
+          if(!active||failed)return;
+          if(outcome.kind==='deferred'&&purpose==='verification'&&callbacks.current.onDeferred){
+            failed=true;controller.abort();callbacks.current.onDeferred(feed.url,outcome.reason??'upstream',{phase:outcome.phase,retryAfterMs:outcome.retryAfterMs});
+          }else{fail(outcome.kind==='unavailable'?outcome.reason??'playback':'upstream',outcome.phase??'replay');if(failed)controller.abort();}
+        },
+      })).then(player=>{
+        if(!active)return;
+        dashRef.current=player;manifestParsed=true;
+        qualityLevels=player.qualities.map((level,index)=>({...level,index}));
+        setQualities(qualityLevels.map(level=>({index:level.index,label:level.height?`${level.height}p`:'Quality unavailable'})));
+        setUsesHls(true);liveRef.current=player.live;setLive(player.live);applyDefault();
+      }).catch(()=>{if(active&&!failed)fail('unsupported','replay');});
+    }else if(format==='flv'||format==='mpegts'){
+      void import('./container-playback').then(({loadContainerPlayback})=>loadContainerPlayback({video,url:feed.url,format,
+        signal:controller.signal,purpose,onFailure:outcome=>{
+          if(!active||failed)return;
+          if(outcome.kind==='deferred'&&purpose==='verification'&&callbacks.current.onDeferred){
+            failed=true;controller.abort();callbacks.current.onDeferred(feed.url,outcome.reason??'upstream',{phase:outcome.phase,retryAfterMs:outcome.retryAfterMs});
+          }else{fail(outcome.kind==='unavailable'?outcome.reason??'playback':'upstream',outcome.phase??'replay');if(failed)controller.abort();}
+        },
+      })).catch(()=>{if(active&&!failed)fail('unsupported','replay');});
+    }else if (isHls && Hls.isSupported()) {
       hls = new Hls({ workerPath: '/generated/hls.worker.js', ...(purpose === 'verification'
         ? { maxBufferLength: 4, maxMaxBufferLength: 8, maxBufferSize: 8_000_000, backBufferLength: 0 }
         : { maxBufferLength: 45, maxMaxBufferLength: 60, backBufferLength: 15 }), liveSyncDurationCount: 3,
@@ -246,6 +285,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     }
     return () => {
       active = false;
+      controller.abort();dashRef.current=null;
       evidence.stop();
       sourceGeneration.current += 1;
       window.clearInterval(stallCheck);
@@ -263,7 +303,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
       video.removeEventListener('loadedmetadata', onVideoDimensions); video.removeEventListener('resize', onVideoDimensions);
       video.removeAttribute('src'); video.load();
     };
-  }, [feed.url, retry, startupTimeoutMs, noProgressTimeoutMs, syncToLive, purpose]);
+  }, [feed.url, retry, startupTimeoutMs, noProgressTimeoutMs, syncToLive, purpose,format]);
 
   useEffect(() => {
     const video = ref.current;
@@ -276,6 +316,7 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     const video = ref.current;
     if (!video) return;
     let active = true;
+    let recovery: ReturnType<typeof setTimeout> | undefined;
     const sync = () => {
       if (!playing) { video.pause(); return; }
       if (!wasPlayingRef.current) syncToLive(true);
@@ -293,10 +334,23 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
         }
       });
     };
+    const canResume = () => active && playingRef.current && video.paused && !video.ended && !video.error && !needsGesture.current && !document.hidden && document.pictureInPictureElement !== video;
+    const recover = () => {
+      clearTimeout(recovery);
+      if (canResume()) recovery = setTimeout(() => { if (canResume()) sync(); }, 500);
+    };
+    video.addEventListener('pause', recover);
+    document.addEventListener('visibilitychange', recover);
     video.addEventListener('loadedmetadata', sync);
     sync();
     wasPlayingRef.current = playing;
-    return () => { active = false; video.removeEventListener('loadedmetadata', sync); };
+    return () => {
+      active = false;
+      clearTimeout(recovery);
+      video.removeEventListener('pause', recover);
+      document.removeEventListener('visibilitychange', recover);
+      video.removeEventListener('loadedmetadata', sync);
+    };
   }, [playing, feed.url, retry, syncToLive, pip]);
 
   useEffect(() => {
@@ -334,10 +388,13 @@ export function GamePlayer({ feed, focused, audible, volume, defaultQuality, pla
     }catch{return {kind:'unavailable'};}
   };
   const chooseQuality=async(selection:QualitySelection):Promise<PlayerUiResult>=>{
-    if(!hlsRef.current)return {kind:'unavailable'};
+    if(!hlsRef.current&&!dashRef.current)return {kind:'unavailable'};
     const index=selection.kind==='auto'?-1:Number(selection.id);
     if(index!==-1&&(!Number.isInteger(index)||!qualities.some(level=>level.index===index)))return {kind:'unavailable'};
-    manualQualityRef.current=true;hlsRef.current.currentLevel=index;setQuality(index);return {kind:'applied'};
+    manualQualityRef.current=true;
+    if(hlsRef.current)hlsRef.current.currentLevel=index;
+    else dashRef.current?.chooseQuality(index);
+    setQuality(index);return {kind:'applied'};
   };
   const enablePlayback = () => {
     const video = ref.current; if (!video) return;

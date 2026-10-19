@@ -4,8 +4,9 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright';
-import { SourcesSnapshotSchema } from '../lib/football/shared.ts';
 import { prepareDevelopmentElectron } from '../scripts/electron-runtime.mjs';
+import { roomSources } from '../lib/football/domain/source-inventory.ts';
+import { SourcesSnapshotSchema } from '../lib/football/shared.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const output = path.join(root, '.scratch', 'sources-all');
@@ -84,7 +85,7 @@ try {
     schemaVersion: 2, revision: 1, updatedAt: new Date(at).toISOString(), scheduleState: 'ready',
     aliases: {}, leagues: {}, games: [], finishedGameRetentionMinutes: 120,
   } }));
-  await desktop.context().route('**/api/sources', route => route.fulfill({ json: snapshot }));
+  await desktop.context().route('**/api/sources*', route => route.fulfill({ json: route.request().method()==='GET'&&new URL(route.request().url()).searchParams.get('view')==='room'?roomSources(snapshot):snapshot }));
   await page.reload();
   const nativeWindow = await desktop.browserWindow(page);
   await nativeWindow.evaluate(window => { window.setContentSize(1500, 1100); window.showInactive(); });

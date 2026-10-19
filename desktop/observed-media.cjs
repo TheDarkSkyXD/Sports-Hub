@@ -110,7 +110,7 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     let partition = partitions.find(item => item.state === 'free');
     if (!partition) {
       if (partitions.length >= verificationPolicy.concurrency+4) return null;
-      partition = { session: sessions.fromPartition(`${partitionPrefix}-${partitions.length}`),
+      partition = { session: sessions.fromPartition(`${partitionPrefix}-${partitions.length}`,{cache:false}),
         state: 'free', generation: 0, retryTimer: null, deadlineTimer: null };
       partitions.push(partition);
     }
@@ -118,7 +118,7 @@ function createObservedMedia({ pinAddress, validateUrl, network = chromiumNet, s
     const generation = ++partition.generation;
     const id = randomUUID();
     const mediaSession = partition.session;
-    const entry = { id, partition, generation, cookieOrigin: root.origin,progressiveUrl:kind==='progressive'?root.href:null,
+    const entry = { id, partition, generation, cookieOrigin: root.origin,progressiveUrl:['progressive','flv','mpegts'].includes(kind)?root.href:null,
       session: mediaSession, requests: new Set(), proxy: null, timer: null,
       headers: { 'User-Agent': userAgent, Accept: '*/*', ...(origin ? { Origin: origin } : {}),
         ...(requestReferer ? { Referer: requestReferer } : {}) } };

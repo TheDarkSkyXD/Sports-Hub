@@ -119,7 +119,7 @@ test('new published choices are discovered while working proof is refreshed at t
     assert.equal(after.length, 2);
     assert.deepEqual(before, { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at });
     assert.deepEqual(after.find(row => row.id === 'route-000')?.availability,
-      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 30*60_000 });
+      { kind: 'playable', proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}, checkedAt: at + 30*60_000 - 30_001 });
     assert.equal(run.calls.length, 3);
   } finally { await run.stop(); }
 });

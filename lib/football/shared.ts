@@ -143,7 +143,7 @@ export const MediaDeferralReasonSchema=z.enum(['capacity','upstream','timeout','
 export type MediaDeferralReason=z.infer<typeof MediaDeferralReasonSchema>;
 export const MediaTimingsSchema=z.object({resolutionMs:z.number().int().nonnegative().max(300000).optional(),
   captureMs:z.number().int().nonnegative().max(300000).optional(),decodeMs:z.number().int().nonnegative().max(300000).optional(),
-  path:z.enum(['hls','progressive','isolated-embed']).optional(),fallback:z.boolean().optional()}).strict();
+  path:z.enum(['hls','dash','progressive','flv','mpegts','isolated-embed']).optional(),fallback:z.boolean().optional()}).strict();
 export type MediaTimings=z.infer<typeof MediaTimingsSchema>;
 export const MediaCheckResultSchema=z.discriminatedUnion('kind',[
   z.object({kind:z.literal('playable'),proof:AdvancingVideoSchema,timings:MediaTimingsSchema.optional()}).strict(),
@@ -433,10 +433,16 @@ export const SourcesSnapshotSchema = z.object({
   })),
 });
 export type SourcesSnapshot = z.infer<typeof SourcesSnapshotSchema>;
+export const RoomSourcesSnapshotSchema = z.object({
+  revision:z.number(),collecting:z.boolean(),
+  games:z.array(SourcesSnapshotSchema.shape.games.element.pick({gameId:true,candidates:true}).extend({pending:z.boolean()})),
+});
+export type RoomSourcesSnapshot = z.infer<typeof RoomSourcesSnapshotSchema>;
 export const CommandSchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('board')}),
   z.object({kind:z.literal('set-retention'),minutes:FinishedGameRetentionMinutesSchema}),
   z.object({kind:z.literal('sources')}),
+  z.object({kind:z.literal('room-sources')}),
   z.object({kind:z.literal('check-sources'),gameIds:z.array(z.string().min(1).max(100)).min(1).max(4),retry:z.boolean().default(false)}),
   z.object({kind:z.literal('open'),gameId:z.string().min(1).max(100),manual:z.boolean().default(false),requestId:z.string().uuid().optional(),initialCandidateId:z.string().min(1).max(100).optional()}),
   z.object({kind:z.literal('session'),sessionId:z.string().uuid(),generation:z.number().int().nonnegative(),candidateId:z.string().max(100).optional(),failure:z.boolean().default(false),retry:z.boolean().default(false)}),
@@ -453,6 +459,7 @@ export type Command = z.infer<typeof CommandSchema>;
 export const ReplySchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('board'),board:BoardSchema}),
   z.object({kind:z.literal('sources'),snapshot:SourcesSnapshotSchema}),
+  z.object({kind:z.literal('room-sources'),snapshot:RoomSourcesSnapshotSchema}),
   z.object({kind:z.literal('playback'),playback:PlaybackSchema}),
   z.object({kind:z.literal('session'),session:SessionSchema,candidates:z.array(CandidateSummarySchema)}),
   z.object({kind:z.literal('authorized'),candidate:CandidateSchema,session:SessionSchema}),

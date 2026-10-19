@@ -36,19 +36,24 @@ export function createObservationMatcher(games: readonly Game[], mode: 'current'
   for (const game of matchups) {
     const pair: [Set<string>,Set<string>] = [aliases(game,game.home),aliases(game,game.away)];
     gameAliases.set(game,pair);
-    for (const [index,team] of [game.home,game.away].entries()) for (const alias of pair[index]) {
-      const key = `${game.league}:${alias}`;
-      const owners = liveOwners.get(key) || new Set<string>();
-      owners.add(identity(game,team));
-      liveOwners.set(key,owners);
+    for (const [index,team] of [game.home,game.away].entries()) {
+      const owner = identity(game,team);
+      for (const alias of pair[index]) {
+        const key = `${game.league}:${alias}`;
+        const owners = liveOwners.get(key) || new Set<string>();
+        owners.add(owner);
+        liveOwners.set(key,owners);
+      }
     }
   }
-  const names = (game: MatchupGame, team: MatchupGame['home'], index: 0 | 1) => new Set([...(gameAliases.get(game)?.[index] || [])].filter(alias => {
+  const names = (game: MatchupGame, team: MatchupGame['home'], index: 0 | 1) => {
     const owner = identity(game,team);
-    const live = liveOwners.get(`${game.league}:${alias}`);
-    const catalog = game.league === 'ncaaf' ? collegeOwners.get(alias) : undefined;
-    return (!live || live.size === 1 && live.has(owner)) && (!catalog || catalog.size === 1 && catalog.has(owner));
-  }));
+    return new Set([...(gameAliases.get(game)?.[index] || [])].filter(alias => {
+      const live = liveOwners.get(`${game.league}:${alias}`);
+      const catalog = game.league === 'ncaaf' ? collegeOwners.get(alias) : undefined;
+      return (!live || live.size === 1 && live.has(owner)) && (!catalog || catalog.size === 1 && catalog.has(owner));
+    }));
+  };
   const prepared=matchups.map((game,index)=>({game,index,home:names(game,game.home,0),away:names(game,game.away,1),
     homeId:identity(game,game.home),awayId:identity(game,game.away),date:game.date ? Date.parse(game.date) : NaN}));
   const homeByAlias=new Map<string,typeof prepared>();
@@ -290,17 +295,17 @@ export function createSourceEventMatcher(games:readonly Game[],mode:'current'|'i
 }
 
 export function createFinishedGameMatcher(games:readonly Game[]) {
-  const match=createObservationMatcher(games,'inventory-live');
   const finalIds=new Set(games.filter(game=>game.lifecycle==='final').map(game=>game.id));
+  const match=finalIds.size?createObservationMatcher(games,'inventory-live'):undefined;
   return {
     finishedGameId(observation:Observation,now:number,expectedGameId?:string):string|null {
-      if(observation.kickoff===null)return null;
+      if(!match||observation.kickoff===null)return null;
       const result=match({...observation,observedAt:now},now);
       return result.kind==='unmatched'&&result.reason==='finished-game'&&result.possibleGameIds.length===1&&
         (!expectedGameId||result.possibleGameIds[0]===expectedGameId)?result.possibleGameIds[0]:null;
     },
     finishedBoundEvent(observation:Observation,eventId:string,bindings:readonly SourceEventBinding[]):string|null {
-      if(observation.kickoff!==null)return null;
+      if(!match||observation.kickoff!==null)return null;
       const teams=observation.teams;
       if(!teams)return null;
       const pair=(teams:readonly string[])=>teams.map(normalizedName).sort().join('|');

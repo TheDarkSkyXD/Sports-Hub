@@ -72,6 +72,7 @@ test('Available expires at the proof deadline even inside the inventory cache wi
   const value=fixture();
   try{
     await value.refresh(0);
+    value.hold();
     await value.refresh(1_798_000);
     value.setTime(1_799_999);
     const before=await value.snapshot();
@@ -79,7 +80,7 @@ test('Available expires at the proof deadline even inside the inventory cache wi
     const after=await value.snapshot();
     assert.equal(before?.games[0].candidates[0].availability.kind,'playable');
     assert.deepEqual(after?.games[0].candidates[0].availability,
-      {kind:'checking',progress:{kind:'queued',since:at+1_800_000}});
+      {kind:'checking',progress:{kind:'active',since:at+1_798_000}});
     assert.notEqual(before,after);
     const opened=await value.coordinator.command({kind:'open',gameId:value.game.id,manual:false});
     assert.equal(opened.kind,'error');

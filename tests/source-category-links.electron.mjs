@@ -6,7 +6,7 @@ import path from 'node:path';
 import { _electron as electron } from 'playwright';
 import { prepareDevelopmentElectron } from '../scripts/electron-runtime.mjs';
 import { SOURCE_REGISTRY } from '../lib/football/source-registry.ts';
-import { sourceInventory } from '../lib/football/domain/source-inventory.ts';
+import { roomSources, sourceInventory } from '../lib/football/domain/source-inventory.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const output = path.join(root, '.scratch', 'source-category-links');
@@ -46,7 +46,7 @@ try {
   page.setDefaultTimeout(30_000);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await desktop.context().route('**/api/sources', route => route.fulfill({ json: snapshot }));
+  await desktop.context().route('**/api/sources*', route => route.fulfill({ json: route.request().method()==='GET'&&new URL(route.request().url()).searchParams.get('view')==='room'?roomSources(snapshot):snapshot }));
   await page.reload();
   const window = await desktop.browserWindow(page);
   await window.evaluate(native => { native.setContentSize(1500, 1100); native.showInactive(); });

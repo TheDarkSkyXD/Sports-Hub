@@ -3,10 +3,11 @@ import { CommandSchema } from '@/lib/football/shared';
 
 export const dynamic='force-dynamic';
 
-export async function GET() {
-  const reply=await command({kind:'sources'});
+export async function GET(request:Request) {
+  const room=new URL(request.url).searchParams.get('view')==='room';
+  const reply=await command({kind:room?'room-sources':'sources'});
   if (reply.kind==='error') return Response.json({error:reply.message},{status:reply.status,headers:{'Cache-Control':'no-store'}});
-  if (reply.kind!=='sources') return Response.json({error:'Source inventory is unavailable.'},{status:502,headers:{'Cache-Control':'no-store'}});
+  if (reply.kind!=='sources'&&reply.kind!=='room-sources') return Response.json({error:'Source inventory is unavailable.'},{status:502,headers:{'Cache-Control':'no-store'}});
   return Response.json(reply.snapshot,{headers:{'Cache-Control':'no-store'}});
 }
 

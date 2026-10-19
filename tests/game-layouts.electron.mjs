@@ -39,7 +39,7 @@ try {
     schemaVersion: 2, scheduleState: 'ready', revision: 1, aliases: {}, games, updatedAt: new Date().toISOString(),
     leagues: { nfl: { week: 3, scoresAt: null, sourceAt: null, errors: [] }, ncaaf: { scoresAt: null, sourceAt: null, errors: [] } },
   } }));
-  await desktop.context().route('**/api/sources', route => route.fulfill({ status: 204 }));
+  await desktop.context().route('**/api/sources*', route => route.fulfill({ status: 204 }));
   const sessions = new Map();
   await desktop.context().route('**/api/playback?*', route => route.fulfill({ status: 204 }));
   await desktop.context().route('**/api/playback', route => {

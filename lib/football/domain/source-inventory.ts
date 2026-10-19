@@ -4,12 +4,34 @@ import { compareCandidates } from './lifecycle.ts';
 import { SOURCE_REFRESH_MS, ACTIVE_DISCOVERY_MS, COLLECTION_SETTLE_MS, discoveryDeadline, detailIdentityMatches } from './source-policy.ts';
 import {browserCategoryDeadline} from './browser-polling.ts';
 import { resolvedLiveChannelMatch } from './live-channel.ts';
-import { feedDateEligible, feedInventoryEligible, feedWindow } from './feed-eligibility.ts';
+import { feedDateEligible, feedEligible, feedInventoryEligible, feedWindow } from './feed-eligibility.ts';
 import { browserCategory, sourceCoverage } from '../source-registry.ts';
 import type { ListingSource } from './ports.ts';
 import { createFinishedGameMatcher, createSourceEventMatcher, normalizedName, type SourceEventEvidence } from './matching.ts';
 import { sportsurgeCatalogView, sportsurgeEvidence, sportsurgeObservation } from './sportsurge-catalog.ts';
 import { streameastCatalogView, streameastEvidence, streameastObservation } from './streameast-catalog.ts';
+import type { RoomSourcesSnapshot } from '../shared.ts';
+
+function roomGame({gameId,candidates,scheduleIncomplete,pendingListing}:{
+  gameId:string;candidates:SourcesSnapshot['games'][number]['candidates'];scheduleIncomplete:boolean;pendingListing:boolean;
+}):RoomSourcesSnapshot['games'][number] {
+  return {gameId,candidates,pending:!scheduleIncomplete&&
+    !candidates.some(candidate=>candidate.availability.kind==='playable')&&
+    (candidates.some(candidate=>candidate.availability.kind==='unknown'||
+      candidate.availability.kind==='checking'&&candidate.availability.progress.kind!=='deferred')||pendingListing)};
+}
+
+export function roomSources(snapshot:SourcesSnapshot):RoomSourcesSnapshot {
+  return {
+    revision:snapshot.revision,
+    collecting:snapshot.sportsurgeV2.current?.state.kind==='collecting'||snapshot.streameast.current?.state.kind==='collecting',
+    games:snapshot.games.map(game=>roomGame({
+      gameId:game.gameId,candidates:game.candidates,
+      scheduleIncomplete:game.feeds.kind==='incomplete'&&game.feeds.reason==='schedule',
+      pendingListing:game.sourceLinks.some(link=>link.evidence.kind==='pending'),
+    })),
+  };
+}
 
 type Input = {
   at:number; revision:number; lastDiscoveryAt:number|null; browserCollectorsAvailable:boolean; sources:readonly ListingSource[];
@@ -101,6 +123,16 @@ function collectionHealth(sourceId:string,history:readonly CollectionAttempt[],p
 }
 
 export function sourceInventory(input:Input):SourcesSnapshot {
+  return projectInventory(input,'full');
+}
+
+export function roomSourceInventory(input:Input):RoomSourcesSnapshot {
+  return projectInventory(input,'room');
+}
+
+function projectInventory(input:Input,view:'full'):SourcesSnapshot;
+function projectInventory(input:Input,view:'room'):RoomSourcesSnapshot;
+function projectInventory(input:Input,view:'full'|'room'):SourcesSnapshot|RoomSourcesSnapshot {
   const {at,sources,games,candidates}=input;
   const identity=(candidate:Candidate)=>JSON.stringify([candidate.gameId,input.candidateIdentity?.(candidate)??candidate.id]);
   const availabilityByCandidate=new Map<Candidate,CandidateAvailability>();
@@ -136,10 +168,11 @@ export function sourceInventory(input:Input):SourcesSnapshot {
   for(const observation of input.observations) {
     const rows=observationsBySource.get(observation.sourceId)??[];rows.push(observation);observationsBySource.set(observation.sourceId,rows);
   }
+  const discoveryGames=games.filter(game=>feedEligible(game,at));
   const attempts=Object.fromEntries(Object.entries(input.attempts).map(([id,attempt])=>{
     const source=sourceById.get(id);
     if(source?.kind==='browser-catalog'||attempt.outcome!=='parsed'&&attempt.outcome!=='empty')return [id,attempt];
-    const nextEligibleAt=discoveryDeadline(attempt.at,(observationsBySource.get(id)??[]).filter(row=>row.observedAt>=attempt.at),games,
+    const nextEligibleAt=discoveryDeadline(attempt.at,(observationsBySource.get(id)??[]).filter(row=>row.observedAt>=attempt.at),discoveryGames,
       source?.leagues??sourceCoverage(id),at);
     return [id,{...attempt,nextEligibleAt}];
   }));
@@ -252,7 +285,7 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       gameLinks.push({sourceId:observation.sourceId,title:observation.title,url,observedAt:observation.observedAt,freshness,evidence});
       linksByGame.set(gameId,gameLinks);
       const detail=details.get(observation.id);
-      if(detail?.outcome==='unresolved'&&detail.generation===detailGeneration(observation)&&detail.reason!=='not-yet-published'&&
+      if(view==='full'&&detail?.outcome==='unresolved'&&detail.generation===detailGeneration(observation)&&detail.reason!=='not-yet-published'&&
         detail.lastSuccess&&detailIdentityMatches(detail.lastSuccess.identity,observation)&&detail.lastSuccess.at<detail.at&&
         detail.lastSuccess.at>=at-24*3600000) {
         const prior=playerDropBySource.get(observation.sourceId);
@@ -357,6 +390,19 @@ export function sourceInventory(input:Input):SourcesSnapshot {
       add(observation,runIndex>0,event,null,publishedEvidence);
     }
   }
+  const summarize=(rows:Candidate[])=>[...rows].sort(input.compareCandidates??compareCandidates)
+    .map(candidate=>candidateSummary(candidate,availability(candidate)));
+  if(view==='room')return {
+    revision:input.revision,
+    collecting:input.sportsurgeCatalog.current?.catalog.state.kind==='collecting'||input.streameastCatalog.current?.catalog.state.kind==='collecting',
+    games:games.flatMap(game=>{
+      if(!visibleGameIds.has(game.id))return [];
+      const rows=(candidates.get(game.id)||[]).filter(candidateEligible);
+      return [roomGame({gameId:game.id,candidates:summarize(rows),
+        scheduleIncomplete:rows.length===0&&(game.lifecycle==='unknown'||!!input.freshGameIds&&!input.freshGameIds.has(game.id)),
+        pendingListing:linksByGame.get(game.id)?.some(link=>link.evidence.kind==='pending')??false})];
+    }),
+  };
   const sourceRows=sources.map(source=>{
     const links=[...(linksBySource.get(source.id)?.values() || [])];
     const matched=new Set(links.flatMap(link=>link.gameId ? [link.gameId] : []));
@@ -426,13 +472,12 @@ export function sourceInventory(input:Input):SourcesSnapshot {
   const gameRows=games.flatMap(game=>{
     if(!visibleGameIds.has(game.id))return [];
     const sourceLinks=linksByGame.get(game.id) || [];
-    const selectable=(candidates.get(game.id) || []).filter(candidate=>candidateEligible(candidate))
-      .sort(input.compareCandidates??compareCandidates).map(candidate=>candidateSummary(candidate,availability(candidate)));
+    const freshCandidates=(candidates.get(game.id)||[]).filter(candidateEligible);
+    const selectable=summarize(freshCandidates);
     const sourceCount=new Set(sourceLinks.map(link=>link.sourceId)).size;
     const currentSources=new Set(sourceLinks.filter(link=>link.freshness==='fresh').map(link=>link.sourceId));
     const uniqueFeedCount=new Set((candidates.get(game.id) || []).filter(candidate=>candidateEligible(candidate) && candidate.sourceIds.some(sourceId=>currentSources.has(sourceId)) && availability(candidate).kind==='playable')
       .map(identity)).size;
-    const freshCandidates=(candidates.get(game.id)||[]).filter(candidate=>candidateEligible(candidate));
     const direct=input.streameastCatalog.current?.catalog;
     const surge=input.sportsurgeCatalog.current?.catalog;
     const currentSurgeRoute=(candidate:Candidate,url:string):boolean=>{

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { SourcesSnapshotSchema } from '../lib/football/shared.ts';
+import { roomSources } from '../lib/football/domain/source-inventory.ts';
 
 const now = Date.now();
 const productBoard = {
@@ -45,7 +47,7 @@ try {
     };
   });
   await page.route('**/api/games', route => route.fulfill({ json: productBoard }));
-  await page.route('**/api/sources', route => route.fulfill({ json: sourcesSnapshot }));
+  await page.route('**/api/sources*', route => route.fulfill({ json: route.request().method()==='GET'&&new URL(route.request().url()).searchParams.get('view')==='room'?roomSources(SourcesSnapshotSchema.parse(sourcesSnapshot)):sourcesSnapshot }));
   await page.goto(process.env.PLAYER_BASE_URL || 'http://127.0.0.1:3000');
   await page.locator('.game-grid.duo').waitFor();
   assert.equal(await page.locator('.source-inventory').count(), 0);

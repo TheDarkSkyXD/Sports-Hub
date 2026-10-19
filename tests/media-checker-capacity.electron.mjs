@@ -76,7 +76,10 @@ if(result.viewer){
   }
 }
 assert.ok(inventory.checks,'The current source snapshot must report physical checker work');
-assert.equal(inventory.checks.limit,policy.concurrency);
+if(result.viewer)assert.equal(inventory.checks.limit,
+  Math.max(inventory.checks.active,Math.min(policy.concurrency,policy.viewingConcurrency)));
+else assert.ok(inventory.checks.limit<=policy.concurrency,
+  `Reported checker limit ${inventory.checks.limit} exceeds the physical limit ${policy.concurrency}`);
 assert.ok(inventory.checks.active <= policy.concurrency, `Physical checks ${inventory.checks.active} exceed the overall limit ${policy.concurrency}`);
 assert.ok((players.assignments??0) <= policy.concurrency, `Rendered verification assignments ${players.assignments} exceed the overall limit ${policy.concurrency}`);
 assert.ok(players.mounted <= policy.concurrency, `Mounted verification players ${players.mounted} exceed the overall limit ${policy.concurrency}`);

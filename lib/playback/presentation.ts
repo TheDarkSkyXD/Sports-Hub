@@ -14,6 +14,9 @@ const fallbackUrl=z.string().max(2048).refine(value=>{
 });
 export const PresentationSchema=z.discriminatedUnion('kind',[
   z.object({kind:z.literal('hls'),url:relayUrl,fallbackUrl:fallbackUrl.optional()}).strict(),
+  z.object({kind:z.literal('dash'),url:relayUrl,fallbackUrl:fallbackUrl.optional()}).strict(),
+  z.object({kind:z.literal('flv'),url:relayUrl,fallbackUrl:fallbackUrl.optional()}).strict(),
+  z.object({kind:z.literal('mpegts'),url:relayUrl,fallbackUrl:fallbackUrl.optional()}).strict(),
   z.object({kind:z.literal('progressive'),url:relayUrl,fallbackUrl:fallbackUrl.optional()}).strict(),
   z.object({kind:z.literal('isolated-embed'),capability}).strict(),
 ]);

@@ -77,23 +77,36 @@ function fixture(options:{today?:number;tomorrow?:number;concurrency?:number;ove
   };
 }
 
-test('every today sibling receives a first attempt before tomorrow or repeated incomplete checks',async()=>{
+test('every today sibling receives a first attempt before tomorrow while due today retries share slots',async()=>{
   const run=fixture({today:24,tomorrow:2});
   try{
     await run.refresh();
     assert.deepEqual(run.calls.map(call=>call.gameId),[todayId,todayId]);
-    for(let index=0;index<24;index++){
+    for(let index=0;index<48&&new Set(run.calls.filter(call=>call.gameId===todayId).map(call=>call.candidateId)).size<24;index++){
       await run.refresh((index+1)*20_000);
       await run.finish(todayId,incomplete);
-      if(index<23)assert.ok(run.calls.every(call=>call.gameId===todayId),'Tomorrow must wait for every today first attempt');
+      if(new Set(run.calls.filter(call=>call.gameId===todayId).map(call=>call.candidateId)).size<24)
+        assert.ok(run.calls.every(call=>call.gameId===todayId),'Tomorrow must wait for every today first attempt');
     }
     assert.equal(new Set(run.calls.filter(call=>call.gameId===todayId).map(call=>call.candidateId)).size,24);
-    assert.equal(run.calls.filter(call=>call.gameId===todayId).length,24,'An incomplete result must not repeat ahead of untouched feeds');
-    assert.equal(run.calls[24]?.gameId,tomorrowId);
-    await run.finish(tomorrowId,playable);await run.finish(tomorrowId,unavailable);
-    const snapshot=await run.snapshot();
-    assert.equal(snapshot.games.find(game=>game.gameId===tomorrowId)?.workingChoiceCount,1);
-    assert.ok(run.calls.length>26,'Due incomplete checks resume after both days receive first attempts');
+    assert.ok(run.calls.filter(call=>call.gameId===todayId).length>24,'Due today retries receive fair turns');
+  }finally{await run.stop();}
+});
+
+test('a due today retry gets a turn while first attempts remain queued',async()=>{
+  const run=fixture({today:8,tomorrow:2,concurrency:1});
+  try{
+    await run.refresh();
+    const retried=run.calls[0]?.candidateId;
+    assert.ok(retried);
+    await run.finish(todayId,incomplete);
+    await run.refresh(30_000);
+    await run.finish(todayId,unavailable);
+    await run.finish(todayId,unavailable);
+    assert.equal(run.calls.filter(call=>call.candidateId===retried).length,2,
+      'A due today retry should share the first-pass frontier');
+    assert.ok(new Set(run.calls.filter(call=>call.gameId===todayId).map(call=>call.candidateId)).size<8);
+    assert.ok(run.calls.every(call=>call.gameId===todayId),'Tomorrow waits for today first attempts');
   }finally{await run.stop();}
 });
 
@@ -152,21 +165,21 @@ test('an explicit tomorrow retry receives a slot during the automatic today firs
   }finally{await run.stop();}
 });
 
-test('automatic tomorrow maintenance waits for newly published today first checks',async()=>{
+test('a newly published today feed starts after active tomorrow maintenance drains',async()=>{
   const run=fixture({today:3,tomorrow:1,concurrency:1,todayInitiallyHidden:true});
   try{
     await run.refresh();await run.refresh(60_000);await run.finish(tomorrowId,playable);
     run.publishToday();await run.refresh(30*60_000);
-    await run.refresh(31*60_000);
-    assert.deepEqual(run.calls.map(call=>call.gameId),[tomorrowId,todayId]);
-    for(let index=0;index<3;index++)await run.finish(todayId,playable);
-    assert.deepEqual(run.calls.map(call=>call.gameId),[tomorrowId,todayId,todayId,todayId,tomorrowId]);
+    assert.deepEqual(run.calls.map(call=>call.gameId),[tomorrowId,tomorrowId]);
     await run.finish(tomorrowId,playable);
+    assert.equal(run.calls[2]?.gameId,todayId);
+    for(let index=0;index<3;index++)await run.finish(todayId,playable);
+    assert.deepEqual(run.calls.map(call=>call.gameId),[tomorrowId,tomorrowId,todayId,todayId,todayId]);
     assert.deepEqual((await run.snapshot()).games.map(game=>game.workingChoiceCount),[3,1]);
   }finally{await run.stop();}
 });
 
-test('a due healthy recheck waits for remaining today feeds and tomorrow first checks',async()=>{
+test('a due healthy recheck follows today first checks before tomorrow first checks',async()=>{
   const run=fixture({today:3,tomorrow:1,concurrency:1});
   try{
     await run.refresh();await run.finish(todayId,playable);
@@ -174,10 +187,10 @@ test('a due healthy recheck waits for remaining today feeds and tomorrow first c
     await run.finish(todayId,incomplete);
     assert.deepEqual(run.calls[2],{gameId:todayId,candidateId:'route-2'});
     await run.finish(todayId,incomplete);
-    assert.equal(run.calls[3]?.gameId,tomorrowId);
-    await run.finish(tomorrowId,playable);
-    assert.deepEqual(run.calls[4],{gameId:todayId,candidateId:'route-0'});
+    assert.deepEqual(run.calls[3],{gameId:todayId,candidateId:'route-0'});
     await run.finish(todayId,playable);
+    assert.equal(run.calls[4]?.gameId,tomorrowId);
+    await run.finish(tomorrowId,playable);
     assert.equal((await run.snapshot()).games.find(game=>game.gameId===todayId)?.workingChoiceCount,1);
   }finally{await run.stop();}
 });

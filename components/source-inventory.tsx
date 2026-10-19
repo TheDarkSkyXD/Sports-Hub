@@ -233,11 +233,21 @@ function ListingEvidence({evidence,at,candidates}:{evidence:LinkEvidence;at:numb
   }
 }
 
-function SourceGameCard({title,summary,children}:{title:ReactNode;summary:string;children:ReactNode}) {
-  return <details className="source-inventory-item source-inventory-game-card">
-    <summary><strong>{title}</strong><span>{summary}</span></summary>
-    {children}
+function InventoryDetails({className,summary,children}:{className:string;summary:ReactNode;children:()=>ReactNode}) {
+  const [open,setOpen]=useState(false);
+  return <details className={className} onToggle={event=>{
+    if(event.target===event.currentTarget)setOpen(event.currentTarget.open);
+  }}>
+    <summary>{summary}</summary>
+    {open&&children()}
   </details>;
+}
+
+function SourceGameCard({title,summary,children}:{title:ReactNode;summary:string;children:()=>ReactNode}) {
+  return <InventoryDetails className="source-inventory-item source-inventory-game-card"
+    summary={<><strong>{title}</strong><span>{summary}</span></>}>
+    {children}
+  </InventoryDetails>;
 }
 
 function SourceFeedChecks({candidates,at,now}:{candidates:CandidateSummary[];at:number;now:number}) {
@@ -264,11 +274,11 @@ function SourceLinks({source,links,snapshot,now}:{source:Source;links:Source['li
     const sharedEvidence=gameLinks.length>1?groupedListingEvidence(gameLinks.map(link=>link.evidence)):null;
     return <SourceGameCard key={key} title={game?.name??gameLinks[0].title}
       summary={`${available} available ${available===1?'feed':'feeds'} · ${gameLinks.length} ${gameLinks.length===1?'listing':'listings'}`}>
-      <SourceFeedChecks candidates={candidates} at={snapshot.at} now={now}/>
+      {()=><><SourceFeedChecks candidates={candidates} at={snapshot.at} now={now}/>
       {sharedEvidence&&<ListingEvidence evidence={sharedEvidence} at={snapshot.at} candidates={candidates}/>}
       <ul>{gameLinks.map((link,index)=><li key={link.url}><CopyLink url={listingHref(source,link.url)} label="Copy source link">{sharedEvidence?`Listing ${index+1}`:link.title}</CopyLink>
         {link.freshness==='stale-live'&&<span>Last seen {time(link.observedAt)}</span>}
-        {!sharedEvidence&&<ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={candidates}/>}</li>)}</ul>
+        {!sharedEvidence&&<ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={candidates}/>}</li>)}</ul></>}
     </SourceGameCard>;
   })}</div>;
 }
@@ -333,7 +343,7 @@ function SportsurgeRun({run,league,snapshot,now,isCurrent,links}:{run:Sportsurge
       const providerRows=listings.reduce((count,listing)=>count+(listing.detail.kind==='collected'?listing.detail.providers.length:0),0);
       return <SourceGameCard key={key} title={game.title} summary={isCurrent?
         `${available} available ${available===1?'feed':'feeds'} · ${providerRows} provider rows`:`Saved scan · ${providerRows} provider rows`}>
-        <SourceFeedChecks candidates={candidates} at={snapshot.at} now={now}/>
+        {()=><><SourceFeedChecks candidates={candidates} at={snapshot.at} now={now}/>
         {isCurrent&&links.filter(link=>link.freshness==='stale-live'&&catalogGameKey(link)===key).map(link=><p key={link.url}>Retained listing: {link.title} · Last seen {time(link.observedAt)}</p>)}
         {listings.map(listing=><div key={listing.url} className="source-inventory-listing">
           <p><CopyLink url={listing.url} label="Copy source link">Game listing</CopyLink> · {listing.gameId?'Matched to ESPN':matchReasonLabel[listing.matchReason || 'other']} · {listing.detail.kind==='collected'?`${listing.detail.providers.length} provider rows`:listing.detail.kind==='failed'?`Detail failed (${catalogFailureLabel[listing.detail.reason]})`:'Detail pending'}</p>
@@ -342,7 +352,7 @@ function SportsurgeRun({run,league,snapshot,now,isCurrent,links}:{run:Sportsurge
             {provider.destination.kind==='link'?<span>{provider.label} · Listed for the custom player</span>:
               <span>{provider.label} · {provider.destination.kind==='malformed'?'Malformed':'Rejected'} ({provider.destination.reason}){provider.destination.kind==='rejected'&&provider.destination.display?` · ${provider.destination.display}`:''}</span>}
           </li>)}</ul>}
-        </div>)}
+        </div>)}</>}
       </SourceGameCard>;
     })}</div>}
   </div>;
@@ -367,7 +377,7 @@ function StreameastRun({run,league,snapshot,now,isCurrent,links}:{run:Streameast
       const savedRows=savedDetails.reduce((count,detail)=>count+(detail?.servers.length??0),0);
       return <SourceGameCard key={key} title={game.title} summary={isCurrent?
         `${available} available ${available===1?'feed':'feeds'} · ${serverRows} current server rows${savedRows?` · ${savedRows} saved server rows`:''}`:`Saved scan · ${serverRows} server rows`}>
-        <SourceFeedChecks candidates={candidates} at={snapshot.at} now={now}/>
+        {()=><><SourceFeedChecks candidates={candidates} at={snapshot.at} now={now}/>
         {isCurrent&&links.filter(link=>link.freshness==='stale-live'&&catalogGameKey(link)===key).map(link=><p key={link.url}>Retained listing: {link.title} · Last seen {time(link.observedAt)}</p>)}
         {listings.map((listing,index)=>{
           const saved=savedDetails[index];
@@ -383,7 +393,7 @@ function StreameastRun({run,league,snapshot,now,isCurrent,links}:{run:Streameast
               server.availability.kind==='free-unsupported'?'Free · unsupported player':server.availability.kind==='free-unresolved'?'Free · player unresolved':
                 server.availability.kind==='premium'?'Premium':'Access unresolved'}
           </li>)}</ul>}
-        </div>;})}
+        </div>;})}</>}
       </SourceGameCard>;
     })}</div>}
   </div>;
@@ -406,9 +416,10 @@ function CollectorHistory({source,snapshot,league,now}:{source:Source;snapshot:S
       <div><strong>Browser collector unavailable</strong><p>This environment cannot collect new listings right now. Saved scans below show earlier collection, not a live collector status.</p></div>
     </div>}
     {current?renderRun('current'):<p>No collection checkpoint recorded yet.</p>}
-    {previous&&<details className="source-settings-history-details source-settings-previous">
-      <summary>Previous partial or interrupted scan · {time(previous.receivedAt)}</summary>{renderRun('previous')}
-    </details>}
+    {previous&&<InventoryDetails className="source-settings-history-details source-settings-previous"
+      summary={<>Previous partial or interrupted scan · {time(previous.receivedAt)}</>}>
+      {()=>renderRun('previous')}
+    </InventoryDetails>}
   </div>;
 }
 
@@ -428,7 +439,7 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
   const selectedGameIds=[...new Set(gameIds)].slice(0,4);
   const selectedGames=new Set(gameIds);
   const brandedGames=new Map(branding?.games.map(game=>[game.id,game]));
-  const scoped=snapshot?scopeInventory(snapshot,branding?.games??[],league):null;
+  const scoped=useMemo(()=>snapshot?scopeInventory(snapshot,branding?.games??[],league):null,[snapshot,branding?.games,league]);
   const sources=[...(scoped?.sources??[])].sort((left,right)=>(sourceOrder.get(left.source.id)??3)-(sourceOrder.get(right.source.id)??3));
   const visibleSources=sources.filter(({source,workingChoices})=>{
     if(!snapshot)return false;
@@ -516,9 +527,9 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
         </select></label></div>
       <p className="source-inventory-result" aria-live="polite">Showing {visibleSources.length} of {sources.length} {leagueName[league]} sources</p>
       {visibleSources.length===0?<p className="source-inventory-state">{sources.length===0?'No sources reported yet.':'No sources match these filters.'}</p>:<div className="source-inventory-list source-inventory-source-list">
-        {visibleSources.map(({source,matchedGames,workingChoices,links,unclassifiedLinks,otherEventLinks,incomplete})=><details key={source.id} className="source-inventory-item">
-          <summary><span className="source-inventory-source-summary">{branding?<span className="source-inventory-title-row"><LogoMark key={source.id} src={sourceIcons[source.id]} fallback={source.name.slice(0,1).toUpperCase()}/><strong>{source.name}</strong></span>:<strong>{source.name}</strong>}<span>{countLabel(matchedGames,incomplete)} matched games · {countLabel(workingChoices,incomplete)} available feeds{unclassifiedLinks.length?` · ${unclassifiedLinks.length} unclassified streams`:''}</span><span className="source-inventory-source-age">{source.id==='sportsurge-v2'?snapshot.sportsurgeV2.current?`Checkpoint ${age(snapshot.sportsurgeV2.current.receivedAt,snapshot.at)}`:'No checkpoint':source.id==='streameast'?snapshot.streameast.current?`Checkpoint ${age(snapshot.streameast.current.receivedAt,snapshot.at)}`:'No checkpoint':source.lastAttempt?`Fetch ${age(source.lastAttempt.at,snapshot.at)}`:'No fetch yet'}</span></span><StatusBadge status={sourceStatus(source,snapshot,league)}/></summary>
-          <p>{source.id==='streameast' ? snapshot.streameast.current ? `Shared catalog checkpoint ${time(snapshot.streameast.current.receivedAt)} · ${age(snapshot.streameast.current.receivedAt,snapshot.at)}`:snapshot.browserCollectorsAvailable?'Waiting for browser collection':'Browser collector unavailable':
+        {visibleSources.map(({source,matchedGames,workingChoices,links,unclassifiedLinks,otherEventLinks,incomplete})=><InventoryDetails key={source.id} className="source-inventory-item"
+          summary={<><span className="source-inventory-source-summary">{branding?<span className="source-inventory-title-row"><LogoMark key={source.id} src={sourceIcons[source.id]} fallback={source.name.slice(0,1).toUpperCase()}/><strong>{source.name}</strong></span>:<strong>{source.name}</strong>}<span>{countLabel(matchedGames,incomplete)} matched games · {countLabel(workingChoices,incomplete)} available feeds{unclassifiedLinks.length?` · ${unclassifiedLinks.length} unclassified streams`:''}</span><span className="source-inventory-source-age">{source.id==='sportsurge-v2'?snapshot.sportsurgeV2.current?`Checkpoint ${age(snapshot.sportsurgeV2.current.receivedAt,snapshot.at)}`:'No checkpoint':source.id==='streameast'?snapshot.streameast.current?`Checkpoint ${age(snapshot.streameast.current.receivedAt,snapshot.at)}`:'No checkpoint':source.lastAttempt?`Fetch ${age(source.lastAttempt.at,snapshot.at)}`:'No fetch yet'}</span></span><StatusBadge status={sourceStatus(source,snapshot,league)}/></>}>
+          {()=><><p>{source.id==='streameast' ? snapshot.streameast.current ? `Shared catalog checkpoint ${time(snapshot.streameast.current.receivedAt)} · ${age(snapshot.streameast.current.receivedAt,snapshot.at)}`:snapshot.browserCollectorsAvailable?'Waiting for browser collection':'Browser collector unavailable':
             source.id==='sportsurge-v2' ? snapshot.sportsurgeV2.current ? `Shared catalog checkpoint ${time(snapshot.sportsurgeV2.current.receivedAt)} · ${age(snapshot.sportsurgeV2.current.receivedAt,snapshot.at)}`:snapshot.browserCollectorsAvailable?'Waiting for browser collection':'Browser collector unavailable':
             source.pending?'Listed for future integration':source.lastAttempt ?
               `Source fetch ${time(source.lastAttempt.at)} · ${age(source.lastAttempt.at,snapshot.at)} · ${attemptLabel[source.lastAttempt.outcome]}${source.lastAttempt.outcome==='failed'&&source.lastAttempt.failure?` · ${failureLabel[source.lastAttempt.failure]}`:''}`:
@@ -537,7 +548,8 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
           {unclassifiedLinks.length>0&&<details className="source-inventory-diagnostics"><summary>Unclassified streams · {unclassifiedLinks.length}</summary><ul>{unclassifiedLinks.map(link=><li key={link.url}>{link.title}</li>)}</ul></details>}
           {source.unmatchedListingCount>0&&<details className="source-inventory-diagnostics"><summary>All-league matching diagnostics · {source.unmatchedListingCount} links</summary>
             <ul>{source.unmatchedReasons.map(item=><li key={item.reason}>{matchReasonLabel[item.reason]}: {item.count}</li>)}</ul></details>}
-        </details>)}
+          </>}
+        </InventoryDetails>)}
       </div>}</> : <>
       <h4>{leagueName[league]} events today and tomorrow</h4>
       <div className="source-inventory-game-search"><label htmlFor={`listed-game-search-${league}`}>Find a listed game</label>
@@ -553,16 +565,16 @@ export function SourceInventory({gameIds,branding}:{gameIds:string[];branding?:{
             const nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<80;
             if(nearBottom&&visibleGames.length<listedGames.length)
               updateFilters({gameLimit:Math.min(gameLimit+GAME_PAGE_SIZE,listedGames.length)});
-          }}>{visibleGames.map(game=><details key={game.gameId} className="source-inventory-item">
-          <summary><span className="source-inventory-source-summary">{branding?<GameTitle name={game.name} game={brandedGames.get(game.gameId)}/>:<strong>{game.name}</strong>}
+          }}>{visibleGames.map(game=><InventoryDetails key={game.gameId} className="source-inventory-item"
+          summary={<><span className="source-inventory-source-summary">{branding?<GameTitle name={game.name} game={brandedGames.get(game.gameId)}/>:<strong>{game.name}</strong>}
             <span>{game.date&&Number.isFinite(Date.parse(game.date))?<time dateTime={game.date}>{eventTime(game.date,renderNow)}</time>:'Start time not confirmed'}</span>
-            <span>{game.sourceCount} listed sources · {game.workingChoiceCount} available feeds</span></span>{selectedGames.has(game.gameId)&&<span className="source-inventory-badge">Selected</span>}</summary>
-          <p role="status">{gameFeedMessage(game)}</p>
+            <span>{game.sourceCount} listed sources · {game.workingChoiceCount} available feeds</span></span>{selectedGames.has(game.gameId)&&<span className="source-inventory-badge">Selected</span>}</>}>
+          {()=><><p role="status">{gameFeedMessage(game)}</p>
           {game.candidates.length>0&&<div className="source-inventory-candidates"><strong>Feed check results</strong><ul>{game.candidates.map(candidate=><li key={candidate.id}><span>{candidate.label}</span><span className="source-inventory-check" data-state={candidate.availability.kind}>{candidateEvidence(candidate,renderNow)}{candidate.availability.kind==='playable'||candidate.availability.kind==='unavailable'?` · Checked ${time(candidate.availability.checkedAt)} · ${age(candidate.availability.checkedAt,snapshot.at)}`:''}</span></li>)}</ul></div>}
           {game.sharedRoutes.map(route=><p className="source-inventory-shared-route" key={route.id}>{route.candidateIds.map(id=>game.candidates.find(candidate=>candidate.id===id)?.label||id).join(' and ')} reach the same published server route. These remain separate player entries.</p>)}
           <ul>{game.sourceLinks.map(link=><li key={`${link.sourceId}:${link.url}`}><span>{snapshot.sources.find(source=>source.id===link.sourceId)?.name || link.sourceId}</span>
-            <CopyLink url={listingHref(snapshot.sources.find(source=>source.id===link.sourceId),link.url)} label="Copy source link">{link.title}</CopyLink>{link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}<ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={game.candidates.filter(candidate=>candidate.sourceIds.includes(link.sourceId))}/></li>)}</ul>
-        </details>)}<div className="source-inventory-game-pagination">{visibleGames.length<listedGames.length?
+            <CopyLink url={listingHref(snapshot.sources.find(source=>source.id===link.sourceId),link.url)} label="Copy source link">{link.title}</CopyLink>{link.freshness==='stale-live'&&<span> · Last seen {time(link.observedAt)}</span>}<ListingEvidence evidence={link.evidence} at={snapshot.at} candidates={game.candidates.filter(candidate=>candidate.sourceIds.includes(link.sourceId))}/></li>)}</ul></>}
+        </InventoryDetails>)}<div className="source-inventory-game-pagination">{visibleGames.length<listedGames.length?
           <button type="button" className="button subtle" onClick={()=>updateFilters({gameLimit:Math.min(gameLimit+GAME_PAGE_SIZE,listedGames.length)})}>Load more games</button>:
            <span>All {listedGames.length} games shown</span>}</div></div>}
       {(scoped?.unclassifiedGames.length??0)>0&&<details className="source-inventory-diagnostics"><summary>Games awaiting league classification · {scoped?.unclassifiedGames.length}</summary><ul>{scoped?.unclassifiedGames.map(game=><li key={game.gameId}>{game.name}</li>)}</ul></details>}

@@ -20,7 +20,7 @@ function fixture(players:number[],probe:FootballDependencies['probeCandidate']){
     async refresh(){await coordinator.refresh(true);await drain();},async stop(){await coordinator.stop();}};
 }
 
-for(const concurrency of [1,2])test(`an incomplete feed retries after a growing first-check backlog finishes with ${concurrency} active checks`,async()=>{
+for(const concurrency of [1,2])test(`a due incomplete feed gets a fair retry while all first checks finish with ${concurrency} active checks`,async()=>{
   const calls:string[]=[],held=new Map<string,(value:CandidateProbeResult)=>void>();
   let active=0,peak=0;
   const probe:FootballDependencies['probeCandidate']=async(locator,signal)=>{
@@ -45,9 +45,15 @@ for(const concurrency of [1,2])test(`an incomplete feed retries after a growing 
       held.get(next)?.({kind:'unavailable',reason:'invalid-media'});held.delete(next);
       await drain();
     }
-    assert.equal(calls.filter(id=>id==='1').length,2,'A due incomplete feed must retry after first checks finish');
-    assert.equal(new Set(calls.slice(0,40)).size,40,'Every feed receives one attempt before an automatic retry');
-    assert.equal(calls[40],'1');
+    assert.equal(calls.filter(id=>id==='1').length,2,'A due incomplete feed must receive a fair turn');
+    assert.equal(calls.findIndex((id,index)=>calls.indexOf(id)<index),3,'Two untouched feeds follow the first check before its retry');
+    for(let turn=0;turn<80&&new Set(calls).size<40;turn++){
+      const next=held.keys().next().value;
+      assert.ok(next);
+      held.get(next)?.({kind:'unavailable',reason:'invalid-media'});held.delete(next);
+      await drain();
+    }
+    assert.equal(new Set(calls).size,40,'Every feed still receives a first attempt');
     const result=await run.coordinator.command({kind:'sources'});assert.equal(result.kind,'sources');
     if(result.kind==='sources'){
       assert.equal(result.snapshot.games[0].candidates.find(candidate=>candidate.id==='server-1')?.availability.kind,'playable');
@@ -58,7 +64,7 @@ for(const concurrency of [1,2])test(`an incomplete feed retries after a growing 
   }finally{await run.stop();}
 });
 
-test('first checks finish before retries under sustained incomplete results',async()=>{
+test('first checks finish while due retries share slots under sustained incomplete results',async()=>{
   const calls:string[]=[],held=new Map<string,(value:CandidateProbeResult)=>void>();
   const probe:FootballDependencies['probeCandidate']=async(locator,signal)=>{
     assert.equal(locator.provider,'gooz');if(locator.provider!=='gooz')throw new Error('Expected player');
@@ -75,19 +81,19 @@ test('first checks finish before retries under sustained incomplete results',asy
       await drain();await run.refresh();
     }
     assert.equal(calls.length,21);
-    assert.equal(new Set(calls).size,21,'An incomplete feed cannot repeat while untouched feeds remain');
-    for(let turn=21;turn<=40;turn++){
+    assert.ok(new Set(calls).size>=15&&new Set(calls).size<21,'Due retries share bounded turns with untouched feeds');
+    for(let turn=21;turn<=80&&new Set(calls).size<40;turn++){
       run.setClock(turn*30_000);
       const next=held.keys().next().value;
       assert.ok(next);held.get(next)?.({kind:'deferred',retryAfterMs:2000});held.delete(next);
       await drain();await run.refresh();
     }
-    assert.equal(new Set(calls.slice(0,40)).size,40);
-    assert.equal(calls[40],'1','The earliest incomplete check retries when the first pass finishes');
+    assert.equal(new Set(calls).size,40,'Every feed eventually receives a first check');
+    assert.ok(calls.filter(id=>id==='1').length>1,'The earliest incomplete check retries during the first pass');
   }finally{await run.stop();}
 });
 
-test('a full queue completes every game first check before an incomplete retry',async()=>{
+test('a full queue gives due retries fair turns and eventually checks every game',async()=>{
   let clock=at;
   const games:Game[]=Array.from({length:275},(_,index)=>({id:String(1000+index),league:'nfl',
     name:`Away ${index} at Home ${index}`,date:new Date(at).toISOString(),status:'in',lifecycle:'live',detail:'Q1',redzone:false,partitions:['nfl'],
@@ -123,13 +129,13 @@ test('a full queue completes every game first check before an incomplete retry',
       const next=held.keys().next().value;assert.ok(next);
       held.get(next)?.({kind:'unavailable',reason:'invalid-media'});held.delete(next);await drain();
     }
-    assert.equal(calls.filter(id=>id==='1000').length,1,'The full first-check queue stays ahead of automatic retries');
-    for(let turn=0;turn<275&&calls.filter(id=>id==='1000').length===1;turn++){
+    assert.equal(calls.filter(id=>id==='1000').length,2,'A due retry receives a turn even with a full first-check queue');
+    assert.equal(calls.findIndex((id,index)=>calls.indexOf(id)<index),3,'Two untouched games follow the first check before its retry');
+    for(let turn=0;turn<400&&new Set(calls).size<275;turn++){
       const next=held.keys().next().value;assert.ok(next);
       held.get(next)?.({kind:'unavailable',reason:'invalid-media'});held.delete(next);await drain();
     }
-    assert.equal(new Set(calls.slice(0,275)).size,275);
-    assert.equal(calls[275],'1000');
+    assert.equal(new Set(calls).size,275,'Every game still receives a first check');
     assert.equal(calls.filter(id=>id==='1000').length,2);
     const after=await coordinator.command({kind:'sources'});assert.equal(after.kind,'sources');
     if(after.kind==='sources'){
@@ -172,14 +178,14 @@ test('ready incomplete retries use available slots after every feed has had its 
   }finally{await run.stop();}
 });
 
-test('an incomplete healthy-feed recheck retains its maintenance priority after thirty minutes',async()=>{
+test('an incomplete healthy-feed recheck retains its maintenance priority after twenty-five minutes',async()=>{
   let calls=0;
   const run=fixture([1],async()=>++calls===2?{kind:'deferred',retryAfterMs:60_000}:{kind:'playable',proof});
   try{
-    await run.refresh();run.setClock(1_799_999);await run.refresh();assert.equal(calls,1);
-    run.setClock(1_800_000);await run.refresh();assert.equal(calls,2);
-    run.setClock(1_859_999);await run.refresh();assert.equal(calls,2);
-    run.setClock(1_860_000);await run.refresh();assert.equal(calls,3);
+    await run.refresh();run.setClock(1_499_999);await run.refresh();assert.equal(calls,1);
+    run.setClock(1_500_000);await run.refresh();assert.equal(calls,2);
+    run.setClock(1_559_999);await run.refresh();assert.equal(calls,2);
+    run.setClock(1_560_000);await run.refresh();assert.equal(calls,3);
     const result=await run.coordinator.command({kind:'sources'});assert.equal(result.kind,'sources');
     if(result.kind==='sources')assert.equal(result.snapshot.games[0].workingChoiceCount,1);
   }finally{await run.stop();}

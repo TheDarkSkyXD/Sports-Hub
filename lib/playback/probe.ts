@@ -250,15 +250,19 @@ export async function configuredProbeCandidate(_locator:CandidateLocator,signal:
       signal:AbortSignal.any([signal,AbortSignal.timeout(65_000)]),
       headers:{'Content-Type':'application/json','x-sunday-control-token':token},body:JSON.stringify(target)});
     if(response.status===429)return {kind:'deferred',reason:'capacity',retryAfterMs:2000};
-    if(response.status===503)return {kind:'deferred',retryAfterMs:30000};
-    if(!response.ok)return {kind:'deferred',retryAfterMs:30000};
+    if(!response.ok)return {kind:'deferred',reason:'upstream',retryAfterMs:30000};
     const value:unknown=await response.json();
-    if(!value||typeof value!=='object'||!('kind' in value))return {kind:'deferred',retryAfterMs:30000};
+    if(!value||typeof value!=='object'||!('kind' in value))return {kind:'deferred',reason:'unverified',retryAfterMs:30000};
     if(value.kind==='unavailable'&&!('reason' in value))return {kind:'unavailable',reason:'playback',phase:'replay'};
     const parsed=MediaCheckResultSchema.safeParse(value);
     if(parsed.success)return parsed.data.kind==='unavailable'&&!parsed.data.phase?{...parsed.data,phase:'replay'}:parsed.data;
-    return {kind:'deferred',retryAfterMs:30000};
-  }catch{return {kind:'deferred',retryAfterMs:30000};}
+    return {kind:'deferred',reason:'unverified',retryAfterMs:30000};
+  }catch(error){
+    const cause:unknown=signal.aborted?signal.reason:error;
+    const reason=cause instanceof Error&&cause.name==='TimeoutError'?'timeout':signal.aborted?'cancelled':
+      cause instanceof SyntaxError?'unverified':'upstream';
+    return {kind:'deferred',reason,retryAfterMs:30000};
+  }
   finally {
     void fetch(`${appOrigin}/api/internal/revoke-verification`,{method:'POST',
       headers:{'Content-Type':'application/json','x-sunday-control-token':token},

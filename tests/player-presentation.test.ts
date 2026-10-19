@@ -109,6 +109,16 @@ test('progressive video without a native player has no fallback descriptor',asyn
   }finally{revokeSession(sessionId);}
 });
 
+for(const kind of ['flv','mpegts'] as const)test(`${kind} keeps its engine discriminant through the authorized presentation`,async()=>{
+  const {sessionId,input,send}=setup();
+  try{
+    const reply=await streamPresentation(input,{send,opener:async()=>({root:{...resource('media'),kind},close(){}})});
+    const result=await readPresentation(reply);
+    assert.equal(result.kind,'ready');
+    if(result.kind==='ready')assert.equal(result.presentation.kind,kind);
+  }finally{revokeSession(sessionId);}
+});
+
 test('an embed-only primary request waits for its required opaque capability',async()=>{
   const {sessionId,input,send}=setup(),capability=randomUUID();
   const started=Promise.withResolvers<void>(),held=Promise.withResolvers<{capability:string;close():void}>();let settled=false;

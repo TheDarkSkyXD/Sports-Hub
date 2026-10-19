@@ -19,6 +19,18 @@ const TVAPP_EMBED_MAX_FRAMES = 64;
 const FXTREND_PPV_MAX_FRAMES = 64;
 const incomplete = (phase, reason) => ({kind:'incomplete',phase,reason,retryAfterMs:30000});
 const noFeed = (phase, reason) => ({kind:'no-feed',phase,reason});
+function observedMediaKind(value,contentType){
+  if(/(?:text\/html|application\/xhtml\+xml)/i.test(contentType))return null;
+  let path;try{path=new URL(value).pathname;}catch{return null;}
+  if(/(?:application\/(?:vnd\.apple\.mpegurl|x-mpegurl)|audio\/(?:mpegurl|x-mpegurl))/i.test(contentType)||/\.m3u8$/i.test(path))return 'hls';
+  if(/application\/dash\+xml/i.test(contentType)||/\.mpd$/i.test(path))return 'dash';
+  const binary=!contentType||/application\/octet-stream/i.test(contentType);
+  if(/^video\/(?:x-)?flv(?:;|$)/i.test(contentType)||binary&&/\.flv$/i.test(path))return 'flv';
+  if(/^video\/(?:mp2t|mpegts)(?:;|$)/i.test(contentType)||binary&&/\.(?:ts|m2ts)$/i.test(path))return 'mpegts';
+  if(/^(?:video\/(?:mp4|webm|x-m4v)|application\/mp4)(?:;|$)/i.test(contentType)||
+    /\.(?:mp4|m4v|webm)$/i.test(path)&&(!contentType||/application\/octet-stream/i.test(contentType)))return 'progressive';
+  return null;
+}
 function isOfflinePlayerState(state) {
   return state.readyState !== 'loading' && !state.hasVideo && state.status === 'Offline' &&
     (state.title === 'Stream is Offline' && state.description.startsWith('The stream is currently offline.') ||
@@ -365,10 +377,10 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
     requests.delete(details.id);
     owners.delete(details.id);
     const contentType = Object.entries(details.responseHeaders || {}).find(([name]) => name.toLowerCase() === 'content-type')?.[1]?.[0] || '';
-    const isHls = /\.m3u8(?:$|[?#])/i.test(details.url) || /(?:application\/(?:vnd\.apple\.mpegurl|x-mpegurl)|audio\/(?:mpegurl|x-mpegurl))/i.test(contentType);
-    const progressive=!isHls&&/^video\/(?:mp4|webm)(?:;|$)/i.test(contentType);
+    const kind=observedMediaKind(details.url,contentType);
+    const isHls = kind==='hls';
     const failedManifest=active?.purpose==='probe'&&isHls&&details.statusCode>=400&&details.statusCode<=599;
-    if (active && candidate?.operation===active && (details.statusCode >= 200 && details.statusCode < 300 || failedManifest) && (isHls||progressive)) {
+    if (active && candidate?.operation===active && (details.statusCode >= 200 && details.statusCode < 300 || failedManifest) && kind) {
       const current = active;
       current.mediaObserved = true;
       if(current.selection&&!belongsToSelectedStreameastPlayer(candidate.frame,current)){
@@ -449,7 +461,7 @@ function createObserverSlot(index, resolveAddress = pinnedAddress) {
               if (!stillOwned) return;
               if(failedManifest){endActive(current,incomplete('capture','upstream-http'));return;}
               endActive(current,{ url: candidate.url, referer: refererUrl.href,
-                ...(progressive?{kind:'progressive'}:{}),
+                ...(kind!=='hls'?{kind}:{}),
                 ...(playerDocument(playerUrl)?{player:{url:playerUrl,referer:playerFrame.parent?.url||current.embeddedEventUrl||current.url}}:{}),
                 userAgent: candidate.userAgent,requestReferer:candidate.requestReferer,origin:candidate.origin,
                 ...(typeof candidate.mediaCookie === 'string' && /^[\x20-\x7e]{1,8192}$/.test(candidate.mediaCookie)
@@ -819,7 +831,7 @@ function createSportsurgeObserver({ controlToken, port = 0, resolveAddress = pin
       if (response.destroyed) { media.close(capability); return; }
       response.writeHead(200,{ 'content-type':'application/json', 'cache-control':'no-store' });
       response.end(JSON.stringify({url:result.url,referer:result.referer,userAgent:result.userAgent,capability,
-        ...(result.kind==='progressive'?{kind:'progressive'}:{}),
+        ...(['progressive','dash','flv','mpegts'].includes(result.kind)?{kind:result.kind}:{}),
         ...(result.player?{player:result.player}:{}),
         ...(result.transport ? {transport:result.transport} : {})}));
     } catch {
@@ -851,4 +863,4 @@ function createSportsurgeObserver({ controlToken, port = 0, resolveAddress = pin
   return { start, stop,players,configureVerifier(value){appOrigin=value;verifier.configure(value);} };
 }
 
-module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedJwVideo, aianimalvibesPlayer, belongsToSelectedStreameastPlayer, selectedWikisportJwFrame, allowsSelectedStreameastNavigation, recognizedDlivePixelTransport, selectedPlayerEvidence };
+module.exports = { createSportsurgeObserver, createNavigationPolicy, publicNetworkUrl, isOfflinePlayerState, isNetworkErrorPlayerState, offlinePlayerFrame, activatePublishedJwVideo, aianimalvibesPlayer, belongsToSelectedStreameastPlayer, selectedWikisportJwFrame, allowsSelectedStreameastNavigation, recognizedDlivePixelTransport, selectedPlayerEvidence,observedMediaKind };

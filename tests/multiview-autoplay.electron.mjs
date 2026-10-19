@@ -8,6 +8,8 @@ import { promisify } from 'node:util';
 import ffmpeg from 'ffmpeg-static';
 import { _electron as electron } from 'playwright';
 import { prepareDevelopmentElectron } from '../scripts/electron-runtime.mjs';
+import { roomSources } from '../lib/football/domain/source-inventory.ts';
+import { SourcesSnapshotSchema } from '../lib/football/shared.ts';
 
 const appRoot = path.resolve(process.env.ROOM_APP_ROOT || process.cwd());
 const temporary = path.join(os.tmpdir(), `sunday-room-autoplay-${randomUUID()}`);
@@ -74,9 +76,9 @@ try {
       ncaaf: { scoresAt: null, sourceAt: null, errors: [] },
     },
   } }));
-  await context.route('**/api/sources', route => {
+  await context.route('**/api/sources*', route => {
     if (route.request().method() === 'POST') return route.fulfill({ status: 204 });
-    return route.fulfill({ json: {
+    const snapshot=SourcesSnapshotSchema.parse({
       at: Date.now(), revision, windowStartAt: Date.now(), lastDiscoveryAt: null, browserCollectorsAvailable: true,
       sportsurgeV2: { current: null, lastComplete: null, previous: null },
       streameast: { current: null, lastComplete: null, previous: null }, sources: [],
@@ -87,7 +89,8 @@ try {
           ? [{ ...candidates(game.id)[0], availability: { kind: 'checking', progress: { kind: 'active', since: Date.now() } } }]
           : candidates(game.id),
       })),
-    } });
+    });
+    return route.fulfill({ json: new URL(route.request().url()).searchParams.get('view')==='room'?roomSources(snapshot):snapshot });
   });
   await context.route('**/api/playback?*', route => route.fulfill({ status: 204 }));
   await context.route('**/api/playback', route => {

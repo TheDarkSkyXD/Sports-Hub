@@ -425,7 +425,7 @@ test('availability gates open and switch while expired proof requires re-verific
     for(let minute=0;minute<34;minute++) {
       clock.value+=60_000;
       await coordinator.refresh(true);
-      if(minute<29)assert.equal(calls,1,'fresh playable proof is not rechecked before thirty minutes');
+      if(minute<24)assert.equal(calls,1,'fresh playable proof is not rechecked before the twenty-five-minute renewal');
       assert.equal((await coordinator.command({kind:'authorize',sessionId:opened.playback.session.id,candidateId:playable.id,generation:0})).kind,'authorized');
     }
     clock.value+=59_999;
@@ -438,8 +438,8 @@ test('availability gates open and switch while expired proof requires re-verific
     const retained=await coordinator.command({kind:'sources'});
     assert.equal(retained.kind,'sources');
     if(retained.kind==='sources')assert.equal(retained.snapshot.games.find(row=>row.gameId===game.id)?.candidates.find(row=>row.id===playable.id)?.availability.kind,'checking');
-    assert.equal(calls,5);
-    assert.deepEqual(callTimes,[0,30,31,32,34].map(minute=>initialAt+minute*60_000),'playable proof first waits thirty minutes; incomplete rechecks back off while honoring the reported one-minute minimum');
+    assert.equal(calls,6);
+    assert.deepEqual(callTimes,[0,25,26,27,29,34].map(minute=>initialAt+minute*60_000),'playable proof starts renewal at twenty-five minutes; incomplete rechecks back off while honoring the reported one-minute minimum');
     assert.equal((await coordinator.command({kind:'open',gameId:game.id,manual:false})).kind,'error');
     assert.equal((await coordinator.command({kind:'authorize',sessionId:opened.playback.session.id,candidateId:playable.id,generation:0})).kind,'authorized');
   } finally {await coordinator.stop();rmSync(dir,{recursive:true,force:true});}

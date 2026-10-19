@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { SourcesSnapshotSchema } from '../lib/football/shared.ts';
+import { roomSources } from '../lib/football/domain/source-inventory.ts';
 
 const now = Date.now();
 const game = index => ({
@@ -29,7 +31,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => localStorage.setItem('sunday-room:v1', JSON.stringify({ slots: [null, null, null, null], layout: 'duo' })));
   await page.route('**/api/games', route => route.fulfill({ json: board }));
-  await page.route('**/api/sources', route => route.fulfill({ json: sources }));
+  await page.route('**/api/sources*', route => route.fulfill({ json: route.request().method()==='GET'&&new URL(route.request().url()).searchParams.get('view')==='room'?roomSources(SourcesSnapshotSchema.parse(sources)):sources }));
   await page.goto(process.env.PLAYER_BASE_URL || 'http://127.0.0.1:3000');
   await page.locator('.center-game').first().waitFor();
   assert.equal(await page.locator('.center-game').count(), 40);

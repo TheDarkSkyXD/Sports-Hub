@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 import { GameSchema } from '../lib/football/shared.ts';
+import { roomSources } from '../lib/football/domain/source-inventory.ts';
 
 const directory = await mkdtemp(join(tmpdir(), 'game-refresh-browser-'));
 const at = Date.now();
@@ -41,10 +42,10 @@ try {
     assert.equal(reply.kind, 'board');
     await route.fulfill({ json: reply.board });
   });
-  await page.route('**/api/sources', async route => {
+  await page.route('**/api/sources*', async route => {
     const reply = await coordinator.command({ kind: 'sources' });
     assert.equal(reply.kind, 'sources');
-    await route.fulfill({ json: reply.snapshot });
+    await route.fulfill({ json: route.request().method()==='GET'&&new URL(route.request().url()).searchParams.get('view')==='room'?roomSources(reply.snapshot):reply.snapshot });
   });
   await page.goto(process.env.PLAYER_BASE_URL || 'http://127.0.0.1:3000');
   try {

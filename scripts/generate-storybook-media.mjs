@@ -15,3 +15,17 @@ const result = spawnSync(ffmpeg, [
 if (result.error) throw result.error;
 if (result.status !== 0) process.exit(result.status ?? 1);
 console.log(output);
+
+const formats=resolve(dirname(output),'media');
+mkdirSync(formats,{recursive:true});
+const commands=[
+  ['-f','lavfi','-i','testsrc2=size=320x180:rate=24','-t','12','-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p','-g','48','-movflags','+faststart','sample.mp4'],
+  ['-i','sample.mp4','-c','copy','-f','flv','sample.flv'],
+  ['-i','sample.mp4','-c','copy','-f','mpegts','sample.mpegts'],
+  ['-i','sample.mp4','-c','copy','-f','dash','-seg_duration','2','manifest.mpd'],
+];
+for(const args of commands){
+  const generated=spawnSync(ffmpeg,['-hide_banner','-loglevel','error','-y',...args],{cwd:formats,stdio:'inherit',windowsHide:true});
+  if(generated.error)throw generated.error;
+  if(generated.status!==0)process.exit(generated.status??1);
+}

@@ -40,11 +40,12 @@ function selectedPlayerEvidence(page=document,computedStyle=getComputedStyle,con
     if(controls.command&&presentation)return Promise.resolve(presentation(element,page,window,controls.command)).then(value=>({kind:'control',...value}));
     if(typeof controls.volume==='number')element.volume=controls.volume;
     if(typeof controls.audible==='boolean')element.muted=!controls.audible;
-    if(controls.playing===true&&element.paused)void element.play().catch(()=>{});
+    if((controls.playing===true||controls.resume===true&&!element.ended&&page.pictureInPictureElement!==element)&&element.paused)void element.play().catch(()=>{});
     else if(controls.playing===false&&!element.paused)element.pause();
     const quality=element.getVideoPlaybackQuality?.();
     return {kind:'video',time:element.currentTime,frames:quality?quality.totalVideoFrames-quality.droppedVideoFrames:0,
       width:element.videoWidth,height:element.videoHeight,playing:!element.paused&&!element.seeking&&element.readyState>=2,
+      ended:element.ended,seeking:element.seeking,
       ...(presentation?{presentation:presentation(element,page,window)}:{})};
   }
   const address=value=>{
@@ -69,6 +70,8 @@ function selectedPlayerEvidence(page=document,computedStyle=getComputedStyle,con
     }catch{}
   }
   if(window.hls?.media===element)add(window.hls.url);
+  const adaptive=window.player;
+  try{if(adaptive?.getMediaElement?.()===element)add(adaptive.getAssetUri?.());}catch{}
   const clappr=window.player?.core?.activePlayback;
   if(clappr?.el===element||clappr?.el?.contains(element))add(window.player.options?.source);
   if(typeof window.videojs?.getPlayers==='function'){

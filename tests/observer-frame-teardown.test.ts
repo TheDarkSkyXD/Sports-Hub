@@ -671,3 +671,14 @@ test('browser-owned progressive video is captured explicitly through the selecte
     assert.ok(result&&typeof result==='object'&&'kind'in result);assert.equal(result.kind,'progressive');assert.equal(result.url,url);
   }finally{operation.cancel();}
 });
+
+test('a DASH engine may claim its manifest only for its selected media element',()=>{
+  const dom=playerDocument('blob:https://player.example/fixture');
+  const inspect=observerRequire('./sportsurge-observer.cjs').selectedPlayerEvidence;
+  const player={getMediaElement:()=>dom.element,getAssetUri:()=> 'https://media.example/owned.mpd'};
+  const evidence=()=>JSON.parse(JSON.stringify(runInNewContext(`(${inspect.toString()})()`,
+    {document:dom.page,getComputedStyle:dom.style,window:{player},URL})));
+  assert.deepEqual(evidence().sources,['https://media.example/owned.mpd']);
+  player.getMediaElement=()=>({...dom.element});
+  assert.deepEqual(evidence().sources,[]);
+});

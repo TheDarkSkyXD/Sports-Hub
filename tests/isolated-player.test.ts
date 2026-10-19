@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
-import {runInThisContext} from 'node:vm';
+import {runInNewContext,runInThisContext} from 'node:vm';
 import test from 'node:test';
 import verificationPolicy from '../lib/playback/verification-policy.json' with {type:'json'};
 
@@ -17,7 +17,7 @@ function ipcHarness(){
     removeHandler:(name:string)=>{handlers.delete(name);}};
   return {handlers,ipcMain};
 }
-function harness({purpose='viewing',load,chromeLoad,onLoad,ipc}:{purpose?:'viewing'|'verification';load?:Promise<void>;chromeLoad?:Promise<void>;ipc?:ReturnType<typeof ipcHarness>;
+function harness({purpose='viewing',load,chromeLoad,onLoad,ipc,evaluate}:{purpose?:'viewing'|'verification';load?:Promise<void>;chromeLoad?:Promise<void>;ipc?:ReturnType<typeof ipcHarness>;evaluate?:(source:string)=>unknown;
   onLoad?:(layout:{bounds:object;visible:boolean})=>void}={}){
   const sessions:Session[]=[];
   const views:View[]=[];
@@ -33,7 +33,7 @@ function harness({purpose='viewing',load,chromeLoad,onLoad,ipc}:{purpose?:'viewi
   let commandResult:Promise<{kind:'control';result:{kind:'applied'};presentation:unknown}>|undefined;
   let sample={kind:'video',time:1,frames:10,width:320,height:180,playing:true};
   const child={url:'https://xstream.st/fslivepro.php?stream=F128',parent:null as object|null,isDestroyed:()=>false,
-    executeJavaScript:async(source:string,gesture=false)=>{scripts.push({source,gesture});return source.includes('"command":')?
+    executeJavaScript:async(source:string,gesture=false)=>{scripts.push({source,gesture});if(evaluate)return evaluate(source);return source.includes('"command":')?
       commandResult??{kind:'control',result:{kind:'applied'},presentation}:{...sample,...(presentation?{presentation}:{})};}};
   const main={url:player.url,framesInSubtree:[child],isDestroyed:()=>false,
     executeJavaScript:async()=>({kind:'frame',url:child.url})};
@@ -100,6 +100,214 @@ function harness({purpose='viewing',load,chromeLoad,onLoad,ipc}:{purpose?:'viewi
     async advance(time:number,frames:number){sample={...sample,time,frames};poll?.();for(let turn=0;turn<12;turn++)await Promise.resolve();},
     pendingAuthorization(value:Promise<boolean>){authorize=value;},invalidate(){valid=false;}};
 }
+
+function mediaFixture(rejections=0){
+  let plays=0;
+  const video={tagName:'VIDEO',isConnected:true,parentElement:null,paused:true,seeking:false,readyState:4,ended:false,
+    currentTime:1,frames:10,videoWidth:320,videoHeight:180,duration:Infinity,volume:0,muted:true,controls:true,
+    style:{setProperty(){}},checkVisibility:()=>true,getBoundingClientRect:()=>({left:0,top:0,right:640,bottom:360}),
+    getVideoPlaybackQuality:()=>({totalVideoFrames:video.frames,droppedVideoFrames:0}),
+    async play(){plays++;if(rejections-->0)throw new DOMException('Fixture play interrupted','AbortError');video.paused=false;},
+    pause(){video.paused=true;},requestPictureInPicture:async()=>{page.pictureInPictureElement=video;}};
+  const page={documentElement:{inert:false},pictureInPictureEnabled:true,pictureInPictureElement:null as typeof video|null,
+    async exitPictureInPicture(){page.pictureInPictureElement=null;},
+    querySelectorAll:(selector:string)=>selector.startsWith('#')?[]:[video]};
+  const h=harness({evaluate:source=>runInNewContext(source,{document:page,window:{},
+    getComputedStyle:()=>({display:'block',visibility:'visible',opacity:'1'})})});
+  return {...h,video,page,plays:()=>plays};
+}
+
+async function sampleMedia(h:ReturnType<typeof mediaFixture>,tick:(ms:number)=>void,count:number,moving=false){
+  for(let sample=0;sample<count;sample++){
+    tick(500);
+    if(moving){h.video.currentTime+=0.5;h.video.frames+=12;}
+    await h.advance(h.video.currentTime,h.video.frames);
+  }
+}
+
+async function provedMedia(h:ReturnType<typeof mediaFixture>,tick:(ms:number)=>void){
+  const capability=await h.factory.offer({target,player});await h.factory.mount(h.event,{capability});
+  await h.factory.update(h.event,{capability,playing:true,visible:true,bounds:{x:0,y:0,width:640,height:360}});await h.advance(1,10);
+  await sampleMedia(h,tick,5,true);
+  assert.equal(h.states.some(state=>hasKind(state,'decoded')),true,'The freeze test requires actual advancing-video proof first');
+  assert.equal(h.views[0].visible,true);
+  return capability;
+}
+
+for(const frozen of ['time-and-frames','frames'] as const)test(`proved native ${frozen} freeze fails once after fifteen seconds`,async context=>{
+  context.mock.timers.enable({apis:['Date','setTimeout']});
+  const h=mediaFixture(),tick=(ms:number)=>context.mock.timers.tick(ms);
+  try{
+    const capability=await provedMedia(h,tick);
+    for(let sample=0;sample<29;sample++){
+      if(frozen==='frames')h.video.currentTime+=0.5;
+      await sampleMedia(h,tick,1);
+    }
+    assert.equal(h.states.some(state=>hasKind(state,'failed')),false);
+    if(frozen==='frames')h.video.currentTime+=0.5;
+    await sampleMedia(h,tick,1);
+    assert.deepEqual(h.states.filter(state=>hasKind(state,'failed')),[{capability,kind:'failed',reason:'upstream'}]);
+    assert.equal(h.views[0].closed,true);
+    await sampleMedia(h,tick,4);
+    assert.equal(h.states.filter(state=>hasKind(state,'failed')).length,1);
+    assert.equal(h.views.length,1,'Native freeze recovery must not allocate its own replacement player');
+  }finally{await h.factory.stop();}
+});
+
+for(const stalled of ['buffering','rejected-resume'] as const)test(`proved native ${stalled} enters recovery after fifteen seconds`,async context=>{
+  context.mock.timers.enable({apis:['Date','setTimeout']});
+  const h=mediaFixture(),tick=(ms:number)=>context.mock.timers.tick(ms);
+  try{
+    const capability=await provedMedia(h,tick);
+    if(stalled==='buffering')h.video.readyState=1;
+    else{
+      h.video.pause();
+      h.video.play=async()=>{throw new DOMException('Fixture resume interrupted','AbortError');};
+    }
+    await sampleMedia(h,tick,29);
+    assert.equal(h.states.some(state=>hasKind(state,'failed')),false);
+    await sampleMedia(h,tick,1);
+    assert.deepEqual(h.states.filter(state=>hasKind(state,'failed')),[{capability,kind:'failed',reason:'upstream'}]);
+    assert.equal(h.views[0].closed,true);
+  }finally{await h.factory.stop();}
+});
+
+test('healthy native frames and media advancement keep a proved player alive',async context=>{
+  context.mock.timers.enable({apis:['Date','setTimeout']});
+  const h=mediaFixture(),tick=(ms:number)=>context.mock.timers.tick(ms);
+  try{
+    await provedMedia(h,tick);await sampleMedia(h,tick,34,true);
+    assert.equal(h.states.some(state=>hasKind(state,'failed')),false);
+    assert.equal(h.views[0].closed,false);
+  }finally{await h.factory.stop();}
+});
+
+for(const inactive of ['paused','hidden','pip','ended','seeking'] as const)test(`native ${inactive} state resets post-proof freeze timing`,async context=>{
+  context.mock.timers.enable({apis:['Date','setTimeout']});
+  const h=mediaFixture(),tick=(ms:number)=>context.mock.timers.tick(ms);
+  try{
+    const capability=await provedMedia(h,tick);
+    await sampleMedia(h,tick,20);
+    if(inactive==='paused')await h.factory.update(h.event,{capability,playing:false});
+    else if(inactive==='hidden')await h.factory.update(h.event,{capability,visible:false});
+    else if(inactive==='pip')h.page.pictureInPictureElement=h.video;
+    else{h.video[inactive]=true;if(inactive==='ended')h.video.pause();}
+    await sampleMedia(h,tick,34);
+    assert.equal(h.states.some(state=>hasKind(state,'failed')),false);
+    assert.equal(h.views[0].closed,false);
+    if(inactive==='paused')await h.factory.update(h.event,{capability,playing:true});
+    else if(inactive==='hidden')await h.factory.update(h.event,{capability,visible:true});
+    else if(inactive==='pip')h.page.pictureInPictureElement=null;
+    else h.video[inactive]=false;
+    await h.advance(h.video.currentTime,h.video.frames);
+    await sampleMedia(h,tick,1,true);await sampleMedia(h,tick,29);
+    assert.equal(h.states.some(state=>hasKind(state,'failed')),false,'Returning to active playback starts a fresh freeze interval');
+    await sampleMedia(h,tick,1);
+    assert.deepEqual(h.states.filter(state=>hasKind(state,'failed')),[{capability,kind:'failed',reason:'upstream'}]);
+  }finally{await h.factory.stop();}
+});
+
+test('a native sampler gap does not count as fifteen seconds of observed freeze',async context=>{
+  context.mock.timers.enable({apis:['Date','setTimeout']});
+  const h=mediaFixture(),tick=(ms:number)=>context.mock.timers.tick(ms);
+  try{
+    const capability=await provedMedia(h,tick);await sampleMedia(h,tick,20);
+    tick(20_000);await h.advance(h.video.currentTime,h.video.frames);
+    await sampleMedia(h,tick,29);
+    assert.equal(h.states.some(state=>hasKind(state,'failed')),false);
+    await sampleMedia(h,tick,1);
+    assert.deepEqual(h.states.filter(state=>hasKind(state,'failed')),[{capability,kind:'failed',reason:'upstream'}]);
+  }finally{await h.factory.stop();}
+});
+
+test('native viewer freeze recovery does not replace the startup proof deadline',async context=>{
+  context.mock.timers.enable({apis:['Date','setTimeout']});
+  const h=mediaFixture(),tick=(ms:number)=>context.mock.timers.tick(ms);
+  try{
+    const capability=await h.factory.offer({target,player});await h.factory.mount(h.event,{capability});
+    await h.factory.update(h.event,{capability,playing:true,visible:true});await sampleMedia(h,tick,34);
+    assert.equal(h.states.some(state=>hasKind(state,'decoded')),false);
+    assert.equal(h.states.some(state=>hasKind(state,'failed')),false);
+    assert.equal(h.views[0].closed,false);
+  }finally{await h.factory.stop();}
+});
+
+test('native playback resumes an unsolicited pause without overriding an explicit pause',async()=>{
+  const h=mediaFixture();
+  try{
+    const capability=await h.factory.offer({target,player});await h.factory.mount(h.event,{capability});
+    await h.factory.update(h.event,{capability,playing:true});await h.advance(1,10);
+    assert.equal(h.video.paused,false);
+    h.video.pause();await h.advance(1,10);
+    assert.equal(h.video.paused,false,'A provider pause must resume while playback is requested');
+    await h.factory.update(h.event,{capability,playing:false});await h.advance(1,10);await h.advance(1,10);
+    assert.equal(h.video.paused,true,'An explicit pause must survive later samples');
+    assert.equal(h.plays(),2);
+  }finally{await h.factory.stop();}
+});
+
+test('native playback retries a rejected play without a new layout command',async()=>{
+  const h=mediaFixture(1);
+  try{
+    const capability=await h.factory.offer({target,player});await h.factory.mount(h.event,{capability});
+    await h.factory.update(h.event,{capability,playing:true});
+    await h.advance(1,10);await h.advance(1,10);
+    assert.equal(h.video.paused,false);
+    assert.equal(h.plays(),2);
+  }finally{await h.factory.stop();}
+});
+
+test('native playback does not restart an ended video during pause reconciliation',async()=>{
+  const h=mediaFixture();
+  try{
+    const capability=await h.factory.offer({target,player});await h.factory.mount(h.event,{capability});
+    await h.factory.update(h.event,{capability,playing:true});await h.advance(1,10);
+    h.video.ended=true;h.video.pause();await h.advance(1,10);
+    assert.equal(h.video.paused,true);
+    assert.equal(h.plays(),1);
+  }finally{await h.factory.stop();}
+});
+
+test('native PiP pauses survive exit until the renderer acknowledges their playback state',async()=>{
+  const h=mediaFixture();
+  try{
+    const capability=await h.factory.offer({target,player});await h.factory.mount(h.event,{capability});
+    await h.factory.update(h.event,{capability,playing:true});await h.advance(1,10);
+    h.page.pictureInPictureElement=h.video;h.video.pause();
+    await h.advance(1,10);await h.advance(1,10);
+    assert.equal(h.video.paused,true,'Automatic resume must not override native PiP controls');
+    h.page.pictureInPictureElement=null;
+    await h.advance(1,10);await h.advance(1,10);
+    await h.factory.update(h.event,{capability,playing:true,volume:0.5});await h.advance(1,10);
+    assert.equal(h.video.paused,true,'A stale layout must not undo the PiP pause after exit');
+    assert.equal(h.plays(),1);
+    await h.factory.update(h.event,{capability,playing:false});await h.advance(1,10);
+    assert.equal(h.video.paused,true);
+    await h.factory.update(h.event,{capability,playing:true});await h.advance(1,10);
+    assert.equal(h.video.paused,false);
+    assert.equal(h.plays(),2);
+  }finally{await h.factory.stop();}
+});
+
+test('a control-path PiP exit preserves an unsampled pause until the renderer acknowledges it',async()=>{
+  const h=mediaFixture();
+  try{
+    const capability=await h.factory.offer({target,player});await h.factory.mount(h.event,{capability});
+    await h.factory.update(h.event,{capability,playing:true});await h.advance(1,10);
+    h.page.pictureInPictureElement=h.video;await h.advance(1,10);
+    h.video.pause();
+    assert.equal((await h.factory.control(h.event,{capability,command:{kind:'set-picture-in-picture',active:false}})).kind,'applied');
+    assert.equal(h.page.pictureInPictureElement,null);
+    await h.advance(1,10);await h.advance(1,10);
+    assert.equal(h.video.paused,true,'PiP control publication must preserve the pause before sampling');
+    assert.equal(h.plays(),1);
+    await h.factory.update(h.event,{capability,playing:false});await h.advance(1,10);
+    assert.equal(h.video.paused,true);
+    await h.factory.update(h.event,{capability,playing:true});await h.advance(1,10);
+    assert.equal(h.video.paused,false);
+    assert.equal(h.plays(),2);
+  }finally{await h.factory.stop();}
+});
 
 test('playback intent is applied once while presentation snapshots publish only changes',async()=>{
   const h=harness();

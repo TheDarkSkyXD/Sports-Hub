@@ -6,6 +6,7 @@ Use these conventions when making relevant code or UI changes. Add future coding
 
 - Preserve existing focus and visibility rules when adding controls to another renderer. Verify that changing focus removes controls from the previous item.
 - Show pending automatic recovery instead of a manual failure prompt. Keep error and recovery messages outside idle cursor-hiding rules.
+- Defer optional panels without changing the lifetime of unsaved form state. Preserve drafts across tab switches until the containing dialog closes.
 
 ## Dates and times
 
@@ -26,6 +27,8 @@ Use these conventions when making relevant code or UI changes. Add future coding
 
 ## Native lifecycle
 
+- Keep requested playback state separate from observed media state. Recover unrequested interruptions without overriding explicit pauses, picture-in-picture controls, or ended media.
+
 - Apply requested native-player bounds and visibility before navigation. Selected-frame ownership checks need a laid-out document during loading.
 - Capture native object identities before registering destruction callbacks. Do not retrieve a child handle from its destroyed parent.
 - Recheck host identity after asynchronous authorization and before allocating owned resources. Dispose partial allocations when setup fails.
@@ -39,14 +42,15 @@ Use these conventions when making relevant code or UI changes. Add future coding
 
 - Run maintenance checks in separate playback sessions. Preserve the active viewer's selected feed and generation.
 - Keep working-feed maintenance intervals separate from failed-feed and incomplete-check retries.
-- Finish available feeds' first attempts for today before tomorrow, then run automatic retries and maintenance. Capacity and cancellation do not complete a first attempt. Include every sibling from each source, and preserve explicit retry requests.
+- Finish available feeds' first attempts for today before tomorrow, and interleave due current-day failed or incomplete retries fairly with new attempts. Rechecks of working feeds follow today's first attempts and can run before tomorrow's. Future-day automatic retries follow first attempts. Capacity and cancellation do not complete a first attempt. Include every sibling from each source, and preserve explicit retry requests.
 - Preserve completed feed-check outcomes across restarts, separately from working-video proof. Restore them only for a currently published route with matching game ownership. Active and queued work do not establish a completed attempt.
 - Retry temporary viewer connection failures within the player startup deadline. Keep connection recovery separate from feed-verification status.
-- Let the media library manage automatic HLS live synchronization. Do not seek ahead of downloaded video from a periodic UI timer.
+- Let the active media library manage automatic live synchronization. Do not seek ahead of downloaded video from a periodic UI timer.
 - Keep optional fallback setup out of direct playback startup. Share one startup deadline across attempts, and allow bounded later recovery only after video has played.
 - Separate the no-progress cutoff from the playback-proof deadline. Let advancing video finish its proof within the original deadline without reloading it. Expire verification attempts with no decoded progress as temporary deferrals.
 - Route terminal player outcomes through the viewer's recovery owner. Keep local capacity and cancellation separate from feed failure, and verify the caller and player together.
 - Preserve failure causes when adapting provider errors into check results. Verify the reported cause through the consuming inventory.
+- Classify aborted operations from their signal's cause so timeouts and cancellations keep their retry behavior.
 - Read stable persisted inputs once per synchronous planning pass. Take a new snapshot for the next pass instead of caching across asynchronous updates.
 - Count verified feeds by the identity used for checks. Source labels and aliases do not establish additional working feeds.
 - Keep transient upstream player sessions free of HTTP media caches. Bound browser verification separately from the number of discovered feeds.

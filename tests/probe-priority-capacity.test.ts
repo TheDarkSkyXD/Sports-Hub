@@ -173,7 +173,11 @@ test('manual retry admits a failed feed ahead of the unfinished automatic first 
     now+=300_000;
     await coordinator.refresh(true);
     const reply=await coordinator.command({kind:'sources'});assert.equal(reply.kind,'sources');
-    if(reply.kind==='sources')assert.equal(reply.snapshot.games.find(game=>game.gameId===target.id)?.candidates[0]?.availability.kind,'unavailable');
+    if(reply.kind==='sources'){
+      const availability=reply.snapshot.games.find(game=>game.gameId===target.id)?.candidates[0]?.availability;
+      assert.equal(availability?.kind,'checking');
+      if(availability?.kind==='checking')assert.equal(availability.progress.kind,'queued');
+    }
     assert.equal(held.length,2);
     assert.equal(targetAttempts,1,'the retry waits for a physical slot');
     assert.deepEqual(await coordinator.command({kind:'check-sources',gameIds:[target.id],retry:true}),{kind:'ok'});

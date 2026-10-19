@@ -49,6 +49,7 @@ const eslintConfig = defineConfig([
         { pattern: "lib/football/runtime/coordinator.ts", category: "coordinator" },
         { pattern: "lib/football/runtime/composition.ts", category: "composition" },
         { pattern: "lib/playback/presentation.ts", category: "pure-lib" },
+        { pattern: "lib/playback/dash-manifest.ts", category: "relay" },
         { pattern: "lib/playback/provider.ts", category: "provider-contract" },
         { pattern: "lib/playback/probe.ts", category: "provider-probe" },
         { pattern: "lib/playback/providers/streamcenter-player.ts", category: "provider-parser" },

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { ArrowUpRight, Check, ChevronRight, Columns2, Flame, GripVertical, Grid2X2, Headphones, LayoutPanelLeft, Maximize, Minimize, Monitor, Play, Plus, Radio, RefreshCw, Search, Settings2, ShieldCheck, SlidersHorizontal, Star, Tv, Volume2, X, Zap } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -14,12 +15,10 @@ import { GameTiming } from '@/components/game-timing';
 import { motorsportsTiming } from '@/lib/game-timing';
 import { useGameClock } from '@/hooks/use-game-clock';
 import {CopyLink} from '@/components/copy-link';
-import { SourceInventory } from '@/components/source-inventory';
 import { FinishedGameRetentionSetting } from '@/components/finished-game-retention-setting';
-import { UpdatePanel } from '@/components/update-panel';
 import { UpdatePopup } from '@/components/update-popup';
 import { ServerControls } from '@/components/server-controls';
-import { BoardSchema, DEFAULT_FINISHED_GAME_RETENTION_MINUTES, SourcesSnapshotSchema, isCombatGame, isCombatSportsLeague, isWrestlingGame, isWrestlingLeague, isMatchupGame, isRaceGame, isMotorsportsLeague, type CombatGame, type WrestlingGame, type MatchupGame, type RaceGame, type SourcesSnapshot } from '@/lib/football/shared';
+import { BoardSchema, DEFAULT_FINISHED_GAME_RETENTION_MINUTES, RoomSourcesSnapshotSchema, isCombatGame, isCombatSportsLeague, isWrestlingGame, isWrestlingLeague, isMatchupGame, isRaceGame, isMotorsportsLeague, type CombatGame, type WrestlingGame, type MatchupGame, type RaceGame, type RoomSourcesSnapshot } from '@/lib/football/shared';
 import { parseQualityPreference, qualityPreferences, type QualityPreference } from '@/lib/playback-quality';
 import { addToSlots, emptySlots, placeInSlot, reconcileSlots, removeFromSlots, restoreSlots, selectedGames, slotsFromIds, type RoomSlots } from '@/lib/multiview';
 import { Board, Feed, Game, LEAGUES, Team, isBasketballLeague, priority, sortGamesForDisplay, validFeedUrl, validGameId } from '@/lib/sunday';
@@ -30,11 +29,18 @@ const effectivePlaying = (state: RoomPlayback, id: string) => state.overrides[id
 const STORAGE = 'sunday-room:v1';
 const EMPTY_GAMES: Game[] = [];
 const GAME_PAGE_SIZE = 40;
+const SourceInventory=dynamic(()=>import('@/components/source-inventory').then(module=>module.SourceInventory),{loading:()=> <p role="status">Loading sources…</p>});
+const UpdatePanel=dynamic(()=>import('@/components/update-panel').then(module=>module.UpdatePanel),{loading:()=> <p role="status">Loading update settings…</p>});
+function SettingsUpdates({active}:{active:boolean}) {
+ const [visited,setVisited]=useState(active);
+ if(active&&!visited)setVisited(true);
+ return visited?<UpdatePanel/>:null;
+}
 const layouts: { id: Layout; label: string; icon: typeof Grid2X2 }[] = [{ id:'quad', label:'Four games', icon:Grid2X2 }, { id:'focus', label:'Focus view', icon:LayoutPanelLeft }, { id:'duo', label:'Two games', icon:Columns2 }, { id:'single', label:'Single game', icon:Monitor }];
 function Badge({ team, large = false }: { team: Team; large?: boolean }) { const [failed,setFailed]=useState(false); return <span className={`team-badge ${large?'large':''}`} style={{'--team':`#${team.color}`} as React.CSSProperties}>{team.logo&&!failed ? <Image src={team.logo} alt="" width={large?56:32} height={large?56:32} unoptimized onError={()=>setFailed(true)}/> : team.abbreviation}</span>; }
 function GameStatus({ game }: { game: Game }) {
  const unavailable=game.detail==='Status unavailable';
- const now=useGameClock(unavailable&&isMotorsportsLeague(game.league));
+ const now=useGameClock(unavailable&&isMotorsportsLeague(game.league),'day');
  return game.detail==='Scheduled'||(unavailable&&motorsportsTiming(game,now)!==null) ? null : <span className={`game-status ${game.status}`}><i/>{game.detail}</span>;
 }
 function score(team: Team, game: Game, hide: boolean) { return hide ? '—' : game.status==='pre' ? '—' : team.score ?? '—'; }
@@ -55,7 +61,9 @@ function WrestlingIdentity({game,large=false}:{game:WrestlingGame;large?:boolean
 export default function Home() {
  const [board,setBoard]=useState<Board|null>(null),[fetchError,setFetchError]=useState(''),[loading,setLoading]=useState(true);
  const [displayNow,setDisplayNow]=useState(0);
- const [sources,setSources]=useState<SourcesSnapshot|null>(null);
+ const dayNow=useGameClock(true,'day');
+ const sortNow=Math.max(displayNow,dayNow??0);
+ const [sources,setSources]=useState<RoomSourcesSnapshot|null>(null);
  const [slots,setSlots]=useState<RoomSlots>(emptySlots),[favorites,setFavorites]=useState<string[]>([]),[feeds,setFeeds]=useState<Record<string,Feed>>({});
  const [desktop,setDesktop]=useState(false),[providerChoices,setProviderChoices]=useState<Partial<Record<string,true>>>({});
  const [initialCandidateIds,setInitialCandidateIds]=useState<Record<string,string>>({});
@@ -69,35 +77,40 @@ export default function Home() {
  const initialized=useRef(false),refreshing=useRef(false),room=useRef<HTMLDivElement>(null),lastAuto=useRef(0),lastSourceRefresh=useRef(-1);
  const retentionGeneration=useRef(0);
  const games=board?.games??EMPTY_GAMES;
+ const gamesById=useMemo(()=>new Map(games.map(game=>[game.id,game])),[games]);
  const scheduleLoading=board?.scheduleState!=='ready';
  const selected=useMemo(()=>selectedGames(slots),[slots]);
- const selectedFeedGameIds=useMemo(()=>selected.filter(id=>games.some(game=>game.id===id&&game.lifecycle!=='final')),[selected,games]);
+ const selectedFeedGameIds=useMemo(()=>selected.filter(id=>{const game=gamesById.get(id);return game!==undefined&&game.lifecycle!=='final';}),[selected,gamesById]);
  const selectedFeedGameIdsRef=useRef(selectedFeedGameIds);
  useEffect(()=>{selectedFeedGameIdsRef.current=selectedFeedGameIds;},[selectedFeedGameIds]);
- const chosen=selected.map(id=>games.find(g=>g.id===id)).filter(Boolean) as Game[];
+ const chosen=useMemo(()=>selected.flatMap(id=>{const game=gamesById.get(id);return game?[game]:[];}),[selected,gamesById]);
  const candidatesByGame=useMemo(()=>new Map(sources?.games.map(game=>[game.gameId,game.candidates])||[]),[sources]);
- const sourcesCollecting=sources?.sportsurgeV2.current?.state.kind==='collecting'||sources?.streameast.current?.state.kind==='collecting';
+ const sourcesCollecting=sources?.collecting;
  const checkingServers=(gameId:string)=>candidatesByGame.get(gameId)?.some(candidate=>candidate.availability.kind==='unknown'||candidate.availability.kind==='checking');
  const canPlay=useCallback((game:Game)=>(game.lifecycle==='final'?
   game.graceEndsAt!==undefined&&displayNow<game.graceEndsAt:game.status!=='post')&&
   (!!game.sourceUrl||!!candidatesByGame.get(game.id)?.some(candidate=>candidate.availability.kind==='playable')),[candidatesByGame,displayNow]);
- const providerGames=chosen.filter(g=>!feeds[g.id]&&(providerChoices[g.id]??canPlay(g))).map(g=>g.id);
- const discovery=games.filter(g=>leagueFilter==='all'||(leagueFilter==='basketball'?isBasketballLeague(g.league):
-  leagueFilter==='hockey'?g.league==='nhl':leagueFilter==='baseball'?g.league==='mlb':leagueFilter==='motorsports'?isMotorsportsLeague(g.league):leagueFilter==='combat'?isCombatSportsLeague(g.league):leagueFilter==='wrestling'?isWrestlingLeague(g.league):g.league===leagueFilter));
- const headerGames=sortGamesForDisplay(discovery,displayNow);
- const centerGames=discovery.filter(g=>g.lifecycle==='final'||g.status==='post'?
-  g.graceEndsAt!==undefined&&displayNow<g.graceEndsAt:true);
+ const providerGames=useMemo(()=>chosen.filter(g=>!feeds[g.id]&&(providerChoices[g.id]??canPlay(g))).map(g=>g.id),[chosen,feeds,providerChoices,canPlay]);
+ const discovery=useMemo(()=>games.filter(g=>leagueFilter==='all'||(leagueFilter==='basketball'?isBasketballLeague(g.league):
+  leagueFilter==='hockey'?g.league==='nhl':leagueFilter==='baseball'?g.league==='mlb':leagueFilter==='motorsports'?isMotorsportsLeague(g.league):leagueFilter==='combat'?isCombatSportsLeague(g.league):leagueFilter==='wrestling'?isWrestlingLeague(g.league):g.league===leagueFilter)),[games,leagueFilter]);
+ const headerGames=useMemo(()=>showGameDayHeader?sortGamesForDisplay(discovery,sortNow):EMPTY_GAMES,[discovery,sortNow,showGameDayHeader]);
+ const centerGames=useMemo(()=>discovery.filter(g=>g.lifecycle==='final'||g.status==='post'?
+  g.graceEndsAt!==undefined&&displayNow<g.graceEndsAt:true),[discovery,displayNow]);
  const leagueLabel=leagueFilter==='all'?'GAMES':leagueFilter==='basketball'?'BASKETBALL':leagueFilter==='hockey'?'HOCKEY':leagueFilter==='baseball'?'BASEBALL':leagueFilter==='motorsports'?'MOTORSPORTS':leagueFilter==='combat'?'COMBAT SPORTS':leagueFilter==='wrestling'?'WRESTLING':LEAGUES[leagueFilter].label;
  const week=leagueFilter==='all'||leagueFilter==='basketball'||leagueFilter==='hockey'||leagueFilter==='baseball'||leagueFilter==='motorsports'||leagueFilter==='combat'||leagueFilter==='wrestling'?undefined:board?.leagues[leagueFilter].week;
  const errors=board ? Object.values(board.leagues).flatMap(status=>status.errors) : [];
  const ordered=[...chosen].sort((a,b)=>a.id===focus?-1:b.id===focus?1:0);
  const visible=layout==='single'?ordered.slice(0,1):layout==='duo'?ordered.slice(0,2):layout==='focus'?ordered:chosen;
  const capacity=layout==='single'?1:layout==='duo'?2:4;
- const gridCells=layout==='quad'?slots.map((id,index)=>({g:games.find(game=>game.id===id),index,slotIndex:index})):[...visible.map((g,index)=>({g,index,slotIndex:slots.indexOf(g.id)})),...slots.flatMap((id,slotIndex)=>id===null?[{g:undefined,index:0,slotIndex}]:[])].slice(0,capacity).map((cell,index)=>({...cell,index}));
- const live=discovery.filter(g=>g.status==='in'),hot=live.filter(g=>isMatchupGame(g)&&g.redzone);
- const pulse=live.filter((g):g is MatchupGame=>isMatchupGame(g)&&!!g.lastPlay);
- const filteredGames=centerGames.filter(g=>(filter==='all'||filter==='live'&&g.status==='in'||filter==='redzone'&&isMatchupGame(g)&&g.redzone||filter==='favorites'&&favorites.includes(g.id))&&`${g.name} ${isRaceGame(g)?`${g.race.round} ${g.race.circuit||''}`:isMatchupGame(g)?`${g.home.abbreviation} ${g.away.abbreviation}`:LEAGUES[g.league].label}`.toLowerCase().includes(search.toLowerCase()));
- const filtered=filter==='live'||filter==='redzone'?filteredGames.sort((a,b)=>priority(b)-priority(a)):sortGamesForDisplay(filteredGames,displayNow);
+ const gridCells=layout==='quad'?slots.map((id,index)=>({g:id===null?undefined:gamesById.get(id),index,slotIndex:index})):[...visible.map((g,index)=>({g,index,slotIndex:slots.indexOf(g.id)})),...slots.flatMap((id,slotIndex)=>id===null?[{g:undefined,index:0,slotIndex}]:[])].slice(0,capacity).map((cell,index)=>({...cell,index}));
+ const live=useMemo(()=>discovery.filter(g=>g.status==='in'),[discovery]);
+ const hot=useMemo(()=>live.filter(g=>isMatchupGame(g)&&g.redzone),[live]);
+ const pulse=useMemo(()=>live.filter((g):g is MatchupGame=>isMatchupGame(g)&&!!g.lastPlay),[live]);
+ const filtered=useMemo(()=>{
+  const query=search.toLowerCase();
+  const filteredGames=centerGames.filter(g=>(filter==='all'||filter==='live'&&g.status==='in'||filter==='redzone'&&isMatchupGame(g)&&g.redzone||filter==='favorites'&&favorites.includes(g.id))&&`${g.name} ${isRaceGame(g)?`${g.race.round} ${g.race.circuit||''}`:isMatchupGame(g)?`${g.home.abbreviation} ${g.away.abbreviation}`:LEAGUES[g.league].label}`.toLowerCase().includes(query));
+  return filter==='live'||filter==='redzone'?filteredGames.sort((a,b)=>priority(b)-priority(a)):sortGamesForDisplay(filteredGames,sortNow);
+ },[centerGames,filter,favorites,search,sortNow]);
  const visibleCenterGames=filtered.slice(0,centerLimit);
  const visibleScheduleGames=discovery.slice(0,scheduleLimit);
  const stale=!!fetchError||!scheduleLoading&&!!errors.length;
@@ -108,17 +121,12 @@ export default function Home() {
   const refreshSources=async()=>{
    let nextDelay=30000;
    try{
-    const response=await fetch('/api/sources',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])});
+    const response=await fetch('/api/sources?view=room',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])});
     if(!response.ok)throw new Error('Source inventory unavailable');
-    const snapshot=SourcesSnapshotSchema.parse(await response.json());
+    const snapshot=RoomSourcesSnapshotSchema.parse(await response.json());
     if(!controller.signal.aborted)setSources(snapshot);
     if(Date.now()-startupAt<90_000||snapshot.games.some(row=>
-      selectedFeedGameIdsRef.current.includes(row.gameId)&&
-      !(row.feeds.kind==='incomplete'&&row.feeds.reason==='schedule')&&
-      !row.candidates.some(candidate=>candidate.availability.kind==='playable')&&
-      (row.candidates.some(candidate=>candidate.availability.kind==='unknown'||
-        candidate.availability.kind==='checking'&&candidate.availability.progress.kind!=='deferred')||
-       row.sourceLinks.some(link=>link.evidence.kind==='pending'))))nextDelay=3000;
+      selectedFeedGameIdsRef.current.includes(row.gameId)&&row.pending))nextDelay=3000;
    }catch{nextDelay=5000;}
    finally{if(!controller.signal.aborted)timer=setTimeout(()=>void refreshSources(),nextDelay);}
   };
@@ -269,7 +277,7 @@ export default function Home() {
     <TabsContent forceMount value="general" className="settings-panel"><div className="settings-panel-heading"><h3>General</h3><p>Choose how game day appears in your room.</p></div><div className="setting-row"><div><strong>Spoiler-free mode</strong><p>Hide scores and latest play updates.</p></div><Switch aria-label="Spoiler-free mode" checked={spoilers} onCheckedChange={v=>{setSpoilers(v);if(v){setAuto(false);setFilter('all');}}}/></div><div className="setting-row"><div><strong>Show Game Day header</strong><p>Show the scoreboard above your room.</p></div><Switch aria-label="Show Game Day header" checked={showGameDayHeader} onCheckedChange={setShowGameDayHeader}/></div><FinishedGameRetentionSetting minutes={board?.finishedGameRetentionMinutes??DEFAULT_FINISHED_GAME_RETENTION_MINUTES} disabled={!board} onChange={saveFinishedRetention}/></TabsContent>
     <TabsContent forceMount value="playback" className="settings-panel"><div className="settings-panel-heading"><h3>Playback</h3><p>Set your room&apos;s sound and preferred video quality.</p></div><div className="setting-row"><div><strong>Room volume</strong><p>Only your selected feed plays audio.</p></div><span>{volume}%</span></div><Slider aria-label="Default room volume" value={[volume]} onValueChange={v=>setVolume(v[0])} max={100}/><div className="quality-setting"><strong>Default video quality</strong><p>Uses the closest available quality at or below your choice, or the lowest available if none are lower.</p><Select value={defaultQuality} onValueChange={value=>setDefaultQuality(parseQualityPreference(value))}><SelectTrigger aria-label="Default video quality"><SelectValue/></SelectTrigger><SelectContent>{qualityPreferences.map(option=><SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div></TabsContent>
                 <TabsContent forceMount value="sources" className="settings-panel"><div className="settings-panel-heading"><h3>Sources</h3><p>Review the game listings and available streams. Sources refresh automatically based on upcoming events and recent changes.</p></div>{settingsTab==='sources'&&<SourceInventory gameIds={selected} branding={{games}}/>}</TabsContent>
-    <TabsContent forceMount value="updates" className="settings-panel"><div className="settings-panel-heading"><h3>Updates</h3><p>Manage updates to the Sunday Room desktop viewer.</p></div>{desktop?<UpdatePanel/>:<div className="feed-note"><Monitor size={18}/><p>App updates are available in the desktop viewer. This browser version updates when you reload the page.</p></div>}</TabsContent>
+    <TabsContent forceMount value="updates" className="settings-panel"><div className="settings-panel-heading"><h3>Updates</h3><p>Manage updates to the Sunday Room desktop viewer.</p></div>{desktop?<SettingsUpdates active={settingsTab==='updates'}/>:<div className="feed-note"><Monitor size={18}/><p>App updates are available in the desktop viewer. This browser version updates when you reload the page.</p></div>}</TabsContent>
     <TabsContent forceMount value="privacy" className="settings-panel"><div className="settings-panel-heading"><h3>Privacy</h3><p>Manage the room data saved on this device.</p></div><div className="feed-note"><ShieldCheck size={18}/><p>Layouts, favorites, and feed URLs are stored only in this browser. Avoid saving links on a shared device.</p></div><button className="button subtle" onClick={()=>{setFeeds({});setProviderChoices({});setInitialCandidateIds({});setFavorites([]);setSlots(slotsFromIds([...games].sort((a,b)=>priority(b)-priority(a)).slice(0,4).map(g=>g.id)));setLayout('quad');setAudio('');setAuto(false);setSpoilers(false);setShowGameDayHeader(false);setVolume(70);setDefaultQuality('auto');setPlayback({defaultPlaying:true,overrides:{}});toast('Room reset. Saved feeds removed.');setModal(null);}}>Reset room and remove saved feeds</button></TabsContent>
    </Tabs>}
   </DialogContent></Dialog>

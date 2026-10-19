@@ -6,8 +6,10 @@ import type {PlayerDocument} from './playback/provider.ts';
 import type {PlayerCapability} from './stream-relay.ts';
 import type {MediaCheckResult,MediaPhase} from './football/shared.ts';
 import verificationPolicy from './playback/verification-policy.json' with {type:'json'};
+import {dashManifestScope} from './playback/dash-manifest.ts';
 
 const noStore={'Cache-Control':'no-store'};
+const dashScopes=new WeakMap<ProviderResource,ReturnType<typeof dashManifestScope>>();
 const transientNetworkCodes=new Set(['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EAI_AGAIN','UND_ERR_CONNECT_TIMEOUT','UND_ERR_HEADERS_TIMEOUT','UND_ERR_BODY_TIMEOUT','UND_ERR_SOCKET']);
 function relayFailure(error:unknown,message:string,phase:MediaPhase='replay'):Response {
   const cause=error instanceof Error&&error.cause!==undefined?error.cause:error;
@@ -139,7 +141,7 @@ export async function streamPresentation({gameId,sessionId,candidateId,generatio
     let presentation:Presentation;
     if(intent==='primary'&&playback.root){
       const query=new URLSearchParams({session:sessionId,candidate:candidateId,generation:String(number),intent:'fallback'});
-      presentation={kind:playback.root.kind==='playlist'?'hls':'progressive',
+      presentation={kind:playback.root.kind==='playlist'?'hls':playback.root.kind==='media'?'progressive':playback.root.kind,
         url:playback.root.kind==='playlist'?`/api/stream/${encodeURIComponent(gameId)}/index.m3u8?session=${encodeURIComponent(sessionId)}&candidate=${encodeURIComponent(candidateId)}&generation=${number}`:
           `/api/stream/media/${registerResource(grant,playback.root)}`,
         ...(playback.player?{fallbackUrl:`/api/stream/${encodeURIComponent(gameId)}/presentation?${query}`}:{})};
@@ -165,21 +167,47 @@ export function revokeVerificationTarget(sessionId:string,generation:number):voi
 }
 
 export async function streamToken(token:string,range:string|null,
-  requestSignal:AbortSignal=new AbortController().signal,send:typeof command=command):Promise<Response> {
+  requestSignal:AbortSignal=new AbortController().signal,send:typeof command=command,
+  child?:{reference:string;kind:'manifest'|'segment'}):Promise<Response> {
   const record=registeredResource(token);
   if (!record) return Response.json({error:'Stream resource expired or unknown.'},{status:404,headers:noStore});
   if (range && !validByteRange(range)) return Response.json({error:'Invalid byte range.'},{status:416,headers:noStore});
   const denied=await authorize(record,send);
   if (denied) return denied;
   try {
+    let resource=record.resource;
+    if(child){
+      if(record.kind!=='dash'||!child.reference||child.reference.length>8192||/[\u0000-\u0020\u007f#]/.test(child.reference))
+        return new Response(null,{status:400,headers:noStore});
+      if(!dashScopes.get(resource)?.allows(child.reference,child.kind))return new Response(null,{status:400,headers:noStore});
+      const resolved=resource.resolve(child.reference,child.kind==='manifest'?'dash':'media');
+      if(!resolved)return new Response(null,{status:400,headers:noStore});
+      resource=resolved;
+    }
     if (record.kind==='playlist') return await playlist(record.resource,record,requestSignal,send);
     const signal=AbortSignal.any([requestSignal,streamSignal(record)]);
-    const read=await readResource(record.resource,record,signal,range || undefined);
+    const read=await readResource(resource,record,signal,range || undefined);
     if (signal.aborted) throw new Error('Stream generation ended');
     const headers=new Headers({...noStore,'Content-Type':read.contentType});
     if (read.contentLength) headers.set('Content-Length',read.contentLength);
     if (read.contentRange) headers.set('Content-Range',read.contentRange);
     if (read.acceptRanges) headers.set('Accept-Ranges',read.acceptRanges);
+    if(resource.kind==='dash'){
+      const base=read.url&&resource.resolve(read.url,'dash')?new URL(read.url):null;
+      if(!base||read.status!==200||!/(?:application\/dash\+xml|application\/(?:xml|octet-stream)|text\/(?:xml|plain))(?:;|$)/i.test(read.contentType)){
+        await read.body?.cancel();throw new StreamPlaylistError('unsupported','DASH manifest has no admitted base');
+      }
+      const body=await boundedText(new Response(read.body,{headers:read.contentLength?{'content-length':read.contentLength}:undefined}));
+      let scope:ReturnType<typeof dashManifestScope>;
+      try{scope=dashManifestScope(body,base.href);}catch{throw new StreamPlaylistError('unsupported','Unsupported DASH manifest');}
+      if(signal.aborted||await authorize(record,send))throw new Error('Stream generation ended');
+      dashScopes.set(resource,scope);
+      const manifestToken=child?registerResource(record,resource):token;
+      headers.delete('Content-Length');
+      headers.set('Content-Location',`https://${manifestToken}.dash.invalid${base.pathname}`);
+      headers.set('Content-Type','application/dash+xml');
+      return new Response(body,{headers});
+    }
     return new Response(read.body,{status:read.status,headers});
   } catch (error) {
     return relayFailure(error,'Browser media lookup failed:');

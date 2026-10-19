@@ -1,4 +1,5 @@
 {
   "concurrency": 16,
+  "viewingConcurrency": 4,
   "workingFeedsPerGame": 10
 }
