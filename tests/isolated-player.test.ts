@@ -53,7 +53,7 @@ function harness({purpose='viewing',load,chromeLoad,onLoad,ipc,evaluate}:{purpos
     async closeAllConnections(){this.history.push('connections');await this.cleanup;}
   }
   class View {
-    bounds:object={};visible=false;closed=false;policy='';loaded='';muted=true;background='';focuses=0;
+    bounds={x:0,y:0,width:0,height:0};visible=false;closed=false;policy='';loaded='';muted=true;background='';focuses=0;
     prefs:Record<string,unknown>;
     webContents=Object.assign(new EventEmitter(),{
       isDestroyed:()=>this.closed,
@@ -70,7 +70,7 @@ function harness({purpose='viewing',load,chromeLoad,onLoad,ipc,evaluate}:{purpos
       focus:()=>{this.focuses++;},
     });
     constructor(prefs:Record<string,unknown>){this.prefs=prefs;if(!prefs.preload)this.webContents.mainFrame=main;views.push(this);}
-    setBounds(value:object){this.bounds=value;}
+    setBounds(value:typeof this.bounds){this.bounds=value;}
     setBackgroundColor(value:string){this.background=value;}
     setVisible(value:boolean){this.visible=value;}
   }
@@ -246,6 +246,27 @@ test('native playback resumes an unsolicited pause without overriding an explici
   }finally{await h.factory.stop();}
 });
 
+test('an unfocused player resumes an unsolicited pause while partly below the host',async()=>{
+  const h=mediaFixture();
+  h.video.getBoundingClientRect=()=>{
+    const {width,height}=h.views[0].bounds;
+    return {left:0,top:0,right:width,bottom:height};
+  };
+  try{
+    const capability=await h.factory.offer({target,player});await h.factory.mount(h.event,{capability});
+    await h.factory.update(h.event,{capability,bounds:{x:0,y:0,width:343,height:193},visible:true,playing:true,focused:false});
+    await h.advance(1,10);
+    assert.equal(h.video.paused,false);
+    await h.factory.update(h.event,{capability,bounds:{x:0,y:532,width:343,height:193}});
+    await h.advance(1,10);
+    h.video.pause();await h.advance(1,10);
+    assert.equal(h.views[0].visible,true);
+    assert.equal(h.video.paused,false,'A partially visible tile must retain playback reconciliation');
+    assert.equal(h.plays(),2);
+    assert.equal(h.video.controls,false);
+  }finally{await h.factory.stop();}
+});
+
 test('native playback retries a rejected play without a new layout command',async()=>{
   const h=mediaFixture(1);
   try{
@@ -370,16 +391,23 @@ test('only a registered host main frame can mount; the player is sandboxed witho
   }finally{h.factory.stop();}
 });
 
-test('layout is clipped to the host; occlusion hides and mutes the native view',async()=>{
+test('partly visible players keep their viewport; occlusion hides and mutes the native view',async()=>{
   const h=harness();
   try{
     const capability=await h.factory.offer({target,player});
     await h.factory.mount(h.event,{capability});
-    await h.factory.update(h.event,{capability,bounds:{x:800,y:500,width:400,height:300},visible:true,playing:true,audible:true,volume:0.5,focused:true});
-    assert.deepEqual(h.views[0].bounds,{x:800,y:500,width:100,height:100});
-    assert.equal(h.views[0].visible,true);assert.equal(h.views[0].muted,false);
+    for(const bounds of [{x:800,y:500,width:400,height:300},{x:-100,y:-50,width:400,height:300}]){
+      await h.factory.update(h.event,{capability,bounds,visible:true,playing:true,audible:true,volume:0.5,focused:true});
+      assert.deepEqual(h.views[0].bounds,bounds);
+      assert.equal(h.views[0].visible,true);assert.equal(h.views[0].muted,false);
+    }
     await h.factory.update(h.event,{capability,visible:false});
     assert.equal(h.views[0].visible,false);assert.equal(h.views[0].muted,true);
+    for(const bounds of [{x:900,y:0,width:400,height:300},{x:0,y:600,width:400,height:300},
+      {x:-400,y:0,width:400,height:300},{x:0,y:-300,width:400,height:300}]){
+      await h.factory.update(h.event,{capability,bounds,visible:true});
+      assert.equal(h.views[0].visible,false);assert.equal(h.views[0].muted,true);
+    }
   }finally{h.factory.stop();}
 });
 

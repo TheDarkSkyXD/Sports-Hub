@@ -235,7 +235,7 @@ try {
   assert.ok(result.resumed.time - result.paused.time >= 1.8 && result.resumed.frames > result.paused.frames);
   assert.equal(result.resumed.volume, 0.4);
   assert.deepEqual(result.hidden, { visible: false, muted: true }); assert.deepEqual(result.restored, { visible: true, muted: false });
-  assert.equal(result.clipped.width, 100); assert.equal(result.clipped.height, 100);
+  assert.equal(result.clipped.width, 400); assert.equal(result.clipped.height, 300);
   assert.equal(result.popup, true); assert.equal(result.permission, 'denied');
   assert.equal(result.navigation, 'https://embed.st/embed/basketball/game/1'); assert.equal(result.otherHidden, true);
   assert.ok(result.downloads.length > 0 && result.downloads.every(download => download.prevented), 'Player downloads must be canceled');

@@ -125,7 +125,7 @@ function createIsolatedPlayers({authorizeTarget,createSession=()=>session.fromPa
     const x=Math.min(width,Math.max(0,bounds.x)),y=Math.min(height,Math.max(0,bounds.y));
     const right=Math.min(width,Math.max(x,bounds.x+bounds.width)),bottom=Math.min(height,Math.max(y,bounds.y+bounds.height));
     const clipped={x:Math.round(x),y:Math.round(y),width:Math.max(0,Math.round(right-x)),height:Math.max(0,Math.round(bottom-y))};
-    runtime.view.setBounds(clipped);
+    runtime.view.setBounds({x:Math.round(bounds.x),y:Math.round(bounds.y),width:Math.round(bounds.width),height:Math.round(bounds.height)});
     const visible=input.visible===true&&right>x&&bottom>y;
     runtime.visible=visible;
     runtime.view.setVisible(visible);
