@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { compatiblePlayers, parseListings, SOURCES } from '../lib/football/adapters/sources.ts';
-import { readSchedule, SCHEDULES } from '../lib/football/adapters/schedule.ts';
+import { createFixtureSchedule, SCHEDULES } from '../lib/football/adapters/schedule.ts';
+import {enqueueListings} from './schedule-fixture.ts';
 import { matchObservation } from '../lib/football/domain/matching.ts';
 import { wrestlingEventKey, wrestlingPromotion, wrestlingShowKey } from '../lib/football/domain/wrestling-events.ts';
 import { feedEligible } from '../lib/football/domain/feed-eligibility.ts';
@@ -49,8 +50,8 @@ test('native listing boundary accepts wrestling mirrors and excludes unrelated c
 });
 
 test('Chicago episode identity and tight matching merge three real SmackDown listings',async()=>{
-  const {games}=await readSchedule(partition('wwe'),now,new AbortController().signal,undefined,
-    undefined,undefined,undefined,reader);
+  const fixture=createFixtureSchedule();await enqueueListings(fixture,reader);
+  const {games}=await fixture.readSchedule(partition('wwe'),now,new AbortController().signal);
   assert.equal(games.length,1);
   const game=games[0];
   assert.ok(isWrestlingGame(game));
@@ -74,8 +75,8 @@ test('TNA Impact mirrors match while NXT and Impact specials remain separate wee
   const tnaA={...streamed,id:'tna-impact',title:'Impact Wrestling',category:'fight',sources:[]};
   const tnaB={...lsp,id:'tna-impact',title:'TNA Impact',sources:[]};
   const tnaReader=async(url:string)=>JSON.stringify(url.includes('streamed.st')?[tnaA]:[tnaB]);
-  const {games}=await readSchedule(partition('tna'),now,new AbortController().signal,undefined,
-    undefined,undefined,undefined,tnaReader);
+  const fixture=createFixtureSchedule();await enqueueListings(fixture,tnaReader);
+  const {games}=await fixture.readSchedule(partition('tna'),now,new AbortController().signal);
   assert.equal(games.length,1);
   assert.equal(games[0].league,'tna');
   for(const [id,row] of [['streamed',tnaA],['livesportpro',tnaB]] as const){
@@ -91,15 +92,14 @@ test('TNA Impact mirrors match while NXT and Impact specials remain separate wee
 });
 
 test('conflicting same-show starts fail and PPV can supply wrestling schedules alone',async()=>{
-  await assert.rejects(readSchedule(partition('wwe'),now,new AbortController().signal,undefined,
-    undefined,undefined,undefined,async url=>JSON.stringify(url.includes('kultsport.com')?
-      [{...lsp,date:start+3*3600000}]:url.includes('streamed.st')?[streamed]:ppv)),
+  const conflicting=createFixtureSchedule();await enqueueListings(conflicting,async url=>JSON.stringify(url.includes('kultsport.com')?
+      [{...lsp,date:start+3*3600000}]:url.includes('streamed.st')?[streamed]:ppv));
+  await assert.rejects(conflicting.readSchedule(partition('wwe'),now,new AbortController().signal),
     /source-schedule-conflicting-event/);
   const onlyPpv=async(url:string)=>{if(!url.includes('ppv.st'))throw new Error('offline');return JSON.stringify(ppv);};
-  assert.equal((await readSchedule(partition('wwe'),now,new AbortController().signal,undefined,
-    undefined,undefined,undefined,onlyPpv)).games.length,1);
-  assert.equal((await readSchedule(partition('tna'),now,new AbortController().signal,undefined,
-    undefined,undefined,undefined,onlyPpv)).games.length,0);
+  const fixture=createFixtureSchedule();await enqueueListings(fixture,onlyPpv);
+  assert.equal((await fixture.readSchedule(partition('wwe'),now,new AbortController().signal)).games.length,1);
+  assert.equal((await fixture.readSchedule(partition('tna'),now,new AbortController().signal)).games.length,0);
 });
 
 test('published WWE route and LiveSportPro PPV target require exact dated host and path',()=>{

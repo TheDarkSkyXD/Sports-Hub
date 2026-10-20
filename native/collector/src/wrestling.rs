@@ -21,7 +21,8 @@ pub(crate) fn league(title: &str) -> Option<League> {
     {
         Some(League::Tna)
     } else if label.starts_with("aew ") && label.len() > 4
-        || label.starts_with("all elite wrestling ") && label.len() > 20 {
+        || label.starts_with("all elite wrestling ") && label.len() > 20
+    {
         Some(League::Aew)
     } else {
         None

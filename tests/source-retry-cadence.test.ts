@@ -154,6 +154,9 @@ for(const outcome of ['parser-changed','failed'] as const)test(`startup migrates
 });
 
 test('NFLStreams retries old unsupported evidence without waking another version-three source',async()=>{
+  const warnings:string[]=[];
+  const captureWarning=(warning:Error)=>{if(warning.name==='TimeoutOverflowWarning')warnings.push(warning.message);};
+  process.on('warning',captureWarning);
   const directory=mkdtempSync(join(tmpdir(),'nflstreams-parser-retry-'));
   const path=join(directory,'state.sqlite');
   const store=new FootballStore(path);
@@ -173,6 +176,7 @@ test('NFLStreams retries old unsupported evidence without waking another version
   });
   try{
     await coordinator.refresh();await drain();
+    assert.deepEqual(warnings,[],'a distant source deadline must not overflow into a one-millisecond timer');
     assert.deepEqual(reads,[sources[0].url]);
     const reply=await coordinator.command({kind:'sources'});
     assert.equal(reply.kind,'sources');
@@ -180,7 +184,7 @@ test('NFLStreams retries old unsupported evidence without waking another version
       assert.equal(reply.snapshot.sources.find(source=>source.id==='nflstreams')?.lastAttempt?.parserVersion,4);
       assert.equal(reply.snapshot.sources.find(source=>source.id==='fixture')?.lastAttempt?.parserVersion,3);
     }
-  }finally{await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
+  }finally{process.off('warning',captureWarning);await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
 });
 
 test('an empty source completing after the scan starts is admitted on the first local poll after its five-hour deadline',async()=>{

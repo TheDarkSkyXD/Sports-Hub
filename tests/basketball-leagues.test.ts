@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { SCHEDULES, readSchedule } from '../lib/football/adapters/schedule.ts';
+import { SCHEDULES, createFixtureSchedule } from '../lib/football/adapters/schedule.ts';
+import {enqueueSchedule} from './schedule-fixture.ts';
 import { SOURCES, allowedDiscoveryUrl, compatiblePlayers, parseListings } from '../lib/football/adapters/sources.ts';
 import { createSourceEventMatcher, matchObservation } from '../lib/football/domain/matching.ts';
 import { isBasketballLeague, parseScoreboard, validGameId } from '../lib/sunday.ts';
@@ -30,19 +31,14 @@ test('WNBA uses its ESPN partition, ID, and team identities',async()=>{
   assert.ok(partition);
   assert.equal(partition.sport,'basketball');
   assert.equal(partition.path,'wnba');
-  const original=globalThis.fetch;
-  const requested:string[]=[];
-  globalThis.fetch=async input=>{
-    const url=String(input);
-    requested.push(url);
-    return Response.json(new URL(url).searchParams.get('dates')==='20261008'?
-      scoreboard('401918298','Las Vegas Aces','Golden State Valkyries'):{events:[]});
-  };
-  try {
-    const result=await readSchedule(partition,tipoff+60_000,new AbortController().signal);
+  const fixture=createFixtureSchedule();
+  enqueueSchedule(fixture,partition,tipoff+60_000,url=>new URL(url).searchParams.get('dates')==='20261008'?
+      scoreboard('401918298','Las Vegas Aces','Golden State Valkyries'):{events:[]});  try {
+    const result=await fixture.readSchedule(partition,tipoff+60_000,new AbortController().signal);
+    const requested=fixture.fixtureRequests().map(request=>request.url);
     assert.deepEqual(result.games.map(game=>game.id),['wnba-401918298']);
     assert.ok(requested.every(url=>new URL(url).pathname==='/apis/site/v2/sports/basketball/wnba/scoreboard'));
-  } finally {globalThis.fetch=original;}
+  } finally {fixture.close();}
 });
 
 test('WNBA PPV and StreamCenter API listings bind only to the WNBA schedule game',()=>{

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mock,test} from 'node:test';
+import {test} from 'node:test';
 import {openProvider,providerProbeIdentity} from '../lib/playback/provider-registry.ts';
 import type {CandidateLocator} from '../lib/football/shared.ts';
 
@@ -8,22 +8,11 @@ const locator=():Extract<CandidateLocator,{provider:'event-page'}>=>({provider:'
   serverUrl:'https://fxtrend.st/event/m-detroit-lions-vs-carolina-panthers-1005/core/1'});
 const shared='["event-page","fxtrend","10001","https://fxtrend.st/event/m-detroit-lions-vs-carolina-panthers-1005/core/1"]';
 
-test('repeated public probe identity lookups preserve shared bytes without reparsing unchanged URLs',()=>{
-  const original=globalThis.URL;
-  let parses=0;
-  class CountedURL extends original {
-    constructor(input:string|URL,base?:string|URL){super(input,base);parses++;}
-  }
-  const instrument=mock.method(globalThis,'URL',CountedURL);
-  try{
-    const value=locator();
-    assert.equal(providerProbeIdentity(value),shared);
-    const first=parses;
-    assert.ok(first>0);
-    for(let index=0;index<100;index++)assert.equal(providerProbeIdentity(value),shared);
-    assert.equal(parses,first,'unchanged identity lookups must not repeatedly parse event and server URLs');
-    assert.equal(providerProbeIdentity({...value,eventUrl:value.eventUrl.replace('methstreams','crackstreams')}),shared);
-  }finally{instrument.mock.restore();}
+test('repeated public probe identity lookups preserve exact shared bytes across source aliases',()=>{
+  const value=locator();
+  assert.equal(providerProbeIdentity(value),shared);
+  for(let index=0;index<100;index++)assert.equal(providerProbeIdentity(value),shared);
+  assert.equal(providerProbeIdentity({...value,eventUrl:value.eventUrl.replace('methstreams','crackstreams')}),shared);
 });
 
 test('mutated event-page game, event and server fields produce fresh exact identities',()=>{

@@ -3,18 +3,15 @@ import type { PlaybackProvider, ProviderPlayback } from '../provider.ts';
 import { validEventPagePair } from './event-page-policy.ts';
 import { observedPublicPage, publishedPublicVideo } from './public-page.ts';
 import { publishedTopstreamerVideo } from './topstreamer.ts';
+import {nativeDomain} from '../../football/domain/native.ts';
+import {z} from 'zod';
 
 type EventPageLocator = Extract<CandidateLocator,{provider:'event-page'}>;
 type OpenPage = (destination:URL,signal:AbortSignal,purpose:'playback'|'probe',embeddedEvent?:URL)=>Promise<ProviderPlayback|null>;
 const channelSourceHosts = ['methstreams.st', 'crackstreams.st', 'buffstreams.ch', 'methstreams.vg'];
 
 export function eventPageProbeIdentity(locator:EventPageLocator):string {
-  if(validEventPagePair(locator.eventUrl,locator.serverUrl)) {
-    const eventHost=new URL(locator.eventUrl).hostname;
-    if(channelSourceHosts.includes(eventHost)&&['fxtrend.st','foxiy.st'].includes(new URL(locator.serverUrl).hostname))
-      return JSON.stringify(['event-page','fxtrend',locator.gameId,locator.serverUrl]);
-  }
-  return JSON.stringify(locator);
+  return nativeDomain('eventPageProbeIdentity',[locator],z.string());
 }
 
 export function eventPageProvider(openPage:OpenPage=observedPublicPage):PlaybackProvider<EventPageLocator> {

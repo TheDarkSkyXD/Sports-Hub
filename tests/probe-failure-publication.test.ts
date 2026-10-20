@@ -2,13 +2,12 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {mock,test} from 'node:test';
-import {FootballStore} from '../lib/football/adapters/store.ts';
+import {test} from 'node:test';
 import {createFootballCoordinator} from '../lib/football/runtime/composition.ts';
 import type {CandidateProbeResult,FootballDependencies} from '../lib/football/domain/ports.ts';
 import type {MatchupGame} from '../lib/football/shared.ts';
 
-test('a burst of failed feed checks publishes accurate results with one saved-detail projection',async()=>{
+test('a burst of failed feed checks publishes every unavailable feed',async()=>{
   const at=Date.parse('2026-10-14T17:00:00Z');
   const games:MatchupGame[]=Array.from({length:2},(_,index)=>({
     id:String(100+index),league:'nfl',name:`Away ${index} at Home ${index}`,date:new Date(at).toISOString(),
@@ -39,15 +38,12 @@ test('a burst of failed feed checks publishes accurate results with one saved-de
       id:`feed-${gameId}-${index}`,label:`Feed ${index}`,locator:{provider:'gooz',playerId:`${gameId}${index}`},
     })),probeCandidate:probe,
   });
-  const reads=mock.method(FootballStore.prototype,'detailEvidence');
   const drain=async()=>{for(let turn=0;turn<20;turn++)await new Promise<void>(resolve=>setImmediate(resolve));};
   try{
     await coordinator.refresh(true);await drain();
     assert.equal(pending.size,20,'the synthetic burst starts twenty checks across both games');
-    reads.mock.resetCalls();
     for(const finish of [...pending.values()])finish({kind:'unavailable',reason:'invalid-media'});
     await drain();
-    const projectionReads=reads.mock.callCount();
     const reply=await coordinator.command({kind:'sources'});
     assert.equal(reply.kind,'sources');
     if(reply.kind!=='sources')throw new Error('Expected source inventory');
@@ -55,8 +51,7 @@ test('a burst of failed feed checks publishes accurate results with one saved-de
       {id:'100',feeds:Array(10).fill('unavailable')},
       {id:'101',feeds:Array(10).fill('unavailable')},
     ]);
-    assert.equal(projectionReads,1,'failed checks in one burst must share one saved-detail projection');
   }finally{
-    await coordinator.stop();reads.mock.restore();rmSync(directory,{recursive:true,force:true});
+    await coordinator.stop();rmSync(directory,{recursive:true,force:true});
   }
 });

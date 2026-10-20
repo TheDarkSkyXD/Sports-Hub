@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { compatiblePlayers, createFixtureCollector, parseListings, SOURCES } from '../lib/football/adapters/sources.ts';
-import { readSchedule, SCHEDULES } from '../lib/football/adapters/schedule.ts';
+import { createFixtureSchedule, SCHEDULES } from '../lib/football/adapters/schedule.ts';
+import {enqueueListings} from './schedule-fixture.ts';
 import { matchObservation } from '../lib/football/domain/matching.ts';
 import { sourceInventory } from '../lib/football/domain/source-inventory.ts';
 import { validEventPagePair } from '../lib/playback/providers/event-page-policy.ts';
@@ -76,11 +77,12 @@ test('the published TNA PPV event becomes a schedule card with a matching playab
   assert.equal(observation.league, 'tna');
   assert.equal(observation.url, eventUrl);
   assert.equal(observation.teams, null);
-  const { games } = await readSchedule(partition, now, new AbortController().signal, undefined,
-    undefined, undefined, undefined, async url => {
+  const fixture=createFixtureSchedule();
+  await enqueueListings(fixture,async url=>{
       if (url !== 'https://api.ppv.st/api/streams') throw new Error('offline');
       return catalog;
     });
+  const { games } = await fixture.readSchedule(partition, now, new AbortController().signal);
   assert.equal(games.length, 1);
   assert.equal(games[0].name, 'TNA Bound for Glory');
   assert.equal(games[0].date, '2026-10-11T20:30:00.000Z');

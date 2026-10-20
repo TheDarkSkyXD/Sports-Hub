@@ -482,15 +482,22 @@ fn motorsports(source: &ListingSource, body: &str, now: i64) -> ListingResult {
             kickoff_lineage: None,
         });
     }
-    let channels=doc.select("section.lg#g-247 a.ev.ev-plain[href]");
-    let channel_only=doc.select("h1").iter().any(|heading| {
-        let title=clean_text(*heading);
+    let channels = doc.select("section.lg#g-247 a.ev.ev-plain[href]");
+    let channel_only = doc.select("h1").iter().any(|heading| {
+        let title = clean_text(*heading);
         title.starts_with("F1 ") && title.contains("Streams")
-    }) && !channels.is_empty() && channels.iter().all(|channel| {
-        select(*channel,".ev-chip").iter().any(|chip|clean_text(*chip)=="24/7")
-            && attr(*channel,"href").is_some_and(|href|pattern!(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$",href))
-    });
-    result(observations, !doc.select("a.ev[data-start]").is_empty() || channel_only)
+    }) && !channels.is_empty()
+        && channels.iter().all(|channel| {
+            select(*channel, ".ev-chip")
+                .iter()
+                .any(|chip| clean_text(*chip) == "24/7")
+                && attr(*channel, "href")
+                    .is_some_and(|href| pattern!(r"^/event/[a-z0-9]+(?:-[a-z0-9]+)*$", href))
+        });
+    result(
+        observations,
+        !doc.select("a.ev[data-start]").is_empty() || channel_only,
+    )
 }
 
 fn first_attr(element: ElementRef<'_>, selector: &str, name: &str) -> Option<String> {
@@ -662,8 +669,8 @@ fn general(
             .unwrap()
             .replace(&cleaned, "")
             .to_string();
-        let wnba_event = source.family == "event"
-            && cached_regex!(r"(?i)\bWNBA\b").unwrap().is_match(&cleaned);
+        let wnba_event =
+            source.family == "event" && cached_regex!(r"(?i)\bWNBA\b").unwrap().is_match(&cleaned);
         if wnba_event && !source.leagues.contains(&League::Wnba) {
             continue;
         }
@@ -1080,10 +1087,10 @@ pub fn parse_html(
     registry: &SourceRegistry,
 ) -> Option<ListingResult> {
     match (source.id.as_str(), source.family.as_str()) {
-        (_, "published-events") => Some(crate::published::events(source,body,now)),
-        (_, "linked-cards") => Some(crate::published::linked_cards(source,body,now)),
-        (_, "microdata" | "wordpress") => Some(crate::published::cards(source,body,now)),
-        (_, "legacy-schedule") => Some(crate::published::legacy(source,body,now)),
+        (_, "published-events") => Some(crate::published::events(source, body, now)),
+        (_, "linked-cards") => Some(crate::published::linked_cards(source, body, now)),
+        (_, "microdata" | "wordpress") => Some(crate::published::cards(source, body, now)),
+        (_, "legacy-schedule") => Some(crate::published::legacy(source, body, now)),
         ("foxtrend", _) => Some(foxtrend(source, body, now)),
         ("livetv", _) => Some(live_tv(source, body, now)),
         ("nflstreams", _) => Some(nflstreams(source, body, now)),

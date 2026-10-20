@@ -50,13 +50,17 @@ test('North Dakota historical listing reaches detail but an empty embed creates 
   });
   try {
     await coordinator.refresh(true);
-    let board = await coordinator.command({kind:'board'});
-    for (let attempt=0;board.kind==='board' && board.board.revision<3 && attempt<100;attempt++) {
+    let detailPublished=false;
+    for (let attempt=0;!detailPublished && attempt<100;attempt++) {
+      const saved=new DatabaseSync(path);
+      try {detailPublished=!!saved.prepare('SELECT payload FROM details').get();}
+      finally {saved.close();}
+      if(detailPublished)break;
       await new Promise<void>(resolve => setImmediate(resolve));
-      board = await coordinator.command({kind:'board'});
     }
+    assert.equal(detailPublished,true,'the completed detail is saved before inspecting its outcome');
+    const board = await coordinator.command({kind:'board'});
     assert.equal(board.kind,'board');
-    if (board.kind==='board') assert.ok(board.board.revision>=3);
     assert.equal(visited.includes(detailUrl),true);
     const db = new DatabaseSync(path);
     try {

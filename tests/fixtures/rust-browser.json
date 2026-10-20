@@ -1,0 +1,5246 @@
+{
+  "cases": [
+    {
+      "operation": "browserPublicationIdentity",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "expected": "[\"sportsurge-v2\",\"nfl:1\",\"https://v2.sportsurge.net/watch-1-nfl-away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,[\"live\",1]]"
+    },
+    {
+      "operation": "browserObservation",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000
+      ],
+      "expected": {
+        "id": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+        "sourceId": "sportsurge-v2",
+        "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+        "title": "Away at Home",
+        "league": "nfl",
+        "teams": [
+          "Away",
+          "Home"
+        ],
+        "kickoff": 1792432800000,
+        "rawTime": "2026-10-19T18:00:00.000Z",
+        "observedAt": 1792432800000,
+        "parserVersion": 1
+      }
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "sourceId": "sportsurge-v2",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        }
+      ],
+      "expected": "[\"[\\\"sportsurge-v2\\\",\\\"https://v2.sportsurge.net/watch-1-nfl-away-vs-home/\\\",\\\"nfl\\\",\\\"Away at Home\\\",[\\\"Away\\\",\\\"Home\\\"],1792432800000,\\\"\\\",1]\",\"100\",\"2026-10-19T18:00:00.000Z\",[\"[\\\"p1\\\",\\\"https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1\\\"]\"]]"
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "sourceId": "sportsurge-v2",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        null
+      ],
+      "expected": "[\"[\\\"sportsurge-v2\\\",\\\"https://v2.sportsurge.net/watch-1-nfl-away-vs-home/\\\",\\\"nfl\\\",\\\"Away at Home\\\",[\\\"Away\\\",\\\"Home\\\"],1792432800000,\\\"\\\",1]\",null,null,[\"[\\\"p1\\\",\\\"https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1\\\"]\"]]"
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "pending"
+          }
+        },
+        {
+          "id": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "sourceId": "sportsurge-v2",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        }
+      ],
+      "expected": null
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "pending"
+          }
+        },
+        {
+          "id": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "sourceId": "sportsurge-v2",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        null
+      ],
+      "expected": null
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "failed",
+            "at": 1792432800000,
+            "reason": "timeout"
+          }
+        },
+        {
+          "id": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "sourceId": "sportsurge-v2",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        }
+      ],
+      "expected": null
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "failed",
+            "at": 1792432800000,
+            "reason": "timeout"
+          }
+        },
+        {
+          "id": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "sourceId": "sportsurge-v2",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        null
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"sportsurge-v2\",\"nfl:1\",\"https://v2.sportsurge.net/watch-1-nfl-away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,[\"live\",1]]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432739999
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432739999
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"sportsurge-v2\",\"nfl:1\",\"https://v2.sportsurge.net/watch-1-nfl-away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,[\"live\",1]]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432740000
+      ],
+      "expected": {
+        "players": [
+          {
+            "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+            "label": "Sportsurge v2 · Player",
+            "locator": {
+              "provider": "sportsurge-v2",
+              "eventId": "nfl:1",
+              "providerId": "p1",
+              "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+              "expectedMatchup": {
+                "league": "nfl",
+                "teams": [
+                  "Away",
+                  "Home"
+                ],
+                "kickoff": 1792432800000
+              }
+            }
+          }
+        ],
+        "at": 1792432800000,
+        "until": 1792434660000
+      }
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432740000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"sportsurge-v2\",\"nfl:1\",\"https://v2.sportsurge.net/watch-1-nfl-away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,[\"live\",1]]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432800000
+      ],
+      "expected": {
+        "players": [
+          {
+            "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+            "label": "Sportsurge v2 · Player",
+            "locator": {
+              "provider": "sportsurge-v2",
+              "eventId": "nfl:1",
+              "providerId": "p1",
+              "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+              "expectedMatchup": {
+                "league": "nfl",
+                "teams": [
+                  "Away",
+                  "Home"
+                ],
+                "kickoff": 1792432800000
+              }
+            }
+          }
+        ],
+        "at": 1792432800000,
+        "until": 1792434660000
+      }
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432800000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"sportsurge-v2\",\"nfl:1\",\"https://v2.sportsurge.net/watch-1-nfl-away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,[\"live\",1]]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434600000
+      ],
+      "expected": {
+        "players": [
+          {
+            "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+            "label": "Sportsurge v2 · Player",
+            "locator": {
+              "provider": "sportsurge-v2",
+              "eventId": "nfl:1",
+              "providerId": "p1",
+              "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+              "expectedMatchup": {
+                "league": "nfl",
+                "teams": [
+                  "Away",
+                  "Home"
+                ],
+                "kickoff": 1792432800000
+              }
+            }
+          }
+        ],
+        "at": 1792432800000,
+        "until": 1792434660000
+      }
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434600000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"sportsurge-v2\",\"nfl:1\",\"https://v2.sportsurge.net/watch-1-nfl-away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,[\"live\",1]]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434660000
+      ],
+      "expected": {
+        "players": [
+          {
+            "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+            "label": "Sportsurge v2 · Player",
+            "locator": {
+              "provider": "sportsurge-v2",
+              "eventId": "nfl:1",
+              "providerId": "p1",
+              "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+              "expectedMatchup": {
+                "league": "nfl",
+                "teams": [
+                  "Away",
+                  "Home"
+                ],
+                "kickoff": 1792432800000
+              }
+            }
+          }
+        ],
+        "at": 1792432800000,
+        "until": 1792434660000
+      }
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434660000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"sportsurge-v2\",\"nfl:1\",\"https://v2.sportsurge.net/watch-1-nfl-away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,[\"live\",1]]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434660001
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434660001
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"sportsurge-v2\",\"nfl:1\",\"https://v2.sportsurge.net/watch-1-nfl-away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,[\"live\",1]]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792436400000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792436400000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"sportsurge-v2\",\"nfl:1\",\"https://v2.sportsurge.net/watch-1-nfl-away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,[\"live\",1]]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792436400001
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "sourceStatus": "live",
+          "advertisedLinkCount": 1,
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "providers": [
+              {
+                "id": "p1",
+                "label": "Player",
+                "observedAt": 1792432800000,
+                "destination": {
+                  "kind": "link",
+                  "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "sportsurge-v2:https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792436400001
+      ],
+      "expected": null
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "pending"
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "sourceStatus": "live",
+              "advertisedLinkCount": 1,
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "providers": [
+                  {
+                    "id": "p1",
+                    "label": "Player",
+                    "observedAt": 1792432800000,
+                    "destination": {
+                      "kind": "link",
+                      "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": [],
+          "catalogIssues": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792432800000
+      ],
+      "expected": 1792432800000
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "pending"
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "sourceStatus": "live",
+              "advertisedLinkCount": 1,
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "providers": [
+                  {
+                    "id": "p1",
+                    "label": "Player",
+                    "observedAt": 1792432800000,
+                    "destination": {
+                      "kind": "link",
+                      "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": [],
+          "catalogIssues": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792434600001
+      ],
+      "expected": 1792434600001
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "failed",
+              "at": 1792432800000,
+              "reason": "timeout"
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "sourceStatus": "live",
+              "advertisedLinkCount": 1,
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "providers": [
+                  {
+                    "id": "p1",
+                    "label": "Player",
+                    "observedAt": 1792432800000,
+                    "destination": {
+                      "kind": "link",
+                      "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": [],
+          "catalogIssues": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792432800000
+      ],
+      "expected": 1792433100000
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "failed",
+              "at": 1792432800000,
+              "reason": "timeout"
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "sourceStatus": "live",
+              "advertisedLinkCount": 1,
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "providers": [
+                  {
+                    "id": "p1",
+                    "label": "Player",
+                    "observedAt": 1792432800000,
+                    "destination": {
+                      "kind": "link",
+                      "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": [],
+          "catalogIssues": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792434600001
+      ],
+      "expected": 1792433100000
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "collected",
+              "at": 1792432800000
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "sourceStatus": "live",
+              "advertisedLinkCount": 1,
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "providers": [
+                  {
+                    "id": "p1",
+                    "label": "Player",
+                    "observedAt": 1792432800000,
+                    "destination": {
+                      "kind": "link",
+                      "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": [],
+          "catalogIssues": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792432800000
+      ],
+      "expected": 1792434600000
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "collected",
+              "at": 1792432800000
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.sportsurge.net/watch-1-nfl-away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "sourceStatus": "live",
+              "advertisedLinkCount": 1,
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "providers": [
+                  {
+                    "id": "p1",
+                    "label": "Player",
+                    "observedAt": 1792432800000,
+                    "destination": {
+                      "kind": "link",
+                      "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": [],
+          "catalogIssues": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792434600001
+      ],
+      "expected": 1792434600000
+    },
+    {
+      "operation": "browserPublicationIdentity",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "expected": "[\"streameast\",\"nfl:1\",\"https://v2.streameast.ga/nfl/away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,\"100\"]"
+    },
+    {
+      "operation": "browserObservation",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000
+      ],
+      "expected": {
+        "id": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+        "sourceId": "streameast",
+        "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+        "title": "Away at Home",
+        "league": "nfl",
+        "teams": [
+          "Away",
+          "Home"
+        ],
+        "kickoff": 1792432800000,
+        "rawTime": "2026-10-19T18:00:00.000Z",
+        "observedAt": 1792432800000,
+        "parserVersion": 1
+      }
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "sourceId": "streameast",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        }
+      ],
+      "expected": "[\"[\\\"streameast\\\",\\\"https://v2.streameast.ga/nfl/away-vs-home/\\\",\\\"nfl\\\",\\\"Away at Home\\\",[\\\"Away\\\",\\\"Home\\\"],1792432800000,\\\"\\\",1]\",\"100\",\"2026-10-19T18:00:00.000Z\",[\"[\\\"1\\\",\\\"https://v2.streameast.ga/nfl/away-vs-home/1\\\",{\\\"kind\\\":\\\"free-channel\\\",\\\"channelId\\\":\\\"1\\\"}]\"]]"
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "sourceId": "streameast",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        null
+      ],
+      "expected": "[\"[\\\"streameast\\\",\\\"https://v2.streameast.ga/nfl/away-vs-home/\\\",\\\"nfl\\\",\\\"Away at Home\\\",[\\\"Away\\\",\\\"Home\\\"],1792432800000,\\\"\\\",1]\",null,null,[\"[\\\"1\\\",\\\"https://v2.streameast.ga/nfl/away-vs-home/1\\\",{\\\"kind\\\":\\\"free-channel\\\",\\\"channelId\\\":\\\"1\\\"}]\"]]"
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "pending"
+          }
+        },
+        {
+          "id": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "sourceId": "streameast",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        }
+      ],
+      "expected": null
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "pending"
+          }
+        },
+        {
+          "id": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "sourceId": "streameast",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        null
+      ],
+      "expected": null
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "failed",
+            "at": 1792432800000,
+            "reason": "timeout"
+          }
+        },
+        {
+          "id": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "sourceId": "streameast",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        }
+      ],
+      "expected": null
+    },
+    {
+      "operation": "browserPollingSignature",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "failed",
+            "at": 1792432800000,
+            "reason": "timeout"
+          }
+        },
+        {
+          "id": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "sourceId": "streameast",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "title": "Away at Home",
+          "league": "nfl",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "rawTime": "2026-10-19T18:00:00.000Z",
+          "observedAt": 1792432800000,
+          "parserVersion": 1
+        },
+        null
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"streameast\",\"nfl:1\",\"https://v2.streameast.ga/nfl/away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,\"100\"]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432739999
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432739999
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"streameast\",\"nfl:1\",\"https://v2.streameast.ga/nfl/away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,\"100\"]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432740000
+      ],
+      "expected": {
+        "players": [
+          {
+            "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+            "label": "Sportsurge v2 · Player",
+            "locator": {
+              "provider": "sportsurge-v2",
+              "eventId": "nfl:1",
+              "providerId": "p1",
+              "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+              "expectedMatchup": {
+                "league": "nfl",
+                "teams": [
+                  "Away",
+                  "Home"
+                ],
+                "kickoff": 1792432800000
+              }
+            }
+          }
+        ],
+        "at": 1792432800000,
+        "until": 1792434660000
+      }
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432740000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"streameast\",\"nfl:1\",\"https://v2.streameast.ga/nfl/away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,\"100\"]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432800000
+      ],
+      "expected": {
+        "players": [
+          {
+            "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+            "label": "Sportsurge v2 · Player",
+            "locator": {
+              "provider": "sportsurge-v2",
+              "eventId": "nfl:1",
+              "providerId": "p1",
+              "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+              "expectedMatchup": {
+                "league": "nfl",
+                "teams": [
+                  "Away",
+                  "Home"
+                ],
+                "kickoff": 1792432800000
+              }
+            }
+          }
+        ],
+        "at": 1792432800000,
+        "until": 1792434660000
+      }
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792432800000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"streameast\",\"nfl:1\",\"https://v2.streameast.ga/nfl/away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,\"100\"]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434600000
+      ],
+      "expected": {
+        "players": [
+          {
+            "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+            "label": "Sportsurge v2 · Player",
+            "locator": {
+              "provider": "sportsurge-v2",
+              "eventId": "nfl:1",
+              "providerId": "p1",
+              "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+              "expectedMatchup": {
+                "league": "nfl",
+                "teams": [
+                  "Away",
+                  "Home"
+                ],
+                "kickoff": 1792432800000
+              }
+            }
+          }
+        ],
+        "at": 1792432800000,
+        "until": 1792434660000
+      }
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434600000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"streameast\",\"nfl:1\",\"https://v2.streameast.ga/nfl/away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,\"100\"]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434660000
+      ],
+      "expected": {
+        "players": [
+          {
+            "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+            "label": "Sportsurge v2 · Player",
+            "locator": {
+              "provider": "sportsurge-v2",
+              "eventId": "nfl:1",
+              "providerId": "p1",
+              "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+              "expectedMatchup": {
+                "league": "nfl",
+                "teams": [
+                  "Away",
+                  "Home"
+                ],
+                "kickoff": 1792432800000
+              }
+            }
+          }
+        ],
+        "at": 1792432800000,
+        "until": 1792434660000
+      }
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434660000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"streameast\",\"nfl:1\",\"https://v2.streameast.ga/nfl/away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,\"100\"]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434660001
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792434660001
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"streameast\",\"nfl:1\",\"https://v2.streameast.ga/nfl/away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,\"100\"]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792436400000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792436400000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "[\"streameast\",\"nfl:1\",\"https://v2.streameast.ga/nfl/away-vs-home/\",\"nfl\",\"Away at Home\",[\"Away\",\"Home\"],1792432800000,\"100\"]",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792436400001
+      ],
+      "expected": null
+    },
+    {
+      "operation": "retainedBrowserPublication",
+      "args": [
+        {
+          "id": "nfl:1",
+          "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+          "league": "nfl",
+          "title": "Away at Home",
+          "teams": [
+            "Away",
+            "Home"
+          ],
+          "kickoff": 1792432800000,
+          "espnEventId": "100",
+          "detail": {
+            "kind": "collected",
+            "at": 1792432800000,
+            "servers": [
+              {
+                "id": "1",
+                "label": "Server 1",
+                "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                "availability": {
+                  "kind": "free-channel",
+                  "channelId": "1"
+                }
+              }
+            ]
+          }
+        },
+        1792432800000,
+        {
+          "observationId": "streameast:https://v2.streameast.ga/nfl/away-vs-home/",
+          "generation": "g",
+          "at": 1792432800000,
+          "nextEligibleAt": 1792434600000,
+          "outcome": "resolved",
+          "players": [],
+          "lastSuccess": {
+            "identity": "different",
+            "at": 1792432800000,
+            "count": 1,
+            "publication": {
+              "players": [
+                {
+                  "id": "sportsurge-v2:27bdc6518b59c1d29cdcad79",
+                  "label": "Sportsurge v2 · Player",
+                  "locator": {
+                    "provider": "sportsurge-v2",
+                    "eventId": "nfl:1",
+                    "providerId": "p1",
+                    "url": "https://sportsupa.st/event/?id=away-vs-home-1&src=best&sno=1",
+                    "expectedMatchup": {
+                      "league": "nfl",
+                      "teams": [
+                        "Away",
+                        "Home"
+                      ],
+                      "kickoff": 1792432800000
+                    }
+                  }
+                }
+              ],
+              "event": {
+                "gameId": "100",
+                "date": "2026-10-19T18:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "id": "100",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-19T18:00:00.000Z",
+          "home": {
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "Home",
+            "color": "112233",
+            "score": "0"
+          },
+          "away": {
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "Away",
+            "color": "112233",
+            "score": "0"
+          },
+          "status": "in",
+          "lifecycle": "live",
+          "detail": "",
+          "redzone": false,
+          "partitions": [
+            "nfl"
+          ]
+        },
+        1792436400001
+      ],
+      "expected": null
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "pending"
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "espnEventId": "100",
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "servers": [
+                  {
+                    "id": "1",
+                    "label": "Server 1",
+                    "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                    "availability": {
+                      "kind": "free-channel",
+                      "channelId": "1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792432800000
+      ],
+      "expected": 1792432800000
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "pending"
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "espnEventId": "100",
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "servers": [
+                  {
+                    "id": "1",
+                    "label": "Server 1",
+                    "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                    "availability": {
+                      "kind": "free-channel",
+                      "channelId": "1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792434600001
+      ],
+      "expected": 1792434600001
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "failed",
+              "at": 1792432800000,
+              "reason": "timeout"
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "espnEventId": "100",
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "servers": [
+                  {
+                    "id": "1",
+                    "label": "Server 1",
+                    "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                    "availability": {
+                      "kind": "free-channel",
+                      "channelId": "1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792432800000
+      ],
+      "expected": 1792433100000
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "failed",
+              "at": 1792432800000,
+              "reason": "timeout"
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "espnEventId": "100",
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "servers": [
+                  {
+                    "id": "1",
+                    "label": "Server 1",
+                    "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                    "availability": {
+                      "kind": "free-channel",
+                      "channelId": "1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792434600001
+      ],
+      "expected": 1792433100000
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "collected",
+              "at": 1792432800000
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "espnEventId": "100",
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "servers": [
+                  {
+                    "id": "1",
+                    "label": "Server 1",
+                    "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                    "availability": {
+                      "kind": "free-channel",
+                      "channelId": "1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792432800000
+      ],
+      "expected": 1792434600000
+    },
+    {
+      "operation": "browserCategoryDeadline",
+      "args": [
+        {
+          "runId": "run",
+          "sequence": 0,
+          "startedAt": 1792432800000,
+          "state": {
+            "kind": "collecting"
+          },
+          "categories": {
+            "nfl": {
+              "kind": "collected",
+              "at": 1792432800000
+            }
+          },
+          "events": [
+            {
+              "id": "nfl:1",
+              "url": "https://v2.streameast.ga/nfl/away-vs-home/",
+              "league": "nfl",
+              "title": "Away at Home",
+              "teams": [
+                "Away",
+                "Home"
+              ],
+              "kickoff": 1792432800000,
+              "espnEventId": "100",
+              "detail": {
+                "kind": "collected",
+                "at": 1792432800000,
+                "servers": [
+                  {
+                    "id": "1",
+                    "label": "Server 1",
+                    "url": "https://v2.streameast.ga/nfl/away-vs-home/1",
+                    "availability": {
+                      "kind": "free-channel",
+                      "channelId": "1"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "rejectedGames": []
+        },
+        "nfl",
+        [
+          {
+            "id": "100",
+            "league": "nfl",
+            "name": "Away at Home",
+            "date": "2026-10-19T18:00:00.000Z",
+            "home": {
+              "name": "Home",
+              "short": "Home",
+              "abbreviation": "Home",
+              "color": "112233",
+              "score": "0"
+            },
+            "away": {
+              "name": "Away",
+              "short": "Away",
+              "abbreviation": "Away",
+              "color": "112233",
+              "score": "0"
+            },
+            "status": "in",
+            "lifecycle": "live",
+            "detail": "",
+            "redzone": false,
+            "partitions": [
+              "nfl"
+            ]
+          }
+        ],
+        1792434600001
+      ],
+      "expected": 1792434600000
+    }
+  ]
+}

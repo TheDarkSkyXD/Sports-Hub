@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {mock,test} from 'node:test';
+import {test} from 'node:test';
+import {DatabaseSync} from 'node:sqlite';
 import {FootballStore} from '../lib/football/adapters/store.ts';
 import {recordFinal} from '../lib/football/domain/lifecycle.ts';
 import {createFootballCoordinator} from '../lib/football/runtime/composition.ts';
@@ -39,11 +40,11 @@ test('unchanged normalized schedules advance freshness without rewriting saved o
       readSchedule:async(_source,_now,_signal,onCurrent)=>{
         const result:ScheduleResult={games:games(),league:'nfl',at:now};onCurrent?.(result);return result;
       }});
-    let writes:ReturnType<typeof mock.method<typeof FootballStore.prototype,'observe'>>|undefined;
+    const saved=new DatabaseSync(path);
     try{
       await coordinator.refresh(true);await drain();
       const before=await board(coordinator);
-      writes=mock.method(FootballStore.prototype,'observe');
+      saved.exec('CREATE TABLE observation_writes (id TEXT); CREATE TRIGGER audit_observation_writes AFTER UPDATE ON observations BEGIN INSERT INTO observation_writes VALUES (new.id); END;');
       for(let index=0;index<4;index++){now+=1000;await coordinator.refresh(true);}
       const after=await board(coordinator);
       assert.deepEqual(after.games.map(row=>[row.id,row.lifecycle]),[['100',final?'final':'live']]);
@@ -53,8 +54,9 @@ test('unchanged normalized schedules advance freshness without rewriting saved o
         assert.equal(after.games[0].finalObservedAt,at);
         assert.equal(after.games[0].graceEndsAt,at+24*3600_000);
       }
-      assert.equal(writes.mock.callCount(),0,'unchanged accepted schedules must not rematch stored observations');
-    }finally{writes?.mock.restore();await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
+      assert.equal(saved.prepare('SELECT COUNT(*) AS count FROM observation_writes').get()?.count,0,
+        `unchanged accepted ${final?'final':'live'} schedules must not rematch stored observations`);
+    }finally{saved.close();await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
   }
 });
 
@@ -92,18 +94,20 @@ test('unchanged games are reprojected when a stale or failed schedule becomes fr
         if(fail)throw new Error('schedule offline');
         return {games:[game],league:'nfl',at:now};
       }});
-    const writes=mock.method(FootballStore.prototype,'observe');
+    const saved=new DatabaseSync(path);
     try{
       await coordinator.refresh(true);await drain();
       if(failure){now+=1000;fail=true;await coordinator.refresh(true);fail=false;}
       else now+=90_001;
-      writes.mock.resetCalls();
+      saved.prepare('UPDATE observations SET result=? WHERE id=?').run(JSON.stringify({kind:'unmatched',reason:'stale-observation'}),'saved');
       await coordinator.refresh(true);
       const recovered=await board(coordinator);
       assert.equal(recovered.leagues.nfl.scoresAt,new Date(now).toISOString());
       assert.deepEqual(recovered.leagues.nfl.errors,[]);
       assert.deepEqual(recovered.games.map(row=>row.id),['100']);
-      assert.equal(writes.mock.callCount(),1);
-    }finally{writes.mock.restore();await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
+      const observation=saved.prepare('SELECT result FROM observations WHERE id=?').get('saved');
+      assert.ok(typeof observation?.result==='string');
+      assert.deepEqual(JSON.parse(observation.result),{kind:'matched',gameId:'100'});
+    }finally{saved.close();await coordinator.stop();rmSync(directory,{recursive:true,force:true});}
   }
 });

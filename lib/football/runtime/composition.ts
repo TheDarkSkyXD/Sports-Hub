@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { FootballStore } from '../adapters/store.ts';
-import { SCHEDULES, readSeasonMembership } from '../adapters/schedule.ts';
+import { SCHEDULES } from '../adapters/schedule.ts';
 import { SOURCES, SourceFetchError, compatiblePlayers, enrichObservation, missingPlayerReason, parseListings, readHtml, resolvePlayers, tvappPlayers } from '../adapters/sources.ts';
 import type { FootballDependencies } from '../domain/ports.ts';
 import { FootballCoordinator } from './coordinator.ts';
-import { ScheduleWorkerClient } from './schedule-client.ts';
+import { NativeScheduleClient } from './native-schedule.ts';
 import { PartialListingReadError } from '../domain/ports.ts';
 import { configuredProbeCandidate, probeIdentity } from '../../playback/probe.ts';
 import { persistableLocator } from '../../playback/persistent-locator.ts';
@@ -13,9 +13,9 @@ type Overrides = Partial<Omit<FootballDependencies, 'store'>> & { ownerToken?: s
 
 export function createFootballCoordinator(path: string, options: Overrides = {}): FootballCoordinator {
   const store = new FootballStore(path,{ownerToken:options.ownerToken,reclaimToken:options.reclaimToken});
-  let scheduleClient:ScheduleWorkerClient|undefined;
+  let scheduleClient:NativeScheduleClient|undefined;
   let scheduleReader=options.readSchedule;
-  if(!scheduleReader){scheduleClient=new ScheduleWorkerClient();scheduleReader=scheduleClient.readSchedule.bind(scheduleClient);}
+  if(!scheduleReader){scheduleClient=new NativeScheduleClient();scheduleReader=scheduleClient.readSchedule.bind(scheduleClient);}
   try {
     return new FootballCoordinator({
       store,
@@ -23,8 +23,8 @@ export function createFootballCoordinator(path: string, options: Overrides = {})
       schedules:options.schedules ?? SCHEDULES,
       sources:options.sources ?? SOURCES,
       readSchedule:scheduleReader,
-      closeSchedule:options.closeSchedule ?? (scheduleClient?()=>scheduleClient.close():undefined),
-      readSeasonMembership:options.readSeasonMembership ?? readSeasonMembership,
+      closeSchedule:options.closeSchedule ?? (async()=>{await scheduleClient?.close();}),
+      readSeasonMembership:options.readSeasonMembership ?? ((season,signal)=>(scheduleClient??=new NativeScheduleClient()).readSeasonMembership(season,signal)),
       readHtml:options.readHtml ?? readHtml,
       parseListings:options.parseListings ?? parseListings,
       enrichObservation:options.enrichObservation ?? enrichObservation,
@@ -38,6 +38,6 @@ export function createFootballCoordinator(path: string, options: Overrides = {})
       retryAfterMs:options.retryAfterMs ?? (error => error instanceof SourceFetchError || error instanceof PartialListingReadError ? error.retryAfterMs || 0 : 0),
       now:options.now ?? Date.now,
       id:options.id ?? randomUUID,
-    });
+    },Object.keys(options));
   } catch(error) { void scheduleClient?.close(); store.close(); throw error; }
 }

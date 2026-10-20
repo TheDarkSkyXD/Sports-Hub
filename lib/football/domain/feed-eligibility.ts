@@ -1,62 +1,22 @@
-import { isWrestlingGame, isWrestlingLeague, type Game } from '../shared.ts';
+import {z} from 'zod';
+import type {Game} from '../shared.ts';
+import {nativeDomain} from './native.ts';
 
-const calendar = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric',
-});
-const calendarDays = new Map<number,number>();
-const calendarDayLimit = 4096;
-
-export function feedCalendarDay(at: number): number | null {
-  if (!Number.isFinite(new Date(at).getTime())) return null;
-  const cached=calendarDays.get(at);
-  if(cached!==undefined){
-    calendarDays.delete(at);
-    calendarDays.set(at,cached);
-    return cached;
-  }
-  const parts = calendar.formatToParts(at);
-  const value = (type: string) => Number(parts.find(part => part.type === type)?.value);
-  const day=Date.UTC(value('year'), value('month') - 1, value('day')) / 86_400_000;
-  calendarDays.set(at,day);
-  if(calendarDays.size>calendarDayLimit){
-    const oldest=calendarDays.keys().next();
-    if(!oldest.done)calendarDays.delete(oldest.value);
-  }
-  return day;
+export function feedCalendarDay(at:number):number|null {
+  return nativeDomain('feedCalendarDay',[at],z.number().nullable());
 }
-
 export function feedWindow(now:number):{timeZone:'America/Chicago';days:[string,string]} {
-  const day=feedCalendarDay(now);
-  if(day===null)throw new RangeError('Invalid feed window time');
-  const date=(offset:number)=>new Date((day+offset)*86_400_000).toISOString().slice(0,10);
-  return {timeZone:'America/Chicago',days:[date(0),date(1)]};
+  return nativeDomain('feedWindow',[now],z.object({timeZone:z.literal('America/Chicago'),days:z.tuple([z.string(),z.string()])}));
 }
-
-export function feedDateEligible(kickoff: number, now: number): boolean {
-  const date = feedCalendarDay(kickoff), today = feedCalendarDay(now);
-  if (date === null || today === null) return false;
-  const difference = date - today;
-  return difference === 0 || difference === 1;
+export function feedDateEligible(kickoff:number,now:number):boolean {
+  return nativeDomain('feedDateEligible',[kickoff,now],z.boolean());
 }
-
-export function feedEligible(game: Pick<Game, 'lifecycle' | 'date' | 'finalObservedAt'> & {league?:Game['league']}, now: number): boolean {
-  if (game.finalObservedAt !== undefined || game.lifecycle === 'final') return false;
-  if (game.lifecycle === 'live') return true;
-  if (game.league!==undefined&&isWrestlingLeague(game.league)&&game.lifecycle==='unknown'&&game.date!==undefined) {
-    const start=Date.parse(game.date);
-    return Number.isFinite(start)&&now>=start&&now-start<=6*60*60_000;
-  }
-  return game.lifecycle === 'scheduled' && game.date !== undefined && feedDateEligible(Date.parse(game.date), now);
+export function feedEligible(game:Pick<Game,'lifecycle'|'date'|'finalObservedAt'>&{league?:Game['league']},now:number):boolean {
+  return nativeDomain('feedEligible',[game,now],z.boolean());
 }
-export function combatListingFeedEligible(game: Game, now:number):boolean {
-  if(!(game.league==='boxing'||isWrestlingGame(game))||game.lifecycle!=='unknown'||game.finalObservedAt!==undefined)return false;
-  const kickoff=Date.parse(game.date);
-  const showDay=feedCalendarDay(kickoff),today=feedCalendarDay(now);
-  return Number.isFinite(kickoff)&&kickoff<=now&&now-kickoff<=6*60*60_000&&
-    showDay!==null&&today!==null&&today-showDay>=0&&today-showDay<=1;
+export function combatListingFeedEligible(game:Game,now:number):boolean {
+  return nativeDomain('combatListingFeedEligible',[game,now],z.boolean());
 }
-
-export function feedInventoryEligible(game: Pick<Game, 'lifecycle' | 'date' | 'finalObservedAt'>, now:number):boolean {
-  return feedEligible(game,now)||game.lifecycle==='unknown'&&game.finalObservedAt===undefined&&
-    game.date!==undefined&&feedDateEligible(Date.parse(game.date),now);
+export function feedInventoryEligible(game:Pick<Game,'lifecycle'|'date'|'finalObservedAt'>,now:number):boolean {
+  return nativeDomain('feedInventoryEligible',[game,now],z.boolean());
 }

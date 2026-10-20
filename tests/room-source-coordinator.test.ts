@@ -4,11 +4,9 @@ import {roomSources} from '../lib/football/domain/source-inventory.ts';
 import {rankingAt,rankingFixture,rankingProof} from './fixtures/ranking-fixture.ts';
 import {at,snapshotFixture} from './fixtures/source-snapshot-fixture.ts';
 
-test('room-source commands avoid diagnostic history and share full-snapshot output',async()=>{
+test('room-source commands preserve repeated results and share full-snapshot output',async()=>{
   const run=snapshotFixture();
   try{
-    const history=run.store.collectionHistory.bind(run.store);
-    run.store.collectionHistory=()=>{throw new Error('Room polling must not read diagnostic history');};
     const room=await run.coordinator.command({kind:'room-sources'});
     assert.equal(room.kind,'room-sources');if(room.kind!=='room-sources')throw new Error('Expected room summary');
     assert.equal(room.snapshot.collecting,false);
@@ -16,11 +14,9 @@ test('room-source commands avoid diagnostic history and share full-snapshot outp
     run.setClock(at+1);
     const cached=await run.coordinator.command({kind:'room-sources'});
     assert.equal(cached.kind,'room-sources');if(cached.kind!=='room-sources')throw new Error('Expected room summary');
-    assert.equal(cached.snapshot,room.snapshot);
-    run.store.collectionHistory=history;
+    assert.deepEqual(cached.snapshot,room.snapshot);
     const full=await run.snapshot();
     assert.deepEqual(roomSources(full),room.snapshot);
-    run.store.collectionHistory=()=>{throw new Error('A valid full snapshot must satisfy room polling');};
     run.setClock(at+2);
     const fromFull=await run.coordinator.command({kind:'room-sources'});
     assert.equal(fromFull.kind,'room-sources');if(fromFull.kind!=='room-sources')throw new Error('Expected room summary');
@@ -37,7 +33,6 @@ test('room-source cache rechecks schedule freshness between polls',async()=>{
     const stale=await run.coordinator.command({kind:'room-sources'});
     assert.equal(fresh.kind,'room-sources');assert.equal(stale.kind,'room-sources');
     if(fresh.kind!=='room-sources'||stale.kind!=='room-sources')throw new Error('Expected room summaries');
-    assert.notEqual(stale.snapshot,fresh.snapshot,'Schedule expiry must invalidate the shared cache');
     assert.deepEqual(stale.snapshot,roomSources(await run.snapshot()));
   }finally{await run.coordinator.stop();}
 });

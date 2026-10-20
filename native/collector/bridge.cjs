@@ -54,7 +54,9 @@ function loadAddon() {
   try { addon = require(/* turbopackIgnore: true */ binary); }
   catch (error) { throw new Error(`Rust collector addon failed to load: ${binary}`, { cause: error }); }
   if (typeof addon.Collector !== 'function') throw new Error(`Rust collector export missing: ${binary}`);
-  return { Collector: addon.Collector, registryJson: readFileSync(/* turbopackIgnore: true */ registry, 'utf8') };
+  return { Collector: addon.Collector, NativeStore: addon.NativeStore, NativePipeline: addon.NativePipeline, NativeSchedule: addon.NativeSchedule,
+    pipelineDomain: addon.pipelineDomain, pipelineView: addon.pipelineView, createNativeMatcher: addon.createNativeMatcher,
+    registryJson: readFileSync(/* turbopackIgnore: true */ registry, 'utf8') };
 }
 
 let loaded;
@@ -63,4 +65,40 @@ function createNativeCollector(fixtureMode = false) {
   return new loaded.Collector(loaded.registryJson, fixtureMode);
 }
 
-module.exports = { createNativeCollector };
+function createNativeStore(databasePath, ownerToken, reclaimToken) {
+  loaded ||= loadAddon();
+  if (typeof loaded.NativeStore !== 'function') throw new Error('Rust pipeline store is missing; rebuild the native addon.');
+  return new loaded.NativeStore(databasePath, ownerToken, reclaimToken);
+}
+
+function createNativePipeline(databasePath, configJson) {
+  loaded ||= loadAddon();
+  if (typeof loaded.NativePipeline !== 'function') throw new Error('Rust pipeline owner is missing; rebuild the native addon.');
+  return new loaded.NativePipeline(databasePath, configJson);
+}
+
+function pipelineDomain(operation, inputJson) {
+  loaded ||= loadAddon();
+  if (typeof loaded.pipelineDomain !== 'function') throw new Error('Rust pipeline domain is missing; rebuild the native addon.');
+  return loaded.pipelineDomain(operation, inputJson);
+}
+
+function pipelineView(operation, inputJson) {
+  loaded ||= loadAddon();
+  if (typeof loaded.pipelineView !== 'function') throw new Error('Rust pipeline views are missing; rebuild the native addon.');
+  return loaded.pipelineView(operation, inputJson);
+}
+
+function createNativeMatcher(kind, gamesJson, mode = 'current') {
+  loaded ||= loadAddon();
+  if (typeof loaded.createNativeMatcher !== 'function') throw new Error('Rust pipeline matcher is missing; rebuild the native addon.');
+  return loaded.createNativeMatcher(kind, gamesJson, mode);
+}
+
+function createNativeSchedule(fixtureMode = false) {
+  loaded ||= loadAddon();
+  if (typeof loaded.NativeSchedule !== 'function') throw new Error('Rust pipeline schedule is missing; rebuild the native addon.');
+  return new loaded.NativeSchedule(loaded.registryJson, fixtureMode);
+}
+
+module.exports = { createNativeCollector, createNativeStore, createNativePipeline, createNativeMatcher, createNativeSchedule, pipelineDomain, pipelineView };

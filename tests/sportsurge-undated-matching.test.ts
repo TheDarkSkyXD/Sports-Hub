@@ -75,7 +75,7 @@ test('legacy Sportsurge resolves every unique undated NFL, FBS, and FCS game and
   const coordinator = new FootballCoordinator({
     store, now: () => now, id: () => runId,
     schedules: ['nfl', 'fbs', 'fcs'].map(id => ({ id, league: id === 'nfl' ? 'nfl' as const : 'ncaaf' as const, path: '', group: null })),
-    sources: [{ id: 'sportsurge', url: 'https://isportsurge.ws/index6', family: 'sportsurge', kind: 'listing' }],
+    sources: [{ id: 'sportsurge', url: 'https://isportsurge.ws/index6', family: 'sportsurge' }],
     readSchedule: async partition => ({ games: games.filter(game => game.partitions?.includes(partition.id)), league: partition.league, at: now }),
     readSeasonMembership: async () => { throw new Error('unused'); },
     readHtml: async () => '<main>detail has no event time</main>',

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mock,test} from 'node:test';
+import {test} from 'node:test';
 import {createFinishedGameMatcher} from '../lib/football/domain/matching.ts';
 import type {Game,Observation,SourceEventBinding} from '../lib/football/shared.ts';
 
@@ -12,27 +12,22 @@ const observation:Observation={id:'listing',sourceId:'fixture',url:'https://fixt
 const binding:SourceEventBinding={sourceId:observation.sourceId,eventId:'event',url:observation.url,
   league:'nfl',teams:['Away Valley Bears','Home Harbor Hawks'],gameId:game.id,observedAt:at};
 
-test('finished-game filtering does no alias work when the schedule has no finals',context=>{
-  let normalizations=0;
-  const normalize=String.prototype.normalize;
-  const calls=mock.method(String.prototype,'normalize',function(this:string,form?:string){
-    normalizations++;
-    return normalize.call(this,form);
-  });
-  try{
-    const finished=createFinishedGameMatcher([game,{...game,id:'scheduled',status:'pre',lifecycle:'scheduled'}]);
-    const results=Array.from({length:12},()=>[
-      finished.finishedGameId(observation,at),
-      finished.finishedGameId({...observation,teams:['Unknown','Different']},at,'missing'),
-      finished.finishedBoundEvent({...observation,kickoff:null},'event',[binding]),
-    ]);
-    assert.deepEqual(results,Array.from({length:12},()=>[null,null,null]));
-    context.diagnostic(JSON.stringify({normalizations}));
-    assert.equal(normalizations,0,'A schedule without finals cannot exclude a finished event');
-  }finally{calls.mock.restore();}
+test('finished-game filtering keeps listings when the schedule has no finals',context=>{
+  const started=performance.now(),cpu=process.cpuUsage();
+  const finished=createFinishedGameMatcher([game,{...game,id:'scheduled',status:'pre',lifecycle:'scheduled'}]);
+  const results=Array.from({length:12},()=>[
+    finished.finishedGameId(observation,at),
+    finished.finishedGameId({...observation,teams:['Unknown','Different']},at,'missing'),
+    finished.finishedBoundEvent({...observation,kickoff:null},'event',[binding]),
+  ]);
+  assert.deepEqual(results,Array.from({length:12},()=>[null,null,null]));
+  const used=process.cpuUsage(cpu);
+  context.diagnostic(JSON.stringify({games:2,lookups:36,workload:'construct-and-filter',
+    wallMs:performance.now()-started,cpuMs:(used.user+used.system)/1000}));
 });
 
-test('a replacement schedule with finals still applies ambiguity and bound ownership',()=>{
+test('a replacement schedule with finals still applies ambiguity and bound ownership',context=>{
+  const started=performance.now(),cpu=process.cpuUsage();
   const undated={...observation,kickoff:null};
   const active=createFinishedGameMatcher([game]);
   assert.equal(active.finishedGameId(observation,at),null);
@@ -45,4 +40,7 @@ test('a replacement schedule with finals still applies ambiguity and bound owner
   const ambiguous=createFinishedGameMatcher([final,{...game,id:'second'}]);
   assert.equal(ambiguous.finishedGameId(observation,at),null);
   assert.equal(ambiguous.finishedBoundEvent(undated,'event',[binding]),null);
+  const used=process.cpuUsage(cpu);
+  context.diagnostic(JSON.stringify({workload:'replace-schedule-and-filter',
+    wallMs:performance.now()-started,cpuMs:(used.user+used.system)/1000}));
 });

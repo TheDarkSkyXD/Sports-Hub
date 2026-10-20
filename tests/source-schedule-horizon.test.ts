@@ -4,27 +4,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
-import { SCHEDULES, readSchedule } from '../lib/football/adapters/schedule.ts';
+import { SCHEDULES, createFixtureSchedule } from '../lib/football/adapters/schedule.ts';
+import {enqueueSchedule} from './schedule-fixture.ts';
 import { createFootballCoordinator } from '../lib/football/runtime/composition.ts';
 import type { CandidateProbeResult, ScheduleResult } from '../lib/football/domain/ports.ts';
 import type { Game } from '../lib/football/shared.ts';
 
 test('future-day failures stay visible during a retry and clear after successful completion', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'schedule-horizon-'));
-  const originalFetch = globalThis.fetch;
+  const fixture=createFixtureSchedule();
   const at = Date.parse('2026-10-04T18:00:00Z');
   let clock = at;
-  let retry = false;
-  let release!: () => void;
-  const gate = new Promise<void>(resolve => { release = resolve; });
-  globalThis.fetch = async input => {
-    const day = new URL(String(input)).searchParams.get('dates');
-    if (!retry && day === '20261005') return new Response('', { status: 503 });
-    if (retry && day !== null && day > '20261004') await gate;
-    return Response.json({ events: [] });
-  };
+  const release=()=>fixture.releaseFixtureGate('retry');
+  enqueueSchedule(fixture,SCHEDULES[0],at,url=>url.searchParams.get('dates')==='20261005'?{status:503,body:''}:{events:[]});
   const coordinator = createFootballCoordinator(join(directory, 'state.sqlite'), {
-    now: () => clock, schedules: [SCHEDULES[0]], sources: [], readSchedule,
+    now: () => clock, schedules: [SCHEDULES[0]], sources: [], readSchedule:fixture.readSchedule,
   });
   const board = async () => {
     const reply = await coordinator.command({ kind: 'board' });
@@ -35,8 +29,8 @@ test('future-day failures stay visible during a retry and clear after successful
   try {
     await coordinator.refresh(true);
     assert.match((await board()).leagues.nfl.errors.join(' '), /20261005:http-503/);
-    retry = true;
     clock += 300_001;
+    enqueueSchedule(fixture,SCHEDULES[0],clock,url=>({body:'{"events":[]}',...(url.searchParams.get('dates')!>'20261004'?{gate:'retry'}:{})}));
     const refreshing = coordinator.refresh(true);
     try {
       for (let index = 0; index < 60; index++) {
@@ -50,7 +44,7 @@ test('future-day failures stay visible during a retry and clear after successful
     } finally { release(); await refreshing; }
     assert.deepEqual((await board()).leagues.nfl.errors, []);
   } finally {
-    release(); await coordinator.stop(); globalThis.fetch = originalFetch;
+    release(); await coordinator.stop(); fixture.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });

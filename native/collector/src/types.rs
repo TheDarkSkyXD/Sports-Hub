@@ -1,6 +1,6 @@
 use serde::{Deserialize, Deserializer, Serialize, de::Error};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum League {
     Nfl,
@@ -139,6 +139,25 @@ pub enum MissingPlayerReason {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "provider", rename_all_fields = "camelCase")]
 pub enum CandidateLocator {
+    #[serde(rename = "streameast")]
+    Streameast { channel_id: String },
+    #[serde(rename = "streameast-server")]
+    StreameastServer {
+        game_id: String,
+        source_event_id: String,
+        event_url: String,
+        server_id: String,
+    },
+    #[serde(rename = "sportsurge-v2")]
+    SportsurgeV2 {
+        event_id: String,
+        provider_id: String,
+        url: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_matchup: Option<ExpectedMatchup>,
+    },
+    #[serde(rename = "wikisport")]
+    Wikisport { section: String, player_id: String },
     #[serde(rename = "swac")]
     Swac { event_id: String },
     #[serde(rename = "gooz")]
@@ -180,6 +199,15 @@ pub enum CandidateLocator {
         title: String,
         teams: [String; 2],
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExpectedMatchup {
+    pub league: League,
+    pub teams: [String; 2],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kickoff: Option<i64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]

@@ -1,7 +1,6 @@
 import { z } from 'zod';
-import { AdvancingVideoSchema, CandidateSchema, LeagueSchema, isCombatGame, isWrestlingGame, isRaceGame, type Game, type MatchupGame } from '../shared.ts';
-import { normalizedName } from './matching.ts';
-import { combatListingFeedEligible, feedDateEligible } from './feed-eligibility.ts';
+import { AdvancingVideoSchema, CandidateSchema, LeagueSchema, type Game } from '../shared.ts';
+import {nativeDomain} from './native.ts';
 
 const TeamIdentitySchema = z.object({ id: z.string().optional(), name: z.string().min(1) }).strict();
 export const FeedOwnerSchema=z.union([
@@ -25,36 +24,15 @@ export const WorkingFeedSchema=z.union([
 export type WorkingFeed = z.infer<typeof WorkingFeedSchema>;
 
 export function workingFeedOwner(game: Game, partitionIds: readonly string[]): WorkingFeed['owner'] {
-  const ids=[...new Set(partitionIds)].sort();
-  if(isRaceGame(game))return {league:game.league,eventId:game.race.eventId,sessionId:game.race.sessionId,
-    session:game.race.session,round:game.race.round,partitionIds:ids};
-  if(isWrestlingGame(game))return {league:game.league,eventId:game.wrestling.eventId,date:game.date,partitionIds:ids};
-  if(isCombatGame(game))return {league:game.league,eventId:game.combat.eventId,date:game.date,partitionIds:ids};
-  const team = (value: MatchupGame['home']) => ({ ...(value.id ? { id: value.id } : {}), name: value.name });
-  return { league: game.league, home: team(game.home), away: team(game.away), partitionIds:ids };
+  return nativeDomain('workingFeedOwner',[game,partitionIds],FeedOwnerSchema);
 }
 
 type FeedIdentity = Pick<WorkingFeed, 'owner'> & { candidate: Pick<WorkingFeed['candidate'], 'gameId'> };
 
 export function workingFeedMatches(feed: FeedIdentity, game: Game): boolean {
-  if(isRaceGame(game))return 'sessionId' in feed.owner&&feed.candidate.gameId===game.id&&
-    feed.owner.league===game.league&&feed.owner.eventId===game.race.eventId&&
-    feed.owner.sessionId===game.race.sessionId&&feed.owner.session===game.race.session&&feed.owner.round===game.race.round;
-  if(isWrestlingGame(game))return 'date' in feed.owner&&feed.candidate.gameId===game.id&&
-    feed.owner.league===game.league&&feed.owner.eventId===game.wrestling.eventId&&feed.owner.date===game.date;
-  if(isCombatGame(game))return 'date' in feed.owner&&feed.candidate.gameId===game.id&&
-    feed.owner.league===game.league&&feed.owner.eventId===game.combat.eventId&&feed.owner.date===game.date;
-  if(!('home' in feed.owner))return false;
-  const same = (saved: typeof feed.owner.home, current: MatchupGame['home']) =>
-    saved.id && current.id ? saved.id === current.id : normalizedName(saved.name) === normalizedName(current.name);
-  return feed.candidate.gameId === game.id && feed.owner.league === game.league &&
-    same(feed.owner.home, game.home) && same(feed.owner.away, game.away);
+  return nativeDomain('workingFeedMatches',[feed,game],z.boolean());
 }
 
 export function cachedFeedEligible(feed: FeedIdentity, game: Game, now: number): boolean {
-  if (!workingFeedMatches(feed,game)) return false;
-  if (game.lifecycle==='final') return now < game.graceEndsAt;
-  return game.finalObservedAt===undefined &&
-    ((game.lifecycle==='live'||game.lifecycle==='scheduled') &&
-    game.date!==undefined && feedDateEligible(Date.parse(game.date),now)||combatListingFeedEligible(game,now));
+  return nativeDomain('cachedFeedEligible',[feed,game,now],z.boolean());
 }

@@ -144,9 +144,7 @@ export async function ensureCollectorAddon(root = defaultRoot, { force = false, 
   const stage = stagedDirectory(absoluteRoot);
   await mkdir(stage, { recursive: true });
   const binary = path.join(stage, filename);
-  try { await copyFile(compiled, binary, constants.COPYFILE_EXCL); }
-  catch (error) { if (error.code !== 'EEXIST') throw error; }
-  if (await fileHash(binary) !== binarySha256) throw new Error(`Content-addressed Rust collector addon is corrupt: ${binary}`);
+  await stageCollectorBinary(compiled, binary, binarySha256);
   const registry = path.join(absoluteRoot, 'lib/football/source-registry.json');
   const registrySha256 = await fileHash(registry);
   await copyFile(registry, path.join(stage, 'source-registry.json'));
@@ -158,6 +156,14 @@ export async function ensureCollectorAddon(root = defaultRoot, { force = false, 
   const active = await activeCollectorAddon(absoluteRoot);
   if (packageArtifact) await packageStage(absoluteRoot, active);
   return active;
+}
+
+export async function stageCollectorBinary(compiled, binary, expectedHash) {
+  if (!await stat(binary).catch(error => { if (error.code === 'ENOENT') return null; throw error; })) {
+    try { await copyFile(compiled, binary, constants.COPYFILE_EXCL); }
+    catch (error) { if (error.code !== 'EEXIST' && error.code !== 'EBUSY') throw error; }
+  }
+  if (await fileHash(binary) !== expectedHash) throw new Error(`Content-addressed Rust collector addon is corrupt: ${binary}`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

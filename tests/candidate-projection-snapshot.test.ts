@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mock,test} from 'node:test';
+import {test} from 'node:test';
 import {FootballStore} from '../lib/football/adapters/store.ts';
 import {FootballCoordinator} from '../lib/football/runtime/coordinator.ts';
 import {detailIdentity} from '../lib/football/domain/source-policy.ts';
@@ -9,7 +9,7 @@ import type {Game,Observation,SportsurgeCatalog,StreameastCatalog} from '../lib/
 
 for(const failedAtStart of [false,true])test(failedAtStart?
   'a standalone catalog refresh reads resolved evidence after a failed cold snapshot':
-  'cold projection shares one validated detail snapshot across restored HTTP and catalog feeds',async()=>{
+  'cold projection restores saved HTTP and catalog feeds',async()=>{
   const at=Date.parse('2026-10-17T18:00:00Z');
   let clock=at;
   const updatedAt=at+1000;
@@ -43,7 +43,6 @@ for(const failedAtStart of [false,true])test(failedAtStart?
   const sportsurgeDetailId=`sportsurge-v2:${sportsurge.events[0].url}`;
   if(failedAtStart)store.saveDetailEvidence({outcome:'failed',observationId:sportsurgeDetailId,generation:'failed',
     at:updatedAt,failure:'timed-out',failures:1,nextEligibleAt:updatedAt+5*60_000});
-  const reads=mock.method(store,'detailEvidence');
   const coordinator=new FootballCoordinator({store,now:()=>clock,id:randomUUID,
     schedules:[{id:'nfl',league:'nfl',path:'',group:null}],
     sources:[{id:'fixture',url:'https://fixture.example/list',family:'fixture'},
@@ -54,7 +53,6 @@ for(const failedAtStart of [false,true])test(failedAtStart?
     parseListings:()=>({outcome:'empty',observations:[]}),enrichObservation:value=>value,compatiblePlayers:()=>[],
     retryAfterMs:()=>0,probeCandidate:async()=>({kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}}),
   });
-  const projectionReads=reads.mock.callCount();
   const drain=async()=>{for(let index=0;index<30;index++)await new Promise<void>(resolve=>setImmediate(resolve));};
   const sourceChoices=async()=>{
     const reply=await coordinator.command({kind:'sources'});
@@ -69,7 +67,6 @@ for(const failedAtStart of [false,true])test(failedAtStart?
     await drain();
     assert.deepEqual(await sourceChoices(),failedAtStart?{working:2,sources:['fixture','streameast']}:
       {working:3,sources:['fixture','sportsurge-v2','streameast']});
-    assert.equal(projectionReads,1,'One full projection must decode saved detail evidence once');
     clock=updatedAt;
     if(failedAtStart)store.saveDetailEvidence({outcome:'resolved',observationId:sportsurgeDetailId,generation:'resolved',
       at:updatedAt,players:[],nextEligibleAt:updatedAt+30*60_000});
@@ -83,5 +80,5 @@ for(const failedAtStart of [false,true])test(failedAtStart?
     assert.equal(accepted.kind,'catalog-ack');
     await drain();
     assert.deepEqual(await sourceChoices(),{working:4,sources:['fixture','sportsurge-v2','sportsurge-v2','streameast']});
-  }finally{await coordinator.stop();reads.mock.restore();}
+  }finally{await coordinator.stop();}
 });

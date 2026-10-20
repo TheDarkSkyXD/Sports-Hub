@@ -1,0 +1,4942 @@
+{
+  "steps": [
+    {
+      "operation": "finishedGameRetentionMinutes",
+      "args": [],
+      "expected": 1440
+    },
+    {
+      "operation": "savePartition",
+      "args": [
+        "nfl",
+        {
+          "games": [
+            {
+              "id": "12345",
+              "league": "nfl",
+              "name": "Chicago Bears at Green Bay Packers",
+              "date": "2026-10-08T22:00:00.000Z",
+              "home": {
+                "name": "Green Bay Packers",
+                "short": "Green Bay Packers",
+                "abbreviation": "Gre",
+                "color": "123456",
+                "score": null
+              },
+              "away": {
+                "name": "Chicago Bears",
+                "short": "Chicago Bears",
+                "abbreviation": "Chi",
+                "color": "123456",
+                "score": null
+              },
+              "detail": "Final",
+              "redzone": false,
+              "status": "post",
+              "lifecycle": "final",
+              "finalObservedAt": 1791496800000,
+              "graceEndsAt": 1791583200000,
+              "partitions": [
+                "nfl"
+              ]
+            }
+          ],
+          "at": 1791496800000,
+          "week": 5
+        }
+      ],
+      "expected": null
+    },
+    {
+      "operation": "partition",
+      "args": [
+        "nfl"
+      ],
+      "expected": {
+        "games": [
+          {
+            "id": "12345",
+            "league": "nfl",
+            "name": "Chicago Bears at Green Bay Packers",
+            "date": "2026-10-08T22:00:00.000Z",
+            "home": {
+              "name": "Green Bay Packers",
+              "short": "Green Bay Packers",
+              "abbreviation": "Gre",
+              "color": "123456",
+              "score": null
+            },
+            "away": {
+              "name": "Chicago Bears",
+              "short": "Chicago Bears",
+              "abbreviation": "Chi",
+              "color": "123456",
+              "score": null
+            },
+            "partitions": [
+              "nfl"
+            ],
+            "detail": "Final",
+            "redzone": false,
+            "sourceUrls": [],
+            "status": "post",
+            "lifecycle": "final",
+            "finalObservedAt": 1791496800000,
+            "graceEndsAt": 1791583200000
+          }
+        ],
+        "at": 1791496800000,
+        "week": 5
+      }
+    },
+    {
+      "operation": "savePartition",
+      "args": [
+        "nfl",
+        {
+          "games": [
+            {
+              "id": "12345",
+              "league": "nfl",
+              "name": "Chicago Bears at Green Bay Packers",
+              "date": "2026-10-08T22:00:00.000Z",
+              "home": {
+                "name": "Green Bay Packers",
+                "short": "Green Bay Packers",
+                "abbreviation": "Gre",
+                "color": "123456",
+                "score": null
+              },
+              "away": {
+                "name": "Chicago Bears",
+                "short": "Chicago Bears",
+                "abbreviation": "Chi",
+                "color": "123456",
+                "score": null
+              },
+              "detail": "Final",
+              "redzone": false,
+              "status": "post",
+              "lifecycle": "final",
+              "finalObservedAt": 1791496800000,
+              "graceEndsAt": 1791583200000,
+              "partitions": [
+                "nfl"
+              ]
+            }
+          ],
+          "at": 1791496900000,
+          "week": 5
+        }
+      ],
+      "expected": null
+    },
+    {
+      "operation": "finals",
+      "args": [],
+      "expected": [
+        {
+          "id": "12345",
+          "league": "nfl",
+          "name": "Chicago Bears at Green Bay Packers",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "name": "Green Bay Packers",
+            "short": "Green Bay Packers",
+            "abbreviation": "Gre",
+            "color": "123456",
+            "score": null
+          },
+          "away": {
+            "name": "Chicago Bears",
+            "short": "Chicago Bears",
+            "abbreviation": "Chi",
+            "color": "123456",
+            "score": null
+          },
+          "partitions": [
+            "nfl"
+          ],
+          "detail": "Final",
+          "redzone": false,
+          "sourceUrls": [],
+          "status": "post",
+          "lifecycle": "final",
+          "finalObservedAt": 1791496800000,
+          "graceEndsAt": 1791583200000
+        }
+      ]
+    },
+    {
+      "operation": "setFinishedGameRetentionMinutes",
+      "args": [
+        60
+      ],
+      "expected": null
+    },
+    {
+      "operation": "partition",
+      "args": [
+        "nfl"
+      ],
+      "expected": {
+        "games": [
+          {
+            "id": "12345",
+            "league": "nfl",
+            "name": "Chicago Bears at Green Bay Packers",
+            "date": "2026-10-08T22:00:00.000Z",
+            "home": {
+              "name": "Green Bay Packers",
+              "short": "Green Bay Packers",
+              "abbreviation": "Gre",
+              "color": "123456",
+              "score": null
+            },
+            "away": {
+              "name": "Chicago Bears",
+              "short": "Chicago Bears",
+              "abbreviation": "Chi",
+              "color": "123456",
+              "score": null
+            },
+            "partitions": [
+              "nfl"
+            ],
+            "detail": "Final",
+            "redzone": false,
+            "sourceUrls": [],
+            "status": "post",
+            "lifecycle": "final",
+            "finalObservedAt": 1791496800000,
+            "graceEndsAt": 1791500400000
+          }
+        ],
+        "at": 1791496900000,
+        "week": 5
+      }
+    },
+    {
+      "operation": "finals",
+      "args": [],
+      "expected": [
+        {
+          "id": "12345",
+          "league": "nfl",
+          "name": "Chicago Bears at Green Bay Packers",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "name": "Green Bay Packers",
+            "short": "Green Bay Packers",
+            "abbreviation": "Gre",
+            "color": "123456",
+            "score": null
+          },
+          "away": {
+            "name": "Chicago Bears",
+            "short": "Chicago Bears",
+            "abbreviation": "Chi",
+            "color": "123456",
+            "score": null
+          },
+          "partitions": [
+            "nfl"
+          ],
+          "detail": "Final",
+          "redzone": false,
+          "sourceUrls": [],
+          "status": "post",
+          "lifecycle": "final",
+          "finalObservedAt": 1791496800000,
+          "graceEndsAt": 1791500400000
+        }
+      ]
+    },
+    {
+      "operation": "observe",
+      "args": [
+        {
+          "id": "observation-1",
+          "sourceId": "sportsurge",
+          "url": "https://example.com/game",
+          "title": "Chicago Bears at Green Bay Packers",
+          "league": "nfl",
+          "teams": [
+            "Chicago Bears",
+            "Green Bay Packers"
+          ],
+          "kickoff": 1791496800000,
+          "rawTime": "",
+          "observedAt": 1791496800000,
+          "parserVersion": 1
+        },
+        {
+          "kind": "matched",
+          "gameId": "12345"
+        }
+      ],
+      "expected": null
+    },
+    {
+      "operation": "observation",
+      "args": [
+        "observation-1"
+      ],
+      "expected": {
+        "id": "observation-1",
+        "sourceId": "sportsurge",
+        "url": "https://example.com/game",
+        "title": "Chicago Bears at Green Bay Packers",
+        "league": "nfl",
+        "teams": [
+          "Chicago Bears",
+          "Green Bay Packers"
+        ],
+        "kickoff": 1791496800000,
+        "rawTime": "",
+        "observedAt": 1791496800000,
+        "parserVersion": 1
+      }
+    },
+    {
+      "operation": "observations",
+      "args": [],
+      "expected": [
+        {
+          "id": "observation-1",
+          "sourceId": "sportsurge",
+          "url": "https://example.com/game",
+          "title": "Chicago Bears at Green Bay Packers",
+          "league": "nfl",
+          "teams": [
+            "Chicago Bears",
+            "Green Bay Packers"
+          ],
+          "kickoff": 1791496800000,
+          "rawTime": "",
+          "observedAt": 1791496800000,
+          "parserVersion": 1
+        }
+      ]
+    },
+    {
+      "operation": "saveListingAttempt",
+      "args": [
+        "sportsurge",
+        {
+          "at": 1791496800000,
+          "outcome": "parsed",
+          "count": 1,
+          "failures": 0,
+          "nextEligibleAt": 1791497100000
+        },
+        [
+          {
+            "observation": {
+              "id": "observation-1",
+              "sourceId": "sportsurge",
+              "url": "https://example.com/game",
+              "title": "Chicago Bears at Green Bay Packers",
+              "league": "nfl",
+              "teams": [
+                "Chicago Bears",
+                "Green Bay Packers"
+              ],
+              "kickoff": 1791496800000,
+              "rawTime": "",
+              "observedAt": 1791496800000,
+              "parserVersion": 1
+            },
+            "result": {
+              "kind": "matched",
+              "gameId": "12345"
+            }
+          }
+        ],
+        []
+      ],
+      "expected": null
+    },
+    {
+      "operation": "sourceAttempts",
+      "args": [],
+      "expected": {
+        "sportsurge": {
+          "at": 1791496800000,
+          "outcome": "parsed",
+          "count": 1,
+          "failures": 0,
+          "nextEligibleAt": 1791497100000
+        }
+      }
+    },
+    {
+      "operation": "collectionHistory",
+      "args": [
+        1791496800001
+      ],
+      "expected": [
+        {
+          "sourceId": "sportsurge",
+          "league": null,
+          "at": 1791496800000,
+          "outcome": "parsed",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "operation": "saveDetailEvidence",
+      "args": [
+        {
+          "outcome": "unresolved",
+          "observationId": "observation-1",
+          "generation": "generation-1",
+          "at": 1791496800000,
+          "reason": "not-yet-published",
+          "failures": 0,
+          "nextEligibleAt": 1791497100000
+        }
+      ],
+      "expected": null
+    },
+    {
+      "operation": "detailEvidence",
+      "args": [],
+      "expected": [
+        {
+          "outcome": "unresolved",
+          "observationId": "observation-1",
+          "generation": "generation-1",
+          "at": 1791496800000,
+          "reason": "not-yet-published",
+          "failures": 0,
+          "nextEligibleAt": 1791497100000
+        }
+      ]
+    },
+    {
+      "operation": "replaceWorkingIdentity",
+      "args": [
+        "12345",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        [
+          {
+            "version": 1,
+            "identityHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "candidate": {
+              "id": "candidate-1",
+              "gameId": "12345",
+              "label": "Player 1",
+              "sourceIds": [
+                "sportsurge"
+              ],
+              "observedAt": 1791496800000,
+              "locator": {
+                "provider": "gooz",
+                "playerId": "1"
+              }
+            },
+            "owner": {
+              "league": "nfl",
+              "home": {
+                "name": "Green Bay Packers"
+              },
+              "away": {
+                "name": "Chicago Bears"
+              },
+              "partitionIds": [
+                "nfl"
+              ]
+            },
+            "checkedAt": 1791496800000,
+            "proof": "decoded"
+          }
+        ]
+      ],
+      "expected": null
+    },
+    {
+      "operation": "workingFeeds",
+      "args": [],
+      "expected": [
+        {
+          "identityHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidate": {
+            "id": "candidate-1",
+            "gameId": "12345",
+            "label": "Player 1",
+            "sourceIds": [
+              "sportsurge"
+            ],
+            "observedAt": 1791496800000,
+            "locator": {
+              "provider": "gooz",
+              "playerId": "1"
+            }
+          },
+          "owner": {
+            "league": "nfl",
+            "home": {
+              "name": "Green Bay Packers"
+            },
+            "away": {
+              "name": "Chicago Bears"
+            },
+            "partitionIds": [
+              "nfl"
+            ]
+          },
+          "checkedAt": 1791496800000,
+          "version": 1,
+          "proof": "decoded"
+        }
+      ]
+    },
+    {
+      "operation": "saveFeedCheck",
+      "args": [
+        {
+          "version": 1,
+          "gameId": "12345",
+          "gameDate": "2026-10-08T22:00:00.000Z",
+          "identityHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "owner": {
+            "league": "nfl",
+            "home": {
+              "name": "Green Bay Packers"
+            },
+            "away": {
+              "name": "Chicago Bears"
+            },
+            "partitionIds": [
+              "nfl"
+            ]
+          },
+          "outcome": {
+            "kind": "unavailable",
+            "checkedAt": 1791496800001,
+            "retryAt": 1791496860000,
+            "reason": "invalid-media"
+          }
+        }
+      ],
+      "expected": null
+    },
+    {
+      "operation": "workingFeeds",
+      "args": [],
+      "expected": []
+    },
+    {
+      "operation": "feedChecks",
+      "args": [
+        1791496800002
+      ],
+      "expected": [
+        {
+          "version": 1,
+          "gameId": "12345",
+          "gameDate": "2026-10-08T22:00:00.000Z",
+          "identityHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "owner": {
+            "league": "nfl",
+            "home": {
+              "name": "Green Bay Packers"
+            },
+            "away": {
+              "name": "Chicago Bears"
+            },
+            "partitionIds": [
+              "nfl"
+            ]
+          },
+          "outcome": {
+            "checkedAt": 1791496800001,
+            "retryAt": 1791496860000,
+            "kind": "unavailable",
+            "reason": "invalid-media"
+          }
+        }
+      ]
+    },
+    {
+      "operation": "replaceWorkingIdentity",
+      "args": [
+        "12345",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        [
+          {
+            "version": 1,
+            "identityHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "candidate": {
+              "id": "candidate-1",
+              "gameId": "12345",
+              "label": "Player 1",
+              "sourceIds": [
+                "sportsurge"
+              ],
+              "observedAt": 1791496800000,
+              "locator": {
+                "provider": "gooz",
+                "playerId": "1"
+              }
+            },
+            "owner": {
+              "league": "nfl",
+              "home": {
+                "name": "Green Bay Packers"
+              },
+              "away": {
+                "name": "Chicago Bears"
+              },
+              "partitionIds": [
+                "nfl"
+              ]
+            },
+            "checkedAt": 1791496800002,
+            "proof": "decoded"
+          }
+        ]
+      ],
+      "expected": null
+    },
+    {
+      "operation": "feedChecks",
+      "args": [
+        1791496800003
+      ],
+      "expected": []
+    },
+    {
+      "operation": "workingFeeds",
+      "args": [],
+      "expected": [
+        {
+          "identityHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidate": {
+            "id": "candidate-1",
+            "gameId": "12345",
+            "label": "Player 1",
+            "sourceIds": [
+              "sportsurge"
+            ],
+            "observedAt": 1791496800000,
+            "locator": {
+              "provider": "gooz",
+              "playerId": "1"
+            }
+          },
+          "owner": {
+            "league": "nfl",
+            "home": {
+              "name": "Green Bay Packers"
+            },
+            "away": {
+              "name": "Chicago Bears"
+            },
+            "partitionIds": [
+              "nfl"
+            ]
+          },
+          "checkedAt": 1791496800002,
+          "version": 1,
+          "proof": "decoded"
+        }
+      ]
+    },
+    {
+      "operation": "replaceWorkingIdentity",
+      "args": [
+        "12345",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        []
+      ],
+      "expected": null
+    },
+    {
+      "operation": "workingFeeds",
+      "args": [],
+      "expected": []
+    },
+    {
+      "operation": "saveSportsurgeCatalog",
+      "args": [
+        {
+          "catalog": {
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "sequence": 1,
+            "startedAt": 1791496800000,
+            "state": {
+              "kind": "complete",
+              "at": 1791496800000
+            },
+            "categories": {
+              "nfl": {
+                "kind": "collected",
+                "at": 1791496800000
+              },
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791496800000
+              }
+            },
+            "events": [],
+            "rejectedGames": [],
+            "catalogIssues": []
+          },
+          "receivedAt": 1791496800000
+        },
+        []
+      ],
+      "expected": null
+    },
+    {
+      "operation": "sportsurgeCatalog",
+      "args": [],
+      "expected": {
+        "current": {
+          "catalog": {
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "sequence": 1,
+            "startedAt": 1791496800000,
+            "state": {
+              "kind": "complete",
+              "at": 1791496800000
+            },
+            "categories": {
+              "nfl": {
+                "kind": "collected",
+                "at": 1791496800000
+              },
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791496800000
+              }
+            },
+            "events": [],
+            "rejectedGames": [],
+            "catalogIssues": []
+          },
+          "receivedAt": 1791496800000
+        },
+        "lastComplete": {
+          "catalog": {
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "sequence": 1,
+            "startedAt": 1791496800000,
+            "state": {
+              "kind": "complete",
+              "at": 1791496800000
+            },
+            "categories": {
+              "nfl": {
+                "kind": "collected",
+                "at": 1791496800000
+              },
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791496800000
+              }
+            },
+            "events": [],
+            "rejectedGames": [],
+            "catalogIssues": []
+          },
+          "receivedAt": 1791496800000
+        },
+        "previous": null
+      }
+    },
+    {
+      "operation": "saveSportsurgeCatalog",
+      "args": [
+        {
+          "catalog": {
+            "runId": "22222222-2222-4222-8222-222222222222",
+            "sequence": 1,
+            "startedAt": 1791496800001,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "failed",
+                "at": 1791496800001,
+                "reason": "blocked"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": [],
+            "catalogIssues": []
+          },
+          "receivedAt": 1791496800001
+        },
+        []
+      ],
+      "expected": null
+    },
+    {
+      "operation": "saveSportsurgeCatalog",
+      "args": [
+        {
+          "catalog": {
+            "runId": "33333333-3333-4333-8333-333333333333",
+            "sequence": 1,
+            "startedAt": 1791496800002,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "pending"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": [],
+            "catalogIssues": []
+          },
+          "receivedAt": 1791496800002
+        },
+        []
+      ],
+      "expected": null
+    },
+    {
+      "operation": "sportsurgeCatalog",
+      "args": [],
+      "expected": {
+        "current": {
+          "catalog": {
+            "runId": "33333333-3333-4333-8333-333333333333",
+            "sequence": 1,
+            "startedAt": 1791496800002,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "pending"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": [],
+            "catalogIssues": []
+          },
+          "receivedAt": 1791496800002
+        },
+        "lastComplete": {
+          "catalog": {
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "sequence": 1,
+            "startedAt": 1791496800000,
+            "state": {
+              "kind": "complete",
+              "at": 1791496800000
+            },
+            "categories": {
+              "nfl": {
+                "kind": "collected",
+                "at": 1791496800000
+              },
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791496800000
+              }
+            },
+            "events": [],
+            "rejectedGames": [],
+            "catalogIssues": []
+          },
+          "receivedAt": 1791496800000
+        },
+        "previous": {
+          "catalog": {
+            "runId": "22222222-2222-4222-8222-222222222222",
+            "sequence": 1,
+            "startedAt": 1791496800001,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "failed",
+                "at": 1791496800001,
+                "reason": "blocked"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": [],
+            "catalogIssues": []
+          },
+          "receivedAt": 1791496800001
+        }
+      }
+    },
+    {
+      "operation": "saveStreameastCatalog",
+      "args": [
+        {
+          "catalog": {
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "sequence": 1,
+            "startedAt": 1791496800000,
+            "state": {
+              "kind": "complete",
+              "at": 1791496800000
+            },
+            "categories": {
+              "nfl": {
+                "kind": "collected",
+                "at": 1791496800000
+              },
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791496800000
+              }
+            },
+            "events": [],
+            "rejectedGames": []
+          },
+          "receivedAt": 1791496800000
+        },
+        []
+      ],
+      "expected": null
+    },
+    {
+      "operation": "streameastCatalog",
+      "args": [],
+      "expected": {
+        "current": {
+          "catalog": {
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "sequence": 1,
+            "startedAt": 1791496800000,
+            "state": {
+              "kind": "complete",
+              "at": 1791496800000
+            },
+            "categories": {
+              "nfl": {
+                "kind": "collected",
+                "at": 1791496800000
+              },
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791496800000
+              }
+            },
+            "events": [],
+            "rejectedGames": []
+          },
+          "receivedAt": 1791496800000
+        },
+        "lastComplete": {
+          "catalog": {
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "sequence": 1,
+            "startedAt": 1791496800000,
+            "state": {
+              "kind": "complete",
+              "at": 1791496800000
+            },
+            "categories": {
+              "nfl": {
+                "kind": "collected",
+                "at": 1791496800000
+              },
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791496800000
+              }
+            },
+            "events": [],
+            "rejectedGames": []
+          },
+          "receivedAt": 1791496800000
+        },
+        "previous": null
+      }
+    },
+    {
+      "operation": "saveStreameastCatalog",
+      "args": [
+        {
+          "catalog": {
+            "runId": "22222222-2222-4222-8222-222222222222",
+            "sequence": 1,
+            "startedAt": 1791496800001,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "failed",
+                "at": 1791496800001,
+                "reason": "blocked"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": []
+          },
+          "receivedAt": 1791496800001
+        },
+        []
+      ],
+      "expected": null
+    },
+    {
+      "operation": "saveStreameastCatalog",
+      "args": [
+        {
+          "catalog": {
+            "runId": "33333333-3333-4333-8333-333333333333",
+            "sequence": 1,
+            "startedAt": 1791496800002,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "pending"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": []
+          },
+          "receivedAt": 1791496800002
+        },
+        []
+      ],
+      "expected": null
+    },
+    {
+      "operation": "streameastCatalog",
+      "args": [],
+      "expected": {
+        "current": {
+          "catalog": {
+            "runId": "33333333-3333-4333-8333-333333333333",
+            "sequence": 1,
+            "startedAt": 1791496800002,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "pending"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": []
+          },
+          "receivedAt": 1791496800002
+        },
+        "lastComplete": {
+          "catalog": {
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "sequence": 1,
+            "startedAt": 1791496800000,
+            "state": {
+              "kind": "complete",
+              "at": 1791496800000
+            },
+            "categories": {
+              "nfl": {
+                "kind": "collected",
+                "at": 1791496800000
+              },
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791496800000
+              }
+            },
+            "events": [],
+            "rejectedGames": []
+          },
+          "receivedAt": 1791496800000
+        },
+        "previous": {
+          "catalog": {
+            "runId": "22222222-2222-4222-8222-222222222222",
+            "sequence": 1,
+            "startedAt": 1791496800001,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "failed",
+                "at": 1791496800001,
+                "reason": "blocked"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": []
+          },
+          "receivedAt": 1791496800001
+        }
+      }
+    },
+    {
+      "operation": "sourceAttempts",
+      "args": [],
+      "expected": {
+        "sportsurge": {
+          "at": 1791496800000,
+          "outcome": "parsed",
+          "count": 1,
+          "failures": 0,
+          "nextEligibleAt": 1791497100000
+        },
+        "sportsurge-v2": {
+          "at": 1791496800001,
+          "outcome": "failed",
+          "failure": "blocked",
+          "count": 0,
+          "failures": 1,
+          "nextEligibleAt": 1791497100001
+        },
+        "streameast": {
+          "at": 1791496800001,
+          "outcome": "failed",
+          "failure": "blocked",
+          "count": 0,
+          "failures": 1,
+          "nextEligibleAt": 1791497100001
+        }
+      }
+    },
+    {
+      "operation": "collectionHistory",
+      "args": [
+        1791496800003
+      ],
+      "expected": [
+        {
+          "sourceId": "sportsurge-v2",
+          "league": "nfl",
+          "at": 1791496800001,
+          "outcome": "failed",
+          "count": 0
+        },
+        {
+          "sourceId": "streameast",
+          "league": "nfl",
+          "at": 1791496800001,
+          "outcome": "failed",
+          "count": 0
+        },
+        {
+          "sourceId": "sportsurge",
+          "league": null,
+          "at": 1791496800000,
+          "outcome": "parsed",
+          "count": 1
+        },
+        {
+          "sourceId": "sportsurge-v2",
+          "league": "ncaaf",
+          "at": 1791496800000,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "sourceId": "sportsurge-v2",
+          "league": "nfl",
+          "at": 1791496800000,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "sourceId": "streameast",
+          "league": "ncaaf",
+          "at": 1791496800000,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "sourceId": "streameast",
+          "league": "nfl",
+          "at": 1791496800000,
+          "outcome": "empty",
+          "count": 0
+        }
+      ]
+    },
+    {
+      "operation": "saveMembership",
+      "args": [
+        {
+          "season": 2026,
+          "at": 1791496800000,
+          "teams": {
+            "123": "fbs",
+            "456": "fcs"
+          }
+        }
+      ],
+      "expected": null
+    },
+    {
+      "operation": "membership",
+      "args": [
+        2026
+      ],
+      "expected": {
+        "season": 2026,
+        "at": 1791496800000,
+        "teams": {
+          "123": "fbs",
+          "456": "fcs"
+        }
+      }
+    },
+    {
+      "operation": "membership",
+      "args": [
+        2025
+      ],
+      "expected": null
+    },
+    {
+      "operation": "alias",
+      "args": [
+        "legacy-id",
+        "12345"
+      ],
+      "expected": null
+    },
+    {
+      "operation": "aliases",
+      "args": [],
+      "expected": {
+        "legacy-id": "12345"
+      }
+    },
+    {
+      "operation": "alias",
+      "args": [
+        "legacy-id",
+        "54321"
+      ],
+      "expected": null
+    },
+    {
+      "operation": "alias",
+      "args": [
+        "legacy-id",
+        "12345"
+      ],
+      "expected": null
+    },
+    {
+      "operation": "aliases",
+      "args": [],
+      "expected": {}
+    },
+    {
+      "operation": "sportsurgeCatalog",
+      "args": [],
+      "expected": {
+        "current": {
+          "catalog": {
+            "runId": "33333333-3333-4333-8333-333333333333",
+            "sequence": 1,
+            "startedAt": 1791496800002,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "pending"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": [],
+            "catalogIssues": []
+          },
+          "receivedAt": 1791496800002
+        },
+        "lastComplete": {
+          "catalog": {
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "sequence": 1,
+            "startedAt": 1791496800000,
+            "state": {
+              "kind": "complete",
+              "at": 1791496800000
+            },
+            "categories": {
+              "nfl": {
+                "kind": "collected",
+                "at": 1791496800000
+              },
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791496800000
+              }
+            },
+            "events": [],
+            "rejectedGames": [],
+            "catalogIssues": []
+          },
+          "receivedAt": 1791496800000
+        },
+        "previous": {
+          "catalog": {
+            "runId": "22222222-2222-4222-8222-222222222222",
+            "sequence": 1,
+            "startedAt": 1791496800001,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "failed",
+                "at": 1791496800001,
+                "reason": "blocked"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": [],
+            "catalogIssues": []
+          },
+          "receivedAt": 1791496800001
+        }
+      }
+    },
+    {
+      "operation": "streameastCatalog",
+      "args": [],
+      "expected": {
+        "current": {
+          "catalog": {
+            "runId": "33333333-3333-4333-8333-333333333333",
+            "sequence": 1,
+            "startedAt": 1791496800002,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "pending"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": []
+          },
+          "receivedAt": 1791496800002
+        },
+        "lastComplete": {
+          "catalog": {
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "sequence": 1,
+            "startedAt": 1791496800000,
+            "state": {
+              "kind": "complete",
+              "at": 1791496800000
+            },
+            "categories": {
+              "nfl": {
+                "kind": "collected",
+                "at": 1791496800000
+              },
+              "ncaaf": {
+                "kind": "collected",
+                "at": 1791496800000
+              }
+            },
+            "events": [],
+            "rejectedGames": []
+          },
+          "receivedAt": 1791496800000
+        },
+        "previous": {
+          "catalog": {
+            "runId": "22222222-2222-4222-8222-222222222222",
+            "sequence": 1,
+            "startedAt": 1791496800001,
+            "state": {
+              "kind": "collecting"
+            },
+            "categories": {
+              "nfl": {
+                "kind": "failed",
+                "at": 1791496800001,
+                "reason": "blocked"
+              },
+              "ncaaf": {
+                "kind": "pending"
+              }
+            },
+            "events": [],
+            "rejectedGames": []
+          },
+          "receivedAt": 1791496800001
+        }
+      }
+    },
+    {
+      "operation": "workingFeeds",
+      "args": [],
+      "expected": []
+    },
+    {
+      "operation": "feedChecks",
+      "args": [
+        1791496800000
+      ],
+      "expected": []
+    },
+    {
+      "operation": "removeFinalEvidence",
+      "args": [
+        [
+          "12345"
+        ],
+        1791500400001
+      ],
+      "expected": null
+    },
+    {
+      "operation": "observations",
+      "args": [],
+      "expected": []
+    },
+    {
+      "operation": "sweep",
+      "args": [
+        1792188000000
+      ],
+      "expected": null
+    },
+    {
+      "operation": "observations",
+      "args": [],
+      "expected": []
+    },
+    {
+      "operation": "sourceEventBindings",
+      "args": [],
+      "expected": []
+    }
+  ],
+  "scoreboards": [
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "in",
+                "shortDetail": "Q2"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nfl",
+      "expected": [
+        {
+          "id": "9",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nfl:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nfl:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Q2",
+          "redzone": true,
+          "possession": "HME",
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "in",
+          "lifecycle": "live"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "TBD"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nfl",
+      "expected": [
+        {
+          "id": "9",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nfl:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nfl:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "TBD",
+          "redzone": false,
+          "possession": "HME",
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "10/8 6:00 PM"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nfl",
+      "expected": [
+        {
+          "id": "9",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nfl:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nfl:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Scheduled",
+          "redzone": false,
+          "possession": "HME",
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": true,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nfl",
+      "expected": [
+        {
+          "id": "9",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nfl:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nfl:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "possession": "HME",
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "post",
+          "lifecycle": "final"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": false,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nfl",
+      "expected": [
+        {
+          "id": "9",
+          "league": "nfl",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nfl:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nfl:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "possession": "HME",
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "unknown",
+          "lifecycle": "unknown"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "in",
+                "shortDetail": "Q2"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "ncaaf",
+      "expected": [
+        {
+          "id": "ncaaf-9",
+          "league": "ncaaf",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:ncaaf:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:ncaaf:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Q2",
+          "redzone": true,
+          "possession": "HME",
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "in",
+          "lifecycle": "live"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "TBD"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "ncaaf",
+      "expected": [
+        {
+          "id": "ncaaf-9",
+          "league": "ncaaf",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:ncaaf:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:ncaaf:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "TBD",
+          "redzone": false,
+          "possession": "HME",
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "10/8 6:00 PM"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "ncaaf",
+      "expected": [
+        {
+          "id": "ncaaf-9",
+          "league": "ncaaf",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:ncaaf:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:ncaaf:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Scheduled",
+          "redzone": false,
+          "possession": "HME",
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": true,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "ncaaf",
+      "expected": [
+        {
+          "id": "ncaaf-9",
+          "league": "ncaaf",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:ncaaf:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:ncaaf:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "possession": "HME",
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "post",
+          "lifecycle": "final"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": false,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "ncaaf",
+      "expected": [
+        {
+          "id": "ncaaf-9",
+          "league": "ncaaf",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:ncaaf:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:ncaaf:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "possession": "HME",
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "unknown",
+          "lifecycle": "unknown"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "in",
+                "shortDetail": "Q2"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nba",
+      "expected": [
+        {
+          "id": "nba-9",
+          "league": "nba",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nba:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nba:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Q2",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "in",
+          "lifecycle": "live"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "TBD"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nba",
+      "expected": [
+        {
+          "id": "nba-9",
+          "league": "nba",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nba:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nba:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "TBD",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "10/8 6:00 PM"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nba",
+      "expected": [
+        {
+          "id": "nba-9",
+          "league": "nba",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nba:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nba:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Scheduled",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": true,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nba",
+      "expected": [
+        {
+          "id": "nba-9",
+          "league": "nba",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nba:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nba:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "post",
+          "lifecycle": "final"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": false,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nba",
+      "expected": [
+        {
+          "id": "nba-9",
+          "league": "nba",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nba:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nba:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "unknown",
+          "lifecycle": "unknown"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "in",
+                "shortDetail": "Q2"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "wnba",
+      "expected": [
+        {
+          "id": "wnba-9",
+          "league": "wnba",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:wnba:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:wnba:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Q2",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "in",
+          "lifecycle": "live"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "TBD"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "wnba",
+      "expected": [
+        {
+          "id": "wnba-9",
+          "league": "wnba",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:wnba:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:wnba:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "TBD",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "10/8 6:00 PM"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "wnba",
+      "expected": [
+        {
+          "id": "wnba-9",
+          "league": "wnba",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:wnba:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:wnba:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Scheduled",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": true,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "wnba",
+      "expected": [
+        {
+          "id": "wnba-9",
+          "league": "wnba",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:wnba:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:wnba:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "post",
+          "lifecycle": "final"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": false,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "wnba",
+      "expected": [
+        {
+          "id": "wnba-9",
+          "league": "wnba",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:wnba:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:wnba:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "unknown",
+          "lifecycle": "unknown"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "in",
+                "shortDetail": "Q2"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nhl",
+      "expected": [
+        {
+          "id": "nhl-9",
+          "league": "nhl",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nhl:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nhl:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Q2",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "in",
+          "lifecycle": "live"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "TBD"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nhl",
+      "expected": [
+        {
+          "id": "nhl-9",
+          "league": "nhl",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nhl:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nhl:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "TBD",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "10/8 6:00 PM"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nhl",
+      "expected": [
+        {
+          "id": "nhl-9",
+          "league": "nhl",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nhl:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nhl:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Scheduled",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": true,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nhl",
+      "expected": [
+        {
+          "id": "nhl-9",
+          "league": "nhl",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nhl:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nhl:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "post",
+          "lifecycle": "final"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": false,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "nhl",
+      "expected": [
+        {
+          "id": "nhl-9",
+          "league": "nhl",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:nhl:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:nhl:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "unknown",
+          "lifecycle": "unknown"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "in",
+                "shortDetail": "Q2"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "mlb",
+      "expected": [
+        {
+          "id": "mlb-9",
+          "league": "mlb",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:mlb:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:mlb:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Q2",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "in",
+          "lifecycle": "live"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "TBD"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "mlb",
+      "expected": [
+        {
+          "id": "mlb-9",
+          "league": "mlb",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:mlb:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:mlb:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "TBD",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED",
+                "shortDetail": "10/8 6:00 PM"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "mlb",
+      "expected": [
+        {
+          "id": "mlb-9",
+          "league": "mlb",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:mlb:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:mlb:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Scheduled",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": true,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "mlb",
+      "expected": [
+        {
+          "id": "mlb-9",
+          "league": "mlb",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:mlb:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:mlb:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "post",
+          "lifecycle": "final"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "9",
+            "name": "Away at Home",
+            "date": "2026-10-08T22:00:00.000Z",
+            "season": {
+              "year": 2026
+            },
+            "status": {
+              "type": {
+                "state": "post",
+                "name": "STATUS_FINAL",
+                "completed": false,
+                "shortDetail": "Final"
+              }
+            },
+            "competitions": [
+              {
+                "competitors": [
+                  {
+                    "id": "a",
+                    "homeAway": "away",
+                    "team": {
+                      "id": "2",
+                      "displayName": "Away",
+                      "name": "Away",
+                      "abbreviation": "AWY",
+                      "color": "ffffff"
+                    }
+                  },
+                  {
+                    "id": "h",
+                    "homeAway": "home",
+                    "score": "7",
+                    "team": {
+                      "id": "1",
+                      "displayName": "Home",
+                      "name": "Home",
+                      "abbreviation": "HME",
+                      "color": "000000"
+                    }
+                  }
+                ],
+                "situation": {
+                  "isRedZone": true,
+                  "possession": "h"
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN",
+                      "ABC"
+                    ]
+                  }
+                ],
+                "venue": {
+                  "fullName": "Stadium"
+                }
+              }
+            ]
+          }
+        ],
+        "week": {
+          "number": 5
+        }
+      },
+      "league": "mlb",
+      "expected": [
+        {
+          "id": "mlb-9",
+          "league": "mlb",
+          "name": "Away at Home",
+          "date": "2026-10-08T22:00:00.000Z",
+          "home": {
+            "id": "espn:mlb:1",
+            "name": "Home",
+            "short": "Home",
+            "abbreviation": "HME",
+            "color": "000000",
+            "score": "7",
+            "aliases": [
+              "Home",
+              "HME"
+            ]
+          },
+          "away": {
+            "id": "espn:mlb:2",
+            "name": "Away",
+            "short": "Away",
+            "abbreviation": "AWY",
+            "color": "ffffff",
+            "score": null,
+            "aliases": [
+              "Away",
+              "AWY"
+            ]
+          },
+          "season": 2026,
+          "detail": "Final",
+          "redzone": false,
+          "venue": "Stadium",
+          "broadcast": "ESPN / ABC",
+          "status": "unknown",
+          "lifecycle": "unknown"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "88",
+            "name": "Grand Prix at Austin",
+            "circuit": {
+              "fullName": "Circuit of the Americas",
+              "address": {
+                "city": "Austin"
+              }
+            },
+            "season": {
+              "year": 2026
+            },
+            "competitions": [
+              {
+                "id": "99",
+                "date": "2026-10-08T22:00:00.000Z",
+                "type": {
+                  "abbreviation": "Race"
+                },
+                "status": {
+                  "type": {
+                    "state": "pre",
+                    "name": "STATUS_SCHEDULED"
+                  }
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "league": "f1",
+      "expected": [
+        {
+          "id": "f1-99",
+          "league": "f1",
+          "name": "Grand Prix at Austin · Race",
+          "date": "2026-10-08T22:00:00.000Z",
+          "race": {
+            "eventId": "88",
+            "sessionId": "99",
+            "session": "race",
+            "round": "Austin",
+            "circuit": "Circuit of the Americas"
+          },
+          "season": 2026,
+          "detail": "Scheduled",
+          "broadcast": "ESPN",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "88",
+            "name": "Grand Prix at Austin",
+            "circuit": {
+              "fullName": "Circuit of the Americas",
+              "address": {
+                "city": "Austin"
+              }
+            },
+            "season": {
+              "year": 2026
+            },
+            "competitions": [
+              {
+                "id": "99",
+                "date": "2026-10-08T22:00:00.000Z",
+                "type": {
+                  "abbreviation": "Race"
+                },
+                "status": {
+                  "type": {
+                    "state": "pre",
+                    "name": "STATUS_SCHEDULED"
+                  }
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "league": "nascar-cup",
+      "expected": [
+        {
+          "id": "nascar-cup-99",
+          "league": "nascar-cup",
+          "name": "Grand Prix at Austin",
+          "date": "2026-10-08T22:00:00.000Z",
+          "race": {
+            "eventId": "88",
+            "sessionId": "99",
+            "session": "race",
+            "round": "Austin",
+            "circuit": "Circuit of the Americas"
+          },
+          "season": 2026,
+          "detail": "Scheduled",
+          "broadcast": "ESPN",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "88",
+            "name": "Grand Prix at Austin",
+            "circuit": {
+              "fullName": "Circuit of the Americas",
+              "address": {
+                "city": "Austin"
+              }
+            },
+            "season": {
+              "year": 2026
+            },
+            "competitions": [
+              {
+                "id": "99",
+                "date": "2026-10-08T22:00:00.000Z",
+                "type": {
+                  "abbreviation": "Race"
+                },
+                "status": {
+                  "type": {
+                    "state": "pre",
+                    "name": "STATUS_SCHEDULED"
+                  }
+                },
+                "broadcasts": [
+                  {
+                    "names": [
+                      "ESPN"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "league": "nascar-truck",
+      "expected": [
+        {
+          "id": "nascar-truck-99",
+          "league": "nascar-truck",
+          "name": "Grand Prix at Austin",
+          "date": "2026-10-08T22:00:00.000Z",
+          "race": {
+            "eventId": "88",
+            "sessionId": "99",
+            "session": "race",
+            "round": "Austin",
+            "circuit": "Circuit of the Americas"
+          },
+          "season": 2026,
+          "detail": "Scheduled",
+          "broadcast": "ESPN",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    },
+    {
+      "data": {
+        "events": [
+          {
+            "id": "123",
+            "name": "UFC 325",
+            "date": "2026-10-08T22:00:00.000Z",
+            "status": {
+              "type": {
+                "state": "pre",
+                "name": "STATUS_SCHEDULED"
+              }
+            },
+            "competitions": []
+          },
+          {
+            "id": "124",
+            "name": "Other MMA",
+            "date": "2026-10-08T22:00:00.000Z",
+            "competitions": []
+          }
+        ]
+      },
+      "league": "ufc",
+      "expected": [
+        {
+          "id": "ufc-123",
+          "league": "ufc",
+          "name": "UFC 325",
+          "date": "2026-10-08T22:00:00.000Z",
+          "combat": {
+            "eventId": "123"
+          },
+          "detail": "Scheduled",
+          "status": "pre",
+          "lifecycle": "scheduled"
+        }
+      ]
+    }
+  ]
+}

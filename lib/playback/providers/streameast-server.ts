@@ -1,27 +1,14 @@
-import { browserCategory } from '../../football/source-registry.ts';
+import {nativeDomain} from '../../football/domain/native.ts';
+import {z} from 'zod';
 import type { CandidateLocator } from '../../football/shared.ts';
 import type { PlaybackProvider,ProviderPlayback } from '../provider.ts';
 import { observedStreameastServerPage } from './public-page.ts';
 
 type Locator=Extract<CandidateLocator,{provider:'streameast-server'}>;
-const EVENT_PATH=/^\/([a-z0-9-]+)\/[a-z0-9]+(?:-[a-z0-9]+)*\/$/;
 
 export function streameastServerUrl(locator:Locator):URL|null {
-  try {
-    const event=new URL(locator.eventUrl);
-    const path=EVENT_PATH.exec(event.pathname);
-    const league=locator.sourceEventId.split(':')[0];
-    const boundGame=league==='motorsport'
-      ?/^nascar-(?:cup|truck)-\d+$/.test(locator.gameId)&&
-        /^\/other-events\/[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{10}\/$/.test(event.pathname)
-      :league==='nfl'?/^\d+$/.test(locator.gameId):locator.gameId.startsWith(`${league}-`);
-    if(event.origin!=='https://v2.streameast.ga'||event.username||event.password||event.search||event.hash||
-      event.href!==locator.eventUrl||!path||path[1] !== browserCategory('streameast',league)?.pathCode||
-      !boundGame||
-      !/^[a-z0-9-]+:\d{1,12}$/.test(locator.sourceEventId)||
-      !/^[1-9]\d{0,3}$/.test(locator.serverId))return null;
-    return new URL(`${event.href}${locator.serverId}`);
-  } catch{return null;}
+  const value=nativeDomain('streameastServerUrl',[locator],z.string().url().nullable());
+  return value?new URL(value):null;
 }
 
 export function streameastServerProvider():PlaybackProvider<Locator> {

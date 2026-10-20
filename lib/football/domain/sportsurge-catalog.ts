@@ -1,180 +1,46 @@
-import { browserCategory } from '../source-registry.ts';
-import { createFinishedGameMatcher, createSourceEventMatcher, type SourceEventEvidence } from './matching.ts';
-import { createHash } from 'node:crypto';
-import {ACTIVE_DISCOVERY_MS,COLLECTION_SETTLE_MS} from './source-policy.ts';
-import type { Candidate, Game, Observation, SourceEventBinding, SourceMatchReason, SportsurgeCatalog, SportsurgeCatalogView, SportsurgeProvider, StoredSportsurgeCatalog } from '../shared.ts';
+import {z} from 'zod';
+import {CandidateSchema,ObservationSchema,SportsurgeCatalogSchema,SportsurgeCatalogViewSchema,type Candidate,type Game,type Observation,type SourceEventBinding,type SportsurgeCatalog,type SportsurgeCatalogView,type StoredSportsurgeCatalog} from '../shared.ts';
+import type {SourceEventEvidence} from './matching.ts';
+import {nativeView} from './native-view.ts';
 
-const DETAIL_PATH=/^\/watch-(\d{1,12})-([a-z0-9]+)-[a-z0-9]+(?:-[a-z0-9]+)*\/$/;
-const CREDENTIAL_KEY=/^(?:token|access_token|auth|authorization|key|signature|sig|st|e|x-amz-.+)$/i;
-
-function safeDestination(value:string):SportsurgeProvider['destination'] {
-  const url=new URL(value);
-  const display=url.hostname.slice(0,240) || null;
-  if (url.protocol!=='https:') return {kind:'rejected',reason:'insecure',display};
-  if (url.username || url.password || url.port) return {kind:'rejected',reason:'credentials',display};
-  if (!url.hostname || url.hostname.startsWith('[') || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(url.hostname) ||
-    url.hostname==='localhost' || url.hostname.endsWith('.localhost') || url.hostname.endsWith('.local') || url.hostname.endsWith('.internal'))
-    return {kind:'rejected',reason:'private-host',display};
-  if ([...url.searchParams.keys()].some(key=>CREDENTIAL_KEY.test(key)) || /(?:^#|[&?])(?:token|access_token|auth|authorization|key|signature|sig|st|e|x-amz-[^=]+)=/i.test(url.hash))
-    return {kind:'rejected',reason:'credential-query',display};
-  if (url.href.length>2000) return {kind:'rejected',reason:'oversized',display};
-  return {kind:'link',url:url.href};
-}
-
+const EvidenceSchema=z.object({undated:z.enum(['none','published-listing','live-claim','retained-live-detail']),externalGameId:z.string().nullable()});
 export function sameSportsurgeEvent(left:SportsurgeCatalog['events'][number],right:SportsurgeCatalog['events'][number]):boolean {
-  return left.id===right.id&&left.url===right.url&&left.league===right.league&&left.title===right.title&&
-    left.kickoff===right.kickoff&&JSON.stringify(left.teams)===JSON.stringify(right.teams)&&left.sourceStatus===right.sourceStatus&&left.advertisedLinkCount===right.advertisedLinkCount;
+  return nativeView('sameSportsurgeEvent',[left,right],z.boolean());
 }
-
 export function sanitizeSportsurgeCatalog(catalog:SportsurgeCatalog,history:readonly StoredSportsurgeCatalog[]=[]):SportsurgeCatalog|null {
-  if(Object.keys(catalog.categories).some(league=>!browserCategory('sportsurge-v2',league)))return null;
-  const urls=new Set<string>();
-  for (const event of catalog.events) {
-    let url:URL;
-    try { url=new URL(event.url); } catch { return null; }
-    const match=DETAIL_PATH.exec(url.pathname);
-    const validPath=event.league==='nascar-cup'
-      ? /^\/watch-[0-9]{1,12}-nascar-nascar-cup-series-at-[a-z0-9]+(?:-[a-z0-9]+)*\/$/.test(url.pathname)
-      : match?.[2]===browserCategory('sportsurge-v2',event.league)?.pathCode;
-    if (url.origin!=='https://v2.sportsurge.net' || url.username || url.password || url.search || url.hash || !match ||
-      event.id!==`${event.league}:${match[1]}` || !validPath || !catalog.categories[event.league] || urls.has(event.url)) return null;
-    urls.add(event.url);
-    const detail=event.detail;
-    const retained=detail.kind==='collected'&&detail.retainedFromRunId!==undefined;
-    if(retained&&!history.some(stored=>stored.catalog.events.some(prior=>sameSportsurgeEvent(event,prior)&&
-      prior.detail.kind==='collected'&&detail.retainedFromRunId===(prior.detail.retainedFromRunId||stored.catalog.runId)&&
-      JSON.stringify([detail.at,detail.providers])===JSON.stringify([prior.detail.at,prior.detail.providers]))))return null;
-    if (event.detail.kind!=='collected') continue;
-    const rowIds=new Set<string>();
-    for (const provider of event.detail.providers) {
-      if (rowIds.has(provider.id)) return null;
-      rowIds.add(provider.id);
-      if (provider.destination.kind==='link') provider.destination=safeDestination(provider.destination.url);
-    }
-  }
-  if (catalog.state.kind==='complete' && (Object.values(catalog.categories).some(category=>category.kind!=='collected') ||
-    catalog.events.some(event=>event.detail.kind!=='collected') || catalog.rejectedGames.length>0)) return null;
-  return catalog;
+  return nativeView('sanitizeSportsurgeCatalog',[catalog,history],SportsurgeCatalogSchema.nullable());
 }
-
 export function catalogDecision(previous:StoredSportsurgeCatalog|null,incoming:SportsurgeCatalog):'accepted'|'replay'|'rejected' {
-  if (!previous) return incoming.sequence===0 ? 'accepted' : 'rejected';
-  const current=previous.catalog;
-  if (current.runId!==incoming.runId) return incoming.sequence===0 && incoming.startedAt>current.startedAt ? 'accepted' : 'rejected';
-  if (incoming.startedAt!==current.startedAt) return 'rejected';
-  if (incoming.sequence===current.sequence) return JSON.stringify(incoming)===JSON.stringify(current) ? 'replay' : 'rejected';
-  if (incoming.sequence<current.sequence || current.state.kind!=='collecting') return 'rejected';
-  return 'accepted';
+  return nativeView('catalogDecision',[previous,incoming],z.enum(['accepted','replay','rejected']));
 }
-
 export function sportsurgeObservation(event:SportsurgeCatalog['events'][number],at:number):Observation {
-  return {id:`sportsurge-v2:${event.url}`,sourceId:'sportsurge-v2',url:event.url,title:event.title,league:event.league,
-    teams:event.teams,kickoff:event.kickoff,rawTime:event.kickoff===null?'':new Date(event.kickoff).toISOString(),observedAt:at,parserVersion:1};
+  return nativeView('sportsurgeObservation',[event,at],ObservationSchema);
 }
-
 export function sportsurgeEvidence(event:SportsurgeCatalog['events'][number],now:number):SourceEventEvidence {
-  const detail=event.detail;
-  return {undated:event.sourceStatus==='live'&&detail.kind==='collected'&&
-    detail.at<=now+60_000&&now-detail.at<=ACTIVE_DISCOVERY_MS+COLLECTION_SETTLE_MS?'retained-live-detail':
-    event.sourceStatus==='live'?'live-claim':'published-listing',externalGameId:null};
+  return nativeView('sportsurgeEvidence',[event,now],EvidenceSchema);
 }
-
-function rowIdentity(eventUrl:string,providerId:string,destinationUrl:string):string {
-  return createHash('sha256').update(eventUrl).update('\0').update(providerId).update('\0').update(destinationUrl).digest('hex').slice(0,24);
-}
-
 export function sportsurgeEventCandidate(candidate:Candidate,event:SportsurgeCatalog['events'][number]):boolean {
-  const locator=candidate.locator;
-  if(locator.provider!=='sportsurge-v2'||locator.eventId!==event.id)return false;
-  const id=`sportsurge-v2:${rowIdentity(event.url,locator.providerId,locator.url)}`;
-  return candidate.id===id||candidate.id.startsWith(`${id}:`);
+  return nativeView('sportsurgeEventCandidate',[candidate,event],z.boolean());
 }
-
 export function sportsurgeCandidates(input:{
-  current:StoredSportsurgeCatalog|null;
-  previous:StoredSportsurgeCatalog|null;
-  lastComplete:StoredSportsurgeCatalog|null;
-  games:Game[];
-  now:number;
-  freshness?:(observation:Observation)=>number|undefined;
-  detailFresh?:(id:string,at:number)=>boolean;
+  current:StoredSportsurgeCatalog|null;previous:StoredSportsurgeCatalog|null;lastComplete:StoredSportsurgeCatalog|null;games:Game[];now:number;
+  freshness?:(observation:Observation)=>number|undefined;detailFresh?:(id:string,at:number)=>boolean;
 }):Candidate[] {
-  const {current,previous,lastComplete,games,now}=input;
-  const older=current?.catalog.state.kind==='complete'?[]:[previous,lastComplete];
-  const catalogs=[current,...older].filter((stored):stored is StoredSportsurgeCatalog=>stored!==null);
-  const match=createSourceEventMatcher(games,'inventory-live',input.freshness);
-  const replaced=new Set<string>();
-  const candidates=new Map<string,Candidate>();
-  for(const stored of catalogs) for(const event of stored.catalog.events) {
-    if(replaced.has(event.url))continue;
-    const category=stored.catalog.categories[event.league];
-    if(category.kind!=='collected'||event.detail.kind!=='collected')continue;
-    const detail=event.detail;
-    if(!detail.retainedFromRunId&&detail.at<category.at||detail.at>now+60_000||!(input.detailFresh?.(`sportsurge-v2:${event.url}`,detail.at)??now-detail.at<30*60_000))continue;
-    replaced.add(event.url);
-    const decision=match(sportsurgeObservation(event,category.at),sportsurgeEvidence(event,now),now);
-    const game=games.find(item=>item.id===(decision.kind==='matched'?decision.gameId:''));
-    if(!game)continue;
-    for(const candidate of sportsurgeEventCandidates(event,game.id))candidates.set(candidate.id,candidate);
-  }
-  return [...candidates.values()];
+  const observations=[input.current,input.previous,input.lastComplete].flatMap(stored=>stored?stored.catalog.events.map(event=>{
+    const category=stored.catalog.categories[event.league];return {event,observation:sportsurgeObservation(event,category.kind==='pending'?stored.catalog.startedAt:category.at)};
+  }):[]);
+  return nativeView('sportsurgeCandidates',[{...input,
+    deadlines:input.freshness?Object.fromEntries(observations.flatMap(({observation})=>{const at=input.freshness?.(observation);return at===undefined?[]:[[observation.id,at]];})):undefined,
+    detailFresh:input.detailFresh?Object.fromEntries(observations.filter(({event})=>event.detail.kind==='collected').map(({event,observation})=>[observation.id,event.detail.kind==='collected'&&input.detailFresh?.(observation.id,event.detail.at)])):undefined,
+  }],z.array(CandidateSchema));
 }
-
 export function sportsurgeEventCandidates(event:SportsurgeCatalog['events'][number],gameId:string):Candidate[] {
-  const detail=event.detail;
-  if(detail.kind!=='collected')return [];
-  const candidates=new Map<string,Candidate>();
-  for(const provider of detail.providers) {
-    if(provider.destination.kind!=='link'||provider.observedAt!==detail.at)continue;
-    const id=`sportsurge-v2:${rowIdentity(event.url,provider.id,provider.destination.url)}`;
-    candidates.set(id,{id,gameId,label:`Sportsurge v2 · ${provider.label}`,
-      sourceIds:['sportsurge-v2'],observedAt:detail.at,
-      locator:{provider:'sportsurge-v2',eventId:event.id,providerId:provider.id,url:provider.destination.url,
-        ...(event.teams?{expectedMatchup:{league:event.league,teams:event.teams,
-          ...(event.kickoff!==null?{kickoff:event.kickoff}:{})}}:{})}});
-  }
-  return [...candidates.values()];
+  return nativeView('sportsurgeEventCandidates',[event,gameId],z.array(CandidateSchema));
 }
-
-function publicReason(value:string):SourceMatchReason {
-  switch(value) {
-    case 'not-a-matchup': case 'unknown-teams': case 'unverified-kickoff': case 'unverified-contextual-kickoff': case 'ambiguous-matchup':
-    case 'conflicting-date': case 'finished-game': return value;
-    default: return 'other';
-  }
-}
-
 export function sportsurgeCatalogView(stored:StoredSportsurgeCatalog,games:Game[],now:number,bindings:readonly SourceEventBinding[]=[],freshness?:(observation:Observation)=>number|undefined):SportsurgeCatalogView {
-  const {catalog,receivedAt}=stored;
-  const match=createSourceEventMatcher(games,'inventory-live',freshness);
-  const finished=createFinishedGameMatcher(games);
-  const activeEvents=catalog.events.filter(event=>{
-    const category=catalog.categories[event.league];
-    const observedAt=category.kind==='pending'?catalog.startedAt:category.at;
-    const observation=sportsurgeObservation(event,observedAt);
-    return !finished.finishedGameId(observation,now)&&
-      !finished.finishedBoundEvent(observation,event.id,bindings);
-  });
-  const views=activeEvents.map(event=>{
-    const category=catalog.categories[event.league];
-    const observedAt=category.kind==='pending' ? catalog.startedAt : category.at;
-    const decision=match(sportsurgeObservation(event,observedAt),sportsurgeEvidence(event,now),now);
-    const game=games.find(item=>item.id===(decision.kind==='matched'?decision.gameId:''));
-    const detail=event.detail.kind==='collected'?{...event.detail,providers:event.detail.providers.map(provider=>({
-      ...provider,destination:provider.destination.kind==='link'?{kind:'link' as const}:provider.destination,
-    }))}:event.detail;
-    return {id:event.id,title:event.title,url:event.url,league:event.league,
-      gameId:game?.id || null,
-      matchReason:game?null:decision.match.kind==='unmatched' ? publicReason(decision.match.reason) : null,
-      sourceStatus:event.sourceStatus,detail};
-  });
-  const details=activeEvents.map(event=>event.detail);
-  return {runId:catalog.runId,startedAt:catalog.startedAt,receivedAt,interrupted:catalog.state.kind==='collecting' && now-receivedAt>180000,
-    state:catalog.state,categories:catalog.categories,
-    gameCount:activeEvents.length,collectedDetails:details.filter(detail=>detail.kind==='collected').length,
-    pendingDetails:details.filter(detail=>detail.kind==='pending').length,
-    failedDetails:details.filter(detail=>detail.kind==='failed').length,
-    providerRows:details.reduce((count,detail)=>count+(detail.kind==='collected'?detail.providers.length:0),0),
-    rejectedProviders:details.reduce((count,detail)=>count+(detail.kind==='collected'?detail.providers.filter(provider=>provider.destination.kind!=='link').length:0),0),
-    rejectedGames:catalog.rejectedGames,catalogIssues:catalog.catalogIssues,games:views};
+  const deadlines=Object.fromEntries(stored.catalog.events.flatMap(event=>{
+    const category=stored.catalog.categories[event.league],observation=sportsurgeObservation(event,category.kind==='pending'?stored.catalog.startedAt:category.at);
+    const at=freshness?.(observation);return at===undefined?[]:[[observation.id,at]];
+  }));
+  return nativeView('sportsurgeCatalogView',[stored,games,now,bindings,deadlines],SportsurgeCatalogViewSchema);
 }

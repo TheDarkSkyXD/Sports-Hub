@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SOURCES, SourceFetchError, compatiblePlayers, createFixtureCollector, enrichObservation, parseKickoff, parseListings } from '../lib/football/adapters/sources.ts';
 import { PartialListingReadError } from '../lib/football/domain/ports.ts';
-import { SCHEDULES, readSchedule, readSeasonMembership } from '../lib/football/adapters/schedule.ts';
+import { SCHEDULES, createFixtureSchedule } from '../lib/football/adapters/schedule.ts';
+import {enqueueSchedule,enqueueMembership} from './schedule-fixture.ts';
 import { matchObservation, mergeSchedulePartitions } from '../lib/football/domain/matching.ts';
 import { parseScoreboard } from '../lib/sunday.ts';
 import { GameSchema, ScheduleGameSchema, SessionSchema } from '../lib/football/shared.ts';
@@ -445,18 +446,15 @@ test('Sportsurge discards partial results when its parent request is canceled',a
 });
 
 test('schedule requests all college groups and rejects partial event parsing', async () => {
-  const original = globalThis.fetch;
-  const urls: string[] = [];
+  const fixture=createFixtureSchedule();
   const event = {id:'401858236',date:'2026-09-26T16:00:00Z',competitions:[{competitors:[
     {homeAway:'home',team:{id:'221',displayName:'Pittsburgh'}},
     {homeAway:'away',team:{id:'2083',displayName:'Bucknell'}},
   ]}]};
-  globalThis.fetch = async input => {
-    urls.push(String(input));
-    return Response.json({events:[event],week:{number:4}});
-  };
+  for(const partition of SCHEDULES.filter(partition=>partition.league==='ncaaf'))enqueueSchedule(fixture,partition,now,()=>({events:[event],week:{number:4}}));
   try {
-    const college = await Promise.all(SCHEDULES.filter(partition=>partition.league==='ncaaf').map(partition => readSchedule(partition,now,new AbortController().signal)));
+    const college = await Promise.all(SCHEDULES.filter(partition=>partition.league==='ncaaf').map(partition => fixture.readSchedule(partition,now,new AbortController().signal)));
+    const urls=fixture.fixtureRequests().map(request=>request.url);
     assert.equal(urls.filter(value => new URL(value).searchParams.get('groups') === '80').length,9);
     assert.equal(urls.filter(value => new URL(value).searchParams.get('groups') === '81').length,9);
     assert.equal(urls.filter(value => new URL(value).searchParams.get('groups') === '35').length,9);
@@ -465,21 +463,21 @@ test('schedule requests all college groups and rejects partial event parsing', a
     assert.equal(new URL(urls[0]).searchParams.get('dates'),'20260926');
     assert.ok(urls.some(value=>new URL(value).searchParams.get('dates')==='20261003'));
     assert.deepEqual(mergeSchedulePartitions(college.map(result => result.games))[0].partitions,['fbs','fcs','d2-d3']);
-    globalThis.fetch = async () => Response.json({events:[event,{id:'broken'}]});
-    await assert.rejects(readSchedule(SCHEDULES[1],now,new AbortController().signal),/schedule-incomplete-or-duplicate/);
-  } finally { globalThis.fetch = original; }
+    enqueueSchedule(fixture,SCHEDULES[1],now,()=>({events:[event,{id:'broken'}]}),[-1,0]);
+    await assert.rejects(fixture.readSchedule(SCHEDULES[1],now,new AbortController().signal),/schedule-incomplete-or-duplicate/);
+  } finally { fixture.close(); }
 });
 
 test('season membership parses complete ESPN Core group refs and rejects overlap', async () => {
-  const original = globalThis.fetch;
+  const fixture=createFixtureSchedule();
   const ref = (id: string) => ({'$ref':`http://sports.core.api.espn.com/v2/sports/football/leagues/college-football/seasons/2026/teams/${id}?lang=en&region=us`});
-  globalThis.fetch = async input => Response.json({count:1,pageCount:1,pageIndex:1,items:[ref(String(input).includes('/groups/80/') ? '221' : String(input).includes('/groups/81/') ? '2083' : '2013')]});
+  enqueueMembership(fixture,2026,group=>({count:1,pageCount:1,pageIndex:1,items:[ref(group==='80'?'221':group==='81'?'2083':'2013')]}));
   try {
-    const membership = await readSeasonMembership(2026,new AbortController().signal);
+    const membership = await fixture.readSeasonMembership(2026,new AbortController().signal);
     assert.deepEqual(membership.teams,{'221':'fbs','2083':'fcs','2013':'d2-d3'});
-    globalThis.fetch = async () => Response.json({count:1,pageCount:1,pageIndex:1,items:[ref('221')]});
-    await assert.rejects(readSeasonMembership(2026,new AbortController().signal),/membership-overlapping-groups/);
-    globalThis.fetch = async () => Response.json({count:2,pageCount:1,pageIndex:1,items:[ref('221')]});
-    await assert.rejects(readSeasonMembership(2026,new AbortController().signal),/membership-incomplete/);
-  } finally { globalThis.fetch = original; }
+    enqueueMembership(fixture,2026,()=>({count:1,pageCount:1,pageIndex:1,items:[ref('221')]}));
+    await assert.rejects(fixture.readSeasonMembership(2026,new AbortController().signal),/membership-overlapping-groups/);
+    enqueueMembership(fixture,2026,()=>({count:2,pageCount:1,pageIndex:1,items:[ref('221')]}));
+    await assert.rejects(fixture.readSeasonMembership(2026,new AbortController().signal),/membership-incomplete/);
+  } finally { fixture.close(); }
 });

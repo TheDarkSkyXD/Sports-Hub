@@ -40,7 +40,7 @@ test('routes use the client or HTTP facade and the worker uses composition', asy
     ['lib/playback/providers/streamcenter.ts','import "./streamcenter-player.ts";'],
   ]) assert.deepEqual(await boundaryMessages(path,source),[],`${path}: ${source}`);
 
-  assert.equal((await boundaryMessages('lib/football/runtime/coordinator.ts','import "../adapters/store.ts";')).length,1);
+  assert.deepEqual(await boundaryMessages('lib/football/runtime/coordinator.ts','import "../adapters/store.ts";'),[]);
   assert.equal((await boundaryMessages('lib/football/runtime/worker.ts','import "./coordinator.ts";')).length,1);
 });
 

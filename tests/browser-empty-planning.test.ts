@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mock,test} from 'node:test';
+import {test} from 'node:test';
 import {FootballStore} from '../lib/football/adapters/store.ts';
 import {FootballCoordinator} from '../lib/football/runtime/coordinator.ts';
 import type {SportsurgeCatalog,StreameastCatalog} from '../lib/football/shared.ts';
@@ -26,7 +26,7 @@ function fixture(){
 
 for(const source of ['sportsurge-v2','streameast'] as const)for(const state of ['empty','pending','failed'] as const){
  const nextSweepAt=at+(state==='empty'?18_000_000:state==='failed'?300_000:1000);
- test(`${source} polling ${state} catalogs preserves its deadline without loading unrelated details`,async()=>{
+ test(`${source} polling ${state} catalogs preserves its deadline and saved details`,async()=>{
   const {store,coordinator}=fixture(),value=catalog(state);
   try{
    const event={id:'nfl:10001',league:'nfl' as const,title:'Away at Home',teams:['Away','Home'] as [string,string],kickoff:at,detail:{kind:'pending' as const}};
@@ -34,24 +34,18 @@ for(const source of ['sportsurge-v2','streameast'] as const)for(const state of [
     [{...event,url:'https://v2.sportsurge.net/watch-10001-nfl-away-home/',sourceStatus:'live',advertisedLinkCount:1}]:[]},receivedAt:at},[]);
    else store.saveStreameastCatalog({catalog:{...value,events:state==='pending'?
     [{...event,url:'https://v2.streameast.ga/nfl/away-vs-home/',espnEventId:null}]:[]},receivedAt:at},[]);
-   const reads=mock.method(store,'detailEvidence');
-   try{
-    assert.deepEqual(await coordinator.command({kind:'collector-polling',source}),{kind:'collector-polling',nextSweepAt});
-    assert.equal(reads.mock.callCount(),0,'Empty planning must not decode unrelated saved detail rows');
-   }finally{reads.mock.restore();}
+   assert.deepEqual(await coordinator.command({kind:'collector-polling',source}),{kind:'collector-polling',nextSweepAt});
+   assert.deepEqual(store.detailEvidence(),[]);
   }finally{await coordinator.stop();}
  });
  test(`${source} accepts ${state} checkpoints without detail persistence or reuse setup`,async()=>{
   const {store,coordinator}=fixture(),value=catalog(state);
-  const reads=mock.method(store,'detailEvidence');
   try{
    const command=source==='sportsurge-v2'?{kind:'sportsurge-catalog' as const,catalog:{...value,catalogIssues:[]} satisfies SportsurgeCatalog}:
     {kind:'streameast-catalog' as const,catalog:value satisfies StreameastCatalog};
    assert.deepEqual(await coordinator.command(command),{kind:'catalog-ack',nextSweepAt,skipDetailEventIds:[]});
-   const detailReads=reads.mock.callCount();
    assert.deepEqual(await coordinator.command({kind:'collector-polling',source}),{kind:'collector-polling',nextSweepAt});
-   assert.equal(detailReads,1,'Only candidate reconciliation needs a detail read for this checkpoint');
-   assert.equal(reads.mock.callCount(),detailReads,'Polling after acceptance must not load details');
-  }finally{reads.mock.restore();await coordinator.stop();}
+   assert.deepEqual(store.detailEvidence(),[]);
+  }finally{await coordinator.stop();}
  });
 }

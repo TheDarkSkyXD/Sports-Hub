@@ -6,7 +6,9 @@ import { streameastProvider } from './providers/streameast.ts';
 import { streameastServerProvider } from './providers/streameast-server.ts';
 import { sportsurgeV2Provider } from './providers/sportsurge-v2.ts';
 import { wikisportProvider } from './providers/wikisport.ts';
-import { eventPageProbeIdentity, eventPageProvider } from './providers/event-page.ts';
+import { eventPageProvider } from './providers/event-page.ts';
+import {nativeDomain} from '../football/domain/native.ts';
+import {z} from 'zod';
 import { swacProvider } from './providers/swac.ts';
 import { tvappProvider } from './providers/tvapp.ts';
 import { catalogStreamProvider } from './providers/catalog-stream.ts';
@@ -21,16 +23,9 @@ const eventPage=eventPageProvider();
 const swac=swacProvider();
 const tvapp=tvappProvider();
 const catalogStream=catalogStreamProvider();
-const eventPageIdentities=new WeakMap<Extract<CandidateLocator,{provider:'event-page'}>,{fingerprint:string;identity:string}>();
 
 export function providerProbeIdentity(locator:CandidateLocator):string {
-  const fingerprint=JSON.stringify(locator);
-  if(locator.provider!=='event-page')return fingerprint;
-  const cached=eventPageIdentities.get(locator);
-  if(cached?.fingerprint===fingerprint)return cached.identity;
-  const identity=eventPageProbeIdentity(locator);
-  eventPageIdentities.set(locator,{fingerprint,identity});
-  return identity;
+  return nativeDomain('providerProbeIdentity',[locator],z.string());
 }
 
 export function openProvider(locator: CandidateLocator, signal: AbortSignal, purpose: 'playback' | 'probe' = 'playback'): Promise<ProviderPlayback> {

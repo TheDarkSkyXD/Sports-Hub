@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { SCHEDULES, readSchedule } from '../lib/football/adapters/schedule.ts';
+import { SCHEDULES, createFixtureSchedule } from '../lib/football/adapters/schedule.ts';
+import {enqueueSchedule} from './schedule-fixture.ts';
 import { SOURCES, compatiblePlayers, parseListings, tvappPlayers } from '../lib/football/adapters/sources.ts';
 import { matchObservation } from '../lib/football/domain/matching.ts';
 import { BoardSchema, CandidateLocatorSchema } from '../lib/football/shared.ts';
@@ -31,20 +32,15 @@ test('NHL schedule keeps ESPN identities and uses its hockey endpoint',async()=>
   assert.ok(partition);
   assert.equal(partition.sport,'hockey');
   assert.equal(partition.path,'nhl');
-  const original=globalThis.fetch;
-  const requested:string[]=[];
-  globalThis.fetch=async input=>{
-    const url=String(input);
-    requested.push(url);
-    return Response.json(new URL(url).searchParams.get('dates')==='20261008'?
-      scoreboard('401892456','Edmonton Oilers','Anaheim Ducks'):{events:[]});
-  };
-  try{
-    const result=await readSchedule(partition,now,new AbortController().signal);
+  const fixture=createFixtureSchedule();
+  enqueueSchedule(fixture,partition,now,url=>new URL(url).searchParams.get('dates')==='20261008'?
+      scoreboard('401892456','Edmonton Oilers','Anaheim Ducks'):{events:[]});  try{
+    const result=await fixture.readSchedule(partition,now,new AbortController().signal);
+    const requested=fixture.fixtureRequests().map(request=>request.url);
     assert.deepEqual(result.games.map(game=>game.id),['nhl-401892456']);
     assert.equal(requested.length,9);
     assert.ok(requested.every(url=>new URL(url).pathname==='/apis/site/v2/sports/hockey/nhl/scoreboard'));
-  }finally{globalThis.fetch=original;}
+  }finally{fixture.close();}
 });
 
 test('hockey catalogs keep NHL rows and discard college hockey rows',()=>{

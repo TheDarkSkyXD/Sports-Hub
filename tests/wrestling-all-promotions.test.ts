@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readSchedule, SCHEDULES, type ScheduleListingCache } from '../lib/football/adapters/schedule.ts';
+import { createFixtureSchedule, SCHEDULES } from '../lib/football/adapters/schedule.ts';
+import {enqueueListings,waitForSchedule} from './schedule-fixture.ts';
+import {SOURCES} from '../lib/football/adapters/sources.ts';
 import { wrestlingEventKey, wrestlingPromotion, wrestlingShowKey } from '../lib/football/domain/wrestling-events.ts';
 import { matchObservation } from '../lib/football/domain/matching.ts';
 import { combatListingFeedEligible, feedEligible } from '../lib/football/domain/feed-eligibility.ts';
@@ -58,11 +60,10 @@ test('promotion recognition is explicit and generic identity keeps the full norm
 });
 
 test('all four wrestling partitions read PPV once through a shared cache and match their own event',async()=>{
-  const cache:ScheduleListingCache={};
-  const calls:string[]=[];
-  const reader=async(url:string)=>{calls.push(url);return onlyPpv(url);};
-  const results=await Promise.all(['wwe','tna','aew','wrestling'].map(league=>readSchedule(partition(league),now,
-    new AbortController().signal,undefined,undefined,undefined,cache,reader)));
+  const fixture=createFixtureSchedule();await enqueueListings(fixture,onlyPpv);
+  const results=await Promise.all(['wwe','tna','aew','wrestling'].map(league=>fixture.readSchedule(partition(league),now,
+    new AbortController().signal)));
+  const calls=fixture.fixtureRequests().map(request=>request.url);
   assert.equal(calls.filter(url=>url.includes('ppv.st')).length,1);
   for(const [index,result] of results.entries()){
     assert.equal(result.games.length,1);
@@ -73,20 +74,20 @@ test('all four wrestling partitions read PPV once through a shared cache and mat
       title:game.name,league:game.league,teams:null,kickoff:start,rawTime:String(start/1000),observedAt:now,parserVersion:3 as const};
     assert.deepEqual(matchObservation(observation,result.games,now),{kind:'matched',gameId:game.id});
   }
-  await assert.rejects(readSchedule(partition('boxing'),now,new AbortController().signal,undefined,
-    undefined,undefined,undefined,onlyPpv),/source-schedule-unavailable/);
+  const boxing=createFixtureSchedule();await enqueueListings(boxing,onlyPpv,false);
+  await assert.rejects(boxing.readSchedule(partition('boxing'),now,new AbortController().signal),/source-schedule-unavailable/);
 });
 
 test('canceling one wrestling partition preserves the shared read for another partition',async()=>{
-  const cache:ScheduleListingCache={};
-  let release:()=>void=()=>{};
-  const gate=new Promise<void>(resolve=>{release=resolve;});
-  const reader=async(url:string,signal:AbortSignal)=>{await gate;assert.equal(signal.aborted,false);return onlyPpv(url);};
+  const fixture=createFixtureSchedule();
+  for(const source of SOURCES.filter(row=>['ppv','streamed','livesportpro'].includes(row.id)))fixture.enqueueFixture({url:source.url,gate:'listing',...(source.id==='ppv'?{body:ppv}:{failure:{message:'offline'}})});
   const canceled=new AbortController();
-  const a=readSchedule(partition('aew'),now,canceled.signal,undefined,undefined,undefined,cache,reader);
-  const b=readSchedule(partition('wrestling'),now,new AbortController().signal,undefined,undefined,undefined,cache,reader);
+  const a=fixture.readSchedule(partition('aew'),now,canceled.signal);
+  const b=fixture.readSchedule(partition('wrestling'),now,new AbortController().signal);
+  await waitForSchedule(()=>fixture.fixtureRequests().length===3);
   canceled.abort();
   await assert.rejects(a,{name:'AbortError'});
-  release();
+  assert.deepEqual(fixture.fixtureCancels(),[]);
+  fixture.releaseFixtureGate('listing');
   assert.equal((await b).games[0].league,'wrestling');
 });

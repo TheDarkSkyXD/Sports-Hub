@@ -49,21 +49,28 @@ test('a dated live binding prevents the first undated republish after final grac
     try{return db.prepare('SELECT COUNT(*) AS n FROM observations WHERE id=?').get(listing.id)?.n;}
     finally{db.close();}
   };
+  const listingPublished=(count:number)=>{
+    if(listingReads<count)return false;
+    const db=new DatabaseSync(path);
+    try{return db.prepare("SELECT json_extract(payload,'$.at') AS at FROM sources WHERE id=?")
+      .get('vipbox-cfb')?.at===clock;}
+    finally{db.close();}
+  };
   try{
     await coordinator.command({kind:'set-retention',minutes:5});
     await coordinator.refresh(true);
-    await until(()=>listingReads>=1);
+    await until(()=>listingPublished(1));
     clock+=1_800_001;
     finished=true;
     await coordinator.refresh(true);
-    await until(()=>listingReads>=2);
+    await until(()=>listingPublished(2));
     clock+=5*60_000+1;
     await coordinator.command({kind:'sources'});
     assert.equal(countObservation(),0,'grace cleanup removes the dated observation');
     undated=true;
     clock+=25*60_000;
     await coordinator.refresh(true);
-    await until(()=>listingReads>=3);
+    await until(()=>listingPublished(3));
     const sources=await coordinator.command({kind:'sources'});
     assert.equal(sources.kind,'sources');
     if(sources.kind==='sources'){

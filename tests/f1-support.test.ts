@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import {mock,test} from 'node:test';
+import {test} from 'node:test';
 import {parseScoreboard} from '../lib/sunday.ts';
 import {BoardSchema,CandidateLocatorSchema,GameSchema,isMotorsportsLeague,type Observation,type RaceGame} from '../lib/football/shared.ts';
-import {SCHEDULES,readSchedule,type ScheduleListingCache} from '../lib/football/adapters/schedule.ts';
-import {SOURCES,compatiblePlayers,createFixtureCollector,parseListings} from '../lib/football/adapters/sources.ts';
+import {SCHEDULES,createFixtureSchedule} from '../lib/football/adapters/schedule.ts';
+import {enqueueSchedule} from './schedule-fixture.ts';
+import {SOURCES,compatiblePlayers,parseListings} from '../lib/football/adapters/sources.ts';
 import {matchObservation} from '../lib/football/domain/matching.ts';
 import {validEventPagePair} from '../lib/playback/providers/event-page-policy.ts';
 
@@ -46,14 +47,15 @@ test('ESPN weekend expands each competition and keeps old board v2 matchups read
   assert.deepEqual(board.leagues.f1,{scoresAt:null,sourceAt:null,errors:[]});
 });
 test('daily ESPN repeats merge into five sessions without one-event completeness false positives',async()=>{
-  const fetchMock=mock.method(globalThis,'fetch',async()=>Response.json(weekend));
+  const fixture=createFixtureSchedule();
   try{
     const partition=SCHEDULES.find(source=>source.id==='f1');
     assert.ok(partition);
-    const result=await readSchedule(partition,now,new AbortController().signal);
+    enqueueSchedule(fixture,partition,now,()=>weekend);
+    const result=await fixture.readSchedule(partition,now,new AbortController().signal);
     assert.deepEqual(result.games.map(game=>game.id),sessionIds.map(id=>`f1-${id}`));
     assert.deepEqual(result.horizonErrors,undefined);
-  }finally{fetchMock.mock.restore();}
+  }finally{fixture.close();}
 });
 
 test('F1 match requires the same round, session, sport, and published start',()=>{
@@ -123,9 +125,8 @@ function listing(){return `<section class="lg" id="g-lg-f1-20261009">
   <a class="ev ev-plain" href="/event/2026-nascar-cup-series-playoff-at-charlotte-road-course" title="2026 NASCAR Cup Series Playoff at Charlotte Road Course" data-start="${Date.parse('2026-10-11T20:00:00Z')/1000}"><img alt="NASCAR Cup Series"></a>
   </section>`;}
 const motorsportUrls=['https://crackstreams.st/F1','https://methstreams.st/F1'];
-type FixtureCollector=ReturnType<typeof createFixtureCollector>;
-const readMotorsports=(collector:FixtureCollector,partition:typeof SCHEDULES[number],at:number,signal:AbortSignal,
-  cache?:ScheduleListingCache)=>readSchedule(partition,at,signal,undefined,undefined,undefined,cache,collector.readHtml);
+type FixtureCollector=ReturnType<typeof createFixtureSchedule>;
+const readMotorsports=(collector:FixtureCollector,partition:typeof SCHEDULES[number],at:number,signal:AbortSignal)=>collector.readSchedule(partition,at,signal);
 const requestCounts=(collector:FixtureCollector)=>[...new Map(motorsportUrls.map(url=>[
   url,collector.fixtureRequests().filter(request=>request.url===url).length] as const)).entries()].sort();
 const queueListings=(collector:FixtureCollector)=>{
@@ -187,7 +188,7 @@ test('every race series produces a schema-valid event-page player only for its p
 });
 
 test('source-backed MotoGP and Motorsport schedules deduplicate providers and preserve Practice 4',async()=>{
-  const collector=createFixtureCollector();
+  const collector=createFixtureSchedule();
   queueListings(collector);
   const signal=new AbortController().signal;
   const motogp=SCHEDULES.find(source=>source.id==='motogp');
@@ -207,14 +208,13 @@ test('failed or cancelled shared catalog reads allow the next refresh to recover
   const motogp=SCHEDULES.find(source=>source.id==='motogp');
   const motorsport=SCHEDULES.find(source=>source.id==='motorsport');
   assert.ok(motogp&&motorsport);
-  const collector=createFixtureCollector();
-  const cache:ScheduleListingCache={};
+  const collector=createFixtureSchedule();
   for(const url of motorsportUrls)collector.enqueueFixture({url,failure:{message:'catalog unavailable'}});
-  await assert.rejects(readMotorsports(collector,motogp,now+1000,new AbortController().signal,cache),
+  await assert.rejects(readMotorsports(collector,motogp,now+1000,new AbortController().signal),
     /source-schedule-unavailable/);
   const cancelled=new AbortController();
   for(const url of motorsportUrls)collector.enqueueFixture({url,pending:true});
-  const pending=readMotorsports(collector,motorsport,now+2000,cancelled.signal,cache);
+  const pending=readMotorsports(collector,motorsport,now+2000,cancelled.signal);
   await waitForFixture(()=>collector.fixtureRequests().length===4,'both pending reads were admitted');
   cancelled.abort(new DOMException('Stopped','AbortError'));
   await assert.rejects(pending,error=>error instanceof Error&&error.name==='AbortError');
@@ -222,13 +222,13 @@ test('failed or cancelled shared catalog reads allow the next refresh to recover
     'both native reads acknowledged cancellation');
   for(const url of motorsportUrls)assert.ok(collector.fixtureCancels().includes(url));
   queueListings(collector);
-  const recovered=await readMotorsports(collector,motorsport,now+3000,new AbortController().signal,cache);
+  const recovered=await readMotorsports(collector,motorsport,now+3000,new AbortController().signal);
   assert.equal(recovered.games.length,1);
   assert.deepEqual(requestCounts(collector),motorsportUrls.map(url=>[url,3]));
 });
 
 test('paired transient motorsports timeouts recover both shared schedules',async()=>{
-  const collector=createFixtureCollector();
+  const collector=createFixtureSchedule();
   for(const url of motorsportUrls){
     collector.enqueueFixture({url,failure:{message:'timed out'}});
     collector.enqueueFixture({url,body:listing()});
@@ -244,7 +244,7 @@ test('paired transient motorsports timeouts recover both shared schedules',async
 });
 
 test('one timed-out provider retries without fetching a healthy provider again',async()=>{
-  const collector=createFixtureCollector();
+  const collector=createFixtureSchedule();
   collector.enqueueFixture({url:'https://crackstreams.st/F1',body:listing()});
   collector.enqueueFixture({url:'https://methstreams.st/F1',failure:{message:'timed out'}});
   collector.enqueueFixture({url:'https://methstreams.st/F1',body:listing()});
@@ -258,7 +258,7 @@ test('one timed-out provider retries without fetching a healthy provider again',
 });
 
 test('repeated motorsports timeouts keep the schedule unavailable',async()=>{
-  const collector=createFixtureCollector();
+  const collector=createFixtureSchedule();
   for(const url of motorsportUrls)for(let attempt=0;attempt<2;attempt++)
     collector.enqueueFixture({url,failure:{message:'timed out'}});
   const motorsport=SCHEDULES.find(source=>source.id==='motorsport');
@@ -269,7 +269,7 @@ test('repeated motorsports timeouts keep the schedule unavailable',async()=>{
 });
 
 test('parent cancellation does not retry motorsports timeouts',async()=>{
-  const controller=new AbortController(),collector=createFixtureCollector();
+  const controller=new AbortController(),collector=createFixtureSchedule();
   for(const url of motorsportUrls)collector.enqueueFixture({url,pending:true});
   const motogp=SCHEDULES.find(source=>source.id==='motogp');
   assert.ok(motogp);

@@ -235,7 +235,7 @@ test('history loading keeps the last settled failure until history succeeds',asy
   }
 });
 
-test('unchanged current scores do not rebuild projection for pending history coverage',async()=>{
+test('unchanged scores stay visible while recent schedule history changes coverage',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'football-board-pending-history-'));
   const history=deferred<void>();
   const published=deferred<void>();
@@ -255,27 +255,30 @@ test('unchanged current scores do not rebuild projection for pending history cov
   });
   try {
     await coordinator.refresh(true);
-    const measured=coordinator as unknown as {rebuild:()=>void};
-    const rebuild=measured.rebuild.bind(coordinator);
-    let rebuilds=0;
-    measured.rebuild=()=>{rebuilds++;rebuild();};
+    const initial=await coordinator.command({kind:'board'});
+    assert.ok(initial.kind==='board');
     currentTime+=30_000;
     const refreshing=coordinator.refresh(true);
     await published.promise;
     const partial=await coordinator.command({kind:'board'});
     assert.equal(partial.kind,'board');
     if(partial.kind==='board')assert.deepEqual(partial.board.games.map(game=>game.id),['100']);
-    assert.equal(rebuilds,0,'pending history should not reproject unchanged games');
+    if(partial.kind==='board')assert.deepEqual(partial.board.games,initial.board.games);
     history.resolve();
     await refreshing;
-    assert.equal(rebuilds,1,'complete history restores coverage once');
+    const complete=await coordinator.command({kind:'board'});
+    assert.ok(complete.kind==='board'&&partial.kind==='board');
+    assert.deepEqual(complete.board.games,initial.board.games);
+    assert.ok(complete.board.revision>partial.board.revision,'settled history publishes its restored coverage');
     currentTime+=30_000;
     await coordinator.refresh(true);
-    assert.equal(rebuilds,2,'failed history changes settled coverage');
     const incomplete=await coordinator.command({kind:'board'});
     assert.equal(incomplete.kind,'board');
-    if(incomplete.kind==='board')assert.deepEqual(incomplete.board.leagues.nfl.errors,
-      ['NFL recent schedule history is incomplete: 20260925:timeout']);
+    if(incomplete.kind==='board'){
+      assert.deepEqual(incomplete.board.leagues.nfl.errors,
+        ['NFL recent schedule history is incomplete: 20260925:timeout']);
+      assert.ok(incomplete.board.revision>complete.board.revision);
+    }
   } finally {
     history.resolve();
     await coordinator.stop();
@@ -291,16 +294,15 @@ test('simultaneous schedule partitions publish together before refresh completes
     now:()=>at,schedules,sources:[],
     readSchedule:async source=>({games:source.id==='nfl'?[nfl]:source.id==='fbs'?[fbs]:[fcs],at,league:source.league}),
   });
-  const measured=coordinator as unknown as {rebuild:()=>void};
-  const rebuild=measured.rebuild.bind(coordinator);
-  let rebuilds=0;
-  measured.rebuild=()=>{rebuilds++;rebuild();};
   try {
     await coordinator.refresh(true);
-    assert.equal(rebuilds,1);
     const board=await coordinator.command({kind:'board'});
     assert.equal(board.kind,'board');
-    if(board.kind==='board')assert.deepEqual(board.board.games.map(game=>game.id).sort(),['100','ncaaf-200','ncaaf-201']);
+    if(board.kind==='board'){
+      assert.deepEqual(board.board.games.map(game=>game.id).sort(),['100','ncaaf-200','ncaaf-201']);
+      assert.equal(board.board.scheduleState,'ready');
+      assert.deepEqual(board.board.leagues.ncaaf.errors,[]);
+    }
   } finally {
     await coordinator.stop();
     rmSync(dir,{recursive:true,force:true});
@@ -340,27 +342,25 @@ test('a current result is visible to board and sources while its history read re
   }
 });
 
-test('stop discards a queued schedule publication',async()=>{
+test('stop cancels pending schedule reads and rejects later commands',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'football-board-stop-publication-'));
   const history=deferred<void>();
+  let sourceSignal:AbortSignal|undefined;
   const coordinator=createFootballCoordinator(join(dir,'state.sqlite'),{
     now:()=>at,schedules:[schedules[0]],sources:[],
-    readSchedule:async (_source,_now,_signal,onCurrent)=>{
+    readSchedule:async (_source,_now,signal,onCurrent)=>{
+      sourceSignal=signal;
       onCurrent?.({games:[nfl],at,league:'nfl',history:{kind:'loading',day:'20260925'}});
       await history.promise;
       return {games:[nfl],at,league:'nfl'};
     },
   });
-  const measured=coordinator as unknown as {rebuild:()=>void};
-  const rebuild=measured.rebuild.bind(coordinator);
-  let rebuilds=0;
-  measured.rebuild=()=>{rebuilds++;rebuild();};
   try {
     const refreshing=coordinator.refresh(true);
     const stopping=coordinator.stop();
+    assert.equal(sourceSignal?.aborted,true);
     history.resolve();
     await Promise.all([refreshing,stopping]);
-    assert.equal(rebuilds,0);
     assert.deepEqual(await coordinator.command({kind:'board'}),{kind:'error',status:503,message:'Pipeline is stopped.'});
   } finally {
     history.resolve();

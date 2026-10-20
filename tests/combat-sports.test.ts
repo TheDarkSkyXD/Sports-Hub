@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {parseListings,SOURCES} from '../lib/football/adapters/sources.ts';
-import {readSchedule,SCHEDULES} from '../lib/football/adapters/schedule.ts';
+import {createFixtureSchedule,SCHEDULES} from '../lib/football/adapters/schedule.ts';
+import {enqueueListings} from './schedule-fixture.ts';
 import {createSourceEventMatcher,matchObservation} from '../lib/football/domain/matching.ts';
 import {combatListingFeedEligible} from '../lib/football/domain/feed-eligibility.ts';
 import {workingFeedMatches,workingFeedOwner} from '../lib/football/domain/working-feed.ts';
@@ -77,37 +78,40 @@ test('native catalogs classify combat while keeping published fighter metadata',
 test('boxing schedule deduplicates mirrors by card and day',async()=>{
   const event=JSON.parse(listing('boxing','Castillo vs Zarate',Date.parse('2026-10-10T01:00:00Z'),'event-1',
     {home:{name:'Castillo'},away:{name:'Zarate'}}));
-  const result=await readSchedule(SCHEDULES.find(row=>row.id==='boxing')!,at,new AbortController().signal,undefined,
-    undefined,undefined,undefined,async()=>JSON.stringify(event));
+  const first=createFixtureSchedule();
+  await enqueueListings(first,async()=>JSON.stringify(event),false);
+  const result=await first.readSchedule(SCHEDULES.find(row=>row.id==='boxing')!,at,new AbortController().signal);
   assert.equal(result.games.length,1);
   assert.equal(result.games[0].name,'Castillo vs Zarate');
   assert.equal(result.games[0].league,'boxing');
-  const oneMirror=await readSchedule(SCHEDULES.find(row=>row.id==='boxing')!,at,new AbortController().signal,undefined,
-    undefined,undefined,undefined,async url=>{
+  const second=createFixtureSchedule();
+  await enqueueListings(second,async url=>{
       if(url.includes('streamed.st'))throw new Error('source offline');
       return JSON.stringify(event);
-    });
+    },false);
+  const oneMirror=await second.readSchedule(SCHEDULES.find(row=>row.id==='boxing')!,at,new AbortController().signal);
   assert.equal(oneMirror.games.length,1);
   const shifted=JSON.parse(listing('boxing','Castillo vs Zarate',Date.parse('2026-10-10T05:00:00Z'),'event-2',
     {home:{name:'Castillo'},away:{name:'Zarate'}}));
-  await assert.rejects(readSchedule(SCHEDULES.find(row=>row.id==='boxing')!,at,new AbortController().signal,undefined,
-    undefined,undefined,undefined,async url=>JSON.stringify(url.includes('streamed.st')?event:shifted)),
+  const conflicting=createFixtureSchedule();
+  await enqueueListings(conflicting,async url=>JSON.stringify(url.includes('streamed.st')?event:shifted),false);
+  await assert.rejects(conflicting.readSchedule(SCHEDULES.find(row=>row.id==='boxing')!,at,new AbortController().signal),
   /source-schedule-conflicting-event/);
 });
 
 test('dated boxing cards count down before their start and show in progress from their start',async()=>{
   const start=Date.parse('2026-10-17T16:00:00Z');
   const partition=SCHEDULES.find(row=>row.id==='boxing');assert.ok(partition);
-  const observations=parseListings(source('livesportpro'),
-    listing('boxing','Volkovs vs McIntyre',start,'volkovs-vs-mcintyre'),start-1000).observations;
+  const body=listing('boxing','Volkovs vs McIntyre',start,'volkovs-vs-mcintyre');
+  const observations=parseListings(source('livesportpro'),body,start-1000).observations;
   assert.equal(observations.length,1);
-  const offline=async()=>{throw new Error('The saved listing should be used');};
   for(const [now,status,lifecycle,detail] of [
     [start-1000,'pre','scheduled','Scheduled'],[start,'in','live','In progress'],
     [start+60*60_000,'in','live','In progress'],
   ] as const){
-    const result=await readSchedule(partition,now,new AbortController().signal,undefined,undefined,undefined,
-      {snapshot:{at:now,observations}},offline);
+    const fixture=createFixtureSchedule();
+    await enqueueListings(fixture,async()=>body,false);
+    const result=await fixture.readSchedule(partition,now,new AbortController().signal);
     assert.equal(result.games.length,1);
     const game=result.games[0];
     assert.deepEqual([game.status,game.lifecycle,game.detail],[status,lifecycle,detail],new Date(now).toISOString());

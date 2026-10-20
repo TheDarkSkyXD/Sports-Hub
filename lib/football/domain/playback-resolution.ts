@@ -1,8 +1,7 @@
+import {z} from 'zod';
 import type {CandidateLocator} from '../shared.ts';
+import {nativeDomain} from './native.ts';
 
 export function playbackResolution(locator:CandidateLocator):'http'|'browser' {
-  switch(locator.provider){
-    case 'gooz':case 'swac':case 'streamcenter':case 'streameast':case 'wikisport':return 'http';
-    case 'sportsurge-v2':case 'streameast-server':case 'event-page':case 'tvapp':case 'catalog-stream':return 'browser';
-  }
+  return nativeDomain('playbackResolution',[locator],z.enum(['http','browser']));
 }

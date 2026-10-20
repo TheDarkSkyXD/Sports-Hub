@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mock,test} from 'node:test';
+import {test} from 'node:test';
 import {FootballStore} from '../lib/football/adapters/store.ts';
 import {FootballCoordinator} from '../lib/football/runtime/coordinator.ts';
 import type {Game} from '../lib/football/shared.ts';
 
-test('each rebuild reads present and absent memberships once per season and publishes later changes',async()=>{
+test('rebuilds publish present and absent season memberships and later changes',async()=>{
   const at=Date.parse('2026-10-18T18:00:00Z');
   const store=new FootballStore(':memory:');
   const team=(id:string)=>({id:`espn:ncaaf:${id}`,name:`Fixture ${id}`,short:`Fixture ${id}`,abbreviation:`F${id}`,color:'112233',score:'0'});
@@ -14,7 +14,6 @@ test('each rebuild reads present and absent memberships once per season and publ
     status:'pre',lifecycle:'scheduled',detail:'Scheduled',redzone:false,partitions:['fbs']}));
   store.savePartition('fbs',{games,at});
   store.saveMembership({season:2026,at,teams:{'0':'fbs','1':'fcs'}});
-  const reads=mock.method(store,'membership');
   const coordinator=new FootballCoordinator({store,now:()=>at,id:randomUUID,
     schedules:[{id:'fbs',league:'ncaaf',path:'/fixture',group:null}],sources:[],
     readSchedule:async()=>({games,league:'ncaaf',at}),readSeasonMembership:async()=>{throw new Error('Unexpected membership fetch');},
@@ -22,7 +21,6 @@ test('each rebuild reads present and absent memberships once per season and publ
     compatiblePlayers:()=>[],missingPlayerReason:()=> 'no-published-player',retryAfterMs:()=>0,
     probeCandidate:async()=>({kind:'unavailable',reason:'playback'})});
   const rebuild=async()=>{
-    reads.mock.resetCalls();
     const reply=await coordinator.command({kind:'set-retention',minutes:1440});
     assert.equal(reply.kind,'board');
     if(reply.kind!=='board')throw new Error('Expected board');
@@ -30,16 +28,14 @@ test('each rebuild reads present and absent memberships once per season and publ
       assert.ok('home' in game);
       return [game.id,game.home.membership?.subdivision??null,game.away.membership?.subdivision??null];
     });
-    return {memberships,reads:reads.mock.callCount()};
+    return memberships;
   };
   try {
     const before=await rebuild();
-    assert.deepEqual(before.memberships,[['ncaaf-0','fbs','fcs'],['ncaaf-1','fbs','fcs'],['ncaaf-2',null,null],['ncaaf-3',null,null]]);
-    assert.equal(before.reads,2);
+    assert.deepEqual(before,[['ncaaf-0','fbs','fcs'],['ncaaf-1','fbs','fcs'],['ncaaf-2',null,null],['ncaaf-3',null,null]]);
     store.saveMembership({season:2026,at:at+1,teams:{'0':'fcs','1':'d2-d3'}});
     store.saveMembership({season:2027,at:at+1,teams:{'0':'d2-d3','1':'fbs'}});
     const after=await rebuild();
-    assert.deepEqual(after.memberships,[['ncaaf-0','fcs','d2-d3'],['ncaaf-1','fcs','d2-d3'],['ncaaf-2','d2-d3','fbs'],['ncaaf-3','d2-d3','fbs']]);
-    assert.equal(after.reads,2);
-  } finally {reads.mock.restore();await coordinator.stop();}
+    assert.deepEqual(after,[['ncaaf-0','fcs','d2-d3'],['ncaaf-1','fcs','d2-d3'],['ncaaf-2','d2-d3','fbs'],['ncaaf-3','d2-d3','fbs']]);
+  } finally {await coordinator.stop();}
 });

@@ -772,8 +772,15 @@ pub fn streameast_category(
             });
             continue;
         }
-        let source_id = attr(card, if motorsport { "data-mac-id" } else { "data-match-id" })
-            .unwrap_or_default();
+        let source_id = attr(
+            card,
+            if motorsport {
+                "data-mac-id"
+            } else {
+                "data-match-id"
+            },
+        )
+        .unwrap_or_default();
         if !(1..=12).contains(&source_id.len())
             || !source_id.bytes().all(|byte| byte.is_ascii_digit())
         {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { SCHEDULES, readSchedule } from '../lib/football/adapters/schedule.ts';
+import { SCHEDULES, createFixtureSchedule } from '../lib/football/adapters/schedule.ts';
+import {enqueueSchedule} from './schedule-fixture.ts';
 import { SOURCES, compatiblePlayers, enrichObservation, parseListings, tvappPlayers } from '../lib/football/adapters/sources.ts';
 import { matchObservation } from '../lib/football/domain/matching.ts';
 import { BoardSchema, CandidateLocatorSchema } from '../lib/football/shared.ts';
@@ -35,20 +36,15 @@ test('MLB has an independent seven-day ESPN schedule and no football situation',
   assert.ok(partition);
   assert.equal(partition.sport,'baseball');
   assert.equal(partition.path,'mlb');
-  const original=globalThis.fetch;
-  const requested:string[]=[];
-  globalThis.fetch=async input=>{
-    const url=String(input);
-    requested.push(url);
-    return Response.json(new URL(url).searchParams.get('dates')==='20261009'?
-      scoreboard('401907993',espnTime):{events:[]});
-  };
-  try {
-    const result=await readSchedule(partition,now,new AbortController().signal);
+  const fixture=createFixtureSchedule();
+  enqueueSchedule(fixture,partition,now,url=>new URL(url).searchParams.get('dates')==='20261009'?
+      scoreboard('401907993',espnTime):{events:[]});  try {
+    const result=await fixture.readSchedule(partition,now,new AbortController().signal);
+    const requested=fixture.fixtureRequests().map(request=>request.url);
     assert.deepEqual(result.games.map(row=>row.id),['mlb-401907993']);
     assert.equal(requested.length,9);
     assert.ok(requested.every(url=>new URL(url).pathname==='/apis/site/v2/sports/baseball/mlb/scoreboard'));
-  } finally {globalThis.fetch=original;}
+  } finally {fixture.close();}
 });
 
 test('MLB source catalogs and StreamCenter API match the game',()=>{

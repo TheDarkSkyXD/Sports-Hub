@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mock, test } from 'node:test';
+import { test } from 'node:test';
 import { z } from 'zod';
-import { SCHEDULES, readSchedule, readSeasonMembership } from '../lib/football/adapters/schedule.ts';
+import { SCHEDULES, createFixtureSchedule } from '../lib/football/adapters/schedule.ts';
+import {enqueueSchedule,enqueueMembership,waitForSchedule} from './schedule-fixture.ts';
 import { FootballStore } from '../lib/football/adapters/store.ts';
 import { recordFinal } from '../lib/football/domain/lifecycle.ts';
 import { detailIdentity } from '../lib/football/domain/source-policy.ts';
@@ -40,25 +41,27 @@ const drain = async () => { for (let index = 0; index < 5; index++) await new Pr
 test('official Division II/III games use one partition with current and seven-day schedule coverage', async () => {
   const lower = SCHEDULES.find(partition => partition.id === 'd2-d3');
   assert.ok(lower, 'Division II/III must be included in the default NCAA schedules');
-  const days: string[] = [];
-  const fetchMock = mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
-    const url = new URL(String(input));
+  const schedule=createFixtureSchedule();
+  enqueueSchedule(schedule,lower,at,url=>{
     assert.equal(url.searchParams.get('groups'), '35');
     assert.equal(url.searchParams.get('limit'), '200');
     const day = url.searchParams.get('dates') || '';
-    days.push(day);
-    return Response.json({ events: day === '20261017' ? fixture.scoreboards['35'].current
-      : day === '20261024' ? fixture.scoreboards['35'].future?.events : [] });
+    return {body:JSON.stringify({ events: day === '20261017' ? fixture.scoreboards['35'].current
+      : day === '20261024' ? fixture.scoreboards['35'].future?.events : [] }),...(day==='20261017'?{gate:'current'}:{})};
   });
   try {
     const early: string[][] = [];
-    const result = await readSchedule(lower, at, new AbortController().signal, current => early.push(current.games.map(game => game.id)));
+    const pending=schedule.readSchedule(lower, at, new AbortController().signal, current => early.push(current.games.map(game => game.id)));
+    await waitForSchedule(()=>schedule.fixtureRequests().some(request=>new URL(request.url).searchParams.get('dates')==='20261016'));
+    schedule.releaseFixtureGate('current');
+    const result=await pending;
+    const days=schedule.fixtureRequests().flatMap(request=>{const day=new URL(request.url).searchParams.get('dates');return day?[day]:[];});
     assert.deepEqual(early, [['ncaaf-401906940', 'ncaaf-401907890', 'ncaaf-401867961']]);
     assert.deepEqual(result.games.map(game => [game.id, game.partitions]), [
       ['ncaaf-401906940', ['d2-d3']], ['ncaaf-401907890', ['d2-d3']], ['ncaaf-401867961', ['d2-d3']], ['ncaaf-401908561', ['d2-d3']],
     ]);
     assert.deepEqual(days.sort(), ['20261016', '20261017', '20261018', '20261019', '20261020', '20261021', '20261022', '20261023', '20261024']);
-  } finally { fetchMock.mock.restore(); }
+  } finally { schedule.releaseFixtureGate('current');schedule.close(); }
 });
 
 test('a fresh official cross-division partition keeps its feed eligible while lower-division coverage reports stale', async () => {
@@ -111,23 +114,21 @@ test('a fresh official cross-division partition keeps its feed eligible while lo
 });
 
 test('membership validates all 407 combined members without overlapping FBS or FCS', async () => {
-  const requested: string[] = [];
-  const fetchMock = mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
-    const group = /\/groups\/(\d+)\/teams/.exec(String(input))?.[1];
-    assert.ok(group);
-    requested.push(group);
+  const schedule=createFixtureSchedule();
+  enqueueMembership(schedule,2026,group=>{
     const ids = fixture.memberships[group];
-    return Response.json({ count: ids.length, pageCount: 1, pageIndex: 1,
-      items: ids.map(id => ({ $ref: `http://sports.core.api.espn.com/v2/sports/football/leagues/college-football/seasons/2026/teams/${id}` })) });
+    return { count: ids.length, pageCount: 1, pageIndex: 1,
+      items: ids.map(id => ({ $ref: `http://sports.core.api.espn.com/v2/sports/football/leagues/college-football/seasons/2026/teams/${id}` })) };
   });
   try {
-    const value = SeasonMembershipSchema.parse(await readSeasonMembership(2026, new AbortController().signal));
+    const value = SeasonMembershipSchema.parse(await schedule.readSeasonMembership(2026, new AbortController().signal));
+    const requested=schedule.fixtureRequests().map(request=>/\/groups\/(\d+)\/teams/.exec(request.url)?.[1]);
     assert.deepEqual(requested, ['80', '81', '35']);
     assert.equal(Object.values(value.teams).filter(group => group === 'fbs').length, 148);
     assert.equal(Object.values(value.teams).filter(group => group === 'fcs').length, 130);
     assert.equal(Object.values(value.teams).filter(group => group === 'd2-d3').length, 407);
     assert.equal(Object.keys(value.teams).length, 685);
-  } finally { fetchMock.mock.restore(); }
+  } finally { schedule.close(); }
 });
 
 test('cached boards include both lower divisions before legacy membership refresh settles and persist the upgrade', async context => {

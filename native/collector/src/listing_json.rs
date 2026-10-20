@@ -755,7 +755,8 @@ fn sportsbite_events(catalog: SportsbiteCatalog) -> Option<Vec<SportsbiteEvent>>
 pub(crate) fn sportsbite_event_url(key: &str) -> Option<String> {
     static KEY: OnceLock<Regex> = OnceLock::new();
     KEY.get_or_init(|| {
-        Regex::new(r"^fg-(?:streamed-[a-z0-9]+(?:[-_][a-z0-9]+)*|[a-z0-9]+(?:-[a-z0-9]+)*)$").expect("fixed SportsBite key expression")
+        Regex::new(r"^fg-(?:streamed-[a-z0-9]+(?:[-_][a-z0-9]+)*|[a-z0-9]+(?:-[a-z0-9]+)*)$")
+            .expect("fixed SportsBite key expression")
     })
     .is_match(key)
     .then(|| format!("https://sportsbite.org/event/{key}"))
@@ -1355,82 +1356,144 @@ pub fn select_sportsbite_event(catalog: &str, key: &str) -> Result<String, Strin
     serde_json::to_string(&event).map_err(|_| "parser-changed".to_string())
 }
 
-
-#[derive(Clone,Deserialize,Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub(crate) struct StreamcenterMatch {
-    pub id:String,
-    pub title:String,
-    pub category:String,
-    pub date:i64,
-    pub teams:Teams,
-    pub sources:Vec<StreamRef>,
+    pub id: String,
+    pub title: String,
+    pub category: String,
+    pub date: i64,
+    pub teams: Teams,
+    pub sources: Vec<StreamRef>,
 }
 
-pub(crate) fn streamcenter_event_identity(id:&str)->Option<(League,&str,&'static str)> {
+pub(crate) fn streamcenter_event_identity(id: &str) -> Option<(League, &str, &'static str)> {
     let found=cached_regex!(r"^event-espn-league-(football-college-football|basketball-nba|basketball-wnba|hockey-nhl|baseball-mlb)-([0-9]{5,12})$").unwrap().captures(id)?;
-    let (league,source)=match &found[1] {
-        "football-college-football"=>(League::Ncaaf,"streamcenter"),
-        "basketball-nba"=>(League::Nba,"streamcenter-nba"),
-        "basketball-wnba"=>(League::Wnba,"streamcenter-nba"),
-        "hockey-nhl"=>(League::Nhl,"streamcenter-nhl"),
-        "baseball-mlb"=>(League::Mlb,"streamcenter-mlb"),
-        _=>return None,
+    let (league, source) = match &found[1] {
+        "football-college-football" => (League::Ncaaf, "streamcenter"),
+        "basketball-nba" => (League::Nba, "streamcenter-nba"),
+        "basketball-wnba" => (League::Wnba, "streamcenter-nba"),
+        "hockey-nhl" => (League::Nhl, "streamcenter-nhl"),
+        "baseball-mlb" => (League::Mlb, "streamcenter-mlb"),
+        _ => return None,
     };
-    Some((league,found.get(2)?.as_str(),source))
+    Some((league, found.get(2)?.as_str(), source))
 }
 
-pub(crate) fn valid_streamcenter_match(event:&StreamcenterMatch)->bool {
-    let Some((league,_,_))=streamcenter_event_identity(&event.id) else {return false;};
-    let category=match league {League::Ncaaf=>"football",League::Nba|League::Wnba=>"basketball",League::Nhl=>"hockey",League::Mlb=>"baseball",_=>return false};
-    let Some(title_teams)=catalog_teams(&event.title) else {return false;};
-    let home=&event.teams.home.name;let away=&event.teams.away.name;
-    event.category==category && (FIRST_DATE..LAST_DATE).contains(&event.date)
-        && !home.is_empty() && home.len()<=160 && !away.is_empty() && away.len()<=160 && home!=away
-        && event.title.len()<=400 && (title_teams==[home.clone(),away.clone()]||title_teams==[away.clone(),home.clone()])
-        && event.sources.len()<=24 && event.sources.iter().filter(|group|group.source=="iframe" && group.id==event.id).count()==1
-        && event.sources.iter().map(|group|(&group.source,&group.id)).collect::<HashSet<_>>().len()==event.sources.len()
+pub(crate) fn valid_streamcenter_match(event: &StreamcenterMatch) -> bool {
+    let Some((league, _, _)) = streamcenter_event_identity(&event.id) else {
+        return false;
+    };
+    let category = match league {
+        League::Ncaaf => "football",
+        League::Nba | League::Wnba => "basketball",
+        League::Nhl => "hockey",
+        League::Mlb => "baseball",
+        _ => return false,
+    };
+    let Some(title_teams) = catalog_teams(&event.title) else {
+        return false;
+    };
+    let home = &event.teams.home.name;
+    let away = &event.teams.away.name;
+    event.category == category
+        && (FIRST_DATE..LAST_DATE).contains(&event.date)
+        && !home.is_empty()
+        && home.len() <= 160
+        && !away.is_empty()
+        && away.len() <= 160
+        && home != away
+        && event.title.len() <= 400
+        && (title_teams == [home.clone(), away.clone()]
+            || title_teams == [away.clone(), home.clone()])
+        && event.sources.len() <= 24
+        && event
+            .sources
+            .iter()
+            .filter(|group| group.source == "iframe" && group.id == event.id)
+            .count()
+            == 1
+        && event
+            .sources
+            .iter()
+            .map(|group| (&group.source, &group.id))
+            .collect::<HashSet<_>>()
+            .len()
+            == event.sources.len()
 }
 
-fn streamcenter_catalog(body:&str)->Result<Vec<StreamcenterMatch>,String> {
-    let rows:Vec<serde_json::Value>=serde_json::from_str(body).map_err(|_|"parser-changed")?;
-    if rows.len()>200{return Err("parser-changed".into());}
-    let mut events=Vec::new();let mut ids=HashSet::new();
+fn streamcenter_catalog(body: &str) -> Result<Vec<StreamcenterMatch>, String> {
+    let rows: Vec<serde_json::Value> = serde_json::from_str(body).map_err(|_| "parser-changed")?;
+    if rows.len() > 200 {
+        return Err("parser-changed".into());
+    }
+    let mut events = Vec::new();
+    let mut ids = HashSet::new();
     for row in rows {
-        let id=row.get("id").and_then(serde_json::Value::as_str).ok_or("parser-changed")?;
-        if streamcenter_event_identity(id).is_none(){continue;}
-        let event:StreamcenterMatch=serde_json::from_value(row).map_err(|_|"parser-changed")?;
-        if !valid_streamcenter_match(&event)||!ids.insert(event.id.clone()){return Err("parser-changed".into());}
+        let id = row
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("parser-changed")?;
+        if streamcenter_event_identity(id).is_none() {
+            continue;
+        }
+        let event: StreamcenterMatch = serde_json::from_value(row).map_err(|_| "parser-changed")?;
+        if !valid_streamcenter_match(&event) || !ids.insert(event.id.clone()) {
+            return Err("parser-changed".into());
+        }
         events.push(event);
     }
     Ok(events)
 }
 
-fn parse_streamcenter(source:&ListingSource,body:&str,now:i64)->ListingResult {
-    let Ok(events)=streamcenter_catalog(body) else {return invalid();};
-    let mut observations=Vec::new();
+fn parse_streamcenter(source: &ListingSource, body: &str, now: i64) -> ListingResult {
+    let Ok(events) = streamcenter_catalog(body) else {
+        return invalid();
+    };
+    let mut observations = Vec::new();
     for event in events {
-        let Some((league,_,source_id))=streamcenter_event_identity(&event.id) else {return invalid();};
-        if source_id!=source.id || !source.leagues.contains(&league){continue;}
-        observations.push(Observation {id:format!("{}:{}",source.id,event.id),source_id:source.id.clone(),
-            url:format!("https://streamcenter.st/watch/{}",event.id),title:format!("{} vs {}",event.teams.home.name,event.teams.away.name),
-            teams:Some([event.teams.home.name,event.teams.away.name]),league:Some(league),kickoff:Some(event.date),
-            ends_at:None,raw_time:iso(event.date).unwrap_or_default(),observed_at:now,parser_version:3,legacy_id:None,kickoff_lineage:None});
+        let Some((league, _, source_id)) = streamcenter_event_identity(&event.id) else {
+            return invalid();
+        };
+        if source_id != source.id || !source.leagues.contains(&league) {
+            continue;
+        }
+        observations.push(Observation {
+            id: format!("{}:{}", source.id, event.id),
+            source_id: source.id.clone(),
+            url: format!("https://streamcenter.st/watch/{}", event.id),
+            title: format!("{} vs {}", event.teams.home.name, event.teams.away.name),
+            teams: Some([event.teams.home.name, event.teams.away.name]),
+            league: Some(league),
+            kickoff: Some(event.date),
+            ends_at: None,
+            raw_time: iso(event.date).unwrap_or_default(),
+            observed_at: now,
+            parser_version: 3,
+            legacy_id: None,
+            kickoff_lineage: None,
+        });
     }
     complete(observations)
 }
 
-pub(crate) fn select_streamcenter_event(body:&str,id:&str)->Result<StreamcenterMatch,String> {
-    let events=streamcenter_catalog(body)?;
-    let mut selected=events.into_iter().filter(|event|event.id==id);
-    let event=selected.next().ok_or("parser-changed")?;
-    if selected.next().is_some(){return Err("parser-changed".into());}
+pub(crate) fn select_streamcenter_event(body: &str, id: &str) -> Result<StreamcenterMatch, String> {
+    let events = streamcenter_catalog(body)?;
+    let mut selected = events.into_iter().filter(|event| event.id == id);
+    let event = selected.next().ok_or("parser-changed")?;
+    if selected.next().is_some() {
+        return Err("parser-changed".into());
+    }
     Ok(event)
 }
 
 pub fn parse_json(source: &ListingSource, body: &str, now: i64) -> Option<ListingResult> {
     match source.family.as_str() {
-        "streamcenter" if source.url.contains("/api/matches/") => Some(parse_streamcenter(source,body,now)),
-        "wordpress" if body.trim_start().starts_with('{') => Some(crate::published::wordpress(source,body,now)),
+        "streamcenter" if source.url.contains("/api/matches/") => {
+            Some(parse_streamcenter(source, body, now))
+        }
+        "wordpress" if body.trim_start().starts_with('{') => {
+            Some(crate::published::wordpress(source, body, now))
+        }
         "tvapp" => Some(parse_tvapp(source, body, now)),
         "ppv" => Some(parse_ppv(source, body, now)),
         "streamed" | "livesportpro" => Some(parse_streamed(source, body, now)),
@@ -1448,20 +1511,37 @@ mod tests {
 
     #[test]
     fn source_api_catalogs_preserve_event_identity_and_ignore_post_publication_time() {
-        let fixture:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/source-api-review.json")).unwrap();
-        let registry=SourceRegistry::parse(include_str!("../../../lib/football/source-registry.json")).unwrap();
-        let source=registry.get("streamcenter").unwrap();
-        let result=parse_json(source,&fixture["matches"].to_string(),1_792_016_400_000).unwrap();
-        assert_eq!(result.outcome,ListingOutcome::Parsed);
-        let event=result.observations.iter().find(|row|row.url.ends_with("401862800")).unwrap();
-        assert_eq!(event.kickoff,Some(1_792_107_000_000));
-        assert_eq!(event.teams,Some(["UAB Blazers".into(),"East Carolina Pirates".into()]));
-        let source=registry.get("dudestream-nba").unwrap();
-        let body=serde_json::json!({"category":fixture["category"][0],"posts":fixture["posts"]});
-        let result=parse_json(source,&body.to_string(),1_792_016_400_000).unwrap();
-        let post=result.observations.iter().find(|row|row.url=="https://dudestream1.com/nba3/").unwrap();
-        assert_eq!(post.title,"Charlotte Hornets vs Boston Celtics");
-        assert_eq!(post.kickoff,None);
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/source-api-review.json"
+        ))
+        .unwrap();
+        let registry =
+            SourceRegistry::parse(include_str!("../../../lib/football/source-registry.json"))
+                .unwrap();
+        let source = registry.get("streamcenter").unwrap();
+        let result =
+            parse_json(source, &fixture["matches"].to_string(), 1_792_016_400_000).unwrap();
+        assert_eq!(result.outcome, ListingOutcome::Parsed);
+        let event = result
+            .observations
+            .iter()
+            .find(|row| row.url.ends_with("401862800"))
+            .unwrap();
+        assert_eq!(event.kickoff, Some(1_792_107_000_000));
+        assert_eq!(
+            event.teams,
+            Some(["UAB Blazers".into(), "East Carolina Pirates".into()])
+        );
+        let source = registry.get("dudestream-nba").unwrap();
+        let body = serde_json::json!({"category":fixture["category"][0],"posts":fixture["posts"]});
+        let result = parse_json(source, &body.to_string(), 1_792_016_400_000).unwrap();
+        let post = result
+            .observations
+            .iter()
+            .find(|row| row.url == "https://dudestream1.com/nba3/")
+            .unwrap();
+        assert_eq!(post.title, "Charlotte Hornets vs Boston Celtics");
+        assert_eq!(post.kickoff, None);
     }
 
     fn wrestling_source(id: &str, family: &str) -> ListingSource {

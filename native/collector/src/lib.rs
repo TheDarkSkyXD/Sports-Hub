@@ -1,3 +1,7 @@
+#[cfg(windows)]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn compile_fixed_pattern(expression: &str) -> regex::Regex {
     regex::Regex::new(expression).expect("fixed collector expression")
 }
@@ -5,12 +9,22 @@ fn compile_fixed_pattern(expression: &str) -> regex::Regex {
 macro_rules! cached_regex {
     ($expression:literal $(,)?) => {{
         static PATTERN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-        Ok::<regex::Regex, regex::Error>(
-            PATTERN
-                .get_or_init(|| crate::compile_fixed_pattern($expression))
-                .clone(),
+        Ok::<&'static regex::Regex, regex::Error>(
+            PATTERN.get_or_init(|| crate::compile_fixed_pattern($expression)),
         )
     }};
+}
+
+#[cfg(test)]
+mod cached_pattern_tests {
+    #[test]
+    fn repeated_fixed_matches_reuse_the_same_execution_cache() {
+        let pattern = || cached_regex!(r"\s+and\s+").unwrap();
+        let first = pattern();
+        let second = pattern();
+        assert_eq!(first.replace_all("Alabama A and M", "&"), "Alabama A&M");
+        assert!(std::ptr::eq(first, second));
+    }
 }
 
 pub mod browser;
@@ -23,6 +37,10 @@ pub mod html;
 pub mod http;
 pub mod listing_html;
 pub mod listing_json;
+pub mod pipeline;
+pub mod pipeline_api;
+mod pipeline_matcher_api;
+mod pipeline_schedule_api;
 mod published;
 pub mod registry;
 pub mod resolver;
@@ -286,7 +304,7 @@ impl Collector {
         body: String,
     ) -> napi::Result<String> {
         let row: types::Observation = parse_json(&row_json)?;
-        let players =
+        let mut players =
             if let Some(players) = detail_json::compatible_json_players(&game_id, &row, &body) {
                 players
             } else {
@@ -294,6 +312,7 @@ impl Collector {
                 detail_html::compatible_html_players(&game_id, &row, &body, &registry)
                     .unwrap_or_default()
             };
+        resolver::label_combat_players(&row, &mut players);
         json_string(&players)
     }
 
@@ -440,7 +459,7 @@ impl Collector {
                 | "sportsbite"
                 | "sportsfeed24"
         );
-        let (resolver, action) = if specialized {
+        let (resolver, mut action) = if specialized {
             resolver::Resolver::begin(&game_id, &row, &body)
         } else {
             let (resolver, _) = resolver::Resolver::begin(&game_id, &row, &body);
@@ -458,6 +477,7 @@ impl Collector {
             };
             (resolver, resolver::ResolveAction::Done { players })
         };
+        resolver.label_action(&mut action);
         let mut state = self.state.lock();
         let id = state.next_resolver_id;
         state.next_resolver_id = id
@@ -504,7 +524,8 @@ impl Collector {
             .resolvers
             .remove(&id)
             .ok_or_else(|| napi::Error::from_reason("unknown collector resolver"))?;
-        let action = resolver.advance(replies);
+        let mut action = resolver.advance(replies);
+        resolver.label_action(&mut action);
         if matches!(action, resolver::ResolveAction::ReadBatch { .. }) {
             self.state.lock().resolvers.insert(id, resolver);
         }

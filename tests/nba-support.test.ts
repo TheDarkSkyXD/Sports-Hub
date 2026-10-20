@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { SCHEDULES, readSchedule } from '../lib/football/adapters/schedule.ts';
+import { SCHEDULES, createFixtureSchedule } from '../lib/football/adapters/schedule.ts';
+import {enqueueSchedule} from './schedule-fixture.ts';
 import { SOURCES, compatiblePlayers, parseListings } from '../lib/football/adapters/sources.ts';
 import { matchObservation } from '../lib/football/domain/matching.ts';
 import { provisionalLiveChannel, resolvedLiveChannelMatch } from '../lib/football/domain/live-channel.ts';
@@ -33,20 +34,15 @@ test('NBA schedule uses the basketball endpoint and a distinct ESPN game ID',asy
   assert.equal(validGameId('nba-source-401914129'),false);
   const partition=SCHEDULES.find(source=>source.id==='nba');
   assert.ok(partition);
-  const original=globalThis.fetch;
-  const requested:string[]=[];
-  globalThis.fetch=async input=>{
-    const url=String(input);
-    requested.push(url);
-    return Response.json(new URL(url).searchParams.get('dates')==='20261008'?scoreboard:{events:[]});
-  };
-  try {
-    const result=await readSchedule(partition,tipoff+60_000,new AbortController().signal);
+  const fixture=createFixtureSchedule();
+  enqueueSchedule(fixture,partition,tipoff+60_000,url=>new URL(url).searchParams.get('dates')==='20261008'?scoreboard:{events:[]});  try {
+    const result=await fixture.readSchedule(partition,tipoff+60_000,new AbortController().signal);
+    const requested=fixture.fixtureRequests().map(request=>request.url);
     assert.deepEqual(result.games.map(item=>item.id),['nba-401914129']);
     assert.equal(result.league,'nba');
     assert.equal(requested.length,9);
     assert.ok(requested.every(url=>new URL(url).pathname==='/apis/site/v2/sports/basketball/nba/scoreboard'));
-  } finally {globalThis.fetch=original;}
+  } finally {fixture.close();}
 });
 
 test('NBA TVApp listing skips its schedule row and matches the NBA game',()=>{

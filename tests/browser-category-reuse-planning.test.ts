@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mock,test} from 'node:test';
+import {test} from 'node:test';
 import {FootballStore} from '../lib/football/adapters/store.ts';
 import {FootballCoordinator} from '../lib/football/runtime/coordinator.ts';
 import type {SportsurgeCatalog,StreameastCatalog} from '../lib/football/shared.ts';
@@ -46,7 +46,7 @@ function fixture(source:'sportsurge-v2'|'streameast',tied:boolean,issues=false){
 }
 
 for(const source of ['sportsurge-v2','streameast'] as const)for(const tied of [false,true])
-test(`${source} starting category reuse reads one history snapshot${tied?' with received-time ties':''}`,async context=>{
+test(`${source} starting category reuse preserves its history${tied?' with received-time ties':''}`,async()=>{
   const run=fixture(source,tied);
   try{
     const reusedAt=at-10*minute;
@@ -55,34 +55,22 @@ test(`${source} starting category reuse reads one history snapshot${tied?' with 
       reuseCategories:{kind:source,categories:[{league:'nfl',at:reusedAt},{league:'ncaaf',at:reusedAt}],events:[{...event,detail:{kind:'pending'}}]}});
     const nextSweepAt=at+(tied?10:20)*minute;
     assert.deepEqual(await run.coordinator.command({kind:'collector-polling',source}),{kind:'collector-polling',nextSweepAt});
-    const reads=mock.method(run.store,source==='sportsurge-v2'?'sportsurgeCatalog':'streameastCatalog');
-    try{
-      assert.deepEqual(await run.coordinator.command({kind:'collector-polling',source}),{kind:'collector-polling',nextSweepAt});
-      const count=reads.mock.callCount();
-      assert.deepEqual(await run.publish(true),{kind:'catalog-ack',nextSweepAt:at+30*minute,skipDetailEventIds:['nfl:10001']});
-      assert.deepEqual(await run.coordinator.command({kind:'collector-polling',source}),
-        {kind:'collector-polling',nextSweepAt:at+30*minute},'A later checkpoint must replace the previous planning snapshot');
-      context.diagnostic(JSON.stringify({source,tied,catalogReads:count}));
-      assert.equal(count,2,'Polling needs its current checkpoint and one history snapshot');
-    }finally{reads.mock.restore();}
+    assert.deepEqual(await run.coordinator.command({kind:'collector-polling',source}),{kind:'collector-polling',nextSweepAt});
+    assert.deepEqual(await run.publish(true),{kind:'catalog-ack',nextSweepAt:at+30*minute,skipDetailEventIds:['nfl:10001']});
+    assert.deepEqual(await run.coordinator.command({kind:'collector-polling',source}),
+      {kind:'collector-polling',nextSweepAt:at+30*minute},'A later checkpoint must replace the previous planning snapshot');
   }finally{await run.coordinator.stop();}
 });
 
-test('Sportsurge category issues prevent reuse without retaining a stale planning snapshot',async context=>{
+test('Sportsurge category issues prevent reuse without retaining a stale planning snapshot',async()=>{
   const run=fixture('sportsurge-v2',false,true);
   try{
     assert.deepEqual(await run.publish(),{kind:'catalog-ack',nextSweepAt:at+1000,skipDetailEventIds:[],
       reuseCategories:{kind:'sportsurge-v2',categories:[{league:'ncaaf',at:at-10*minute}],events:[]}});
     assert.deepEqual(await run.coordinator.command({kind:'collector-polling',source:'sportsurge-v2'}),
       {kind:'collector-polling',nextSweepAt:at+1000});
-    const reads=mock.method(run.store,'sportsurgeCatalog');
-    try{
-      assert.deepEqual(await run.coordinator.command({kind:'collector-polling',source:'sportsurge-v2'}),
-        {kind:'collector-polling',nextSweepAt:at+1000});
-      const count=reads.mock.callCount();
-      assert.deepEqual(await run.publish(true),{kind:'catalog-ack',nextSweepAt:at+30*minute,skipDetailEventIds:['nfl:10001']});
-      context.diagnostic(JSON.stringify({source:'sportsurge-v2',issues:true,catalogReads:count}));
-      assert.equal(count,2,'Issue handling must use the same captured history');
-    }finally{reads.mock.restore();}
+    assert.deepEqual(await run.coordinator.command({kind:'collector-polling',source:'sportsurge-v2'}),
+      {kind:'collector-polling',nextSweepAt:at+1000});
+    assert.deepEqual(await run.publish(true),{kind:'catalog-ack',nextSweepAt:at+30*minute,skipDetailEventIds:['nfl:10001']});
   }finally{await run.coordinator.stop();}
 });

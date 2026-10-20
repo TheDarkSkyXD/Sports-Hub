@@ -240,7 +240,18 @@ test('a later source cycle proceeds while a saved schedule refresh remains pendi
     parseListings:()=>({outcome:'empty',observations:[]})});
   try {
     await coordinator.refresh(true);
-    for(let index=0;index<30&&sourceReads<1;index++)await new Promise<void>(resolve=>setImmediate(resolve));
+    let initialPublished=false;
+    for(let index=0;index<30;index++){
+      const reply=await coordinator.command({kind:'sources'});
+      if(reply.kind!=='sources')assert.fail('expected sources reply');
+      const initial=reply.snapshot.sources[0];
+      if(initial.lastAttempt?.at===clock&&initial.scopes[0].read.kind==='complete'){
+        initialPublished=true;
+        break;
+      }
+      await new Promise<void>(resolve=>setImmediate(resolve));
+    }
+    assert.equal(initialPublished,true,'initial source publication must finish before advancing time');
     assert.equal(sourceReads,1);
     clock+=30*60_000;
     const refreshing=coordinator.refresh(true);
@@ -256,15 +267,12 @@ test('a later source cycle proceeds while a saved schedule refresh remains pendi
 
 test('a fast forced schedule result starts one source collection cycle',async()=>{
   const directory=mkdtempSync(join(tmpdir(),'universal-single-discovery-'));
+  let collections=0;
   const coordinator=createFootballCoordinator(join(directory,'state.sqlite'),{now:()=>at,sources:[source],
     schedules:[{id:'nfl',league:'nfl',path:'football/nfl',group:null}],
     readSchedule:async()=>({league:'nfl',games:[game],at}),
-    readHtml:async()=>'<main>Recognized empty schedule</main>',
+    readHtml:async url=>{if(url===source.url)collections++;return '<main>Recognized empty schedule</main>';},
     parseListings:()=>({outcome:'empty',observations:[]})});
-  const measured=coordinator as unknown as {discover:(force:boolean)=>Promise<void>};
-  const discover=measured.discover.bind(coordinator);
-  let collections=0;
-  measured.discover=async force=>{collections++;await discover(force);};
   try {
     await coordinator.refresh(true);
     for(let index=0;index<5;index++)await new Promise<void>(resolve=>setImmediate(resolve));

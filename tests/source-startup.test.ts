@@ -292,22 +292,31 @@ test('repeated checks do not churn a full paused queue with more demand than cap
 });
 
 test('an unchanged refreshed listing retains fresh choices while its detail refresh is pending',async()=>{
-  const pending=gate(),live=game(0,0,'live'),listing=source('fixture');
+  const pending=gate(),checking=gate(),live=game(0,0,'live'),listing=source('fixture');
   let clock=at,reads=0;
   const {coordinator,close}=fixture([live],[listing],{
     now:()=>clock,
     parseListings:()=>({outcome:'parsed',observations:[{...observation(live,listing),observedAt:clock}]}),
     readHtml:async url=>{if(!url.endsWith('/list')&&++reads>1)await pending.promise;return '<main>fixture</main>';},
+    probeCandidate:async()=>{
+      if(clock>=at+60*60_000)await checking.promise;
+      return {kind:'playable',proof:{kind:'advancing-video',version:1,startupMs:3000,observedMs:3000,mediaAdvanceMs:3000,presentedFrames:4}};
+    },
   });
   try {
     await coordinator.refresh(true);
     await until(async()=>{
       const reply=await coordinator.command({kind:'sources'});
-      return reply.kind==='sources'&&reply.snapshot.games[0]?.candidates.length===1;
-    },'the first detail should publish one choice');
+      return reply.kind==='sources'&&reply.snapshot.games[0]?.candidates[0]?.availability.kind==='playable';
+    },'the first detail should publish one verified choice');
     clock+=1_801_000;
     await coordinator.refresh(true);
     await until(()=>reads===2,'the next detail refresh should start');
+    await until(async()=>{
+      const reply=await coordinator.command({kind:'sources'});
+      const health=reply.kind==='sources'?reply.snapshot.games[0]?.candidates[0]?.availability:undefined;
+      return health?.kind==='playable'&&health.checkedAt===clock;
+    },'the working proof should renew before advancing to expiry');
     await coordinator.refresh(true);
     const refreshing=await coordinator.command({kind:'sources'});
     assert.equal(refreshing.kind,'sources');
@@ -321,7 +330,7 @@ test('an unchanged refreshed listing retains fresh choices while its detail refr
       assert.equal(expired.snapshot.games[0]?.candidates.length,1);
       assert.equal(expired.snapshot.games[0]?.candidates[0]?.availability.kind,'checking');
     }
-  } finally {pending.release();await close();}
+  } finally {pending.release();checking.release();await close();}
 });
 
 test('unverified cached choices do not survive changed semantic listing metadata',async()=>{

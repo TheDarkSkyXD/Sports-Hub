@@ -44,6 +44,7 @@ Use these conventions when making relevant code or UI changes. Add future coding
 - Keep working-feed maintenance intervals separate from failed-feed and incomplete-check retries.
 - Finish available feeds' first attempts for today before tomorrow, and interleave due current-day failed or incomplete retries fairly with new attempts. Rechecks of working feeds follow today's first attempts and can run before tomorrow's. Future-day automatic retries follow first attempts. Capacity and cancellation do not complete a first attempt. Include every sibling from each source, and preserve explicit retry requests.
 - Preserve completed feed-check outcomes across restarts, separately from working-video proof. Restore them only for a currently published route with matching game ownership. Active and queued work do not establish a completed attempt.
+- Retain completed negative acquisition evidence independently of optional game attribution. Reject stale generations and invalid ownership before persistence; a missing matchup must not erase a completed retry deadline.
 - Retry temporary viewer connection failures within the player startup deadline. Keep connection recovery separate from feed-verification status.
 - Let the active media library manage automatic live synchronization. Do not seek ahead of downloaded video from a periodic UI timer.
 - Keep optional fallback setup out of direct playback startup. Share one startup deadline across attempts, and allow bounded later recovery only after video has played.
@@ -52,6 +53,12 @@ Use these conventions when making relevant code or UI changes. Add future coding
 - Preserve failure causes when adapting provider errors into check results. Verify the reported cause through the consuming inventory.
 - Classify aborted operations from their signal's cause so timeouts and cancellations keep their retry behavior.
 - Read stable persisted inputs once per synchronous planning pass. Take a new snapshot for the next pass instead of caching across asynchronous updates.
+- Capture migration expectations from the working checkout before replacing an implementation. Existing uncommitted behavior belongs in the baseline.
+- Match boundary codecs to all values accepted by the source schema. Verify restored records as well as freshly serialized data.
+- Keep pipeline decisions in the Rust state owner. Host adapters dispatch external operations and return observations through typed messages.
+- Cache constant regular expressions at their call sites and borrow the cached matcher. Cloning a compiled expression can recreate its execution cache. Prepare shared projection inputs once per pass instead of cloning them for each row.
+- Before advancing a fixture clock, wait for the completed state being tested. A callback invocation establishes that work started, not that its result was committed.
+- Exercise performance checks with advancing clocks and occupied queues as well as cached reads. A frozen clock can hide repeated planning between asynchronous completions.
 - Count verified feeds by the identity used for checks. Source labels and aliases do not establish additional working feeds.
 - Keep transient upstream player sessions free of HTTP media caches. Bound browser verification separately from the number of discovered feeds.
 

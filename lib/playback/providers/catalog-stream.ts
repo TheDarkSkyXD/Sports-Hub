@@ -3,7 +3,8 @@ import type { CandidateLocator } from '../../football/shared.ts';
 import type { PlaybackProvider, ProviderPlayback, ProviderResource } from '../provider.ts';
 import { boundedText } from '../provider.ts';
 import { get, observedPublicPage, publicHttpsRequest, resource, type Requester } from './public-page.ts';
-import { CATALOG_API_ORIGINS,streamApiUrl, streamedEventUrl, validLiveRelay, validStreamReference, validStreamTarget } from './catalog-stream-policy.ts';
+import { CATALOG_API_ORIGINS,streamApiUrl, validLiveRelay, validStreamTarget } from './catalog-stream-policy.ts';
+import {nativeDomain} from '../../football/domain/native.ts';
 
 type Locator=Extract<CandidateLocator,{provider:'catalog-stream'}>;
 type CatalogEvents=z.infer<typeof Event>[];
@@ -16,10 +17,7 @@ const Stream=z.object({id:z.string(),streamNo:z.number().int().min(1).max(100),e
 type Observe=(destination:URL,signal:AbortSignal,purpose:'playback'|'probe')=>Promise<ProviderPlayback|null>;
 
 export function durableCatalogStream(locator:Locator):boolean {
-  return validStreamReference(locator.sourceName,locator.sourceId)&&
-    /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,159}$/.test(locator.eventId)&&
-    locator.eventUrl===streamedEventUrl(locator.source,locator.eventId)&&locator.kickoff>=Date.UTC(2000,0,1)&&
-    locator.kickoff<Date.UTC(2100,0,1)&&locator.streamNo<=100;
+  return nativeDomain('durableCatalogStream',[locator],z.boolean());
 }
 
 export function catalogStreamProvider(requester:Requester=(url,signal,headers,timeoutMs)=>

@@ -713,7 +713,12 @@ test('manual live retries progress alongside a held background route',async()=>{
   };
   try {
     await coordinator.refresh(true);
-    await until(async()=>targetChecks===17&&pending.length===1);
+    await until(async()=>{
+      if(targetChecks!==17||pending.length===0)return false;
+      const states=await availability();
+      return states?.length===17&&states.every(state=>state==='unavailable');
+    });
+    assert.ok(pending.length<=2,'held background routes stay within the global check limit');
     assert.deepEqual(new Set(await availability()),new Set(['unavailable']));
     await coordinator.command({kind:'check-sources',gameIds:[live.id],retry:false});
     assert.equal(targetChecks,17);

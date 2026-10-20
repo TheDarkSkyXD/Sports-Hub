@@ -24,3 +24,33 @@ export interface NativeCollector {
 }
 
 export function createNativeCollector(fixtureMode?: boolean): NativeCollector;
+
+export interface NativeStore {
+  call(operation: string, argsJson: string): string;
+  close(): void;
+  createPipeline(configJson: string): NativePipeline;
+}
+
+export interface NativePipeline {
+  step(inputJson: string, at?: number): string;
+}
+
+export function createNativeStore(databasePath: string, ownerToken?: string, reclaimToken?: string): NativeStore;
+export function createNativePipeline(databasePath: string, configJson: string): NativePipeline;
+export function pipelineDomain(operation: string, inputJson: string): string;
+export function pipelineView(operation: string, inputJson: string): string;
+export interface NativeMatcher { call(inputJson: string): string; }
+export function createNativeMatcher(kind: 'observation' | 'source' | 'finished', gamesJson: string, mode?: 'current' | 'inventory-live'): NativeMatcher;
+
+export interface NativeSchedule {
+  begin(): number;
+  read(sourceJson: string, now: number, requestId: number, onProgress: (json: string) => void): Promise<string>;
+  membership(season: number, requestId: number): Promise<string>;
+  cancel(requestId: number): void;
+  close(): void;
+  enqueueFixture(scriptJson: string): void;
+  fixtureRequests(): string;
+  fixtureCancels(): string;
+  releaseFixtureGate(gate: string): void;
+}
+export function createNativeSchedule(fixtureMode?: boolean): NativeSchedule;

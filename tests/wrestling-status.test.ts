@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readSchedule, SCHEDULES, type ScheduleListingCache } from '../lib/football/adapters/schedule.ts';
+import { createFixtureSchedule, SCHEDULES } from '../lib/football/adapters/schedule.ts';
+import {enqueueListings} from './schedule-fixture.ts';
 import { parseListings, SOURCES } from '../lib/football/adapters/sources.ts';
 import { GameSchema, isWrestlingGame, ObservationSchema } from '../lib/football/shared.ts';
 
@@ -35,8 +36,8 @@ test('every wrestling promotion follows its published window boundaries', async 
       [start - 1, 'pre', 'scheduled', 'Scheduled'], [start, 'in', 'live', 'In progress'],
       [end - 1, 'in', 'live', 'In progress'], [end, 'unknown', 'unknown', 'Status unavailable'],
     ] as const) {
-      const { games } = await readSchedule(partition(league), now, new AbortController().signal,
-        undefined, undefined, undefined, undefined, reader([event]));
+      const fixture=createFixtureSchedule();await enqueueListings(fixture,reader([event]));
+      const { games } = await fixture.readSchedule(partition(league), now, new AbortController().signal);
       assert.equal(games.length, 1);
       const game = games[0];
       assert.ok(isWrestlingGame(game));
@@ -47,22 +48,19 @@ test('every wrestling promotion follows its published window boundaries', async 
 });
 
 test('cached wrestling observations recalculate status at both published boundaries', async () => {
-  const observation = parseListings(source, catalog([tna]), start - 1).observations[0];
-  const cache: ScheduleListingCache = { snapshot: { at: start - 1, observations: [observation] } };
-  const offline = async () => { throw new Error('the cached observation should be used'); };
+  const fixture=createFixtureSchedule();await enqueueListings(fixture,reader([tna]));
   for (const [now, status] of [[start - 1, 'pre'], [start, 'in'], [end - 1, 'in'], [end, 'unknown']] as const) {
-    if(now === end - 1)cache.snapshot={at:end-1,observations:[observation]};
-    const result = await readSchedule(partition('tna'), now, new AbortController().signal,
-      undefined, undefined, undefined, cache, offline);
+    const result = await fixture.readSchedule(partition('tna'), now, new AbortController().signal);
     assert.equal(result.games[0].status, status);
   }
+  assert.equal(fixture.fixtureRequests().length,3);
 });
 
 test('a duplicate start-only source preserves the PPV window and its authoritative start', async () => {
   const duplicate = { id: 'tna-bound-for-glory', title: tna.name, category: 'wrestling',
     date: start + 60_000, sources: [], teams: null };
-  const result = await readSchedule(partition('tna'), start + 30_000, new AbortController().signal,
-    undefined, undefined, undefined, undefined, async url => url.includes('api.ppv.st') ? catalog([tna]) : JSON.stringify([duplicate]));
+  const fixture=createFixtureSchedule();await enqueueListings(fixture,async url=>url.includes('api.ppv.st')?catalog([tna]):JSON.stringify([duplicate]));
+  const result = await fixture.readSchedule(partition('tna'), start + 30_000, new AbortController().signal);
   assert.equal(result.games.length, 1);
   const game = result.games[0];
   assert.ok(isWrestlingGame(game));
@@ -73,8 +71,8 @@ test('a duplicate start-only source preserves the PPV window and its authoritati
 
 test('missing end evidence keeps started wrestling unknown', async () => {
   const withoutEnd = { ...tna, ends_at: undefined };
-  const result = await readSchedule(partition('tna'), start, new AbortController().signal,
-    undefined, undefined, undefined, undefined, reader([withoutEnd]));
+  const fixture=createFixtureSchedule();await enqueueListings(fixture,reader([withoutEnd]));
+  const result = await fixture.readSchedule(partition('tna'), start, new AbortController().signal);
   assert.equal(result.games[0].status, 'unknown');
 });
 

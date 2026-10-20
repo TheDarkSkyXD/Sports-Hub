@@ -55,20 +55,11 @@ test('cached Chicago calendar days keep exact midnight boundaries across both DS
   for(const at of [NaN,Infinity,-Infinity,8.64e15+1])assert.equal(feedCalendarDay(at),null);
 });
 
-test('exact timestamp reuse is cached and older entries are recomputed after bounded churn',()=>{
+test('exact timestamp reuse keeps its Chicago day after many intervening timestamps',()=>{
   const at=Date.parse('2040-06-01T12:34:56.789Z');
-  const original=Intl.DateTimeFormat.prototype.formatToParts;
-  let calls=0;
-  Intl.DateTimeFormat.prototype.formatToParts=function(date?:Date|number){
-    if(date===at)calls++;
-    return original.call(this,date);
-  };
-  try {
-    const expected=feedCalendarDay(at);
-    assert.equal(feedCalendarDay(at),expected);
-    assert.equal(calls,1);
-    for(let index=1;index<=5000;index++)feedCalendarDay(at+index);
-    assert.equal(feedCalendarDay(at),expected);
-    assert.equal(calls,2);
-  } finally {Intl.DateTimeFormat.prototype.formatToParts=original;}
+  const expected=Date.parse('2040-06-01T00:00:00.000Z')/86_400_000;
+  assert.equal(feedCalendarDay(at),expected);
+  assert.equal(feedCalendarDay(at),expected);
+  for(let index=1;index<=5000;index++)assert.equal(feedCalendarDay(at+index),expected);
+  assert.equal(feedCalendarDay(at),expected);
 });
